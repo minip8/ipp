@@ -4,19 +4,18 @@ import {
   bankHref,
   bankSearch,
   bankWithFeedback,
-  DEFAULT_DISCLOSURE,
   DEFAULT_FILTERS,
+  entryQuestion,
   filterItems,
   groupBySubtopic,
+  matchesQuery,
   neighbours,
   nextToPractise,
-  OUTLINE_ABOVE,
   parseFilters,
-  sectionOpen,
-  startsOpen,
   statusCounts,
   statusFromFeedback,
-  withSection,
+  subtopicNeighbours,
+  summariseSubtopics,
 } from './bank-logic';
 
 const q = (id: string, over: Partial<PublicQuizQuestion> = {}): PublicQuizQuestion => ({
@@ -86,6 +85,18 @@ describe('filters in the URL', () => {
       '/quiz/topics/operating-systems?question=p1',
     );
   });
+
+  it('links a subtopic, unless a question already says where the page is', () => {
+    const f = { ...DEFAULT_FILTERS, status: 'missed' } as const;
+    expect(bankSearch(f, null, 'C++17 & ranges')).toBe(
+      '?status=missed&subtopic=C%2B%2B17+%26+ranges',
+    );
+    expect(new URLSearchParams(bankSearch(f, null, 'C++17 & ranges')).get('subtopic')).toBe(
+      'C++17 & ranges',
+    );
+    expect(bankSearch(f, 'p1', 'Paging')).toBe('?status=missed&question=p1');
+    expect(bankHref('os', DEFAULT_FILTERS, null, 'Paging')).toBe('/quiz/topics/os?subtopic=Paging');
+  });
 });
 
 describe('filtering and grouping', () => {
@@ -124,36 +135,89 @@ describe('filtering and grouping', () => {
   });
 });
 
-describe('subtopic sections', () => {
-  const long = (subtopics: string[]) =>
-    groupBySubtopic(
-      subtopics.flatMap((subtopic) =>
-        Array.from({ length: OUTLINE_ABOVE }, (_, n) =>
-          item(`${subtopic}-${n}`, 'unanswered', { subtopic }),
-        ),
-      ),
-    );
-
-  it('start open in a short list or a single subtopic, closed in a long list', () => {
-    expect(startsOpen(groupBySubtopic(items))).toBe(true);
-    expect(startsOpen(long(['Paging']))).toBe(true);
-    expect(startsOpen(long(['Paging', 'Scheduling']))).toBe(false);
-    expect(startsOpen([])).toBe(true);
+describe('search', () => {
+  const tlb = item('t1', 'unanswered', {
+    subtopic: 'Virtual memory',
+    prompt: 'Which structure caches **translations**?',
+    choices: [
+      { id: 'a', text: 'The page table' },
+      { id: 'b', text: 'The TLB' },
+    ],
+  });
+  const fork = item('f1', 'unanswered', {
+    subtopic: 'Processes',
+    type: 'output',
+    choices: null,
+    prompt: 'What does this print?',
+    code: { language: 'cpp', standard: 'C++20', source: 'int main() { fork(); }' },
   });
 
-  it('follow the last choice: one section, then all of them, then the default', () => {
-    expect(sectionOpen(DEFAULT_DISCLOSURE, 'Paging', false)).toBe(false);
-    expect(sectionOpen(DEFAULT_DISCLOSURE, 'Paging', true)).toBe(true);
-    const one = withSection(DEFAULT_DISCLOSURE, 'Paging', true);
-    expect(sectionOpen(one, 'Paging', false)).toBe(true);
-    expect(sectionOpen(one, 'Scheduling', false)).toBe(false);
-    expect(DEFAULT_DISCLOSURE.toggled.size).toBe(0);
-    // "Collapse all", then one section opened again
-    const collapsed = { all: false, toggled: new Map<string, boolean>() };
-    expect(sectionOpen(collapsed, 'Paging', true)).toBe(false);
-    const reopened = withSection(collapsed, 'Scheduling', true);
-    expect(sectionOpen(reopened, 'Scheduling', true)).toBe(true);
-    expect(sectionOpen(reopened, 'Paging', true)).toBe(false);
+  it('looks in the subtopic, the prompt, the code and the choices', () => {
+    expect(matchesQuery(tlb, '')).toBe(true);
+    expect(matchesQuery(tlb, '   ')).toBe(true);
+    expect(matchesQuery(tlb, 'virtual')).toBe(true);
+    expect(matchesQuery(tlb, 'TRANSLATIONS')).toBe(true);
+    expect(matchesQuery(tlb, 'tlb')).toBe(true);
+    expect(matchesQuery(fork, 'fork()')).toBe(true);
+    expect(matchesQuery(fork, 'tlb')).toBe(false);
+  });
+
+  it('needs every word, in any order and any field', () => {
+    expect(matchesQuery(tlb, 'memory  caches')).toBe(true);
+    expect(matchesQuery(tlb, 'memory fork')).toBe(false);
+  });
+
+  it('narrows the list together with the filters, and still keeps pinned questions', () => {
+    const all = [tlb, fork];
+    expect(ids(filterItems(all, DEFAULT_FILTERS, new Set(), 'fork'))).toEqual(['f1']);
+    expect(
+      ids(filterItems(all, { ...DEFAULT_FILTERS, type: 'single' }, new Set(), 'fork')),
+    ).toEqual([]);
+    expect(ids(filterItems(all, DEFAULT_FILTERS, new Set(['t1']), 'fork'))).toEqual(['t1', 'f1']);
+  });
+});
+
+describe('subtopics', () => {
+  it('are summarised by what is listed, with progress over everything they hold', () => {
+    const missed = filterItems(items, { ...DEFAULT_FILTERS, status: 'missed' });
+    expect(
+      summariseSubtopics(items, missed).map((s) => [s.subtopic, ids(s.items), s.overall]),
+    ).toEqual([
+      ['Paging', ['p2'], { total: 3, new: 1, missed: 1, correct: 1 }],
+      ['Scheduling', ['s1', 's2'], { total: 3, new: 1, missed: 2, correct: 0 }],
+    ]);
+    // A subtopic with nothing listed is left out.
+    const right = filterItems(items, { ...DEFAULT_FILTERS, status: 'correct' });
+    expect(summariseSubtopics(items, right).map((s) => s.subtopic)).toEqual(['Paging']);
+    expect(summariseSubtopics(items, [])).toEqual([]);
+  });
+
+  it('have neighbours in bank order', () => {
+    const groups = groupBySubtopic([
+      ...items,
+      item('v1', 'unanswered', { subtopic: 'Virtual memory' }),
+    ]);
+    const names = (n: ReturnType<typeof subtopicNeighbours>) => [
+      n.index,
+      n.prev?.subtopic ?? null,
+      n.next?.subtopic ?? null,
+    ];
+    expect(names(subtopicNeighbours(groups, 'Paging'))).toEqual([0, null, 'Scheduling']);
+    expect(names(subtopicNeighbours(groups, 'Scheduling'))).toEqual([
+      1,
+      'Paging',
+      'Virtual memory',
+    ]);
+    expect(names(subtopicNeighbours(groups, 'Virtual memory'))).toEqual([2, 'Scheduling', null]);
+    // Filtered out, unknown or none: no way on from here.
+    expect(names(subtopicNeighbours(groups, 'Signals'))).toEqual([-1, null, null]);
+    expect(names(subtopicNeighbours(groups, null))).toEqual([-1, null, null]);
+  });
+
+  it('open on the first question still to get right, else the first', () => {
+    expect(entryQuestion(items)).toBe('p2');
+    expect(entryQuestion([item('a', 'correct'), item('b', 'correct')])).toBe('a');
+    expect(entryQuestion([])).toBeNull();
   });
 });
 

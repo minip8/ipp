@@ -184,7 +184,7 @@ test.describe('quizzes', () => {
 test.describe('question bank', () => {
   const BANK = `/quiz/topics/${QUIZ_BANK_TOPIC}`;
 
-  test('is reachable from the hub and shows status at a glance', async ({ page }) => {
+  test('is reachable from the hub and browsed by subtopic', async ({ page }) => {
     await setup(page);
     await page.goto('/quiz');
     await expect(
@@ -199,13 +199,43 @@ test.describe('question bank', () => {
     await expect(page.getByTestId('bank-progress')).toHaveText(
       '1 correct · 2 to revisit · 3 not answered yet, of 6 questions',
     );
+
+    // The overview: one card per subtopic, with how far along it is.
+    await expect(page.getByTestId('bank-summary')).toHaveText('3 subtopics · 6 questions');
+    const cards = page.getByTestId('bank-subtopics').getByRole('link');
+    await expect(cards).toHaveCount(3);
+    await expect(cards.nth(0)).toHaveAccessibleName('Processes 1 of 3 correct');
+    await expect(cards.nth(1)).toHaveAccessibleName('Synchronisation 0 of 1 correct');
+    await expect(cards.nth(2)).toHaveAccessibleName('Virtual memory 0 of 2 correct');
+
+    // A subtopic opens on its first question still to get right, beside the subtopic's list.
+    await cards.nth(0).click();
+    await expect(page).toHaveURL(/question=os-processes-004$/);
+    await expect(page.getByRole('heading', { name: 'Processes' })).toBeVisible();
+    await expect(page.getByText('Subtopic 1 of 3')).toBeVisible();
+    await expect(page.getByTestId('bank-subtopic-progress')).toHaveText('1 of 3 correct');
     const rows = page.getByTestId('bank-list').getByRole('link');
-    await expect(rows).toHaveCount(6);
+    await expect(rows).toHaveCount(3);
     await expect(rows.nth(0)).toHaveAccessibleName(/fork\(\) return.*Correct$/);
-    await expect(rows.nth(3)).toHaveAccessibleName(/Partly correct$/);
-    await expect(rows.nth(4)).toHaveAccessibleName(/Incorrect$/);
-    await expect(rows.nth(5)).toHaveAccessibleName(/Not answered$/);
-    await expect(page.getByText('Pick a question')).toBeVisible();
+    await expect(rows.nth(1)).toHaveAttribute('aria-current', 'true');
+    await expect(page.getByLabel('Your answer')).toBeVisible();
+
+    // On to the next subtopics without going back.
+    await page.getByRole('button', { name: 'Next subtopic: Synchronisation' }).click();
+    await expect(page).toHaveURL(/question=concurrency-primitives-004$/);
+    await expect(rows).toHaveCount(1);
+    await expect(rows.nth(0)).toHaveAccessibleName(/Partly correct$/);
+    await page.getByRole('button', { name: 'Next subtopic Virtual memory' }).click();
+    await expect(page).toHaveURL(/question=os-virtual-memory-001$/);
+    await expect(rows.nth(0)).toHaveAccessibleName(/Incorrect$/);
+    await expect(rows.nth(1)).toHaveAccessibleName(/Not answered$/);
+    await page.getByRole('button', { name: 'Previous subtopic: Synchronisation' }).click();
+    await expect(page.getByRole('heading', { name: 'Synchronisation' })).toBeVisible();
+
+    // Back on the overview, the subtopic just left is the one in focus.
+    await page.getByRole('link', { name: 'All subtopics' }).click();
+    await expect(page).toHaveURL(new RegExp(`${BANK}$`));
+    await expect(cards.nth(1)).toBeFocused();
 
     // The quiz flow stays one click away, with this topic preselected.
     await page.getByRole('link', { name: 'Take a quiz instead' }).click();
@@ -224,10 +254,16 @@ test.describe('question bank', () => {
       'aria-checked',
       'true',
     );
-    const rows = page.getByTestId('bank-list').getByRole('link');
-    await expect(rows).toHaveCount(3);
-    await rows.first().click();
+    await expect(page.getByTestId('bank-summary')).toHaveText('2 subtopics · 3 questions match');
+    const cards = page.getByTestId('bank-subtopics').getByRole('link');
+    await expect(cards.nth(0)).toHaveAccessibleName('Processes 1 of 3 correct. 2 of 3 match');
+    await page.getByRole('button', { name: 'Start with the first open question' }).click();
     await expect(page).toHaveURL(/status=new&question=os-processes-004$/);
+    const rows = page.getByTestId('bank-list').getByRole('link');
+    await expect(rows).toHaveCount(2);
+    await expect(page.getByTestId('bank-subtopic-progress')).toHaveText(
+      '1 of 3 correct · showing 2',
+    );
     const counter = page.getByTestId('bank-counter');
     const primary = page.getByTestId('bank-primary');
     const feedback = page.getByRole('region', { name: 'Feedback' });
@@ -241,8 +277,11 @@ test.describe('question bank', () => {
     await expect(feedback).toContainText('Missed: registers and TLS');
     await expect(page.getByTestId('bank-status')).toContainText('Correct');
     // Answered questions stay listed until the filters change; the counts follow.
-    await expect(rows).toHaveCount(3);
+    await expect(rows).toHaveCount(2);
     await expect(page.getByRole('radio', { name: 'New 2' })).toBeVisible();
+    await expect(page.getByTestId('bank-subtopic-progress')).toHaveText(
+      '2 of 3 correct · showing 2',
+    );
     const sent = backend.requests.find(
       (r) => r.method === 'POST' && r.path === '/api/quiz/questions/os-processes-004/answers',
     );
@@ -262,9 +301,11 @@ test.describe('question bank', () => {
     await expect(feedback).toContainText('printed twice');
     await expect(page.getByTestId('bank-status')).toHaveText(/^Correct/);
 
-    // single choice with the keyboard
+    // single choice with the keyboard; Next carries on into the next subtopic that has a match
     await primary.click();
     await expect(counter).toHaveText('Question 3 of 3');
+    await expect(page.getByRole('heading', { name: 'Virtual memory' })).toBeVisible();
+    await expect(rows).toHaveCount(1);
     await page.keyboard.press('a');
     await expect(page.getByRole('radio', { name: /page fault/ })).toHaveAttribute(
       'aria-checked',
@@ -276,6 +317,7 @@ test.describe('question bank', () => {
     // Back and forth keeps what was answered on this page.
     await page.keyboard.press('k');
     await expect(counter).toHaveText('Question 2 of 3');
+    await expect(page.getByRole('heading', { name: 'Processes' })).toBeVisible();
     await expect(feedback).toContainText('printed twice');
     await page.keyboard.press('j');
     await expect(counter).toHaveText('Question 3 of 3');
@@ -290,10 +332,14 @@ test.describe('question bank', () => {
 
     // Changing the filters drops the answered questions from "New" (the open one stays).
     await page.getByRole('radio', { name: /^All/ }).click();
-    await expect(rows).toHaveCount(6);
+    await expect(rows).toHaveCount(2);
+    await expect(counter).toHaveText('Question 6 of 6');
     await page.getByRole('radio', { name: 'New 0' }).click();
     await expect(rows).toHaveCount(1);
     await expect(counter).toHaveText('Question 1 of 1');
+    // The overview only counts what matches now.
+    await page.getByRole('link', { name: 'All subtopics' }).click();
+    await expect(page.getByText('You have answered every question that matches.')).toBeVisible();
   });
 
   test('deep links show the previous answer and allow answering again', async ({ page }) => {
@@ -306,6 +352,12 @@ test.describe('question bank', () => {
       'Your answer · incorrect',
     );
     await expect(page.getByRole('radio', { name: /TLB/ })).toContainText('Correct answer');
+    // The question's subtopic is listed beside it.
+    await expect(page.getByRole('heading', { name: 'Virtual memory' })).toBeVisible();
+    await expect(page.getByTestId('bank-list').locator('[aria-current="true"]')).toBeInViewport();
+    await expect(page.getByTestId('bank-subtopic-progress')).toHaveText(
+      '0 of 2 correct · 1 to revisit',
+    );
 
     await page.getByRole('button', { name: 'Answer again' }).click();
     await expect(feedback).toHaveCount(0);
@@ -317,41 +369,61 @@ test.describe('question bank', () => {
     await page.getByTestId('bank-primary').click();
     await expect(feedback).toContainText('Correct');
     await expect(page.getByTestId('bank-status')).toContainText('Correct');
-    await expect(page.getByTestId('bank-progress')).toHaveText(
-      '2 correct · 1 to revisit · 3 not answered yet, of 6 questions',
-    );
+    await expect(page.getByTestId('bank-subtopic-progress')).toHaveText('1 of 2 correct');
 
     // Saved server-side: a reload shows the new answer.
     await page.reload();
     await expect(feedback).toContainText('Correct');
     await expect(page.getByRole('radio', { name: /TLB/ })).toContainText('Your answer · correct');
+    await page.getByRole('link', { name: 'All subtopics' }).click();
+    await expect(page.getByTestId('bank-progress')).toHaveText(
+      '2 correct · 1 to revisit · 3 not answered yet, of 6 questions',
+    );
   });
 
   test('filters by difficulty and type; empty, unknown and missing states', async ({ page }) => {
     await setup(page);
     await page.goto(BANK);
-    const rows = page.getByTestId('bank-list').getByRole('link');
-    await expect(rows).toHaveCount(6);
+    const cards = page.getByTestId('bank-subtopics').getByRole('link');
+    const summary = page.getByTestId('bank-summary');
+    await expect(cards).toHaveCount(3);
     await page.getByRole('combobox', { name: 'Difficulty' }).click();
     await page.getByRole('option', { name: 'Hard' }).click();
     await expect(page).toHaveURL(/difficulty=hard$/);
+    await expect(summary).toHaveText('1 subtopic · 1 question matches');
+    await expect(cards).toHaveCount(1);
+    await expect(cards.first()).toHaveAccessibleName('Processes 1 of 3 correct. 1 of 3 matches');
+    // The filters carry into the subtopic.
+    await cards.first().click();
+    const rows = page.getByTestId('bank-list').getByRole('link');
     await expect(rows).toHaveCount(1);
     await expect(rows.first()).toContainText('What does this program print?');
+    await expect(page).toHaveURL(/difficulty=hard&question=os-processes-007$/);
     await page.getByRole('combobox', { name: 'Difficulty' }).click();
     await page.getByRole('option', { name: 'Any difficulty' }).click();
+    await expect(rows).toHaveCount(3);
+    await page.getByRole('link', { name: 'All subtopics' }).click();
+
     await page.getByRole('combobox', { name: 'Question type' }).click();
     await page.getByRole('option', { name: 'Single choice' }).click();
-    await expect(rows).toHaveCount(3);
+    await expect(summary).toHaveText('2 subtopics · 3 questions match');
     await page.getByRole('radio', { name: /^Missed/ }).click();
-    await expect(rows).toHaveCount(1);
+    await expect(summary).toHaveText('1 subtopic · 1 question matches');
     await expect(page).toHaveURL(/status=missed&type=single$/);
     await page.getByRole('button', { name: 'Clear filters' }).first().click();
-    await expect(rows).toHaveCount(6);
+    await expect(cards).toHaveCount(3);
+    await expect(page).toHaveURL(new RegExp(`${BANK}$`));
+
+    await page.goto(`${BANK}?status=correct&type=short`);
+    await expect(page.getByText('No questions match')).toBeVisible();
 
     await page.goto(`${BANK}?question=not-a-question`);
     await expect(page.getByText('This question is not in the bank')).toBeVisible();
-    await page.getByRole('button', { name: 'Show all questions' }).click();
-    await expect(page.getByText('Pick a question')).toBeVisible();
+    await page.getByRole('button', { name: 'Show all subtopics' }).click();
+    await expect(cards).toHaveCount(3);
+    // A subtopic the bank does not have is the overview too.
+    await page.goto(`${BANK}?subtopic=Nope`);
+    await expect(cards).toHaveCount(3);
 
     await page.goto('/quiz/topics/python');
     await expect(page.getByText('No questions in this topic yet')).toBeVisible();
@@ -359,73 +431,113 @@ test.describe('question bank', () => {
     await expect(page.getByText('This topic does not exist')).toBeVisible();
   });
 
-  test('subtopics are sections that collapse', async ({ page }) => {
+  test('search finds subtopics and questions', async ({ page }) => {
     await setup(page);
     await page.goto(BANK);
-    const list = page.getByTestId('bank-list');
-    const rows = list.getByRole('link');
-    const sections = list.getByRole('button');
-    // A short list shows every question, under its subtopic.
-    await expect(page.getByText('3 subtopics · 6 questions')).toBeVisible();
-    await expect(sections).toHaveCount(3);
-    const processes = list.getByRole('button', { name: 'Processes 1 of 3 correct' });
-    await expect(processes).toHaveAttribute('aria-expanded', 'true');
-    await processes.click();
-    await expect(processes).toHaveAttribute('aria-expanded', 'false');
-    await expect(rows).toHaveCount(3);
-    await page.getByRole('button', { name: 'Collapse all' }).click();
-    await expect(rows).toHaveCount(0);
-    await page.getByRole('button', { name: 'Expand all' }).click();
-    await expect(rows).toHaveCount(6);
+    const cards = page.getByTestId('bank-subtopics').getByRole('link');
+    const summary = page.getByTestId('bank-summary');
+    const search = page.getByRole('searchbox', { name: 'Search questions' });
+    await expect(cards).toHaveCount(3);
+
+    // "/" goes to the search box. Words are looked up in prompts, code and choices.
+    await page.keyboard.press('/');
+    await expect(search).toBeFocused();
+    await page.keyboard.type('fork');
+    await expect(summary).toHaveText('1 subtopic · 2 questions match');
+    await expect(cards).toHaveCount(1);
+    await expect(cards.first()).toHaveAccessibleName('Processes 1 of 3 correct. 2 of 3 match');
+    // The status counts follow the search.
+    await expect(page.getByRole('radio', { name: 'All 2' })).toBeVisible();
+
+    // Enter opens the first match still to get right; the list beside it is narrowed too.
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(/question=os-processes-007$/);
+    const rows = page.getByTestId('bank-list').getByRole('link');
+    await expect(rows).toHaveCount(2);
+    await expect(page.getByTestId('bank-counter')).toHaveText('Question 2 of 2');
+
+    // Searching again from a question goes back to the overview, without leaving the box.
+    await search.fill('sigsegv');
+    await expect(page).toHaveURL(new RegExp(`${BANK}$`));
+    await expect(search).toBeFocused();
+    await expect(cards).toHaveCount(1);
+    await expect(cards.first()).toHaveAccessibleName(
+      'Virtual memory 0 of 2 correct. 1 of 2 matches',
+    );
+
+    // A subtopic's name finds all of its questions.
+    await search.fill('virtual mem');
+    await expect(cards.first()).toHaveAccessibleName('Virtual memory 0 of 2 correct. 2 of 2 match');
+
+    await search.fill('no such thing');
+    await expect(page.getByText('No questions match')).toBeVisible();
+    await expect(page.getByText('Try other words')).toBeVisible();
+    await page.getByRole('button', { name: 'Clear filters' }).first().click();
+    await expect(search).toHaveValue('');
+    await expect(cards).toHaveCount(3);
   });
 
-  test('a long list opens as an outline of its subtopics', async ({ page }) => {
+  test('a long bank: subtopic to subtopic, and links to a subtopic', async ({ page }) => {
     await setup(page, (b) => {
       b.quizBank.questions = QUIZ_BANK_LONG;
     });
     await page.goto(BANK);
+    const cards = page.getByTestId('bank-subtopics').getByRole('link');
     const list = page.getByTestId('bank-list');
     const rows = list.getByRole('link');
-    const sections = list.getByRole('button');
-    await expect(page.getByText('7 subtopics · 30 questions')).toBeVisible();
-    await expect(sections).toHaveCount(7);
-    await expect(rows).toHaveCount(0);
-    await expect(sections.first()).toHaveAccessibleName('File systems 0 of 6 correct');
+    const counter = page.getByTestId('bank-counter');
+    await expect(page.getByTestId('bank-summary')).toHaveText('7 subtopics · 30 questions');
+    await expect(cards).toHaveCount(7);
+    await expect(cards.first()).toHaveAccessibleName('File systems 0 of 6 correct');
 
-    // Opening one subtopic leaves the others closed.
-    const signals = list.getByRole('button', { name: /^Signals/ });
-    await signals.click();
-    await expect(signals).toHaveAttribute('aria-expanded', 'true');
-    await expect(rows).toHaveCount(6);
-    await signals.click();
-    await expect(rows).toHaveCount(0);
-
-    // Going to a question opens its section, and stepping on opens the next one.
     await page.getByRole('button', { name: 'Start with the first open question' }).click();
     await expect(page).toHaveURL(/question=os-long-0-0$/);
+    await expect(page.getByText('Subtopic 1 of 7')).toBeVisible();
     await expect(rows).toHaveCount(6);
     await expect(rows.first()).toHaveAttribute('aria-current', 'true');
-    for (let n = 2; n <= 7; n++) {
-      await page.keyboard.press('j');
-      await expect(page.getByTestId('bank-counter')).toHaveText(`Question ${n} of 30`);
-    }
-    await expect(list.getByRole('button', { name: /^Processes/ })).toHaveAttribute(
-      'aria-expanded',
+    await expect(page.getByRole('button', { name: 'Previous subtopic' })).toHaveAttribute(
+      'aria-disabled',
       'true',
     );
-    await expect(rows).toHaveCount(9);
 
-    // Few enough questions after filtering: all of them are shown again.
-    await page.getByRole('radio', { name: /^Missed/ }).click();
-    await expect(page.getByText('3 subtopics · 3 questions')).toBeVisible();
+    // Stepping past the end of a subtopic moves the list on to the next one.
+    for (let n = 2; n <= 7; n++) {
+      await page.keyboard.press('j');
+      await expect(counter).toHaveText(`Question ${n} of 30`);
+    }
+    await expect(page.getByRole('heading', { name: 'Processes' })).toBeVisible();
+    await expect(page.getByText('Subtopic 2 of 7')).toBeVisible();
     await expect(rows).toHaveCount(3);
+    await expect(rows.first()).toHaveAttribute('aria-current', 'true');
 
-    // A deep link shows its question in the list.
+    await page.getByRole('button', { name: 'Next subtopic: Scheduling' }).click();
+    await expect(page).toHaveURL(/question=os-long-1-0$/);
+    await expect(counter).toHaveText('Question 10 of 30');
+    await expect(rows).toHaveCount(6);
+
+    // The overview comes back at the subtopic that was open.
+    await page.getByRole('link', { name: 'All subtopics' }).click();
+    await expect(cards.nth(2)).toBeFocused();
+    await expect(cards.nth(2)).toBeInViewport();
+
+    // A deep link shows its question in its subtopic's list.
     await page.goto(`${BANK}?question=os-virtual-memory-002`);
-    await expect(list.getByRole('button', { expanded: true })).toHaveAccessibleName(
-      /^Virtual memory/,
-    );
+    await expect(page.getByRole('heading', { name: 'Virtual memory' })).toBeVisible();
+    await expect(page.getByText('Subtopic 7 of 7')).toBeVisible();
     await expect(list.locator('[aria-current="true"]')).toBeInViewport();
+    await expect(page.getByRole('button', { name: 'Next subtopic' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+
+    // A link to a subtopic lists it and waits for a question to be picked.
+    await page.goto(`${BANK}?subtopic=Signals`);
+    await expect(page.getByRole('heading', { name: 'Signals' })).toBeVisible();
+    await expect(rows).toHaveCount(6);
+    await expect(page.getByText('Pick a question')).toBeVisible();
+    await page.getByRole('button', { name: 'Start this subtopic' }).click();
+    await expect(page).toHaveURL(/question=os-long-2-0$/);
+    await expect(counter).toHaveText('Question 16 of 30');
   });
 
   test('short answers are self-graded without an API key', async ({ page }) => {
@@ -467,20 +579,50 @@ test.describe('question bank', () => {
   test.describe('on a phone', () => {
     test.use({ viewport: { width: 390, height: 844 } });
 
-    test('switches between the list and a question', async ({ page }) => {
+    test('goes from subtopics to a list to a question, and back', async ({ page }) => {
       await setup(page);
       await page.goto(BANK);
+      const cards = page.getByTestId('bank-subtopics').getByRole('link');
       const list = page.getByTestId('bank-list');
-      await expect(list).toBeVisible();
+      await expect(cards).toHaveCount(3);
+
+      // A subtopic shows its list first: there is no room for a question beside it.
+      await cards.nth(2).click();
+      await expect(page).toHaveURL(/subtopic=Virtual\+memory$/);
+      await expect(page.getByRole('heading', { name: 'Virtual memory' })).toBeVisible();
+      await expect(list.getByRole('link')).toHaveCount(2);
       await expect(page.getByText('Pick a question')).toBeHidden();
-      await list.getByRole('link').nth(5).click();
+
+      await list.getByRole('link').nth(1).click();
       await expect(list).toBeHidden();
       await expect(page.getByTestId('bank-counter')).toHaveText('Question 6 of 6');
       await page.getByRole('button', { name: 'Previous question' }).click();
       await expect(page.getByTestId('bank-counter')).toHaveText('Question 5 of 6');
-      await page.getByRole('button', { name: 'All Operating systems questions' }).click();
+
+      await page.getByRole('link', { name: 'Virtual memory', exact: true }).click();
       await expect(list).toBeVisible();
+      await expect(page).toHaveURL(/subtopic=Virtual\+memory$/);
+      await page.getByRole('link', { name: 'All subtopics' }).click();
+      await expect(cards).toHaveCount(3);
       await expect(page).toHaveURL(new RegExp(`${BANK}$`));
+    });
+
+    test('a new place starts at the top of the page', async ({ page }) => {
+      await setup(page, (b) => {
+        b.quizBank.questions = QUIZ_BANK_LONG;
+      });
+      await page.goto(BANK);
+      const cards = page.getByTestId('bank-subtopics').getByRole('link');
+      await cards.last().scrollIntoViewIfNeeded();
+      expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+      await cards.nth(5).click();
+      await expect(page.getByRole('heading', { name: 'System calls' })).toBeVisible();
+      await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+      const rows = page.getByTestId('bank-list').getByRole('link');
+      await rows.last().scrollIntoViewIfNeeded();
+      await rows.last().click();
+      await expect(page.getByTestId('bank-counter')).toBeInViewport();
+      await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
     });
   });
 });

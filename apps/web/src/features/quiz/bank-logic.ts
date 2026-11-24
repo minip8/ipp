@@ -36,19 +36,33 @@ export function parseFilters(params: Pick<URLSearchParams, 'get'>): BankFilters 
   };
 }
 
-/** Query string for the bank page (`?` included, empty when nothing is set). */
-export function bankSearch(filters: BankFilters, question: string | null): string {
+/**
+ * Query string for the bank page (`?` included, empty when nothing is set). The page is at one
+ * place: an open question, else a subtopic's question list, else the overview of subtopics. A
+ * question says which subtopic it is in, so `subtopic` is only written without one.
+ */
+export function bankSearch(
+  filters: BankFilters,
+  question: string | null,
+  subtopic: string | null = null,
+): string {
   const p = new URLSearchParams();
   if (filters.status !== 'all') p.set('status', filters.status);
   if (filters.difficulty !== 'all') p.set('difficulty', filters.difficulty);
   if (filters.type !== 'all') p.set('type', filters.type);
   if (question) p.set('question', question);
+  else if (subtopic) p.set('subtopic', subtopic);
   const s = p.toString();
   return s ? `?${s}` : '';
 }
 
-export function bankHref(topic: string, filters = DEFAULT_FILTERS, question: string | null = null) {
-  return `/quiz/topics/${encodeURIComponent(topic)}${bankSearch(filters, question)}`;
+export function bankHref(
+  topic: string,
+  filters = DEFAULT_FILTERS,
+  question: string | null = null,
+  subtopic: string | null = null,
+) {
+  return `/quiz/topics/${encodeURIComponent(topic)}${bankSearch(filters, question, subtopic)}`;
 }
 
 export const STATUS_LABEL: Record<QuizQuestionStatus, string> = {
@@ -73,16 +87,37 @@ export function matches(item: QuizBankItem, f: BankFilters): boolean {
   );
 }
 
+/** Search text as it is compared: lower case, runs of spaces collapsed. */
+export function normalizeQuery(text: string): string {
+  return text.toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
 /**
- * Items matching the filters, in bank order. `keep` holds ids that stay listed even when they no
- * longer match (a question answered under "New" should not vanish while the user is on it).
+ * Free-text search: every word must appear in the question's subtopic, prompt, code or choices.
+ * A subtopic's name therefore finds all of its questions.
+ */
+export function matchesQuery(item: QuizBankItem, query: string): boolean {
+  const words = normalizeQuery(query).split(' ').filter(Boolean);
+  if (words.length === 0) return true;
+  const q = item.question;
+  const text = [q.subtopic, q.prompt, q.code?.source ?? '', ...(q.choices ?? []).map((c) => c.text)]
+    .join('\n')
+    .toLowerCase();
+  return words.every((w) => text.includes(w));
+}
+
+/**
+ * Items matching the filters and the search text, in bank order. `keep` holds ids that stay
+ * listed even when they no longer match (a question answered under "New" should not vanish while
+ * the user is on it).
  */
 export function filterItems(
   items: QuizBankItem[],
   f: BankFilters,
   keep: ReadonlySet<string> = new Set(),
+  query = '',
 ): QuizBankItem[] {
-  return items.filter((i) => keep.has(i.question.id) || matches(i, f));
+  return items.filter((i) => keep.has(i.question.id) || (matches(i, f) && matchesQuery(i, query)));
 }
 
 export interface SubtopicGroup {
@@ -101,33 +136,6 @@ export function groupBySubtopic(items: QuizBankItem[]): SubtopicGroup[] {
   return groups;
 }
 
-/** A list longer than this starts as an outline: every subtopic closed until it is opened. */
-export const OUTLINE_ABOVE = 20;
-
-/** Which subtopic sections are open: the user's choices, over a default that depends on the list. */
-export interface Disclosure {
-  /** the last "Expand all" (true) or "Collapse all" (false); null until one is used */
-  all: boolean | null;
-  /** sections opened or closed one at a time since then */
-  toggled: ReadonlyMap<string, boolean>;
-}
-
-export const DEFAULT_DISCLOSURE: Disclosure = { all: null, toggled: new Map() };
-
-/** Short lists, and lists that are a single subtopic, show their questions straight away. */
-export function startsOpen(groups: SubtopicGroup[]): boolean {
-  const total = groups.reduce((n, g) => n + g.items.length, 0);
-  return groups.length <= 1 || total <= OUTLINE_ABOVE;
-}
-
-export function sectionOpen(d: Disclosure, subtopic: string, fallback: boolean): boolean {
-  return d.toggled.get(subtopic) ?? d.all ?? fallback;
-}
-
-export function withSection(d: Disclosure, subtopic: string, open: boolean): Disclosure {
-  return { all: d.all, toggled: new Map(d.toggled).set(subtopic, open) };
-}
-
 export interface StatusCounts {
   total: number;
   new: number;
@@ -139,6 +147,47 @@ export function statusCounts(items: QuizBankItem[]): StatusCounts {
   const c: StatusCounts = { total: items.length, new: 0, missed: 0, correct: 0 };
   for (const i of items) c[statusGroup(i.status)]++;
   return c;
+}
+
+/** A subtopic as the overview shows it: what the filters leave, against everything it holds. */
+export interface SubtopicSummary {
+  subtopic: string;
+  /** the questions the filters and the search leave, in bank order */
+  items: QuizBankItem[];
+  /** progress over every question of the subtopic, whatever the filters */
+  overall: StatusCounts;
+}
+
+/** The subtopics that still have a listed question, in bank order. */
+export function summariseSubtopics(all: QuizBankItem[], list: QuizBankItem[]): SubtopicSummary[] {
+  const bySubtopic = new Map<string, QuizBankItem[]>();
+  for (const i of all) {
+    const of = bySubtopic.get(i.question.subtopic);
+    if (of) of.push(i);
+    else bySubtopic.set(i.question.subtopic, [i]);
+  }
+  return groupBySubtopic(list).map((g) => ({
+    ...g,
+    overall: statusCounts(bySubtopic.get(g.subtopic) ?? g.items),
+  }));
+}
+
+/** The subtopics on either side of `subtopic`; a missing one has no neighbours. */
+export function subtopicNeighbours<G extends SubtopicGroup>(
+  groups: G[],
+  subtopic: string | null,
+): { index: number; prev: G | null; next: G | null } {
+  const index = subtopic === null ? -1 : groups.findIndex((g) => g.subtopic === subtopic);
+  return {
+    index,
+    prev: index > 0 ? (groups[index - 1] ?? null) : null,
+    next: index === -1 ? null : (groups[index + 1] ?? null),
+  };
+}
+
+/** Where opening a list of questions lands: the first one still to get right, else the first. */
+export function entryQuestion(items: QuizBankItem[]): string | null {
+  return nextToPractise(items, null) ?? items[0]?.question.id ?? null;
 }
 
 /** Previous and next question ids around `id` in `list`; a missing id starts from the top. */
