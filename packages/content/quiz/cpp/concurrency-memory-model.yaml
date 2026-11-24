@@ -1,0 +1,516 @@
+# Standard library concurrency: threads, mutexes, atomics, the memory model basics.
+- id: cpp-concurrency-001
+  topic: cpp
+  subtopic: Concurrency and the memory model
+  difficulty: easy
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [std-atomic, std-thread]
+  prompt: What does this program print?
+  code: |
+    #include <atomic>
+    #include <iostream>
+    #include <thread>
+
+    int main() {
+        std::atomic<int> hits{0};
+        auto work = [&] {
+            for (int i = 0; i < 10000; ++i) hits.fetch_add(1, std::memory_order_relaxed);
+        };
+        std::thread a(work), b(work);
+        a.join();
+        b.join();
+        std::cout << hits.load() << '\n';
+    }
+  answer: { kind: output, output: "20000" }
+  explanation: |
+    Each `fetch_add` is an indivisible read-modify-write, so no increments are lost regardless of
+    interleaving. `memory_order_relaxed` is enough for a pure counter: atomicity of each RMW is guaranteed
+    by every memory order, and ordering only matters when the counter is used to publish *other* data.
+    `join()` synchronizes-with the thread's completion, so the final `load()` sees all increments.
+
+- id: cpp-concurrency-002
+  topic: cpp
+  subtopic: Concurrency and the memory model
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [data-race, undefined-behavior, std-thread]
+  prompt: What does this program do?
+  code: |
+    #include <iostream>
+    #include <thread>
+
+    int main() {
+        int hits = 0;
+        auto work = [&] {
+            for (int i = 0; i < 100000; ++i) ++hits;
+        };
+        std::thread a(work), b(work);
+        a.join();
+        b.join();
+        std::cout << hits << '\n';
+    }
+  answer: { kind: undefined }
+  explanation: |
+    Two threads modify the same non-atomic `int` without synchronization: a **data race**, which is
+    undefined behaviour ([intro.races]), not merely "some increments get lost". In practice you'll
+    often see a number below 200000 (lost updates from interleaved load/add/store), or exactly 200000 if
+    the optimizer turned each loop into a single `hits += 100000`. ThreadSanitizer reports the race. Fix
+    with `std::atomic<int>` or a mutex, or better, give each thread a local count and combine after
+    joining.
+
+- id: cpp-concurrency-003
+  topic: cpp
+  subtopic: Concurrency and the memory model
+  difficulty: hard
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [unique-lock, most-vexing-parse, mutex]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+    #include <mutex>
+
+    std::mutex m;
+
+    int main() {
+        std::unique_lock<std::mutex>(m);
+        std::cout << m.owns_lock() << '\n';
+    }
+  answer: { kind: output, output: "0" }
+  explanation: |
+    `std::unique_lock<std::mutex>(m);` is parsed as a *declaration*: redundant parentheses around a
+    declarator are allowed ([dcl.ambig.res]), so it means `std::unique_lock<std::mutex> m;`, a
+    default-constructed lock named `m` that shadows the global mutex and owns nothing. Then `m.owns_lock()`
+    compiles (it's the lock's member) and prints `0`. The global mutex was never locked.
+
+    In real code this is a silent missing-lock bug. Always name lock objects (`std::unique_lock lock(m);`).
+    The related mistake `std::lock_guard<std::mutex>{m};` creates a temporary that unlocks immediately.
+
+- id: cpp-concurrency-004
+  topic: cpp
+  subtopic: Concurrency and the memory model
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [std-thread, std-ref, arguments]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+    #include <thread>
+
+    void bump(int& x) { ++x; }
+
+    int main() {
+        int n = 0;
+        std::thread t(bump, n);
+        t.join();
+        std::cout << n << '\n';
+    }
+  answer: { kind: compile_error }
+  explanation: |
+    `std::thread`'s constructor *decay-copies* its arguments into the new thread's storage and invokes the
+    function with them as rvalues ([thread.thread.constr]). An rvalue `int` can't bind to `int&`, so the
+    program is ill-formed (libstdc++ static_asserts "std::thread arguments must be invocable after
+    conversion to rvalues"). This is deliberate: silently passing a reference to a local into another
+    thread is a common lifetime bug. Use `std::thread t(bump, std::ref(n));` when you really want a
+    reference and you know `n` outlives the thread. Then it prints `1`.
+
+- id: cpp-concurrency-005
+  topic: cpp
+  subtopic: Concurrency and the memory model
+  difficulty: medium
+  type: single
+  tags: [memory-order, acquire-release, atomics]
+  prompt: |
+    Is the assertion guaranteed to hold?
+
+    ```cpp
+    int data = 0;                       // plain int
+    std::atomic<bool> ready{false};
+
+    // Thread 1                               // Thread 2
+    data = 42;                                while (!ready.load(std::memory_order_acquire)) {}
+    ready.store(true, std::memory_order_release);   assert(data == 42);
+    ```
+  choices:
+    - { id: a, text: "Yes: the release store synchronizes-with the acquire load that reads `true`, so the write to `data` happens-before the assert." }
+    - { id: b, text: "No: `memory_order_seq_cst` is required for this to work." }
+    - { id: c, text: "No: `data` must also be atomic, otherwise this is a data race." }
+    - { id: d, text: "Only on x86; on ARM the assert can fail." }
+  answer: a
+  explanation: |
+    This is the canonical message-passing pattern. A release store followed by an acquire load that reads
+    the stored value creates a *synchronizes-with* edge ([atomics.order]); everything sequenced before
+    the store in thread 1 (the write to `data`) happens-before everything after the load in thread 2. So
+    there's no data race on `data` and the assert holds, on every architecture (the compiler emits whatever
+    barriers ARM needs). `seq_cst` isn't needed; it adds a single total order over all seq_cst operations,
+    which matters for patterns like Dekker's algorithm but not for one-way publication. With
+    `memory_order_relaxed` on both sides the assert could fail, and the access to `data` would be a race.
+
+- id: cpp-concurrency-006
+  topic: cpp
+  subtopic: Concurrency and the memory model
+  difficulty: easy
+  type: single
+  tags: [volatile, atomics]
+  prompt: |
+    A colleague declares a stop flag shared between threads as `volatile bool stop = false;`. What is the
+    problem?
+  choices:
+    - { id: a, text: "`volatile` doesn't make accesses atomic or ordered between threads; concurrent read/write is still a data race (UB). Use `std::atomic<bool>`." }
+    - { id: b, text: "Nothing; `volatile` is the standard way to share flags between threads in C++." }
+    - { id: c, text: "`volatile` variables can't be read in a loop." }
+    - { id: d, text: "`volatile` makes the variable thread-local." }
+  answer: a
+  explanation: |
+    `volatile` tells the compiler that every access is an observable side effect (meant for memory-mapped
+    I/O and signal handlers with `volatile sig_atomic_t`), so loads aren't cached in registers. It doesn't
+    make accesses atomic, doesn't create happens-before relationships, and doesn't stop the CPU from
+    reordering other memory operations around it. In C++ (unlike Java and C#), a `volatile` shared variable
+    with concurrent writes is still a data race. `std::atomic<bool>` with `load`/`store` is correct and
+    on x86 costs the same for loads.
+
+- id: cpp-concurrency-007
+  topic: cpp
+  subtopic: Concurrency and the memory model
+  difficulty: medium
+  type: single
+  tags: [condition-variable, spurious-wakeups]
+  prompt: |
+    Why should a consumer wait on a `std::condition_variable` with a predicate, as in
+    `cv.wait(lock, [&] { return !queue.empty(); });`, rather than a bare `cv.wait(lock);`?
+  choices:
+    - { id: a, text: "Waits can wake spuriously, and a notification sent before the consumer started waiting is lost; re-checking shared state under the mutex handles both." }
+    - { id: b, text: "The bare form doesn't release the mutex while waiting." }
+    - { id: c, text: "The predicate form is faster because it spins instead of sleeping." }
+    - { id: d, text: "The bare form is deprecated since C++20." }
+  answer: a
+  explanation: |
+    `wait` may return without a notification (spurious wakeup), and condition variables have no memory:
+    if `notify_one` runs before the consumer waits, a bare `wait` sleeps forever (lost wakeup). The
+    predicate overload is `while (!pred()) wait(lock);`, which checks the real condition (protected by the
+    same mutex the producer holds while modifying it) before sleeping and after every wakeup. Both forms
+    release the mutex while blocked.
+
+- id: cpp-concurrency-008
+  topic: cpp
+  subtopic: Concurrency and the memory model
+  difficulty: medium
+  type: single
+  tags: [std-thread, std-terminate, jthread]
+  prompt: |
+    What happens when a `std::thread` object that is still joinable (neither joined nor detached) is
+    destroyed, for example because an exception unwinds past it?
+  choices:
+    - { id: a, text: "`std::terminate` is called." }
+    - { id: b, text: "The destructor joins the thread." }
+    - { id: c, text: "The thread is detached automatically." }
+    - { id: d, text: "The thread is killed." }
+  answer: a
+  explanation: |
+    `~thread()` calls `std::terminate` if `joinable()` ([thread.thread.destr]). Neither implicit join (which
+    could hang during unwinding) nor implicit detach (which could leave the thread using dead locals) was
+    considered safe. C++20 `std::jthread` joins in its destructor, and requests a stop through its
+    `std::stop_token` first, which is the RAII behaviour most people want.
+
+- id: cpp-concurrency-009
+  topic: cpp
+  subtopic: Concurrency and the memory model
+  difficulty: hard
+  type: single
+  tags: [std-async, futures]
+  prompt: |
+    What's the behaviour of this code?
+
+    ```cpp
+    void fire_and_forget() {
+        std::async(std::launch::async, [] { send_heartbeat(); });   // result discarded
+        std::async(std::launch::async, [] { flush_logs(); });
+    }
+    ```
+  choices:
+    - { id: a, text: "The two tasks run one after the other: the discarded `std::future` returned by `std::async` blocks in its destructor until the task finishes." }
+    - { id: b, text: "Both tasks run concurrently in the background and `fire_and_forget` returns immediately." }
+    - { id: c, text: "The tasks never run because nobody calls `get()`." }
+    - { id: d, text: "It's undefined behaviour to discard a future." }
+  answer: a
+  explanation: |
+    A future obtained from `std::async` that refers to a shared state created by `async` blocks in its
+    destructor until the task completes ([futures.async]). The temporary future is destroyed at the end
+    of each statement, so the first task must finish before the second even starts, and the function
+    doesn't return until both are done. (libstdc++ marks `std::async` `[[nodiscard]]` to warn.) For real
+    fire-and-forget use a thread pool, or a detached `std::thread`/`std::jthread` with careful lifetime management.
+
+- id: cpp-concurrency-010
+  topic: cpp
+  subtopic: Concurrency and the memory model
+  difficulty: hard
+  type: multiple
+  tags: [thread-safety, data-races, standard-library]
+  prompt: |
+    Which of the following are safe **without** any additional synchronization? Select all that apply.
+  choices:
+    - { id: a, text: "Several threads calling `const` member functions (e.g. `find`, `size`) on the same `std::vector` that nobody modifies" }
+    - { id: b, text: "Several threads each copying the same `std::shared_ptr` object into their own local `shared_ptr`" }
+    - { id: c, text: "Several threads calling `push_back` on the same `std::vector`" }
+    - { id: d, text: "One thread assigning to a `std::shared_ptr` object while another thread copies that same object" }
+    - { id: e, text: "Several threads calling a function that initializes a function-local `static` object on first call" }
+    - { id: f, text: "Several threads writing to different elements `v[i]` and `v[j]` (i ≠ j) of the same `std::vector<int>`" }
+  answer: [a, b, e, f]
+  explanation: |
+    - (a) The library guarantees const operations don't race with each other ([res.on.data.races]).
+    - (b) Copying a `shared_ptr` only reads the source object and atomically bumps the shared count.
+    - (c) Concurrent modification of a container is a data race.
+    - (d) Writing a `shared_ptr` object while another thread reads it is a race on that object (use
+      `std::atomic<std::shared_ptr<T>>` in C++20, or a mutex).
+    - (e) Since C++11, initialization of block-scope statics is thread-safe ("magic statics").
+    - (f) Distinct elements are distinct memory locations ([container.requirements.dataraces]). This
+      isn't true for `std::vector<bool>`, whose elements share bytes. Performance may still suffer from
+      false sharing if they're on the same cache line.
+
+- id: cpp-concurrency-011
+  topic: cpp
+  subtopic: Concurrency and the memory model
+  difficulty: hard
+  type: short
+  tags: [memory-order, atomics, seq-cst]
+  prompt: |
+    Explain `memory_order_relaxed`, `acquire`/`release` and `seq_cst`. Give a use case where each is the
+    right choice, and explain why defaulting to `seq_cst` everywhere can be costly.
+  reference: |
+    All memory orders guarantee atomicity and a single modification order per atomic variable. `relaxed`
+    gives nothing more: no ordering with respect to other memory. It's right for statistics counters,
+    reference-count increments, and generating unique IDs. `release` on a store (or RMW) and `acquire` on a
+    load form a synchronizes-with edge when the load reads the stored value: all writes before the release
+    become visible to everything after the acquire. That's the right choice for publishing data
+    (producer/consumer flags, SPSC queue indices, mutex lock/unlock semantics, the decrement in a refcount
+    before deletion, which is acq_rel). `seq_cst` (the default) adds a single total order over all seq_cst
+    operations that every thread agrees on; it's needed for patterns where two threads each store to one
+    variable and load another (Dekker/Peterson, some hazard-pointer and flag-based protocols), where
+    acquire/release would allow both threads to miss each other's store. Cost: on x86 a seq_cst *store*
+    compiles to `xchg` or `mov`+`mfence` (a full barrier that drains the store buffer, tens of cycles),
+    while release stores are plain `mov`s. On ARM and POWER seq_cst needs stronger barriers for loads and
+    stores. In hot paths like queues, using the minimal correct order can matter, but weaker orders are
+    harder to reason about, so use them only with clear justification.
+  explanation: |
+    Key points: relaxed equals atomicity only; acquire/release pair up to publish data; seq_cst equals a
+    single total order (store-load ordering); x86 cost difference for stores. See Herb Sutter's "atomic<>
+    Weapons" talk and cppreference `std::memory_order`.
+  keyPoints:
+    - relaxed gives atomicity and per-variable modification order only (counters, refcount increments)
+    - release-store and acquire-load synchronize, publishing prior writes (flags, queues, locks)
+    - seq_cst adds one global total order; needed for store-then-load-other-variable patterns (Dekker)
+    - "Cost: seq_cst stores need a full fence on x86 (xchg/mfence); stronger barriers on ARM"
+    - Use weaker orders only with clear reasoning
+
+- id: cpp-concurrency-012
+  topic: cpp
+  subtopic: Concurrency and the memory model
+  difficulty: hard
+  type: short
+  tags: [lock-free, spsc-queue, false-sharing, atomics]
+  prompt: |
+    Describe how you would implement a bounded single-producer/single-consumer (SPSC) ring buffer for
+    passing messages between two threads with low latency. Which memory orders do you need, and what
+    performance details matter?
+  reference: |
+    Use a fixed-capacity array (capacity a power of two so indices wrap with a mask) and two atomic
+    indices: `head` written only by the consumer, `tail` written only by the producer. Producer: load its
+    own `tail` relaxed, load `head` with *acquire* to check for space (full if `tail - head == capacity`),
+    write the element into `buffer[tail & mask]`, then store `tail + 1` with *release* so the element's
+    contents are published. Consumer: load `head` relaxed, load `tail` with *acquire* to see if data is
+    available, read the element, then store `head + 1` with *release* so the producer knows the slot is
+    free. No CAS loops or locks are needed because each index has a single writer, which is why SPSC is
+    much simpler than MPMC (no ABA, no contention between writers). Performance details: put `head` and
+    `tail` on separate cache lines (`alignas(64)` or `std::hardware_destructive_interference_size`) to
+    avoid false sharing; cache the other side's index locally (the producer keeps a cached copy of `head`
+    and only reloads it when the queue looks full) to cut cross-core cache traffic; use monotonically
+    increasing 64-bit counters instead of wrapped indices to avoid the full/empty ambiguity; preallocate
+    and avoid allocation per message; pin threads to cores; and consider batching. Use busy-polling instead
+    of a condition variable when latency matters more than CPU.
+  explanation: |
+    Interviewers at trading firms often ask candidates to write this. Check for single-writer indices,
+    acquire/release placement, false-sharing padding, and index caching. See Erik Rigtorp's SPSCQueue and
+    the "Optimizing a ring buffer for throughput" write-up.
+  keyPoints:
+    - Fixed power-of-two array with head (consumer-owned) and tail (producer-owned) atomic indices
+    - Producer writes the slot then release-stores tail; consumer acquire-loads tail before reading
+    - Consumer release-stores head after reading; producer acquire-loads head to check space
+    - Single writer per index means no CAS or locks (unlike MPMC/ABA)
+    - Pad head and tail onto separate cache lines; cache the other side's index; no per-message allocation
+
+- id: cpp-concurrency-013
+  topic: cpp
+  subtopic: Concurrency and the memory model
+  difficulty: medium
+  type: short
+  tags: [deadlock, scoped-lock, mutex]
+  prompt: |
+    What are the conditions for a deadlock, and how do you avoid deadlocks when a function must lock two
+    mutexes (e.g. transferring between two accounts)?
+  reference: |
+    Deadlock needs mutual exclusion, hold-and-wait, no preemption, and a circular wait (Coffman conditions).
+    The classic case: thread 1 locks A then B while thread 2 locks B then A. Avoidance: (1) acquire both at
+    once with `std::scoped_lock lock(a.mtx, b.mtx);` (C++17), or `std::lock(m1, m2)` plus `adopt_lock`
+    guards, which use a deadlock-avoidance algorithm (try-and-back-off) so the order of arguments doesn't
+    matter; (2) impose a global lock ordering (e.g. by account id or address) and always lock in that
+    order; (3) keep critical sections small and never call unknown code (callbacks, virtual functions)
+    while holding a lock; (4) use lock hierarchies with runtime checks in debug builds; (5) use `try_lock`
+    with timeouts where appropriate. Also watch for self-deadlock: locking a non-recursive `std::mutex`
+    twice in the same thread is undefined behaviour. Tools like TSan detect lock-order inversions.
+  explanation: |
+    The `transfer(a, b)` example deadlocks when two transfers run in opposite directions. `std::scoped_lock`
+    is the modern answer, with lock ordering as the general principle.
+  keyPoints:
+    - "Coffman conditions: mutual exclusion, hold-and-wait, no preemption, circular wait"
+    - Opposite acquisition order causes circular wait
+    - std::scoped_lock / std::lock acquire multiple mutexes deadlock-free
+    - Consistent global lock ordering, small critical sections, no callbacks under locks
+    - Re-locking a std::mutex in the same thread is UB; TSan detects lock-order inversions
+
+- id: cpp-concurrency-014
+  topic: cpp
+  subtopic: Concurrency and the memory model
+  difficulty: hard
+  type: short
+  tags: [spinlock, mutex, low-latency]
+  prompt: |
+    When would you use a spinlock instead of `std::mutex` in a low-latency system? How would you
+    implement one reasonably, and what are the pitfalls?
+  reference: |
+    `std::mutex` (a futex on Linux) is uncontended-fast (one atomic RMW), but under contention it parks the
+    thread in the kernel, and waking it costs microseconds plus scheduler jitter. A spinlock busy-waits
+    instead, which wins when critical sections are very short (tens to hundreds of nanoseconds), contention
+    is low, and the threads are pinned to dedicated cores that would otherwise idle, as in trading engines.
+    Implementation: an `std::atomic<bool>` (or `atomic_flag`) taken with `exchange(true, acquire)` and
+    released with `store(false, release)`. Spin on a *relaxed load* until it looks free before retrying
+    the exchange (test-and-test-and-set) so waiting cores share the cache line instead of bouncing it with
+    writes, and issue a pause instruction (`_mm_pause`) in the loop to reduce power and pipeline flushes.
+    Optionally add exponential backoff, or yield after N spins. Pitfalls: if the lock holder is preempted
+    or descheduled (oversubscribed cores, page fault), waiters burn CPU for a whole time slice (priority
+    inversion, worse tail latency); spinlocks are unfair (starvation); there's no deadlock detection or
+    priority inheritance; and they're useless on a single core. Measure. Alternatives include lock-free
+    structures, sharding to avoid sharing, and `std::atomic::wait` (C++20) for spin-then-block.
+  explanation: |
+    Good answers cover when spinning beats blocking (short sections, dedicated cores), test-and-test-and-set
+    with pause, and the preemption hazard.
+  keyPoints:
+    - Mutex blocking and wakeup cost microseconds; spinning avoids kernel involvement
+    - Use only for very short critical sections, low contention, and pinned dedicated cores
+    - Implement with atomic exchange (acquire) and store (release), test-and-test-and-set, pause instruction, backoff
+    - "Pitfalls: preempted holder wastes CPU, unfairness/starvation, no priority inheritance"
+    - Measure; consider lock-free designs, sharding, or atomic wait
+
+- id: cpp-concurrency-015
+  topic: cpp
+  subtopic: Concurrency and the memory model
+  difficulty: medium
+  type: short
+  tags: [data-race, race-condition, atomics]
+  prompt: |
+    What is the difference between a *data race* and a *race condition*? Can a program built entirely
+    from `std::atomic` operations still have a race condition? Give an example.
+  reference: |
+    A data race is a precise language term: two conflicting accesses to the same memory location (at least
+    one a write) from different threads, not both atomic, and not ordered by happens-before. It is
+    undefined behaviour in C++. A race condition is a logic bug where the program's correctness depends on
+    the relative timing or interleaving of threads. A program with no data races (everything atomic, or
+    properly locked) can still have race conditions. Example: a check-then-act on an atomic,
+    `if (balance.load() >= amount) balance.fetch_sub(amount);`, where two threads both pass the check and
+    overdraw; or `if (!map_contains(k)) insert(k)` with each call individually locked; or
+    `if (!wp.expired()) wp.lock()->use();`. Fixes: make the whole compound operation atomic with a
+    compare-exchange loop, a single lock around check and act, or an API that combines them
+    (`try_emplace`, `weak_ptr::lock()` then test). Conversely, a benign-looking data race (e.g. an unsynchronized
+    bool flag) is still UB even if the logic would be fine.
+  explanation: |
+    Precision matters here: a data race is UB by definition, while a race condition is a correctness bug
+    that atomics alone don't prevent.
+  keyPoints:
+    - "Data race: conflicting unsynchronized non-atomic accesses; undefined behaviour"
+    - "Race condition: outcome depends on interleaving; a logic bug"
+    - All-atomic code can still have race conditions (check-then-act)
+    - Fix compound operations with CAS loops, wider critical sections, or combined APIs
+    - Even "benign" data races are UB
+
+- id: cpp-concurrency-016
+  topic: cpp
+  subtopic: Concurrency and the memory model
+  difficulty: medium
+  type: single
+  tags: [atomics, lock-free]
+  prompt: Which atomic type does the C++ standard **guarantee** to be lock-free on every implementation?
+  choices:
+    - { id: a, text: "`std::atomic_flag`" }
+    - { id: b, text: "`std::atomic<int>`" }
+    - { id: c, text: "`std::atomic<std::int64_t>`" }
+    - { id: d, text: "`std::atomic<void*>`" }
+  answer: a
+  explanation: |
+    Only `std::atomic_flag` is required to be lock-free ([atomics.flag]); C++20 also adds the aliases
+    `std::atomic_signed_lock_free`/`atomic_unsigned_lock_free`. All other specializations *may* be
+    implemented with a lock (e.g. 64-bit atomics on some 32-bit targets, or large structs). Check with
+    `std::atomic<T>::is_always_lock_free` (compile time) or `is_lock_free()`. On x86-64 and AArch64,
+    `atomic<int>`, `atomic<int64_t>` and pointers are lock-free in practice. Lock-freedom matters in signal
+    handlers and for cross-process shared memory.
+
+- id: cpp-concurrency-017
+  topic: cpp
+  subtopic: Concurrency and the memory model
+  difficulty: easy
+  type: single
+  tags: [shared-mutex, readers-writer-lock]
+  prompt: |
+    A configuration snapshot is read by many threads very frequently and updated rarely. Which standard
+    primitive directly models "many concurrent readers or one exclusive writer"?
+  choices:
+    - { id: a, text: "`std::shared_mutex`, with `std::shared_lock` for readers and `std::unique_lock` (or `lock_guard`) for writers" }
+    - { id: b, text: "`std::recursive_mutex`" }
+    - { id: c, text: "`std::condition_variable`" }
+    - { id: d, text: "`std::once_flag`" }
+  answer: a
+  explanation: |
+    `std::shared_mutex` (C++17) is a readers-writer lock: any number of `lock_shared` holders, or one
+    `lock` holder. A caveat interviewers like: under heavy read traffic, even shared locking writes to the
+    lock's cache line (an atomic RMW per reader), so it can scale worse than expected. Alternatives for
+    read-mostly data are RCU-style designs, e.g. readers atomically loading a
+    `std::shared_ptr<const Config>` (`std::atomic<std::shared_ptr>` in C++20) while writers publish a new
+    snapshot, or seqlocks. `recursive_mutex` allows re-locking by the same thread, which is a different
+    problem.
+
+- id: cpp-concurrency-018
+  topic: cpp
+  subtopic: Concurrency and the memory model
+  difficulty: medium
+  type: short
+  tags: [condition-variable, producer-consumer, mutex]
+  prompt: |
+    Describe how to implement a thread-safe blocking queue with `std::mutex` and
+    `std::condition_variable` (push from producers, blocking pop for consumers, and a clean shutdown).
+  reference: |
+    State: a `std::deque<T>` (or vector-based ring), a `std::mutex`, a `std::condition_variable`, and a
+    `bool closed`. `push(T v)`: lock the mutex, push the value (by move), unlock, then `notify_one()`.
+    Notifying after unlocking avoids waking a consumer that immediately blocks on the mutex.
+    `pop()`: take a `std::unique_lock`, `cv.wait(lock, [&] { return !q.empty() || closed; })` (the predicate
+    handles spurious and lost wakeups), then if the queue is empty and closed return an empty
+    `std::optional` to signal shutdown, otherwise move the front element out, `pop_front`, and return it.
+    `close()`: set `closed = true` under the lock, then `notify_all()` so every waiting consumer wakes
+    and exits. Details: return by value or `optional` rather than having separate `front()`/`pop()`
+    calls, which would race; keep the critical section small (don't run user code under the lock); move,
+    not copy, elements; for bounded queues add a second condition variable for "not full" so producers
+    block; consider `try_pop` with timeout via `wait_for`. Under heavy contention or for latency-critical
+    paths, lock-free queues or per-thread queues may be preferable.
+  explanation: |
+    Look for: predicate wait, notify outside the lock, a combined pop that returns the value (not
+    front+pop), and a shutdown mechanism with notify_all.
+  keyPoints:
+    - Mutex-protected deque plus condition variable plus closed flag
+    - push locks, enqueues, unlocks, then notify_one
+    - pop waits with a predicate (not empty or closed) to handle spurious/lost wakeups
+    - pop returns the element (e.g. optional) atomically; no separate front()/pop() race
+    - close sets the flag under the lock and notify_all; bounded version adds a not-full condition

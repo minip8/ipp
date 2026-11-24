@@ -1,0 +1,16 @@
+slug: basic-calculator
+title: Basic Calculator
+difficulty: hard
+tags: [string, stack, recursion, parsing, math]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: calculate
+      params:
+        - { name: s, type: string }
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Combines LeetCode 224 / 227 / 772 (Basic Calculator I-III); expression evaluation is a frequent Meta, Google and trading-firm question
+  url: https://leetcode.com/problems/basic-calculator-iii/

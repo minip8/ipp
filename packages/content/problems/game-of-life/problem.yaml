@@ -1,0 +1,16 @@
+slug: game-of-life
+title: Game of Life
+difficulty: medium
+tags: [array, matrix, simulation]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: gameOfLife
+      params:
+        - { name: board, type: { array: { array: int } } }
+      returns: { array: { array: int } }
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 289; Conway's Game of Life); frequently reported at Dropbox, Google and Microsoft
+  url: https://leetcode.com/problems/game-of-life/

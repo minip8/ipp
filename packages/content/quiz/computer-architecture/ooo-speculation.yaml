@@ -1,0 +1,367 @@
+- id: arch-ooo-001
+  topic: computer-architecture
+  subtopic: Out-of-order and speculative execution
+  difficulty: easy
+  type: single
+  tags: [register-renaming, out-of-order, hazards]
+  prompt: |
+    Register renaming in an out-of-order core eliminates which kind of dependency between instructions?
+  choices:
+    - id: a
+      text: "WAR and WAW (\"false\" or name dependencies), which come only from reusing the same architectural register"
+    - id: b
+      text: "RAW (true) dependencies, by predicting the value that will be produced"
+    - id: c
+      text: "Control dependencies on branches"
+    - id: d
+      text: "Dependencies through memory between stores and loads"
+  answer: a
+  explanation: |
+    x86-64 has only 16 architectural general-purpose registers, so compilers reuse names constantly. Renaming maps each new *write* of `rax` to a fresh physical register from a much larger file (a couple of hundred entries on current cores). After that, a later instruction writing `rax` no longer has to wait for earlier readers (WAR) or writers (WAW) of the old `rax`.
+
+    - **(b)** A RAW dependency is real data flow: the consumer needs the value. Renaming preserves it. Value prediction is a different idea and is not used in mainstream cores.
+    - **(c)** Control dependencies are handled by branch prediction and speculation.
+    - **(d)** Memory dependencies go through the load/store queues and memory disambiguation prediction, not register renaming.
+- id: arch-ooo-002
+  topic: computer-architecture
+  subtopic: Out-of-order and speculative execution
+  difficulty: medium
+  type: single
+  tags: [reorder-buffer, precise-exceptions, out-of-order]
+  prompt: |
+    Instructions in an out-of-order core execute as soon as their operands are ready. Why does the core still need a reorder buffer (ROB) that retires them in program order?
+  choices:
+    - id: a
+      text: "So that architectural state (registers, memory, exceptions) is updated in program order, which gives precise exceptions and lets mispredicted or faulting work be discarded"
+    - id: b
+      text: "Because execution units can only accept instructions in program order"
+    - id: c
+      text: "To cache decoded instructions so loops do not need to be decoded again"
+    - id: d
+      text: "To reorder memory accesses so they reach DRAM in address order"
+  answer: a
+  explanation: |
+    The ROB records every in-flight µop in program order. Results are written to physical registers out of order, but an instruction **retires** (commits), making its result architectural and allowing its store to drain to the cache, only once every older instruction has retired. Two things follow:
+
+    - **Precise exceptions:** if instruction *i* faults, everything older has committed and nothing younger has, so the OS sees a clean state and can, for example, handle a page fault and restart *i*.
+    - **Cheap recovery:** on a branch mispredict or memory-ordering violation, younger entries are simply discarded.
+
+    - **(b)** It is the reverse: the scheduler (reservation stations) issues to the execution units out of order.
+    - **(c)** That is the µop cache (decoded stream buffer).
+    - **(d)** The ROB does not reorder DRAM traffic. The memory controller schedules DRAM accesses.
+
+    The ROB size (hundreds of entries on current cores, e.g. 512 on Intel Golden Cove) limits how far ahead the core can look to find independent work during a cache miss.
+- id: arch-ooo-003
+  topic: computer-architecture
+  subtopic: Out-of-order and speculative execution
+  difficulty: medium
+  type: short
+  tags: [out-of-order, pipeline, microarchitecture]
+  prompt: |
+    Describe how an instruction flows through a modern out-of-order x86 core, from fetch to retirement.
+  reference: |
+    **Front end, in order:** the branch predictor chooses fetch addresses. Instruction bytes are fetched from the L1i, pre-decoded to find instruction boundaries, and decoded into µops (or delivered directly from the µop cache), then queued. **Rename/allocate, in order:** architectural registers are mapped to physical registers, which removes false dependencies. Each µop gets a ROB entry, and a load- or store-buffer entry if it accesses memory, and is placed in the scheduler. **Execute, out of order:** the scheduler dispatches each µop to a suitable port once its source operands are ready. Results are written to physical registers and broadcast to waiting µops through the bypass network. Loads may execute speculatively ahead of older stores whose addresses are unknown, and memory-disambiguation hardware checks this and replays on a violation. **Retire, in order:** completed µops commit from the head of the ROB, and branch mispredictions and exceptions are handled at that point by flushing younger work. Stores are written to L1d from the store buffer only after they retire. Width is about 4–8 µops per cycle per stage on current cores.
+  explanation: |
+    The key distinction is in-order front end and retirement around an out-of-order core. That structure explains precise exceptions, the cost of mispredictions, and why stores become visible only after retirement.
+  keyPoints:
+    - "In-order front end: prediction, fetch, decode to µops (µop cache)"
+    - "Rename to physical registers; allocate ROB, scheduler and load/store buffer entries"
+    - "Out-of-order dispatch when operands are ready, with a bypass network"
+    - "In-order retirement from the ROB; mispredicts and exceptions flush younger µops"
+    - "Stores commit to cache from the store buffer after retirement; loads may speculate past stores (memory disambiguation)"
+- id: arch-ooo-004
+  topic: computer-architecture
+  subtopic: Instruction-level parallelism
+  difficulty: medium
+  type: single
+  tags: [latency, throughput, ilp, quantitative]
+  prompt: |
+    On a core, floating-point add has a **latency of 4 cycles** and a **throughput of 2 per cycle** (two pipelined FP-add units). Summing an array with one scalar accumulator (`s += a[i]`) completes one add every 4 cycles. What is the minimum number of independent accumulators needed to keep both adders busy?
+  choices:
+    - id: a
+      text: "2"
+    - id: b
+      text: "4"
+    - id: c
+      text: "8"
+    - id: d
+      text: "16"
+  answer: c
+  explanation: |
+    By Little's law, the number of operations in flight = latency × throughput = 4 cycles × 2 per cycle = **8**. Each accumulator is a serial dependency chain that can have only one add in flight, so 8 chains are needed to keep 8 adds in flight.
+
+    - **2** fills both units but each still waits 4 cycles, giving 0.5 adds per cycle.
+    - **4** hides the latency of a single unit, giving 1 add per cycle, half the peak.
+    - **16** works but is more than needed (it can still help in practice to absorb scheduling noise).
+
+    These numbers match, for example, Intel Skylake-family `addsd`/`vaddpd` (latency 4, reciprocal throughput 0.5, per Agner Fog's tables and uops.info). With SIMD, each of the 8 accumulators is a vector, which multiplies throughput again. The compiler will not split a floating-point sum into multiple accumulators by itself, because that reassociates the additions, unless `-ffast-math`/`-fassociative-math` is given.
+  source:
+    name: "Agner Fog, Instruction tables; uops.info"
+    url: https://www.agner.org/optimize/instruction_tables.pdf
+- id: arch-ooo-005
+  topic: computer-architecture
+  subtopic: Instruction-level parallelism
+  difficulty: hard
+  type: short
+  tags: [ilp, floating-point, vectorization, compilers]
+  prompt: |
+    `double sum = 0; for (size_t i = 0; i < n; ++i) sum += a[i];` over an array that fits in L1 runs at roughly one element per 4 cycles at `-O3`. The same loop with `long` elements runs many times faster. Why, and how would you speed up the double version?
+  reference: |
+    The double loop is **latency-bound** on a single loop-carried dependency chain. Every add needs the previous `sum`, so it runs at one add per FP-add latency (about 4 cycles on current x86) no matter how many execution units are free. The compiler cannot fix this, because IEEE floating-point addition is not associative: splitting the sum into several accumulators, or vectorising it (which is also a reassociation), could change the result, so without permission it keeps the strict order. Integer addition *is* associative even when it wraps, so the compiler freely vectorises and unrolls the `long` loop with several vector accumulators and 1-cycle integer adds, approaching the load-port or bandwidth limit. Ways to fix the double version: write it with several independent accumulators (for example 8, roughly latency × throughput), combined at the end; allow reassociation with `-ffast-math`/`-fassociative-math` (as a scoped pragma, or OpenMP `#pragma omp simd reduction(+:sum)`); or use `std::reduce` with an unsequenced execution policy. Each of these changes the rounding slightly, which is fine for most uses; use pairwise or Kahan summation if accuracy matters.
+  explanation: |
+    Separating latency-bound from throughput-bound loops, and knowing that IEEE semantics stop the compiler from reassociating, is a frequent topic in low-latency interviews.
+  keyPoints:
+    - "Single loop-carried dependency means it is latency-bound (one add per FP latency, about 4 cycles)"
+    - "The compiler cannot reassociate FP additions (non-associative), so it will not vectorise or split the reduction"
+    - "Integer add is associative, so the integer loop gets vectorised and unrolled"
+    - "Fix: multiple accumulators (about latency × throughput), or -ffast-math/-fassociative-math, an OpenMP simd reduction, or std::reduce"
+    - "Notes that reassociation changes the rounding slightly"
+  source:
+    name: "CS:APP 3e §5.9 (loop unrolling and reassociation)"
+- id: arch-ooo-006
+  topic: computer-architecture
+  subtopic: Instruction-level parallelism
+  difficulty: medium
+  type: single
+  tags: [ipc, performance, perf-counters]
+  prompt: |
+    `perf stat` reports an IPC (instructions per cycle) of 0.3 for a service on a core that can retire 4+ instructions per cycle. Which explanation is most likely?
+  choices:
+    - id: a
+      text: "The core spends most of its cycles stalled, typically waiting on cache or TLB misses to memory (or on long dependency chains or mispredicts), so few instructions retire per cycle."
+    - id: b
+      text: "The program executes too many instructions; reducing the instruction count will raise IPC."
+    - id: c
+      text: "An IPC below 1 means the CPU is running at reduced clock frequency."
+    - id: d
+      text: "The program is I/O-bound, and IPC counts the time spent blocked in system calls."
+  answer: a
+  explanation: |
+    Low IPC means the backend is starved. The commonest cause in server code is waiting on memory: pointer chasing, random lookups in large hash tables, TLB misses. Every last-level-cache miss costs hundreds of cycles in which little retires. The next step is to check cache-miss counters or top-down analysis (Backend Bound → Memory Bound).
+
+    - **(b)** Reducing instruction count does not raise IPC; it may even lower it if the remaining instructions are the stalled ones. IPC measures efficiency, not the amount of work.
+    - **(c)** IPC is measured per *core cycle*, so frequency changes do not affect it directly.
+    - **(d)** When a thread blocks in a syscall, it is descheduled and its cycles are not counted against it (perf counts cycles while the task runs). Time spent blocked shows up as low CPU utilisation, not as low IPC.
+- id: arch-ooo-007
+  topic: computer-architecture
+  subtopic: Instruction-level parallelism
+  difficulty: medium
+  type: single
+  tags: [memory-level-parallelism, linked-list, cache-misses]
+  prompt: |
+    Summing 10 million values stored in a randomly shuffled linked list is far slower than summing the same values read from random indices of an array (`sum += a[idx[i]]`, with `idx` a precomputed random permutation), even though both cause about one cache miss per element. Why?
+  choices:
+    - id: a
+      text: "In the list each load's address depends on the previous load (pointer chasing), so the misses happen one after another; the array lookups are independent, so the out-of-order core overlaps many misses at once."
+    - id: b
+      text: "Linked-list nodes are larger, so they use more bandwidth."
+    - id: c
+      text: "The hardware prefetcher predicts random array indices but not random pointers."
+    - id: d
+      text: "Linked lists need a TLB miss per node, while arrays never miss in the TLB."
+  answer: a
+  explanation: |
+    This is **memory-level parallelism**. In `p = p->next` the address of the next load is not known until the current miss returns, so total time ≈ N × memory latency (about 80–100 ns per node). In the array version all the addresses come from `idx`, which streams in predictably, so the out-of-order window issues many independent misses together. The number of outstanding L1 misses is limited by the line fill buffers (on the order of 10–20 per core on recent x86), so this version can be several times faster even though it has the same number of misses.
+
+    - **(b)** Size changes the bandwidth used, but latency, not bandwidth, is the bottleneck here.
+    - **(c)** Neither pattern is prefetchable: the indices are random too. Only `idx` itself is sequential.
+    - **(d)** Both access patterns are random over a large footprint, so both can miss in the TLB.
+
+    Fixes for pointer-heavy code include flattening into arrays, interleaving several independent traversals, and software prefetching where the next address is known early.
+- id: arch-ooo-008
+  topic: computer-architecture
+  subtopic: Out-of-order and speculative execution
+  difficulty: hard
+  type: multiple
+  tags: [spectre, meltdown, speculative-execution, security]
+  prompt: |
+    Which statements about Spectre and Meltdown are accurate? Select all that apply.
+  choices:
+    - id: a
+      text: "Spectre variant 1 trains a branch predictor so that code speculatively runs past a bounds check, reads out-of-bounds data, and leaks it through a cache-timing side channel."
+    - id: b
+      text: "Meltdown let user-mode code transiently read kernel memory on affected (mostly Intel) CPUs, because the permission check on a load only took effect at retirement, after dependent instructions had already used the value."
+    - id: c
+      text: "Kernel page-table isolation (KPTI) mitigates Meltdown by removing most kernel mappings from the page tables used while running in user mode."
+    - id: d
+      text: "In both attacks the secret becomes architecturally visible in a register that the attacker reads after the misprediction is resolved."
+    - id: e
+      text: "Spectre relies on a permission-check bug specific to Intel, so AMD and ARM processors were never affected."
+  answer: [a, b, c]
+  explanation: |
+    - **(a) True.** The attacker trains `if (x < size)` to predict taken, then passes an out-of-bounds `x`. Before the check resolves, the CPU speculatively loads `array1[x]` and uses it to index `array2`, leaving a secret-dependent line in the cache. Timing accesses to `array2` (Flush+Reload) reveals it.
+    - **(b) True.** The faulting load's value reached dependent µops before the fault was raised at retirement.
+    - **(c) True.** KPTI (originally KAISER) separates the user and kernel page tables, at the cost of extra overhead on syscalls and interrupts (reduced by PCID). Newer CPUs fix Meltdown in hardware.
+    - **(d) False, and the key idea.** Transient results are *squashed* and never reach architectural state. The leak goes through **microarchitectural** state, mainly the cache, which squashing does not undo.
+    - **(e) False.** Spectre exploits speculation itself and affected essentially all high-performance out-of-order CPUs, including AMD and ARM. Meltdown was the one that was largely Intel-specific (plus some ARM cores).
+  source:
+    name: "Kocher et al., \"Spectre Attacks: Exploiting Speculative Execution\" (2018); Lipp et al., \"Meltdown\" (2018)"
+    url: https://meltdownattack.com/
+- id: arch-ooo-009
+  topic: computer-architecture
+  subtopic: Out-of-order and speculative execution
+  difficulty: hard
+  type: short
+  tags: [spectre, speculative-execution, side-channels, security]
+  prompt: |
+    Explain how a Spectre variant 1 (bounds check bypass) attack works, using a small code gadget, and name the main mitigations.
+  reference: |
+    The gadget is `if (x < array1_size) y = array2[array1[x] * 4096];` in a victim, such as the kernel or a JavaScript engine, that the attacker can call with `x` under their control. First the attacker calls it many times with valid `x`, so the branch predictor learns "taken". The attacker then flushes `array2` and `array1_size` from the cache, so the bounds check is slow to resolve, and calls with a malicious out-of-bounds `x`. The CPU predicts taken and speculatively loads `array1[x]`, a secret byte anywhere in the victim's address space. It then loads `array2[secret * 4096]`, bringing that one line into the cache. When the bounds check resolves, the speculation is squashed and no register holds the secret, but the cache state remains. The attacker times reads of each `array2[i * 4096]`; the one fast line reveals the secret byte (Flush+Reload). The 4096 stride keeps the lines apart and away from prefetcher effects. Mitigations: a speculation barrier (`lfence`) after bounds checks; index masking so that even speculative accesses stay in bounds (Linux `array_index_nospec`); compiler options such as speculative load hardening; and, in browsers, coarser timers plus site isolation into separate processes.
+  explanation: |
+    Interviewers usually want three things: training the predictor, the transient dependent load that encodes the secret in the cache, and recovery by timing. The essential point is that architectural rollback does not undo microarchitectural side effects.
+  keyPoints:
+    - "Train the branch predictor with in-bounds calls, then supply an out-of-bounds index"
+    - "The speculative load of the secret is followed by a dependent load that encodes it in which cache line is filled"
+    - "Speculation is squashed architecturally, but the cache state persists"
+    - "The attacker recovers the secret by timing cache accesses (Flush+Reload)"
+    - "Mitigations: lfence barrier, index masking (array_index_nospec), speculative load hardening, process/site isolation"
+  source:
+    name: "Kocher et al., \"Spectre Attacks: Exploiting Speculative Execution\" (2018)"
+    url: https://spectreattack.com/spectre.pdf
+- id: arch-ooo-010
+  topic: computer-architecture
+  subtopic: Instruction-level parallelism
+  difficulty: easy
+  type: single
+  tags: [latency, throughput, instruction-tables]
+  prompt: |
+    An instruction table lists an instruction as "latency 3, reciprocal throughput 1". What does that mean?
+  choices:
+    - id: a
+      text: "A dependent instruction can use the result 3 cycles after it starts, and a new independent instance can start every cycle."
+    - id: b
+      text: "It takes 3 cycles and only one can be in the pipeline at a time."
+    - id: c
+      text: "It takes 1 cycle but must wait 3 cycles before the next one starts."
+    - id: d
+      text: "It retires 3 per cycle with 1 cycle of latency."
+  answer: a
+  explanation: |
+    **Latency** is the length of the dependency chain: how long until a consumer can use the result. **Reciprocal throughput** is the average number of cycles between starts of *independent* instances: the unit is pipelined, so up to latency ÷ reciprocal-throughput = 3 instances are in flight at once.
+
+    These figures match 64-bit `imul r64, r64` on many recent x86 cores. Code that chains multiplies (`x = x * k`) runs at 3 cycles per multiply; independent multiplies run at 1 per cycle.
+
+    - **(b)** That would describe an unpipelined unit, with a reciprocal throughput of 3.
+    - **(c)** and **(d)** swap or misread the two quantities.
+- id: arch-ooo-011
+  topic: computer-architecture
+  subtopic: Instruction-level parallelism
+  difficulty: medium
+  type: single
+  tags: [division, compilers, strength-reduction]
+  prompt: |
+    Compiled with optimisation on x86-64, `uint64_t f(uint64_t x) { return x / 10; }` contains no `div` instruction, just a multiply and a shift. Why?
+  choices:
+    - id: a
+      text: "Integer division is much slower than multiplication (tens of cycles of latency on many cores, and poorly pipelined), so the compiler multiplies by a precomputed fixed-point reciprocal (a \"magic number\") and shifts, which gives the exact result."
+    - id: b
+      text: "x86-64 has no integer division instruction."
+    - id: c
+      text: "The compiler approximates the result; it may be off by one for large x."
+    - id: d
+      text: "Division by 10 is handled by a special BCD instruction."
+  answer: a
+  explanation: |
+    For a constant divisor d, the compiler picks a constant M and shift s such that `floor(x / d) == (x * M) >> (64 + s)` (using the high half of the 128-bit product) for *every* 64-bit x. That is exact by construction (Granlund and Montgomery, 1994). `mul`/`imul` has a latency of about 3 cycles and a throughput of one per cycle, while 64-bit `div` has historically cost tens of cycles with poor throughput. Recent cores (such as Ice Lake and Zen 2 onwards) are much faster at division but still slower than a multiply.
+
+    - **(b)** `div` and `idiv` exist; the compiler uses them when the divisor is a runtime value.
+    - **(c)** The transformation is exact.
+    - **(d)** The BCD instructions (`aam` and friends) are invalid in 64-bit mode.
+
+    In practice, a modulo by a runtime value in a hot path (for example a hash table with a non-power-of-two size) costs a real `div`. That is why many hash tables use power-of-two sizes with a mask, or libraries like libdivide.
+- id: arch-ooo-012
+  topic: computer-architecture
+  subtopic: Instruction-level parallelism
+  difficulty: medium
+  type: short
+  tags: [loop-unrolling, ilp, out-of-order]
+  prompt: |
+    Modern CPUs already execute out of order and predict loop branches. What does loop unrolling still buy you, and when can it hurt?
+  reference: |
+    Benefits: unrolling reduces per-iteration overhead (the counter increment, compare and branch), so more of the front-end and retire bandwidth (4–8 µops per cycle) goes to useful work. More importantly, it gives an opportunity to **break dependency chains**, using several independent accumulators or pointers, because the out-of-order engine cannot overlap operations that are truly serial. It also exposes operations to scheduling, vectorisation and combining (for example wider loads). For many simple loops the gain from cutting overhead alone is small, since a predicted loop branch is nearly free, a macro-fused cmp/jcc is one µop, and the out-of-order core already overlaps iterations; the large gains come from the extra ILP. Costs: larger code puts pressure on the L1i, the µop cache and the BTB, which can slow the rest of the program, and it also needs remainder handling and more registers (risking spills). Small loops may lose the loop stream detector or µop-cache advantages. Measure before and after, and prefer letting the compiler do it (`-funroll-loops`, `#pragma GCC unroll`) unless you need independent accumulators that the compiler is not allowed to create, as with floating-point reductions.
+  explanation: |
+    Candidates often credit unrolling only with removing loop overhead. On out-of-order cores the larger benefit is usually the extra independent work it exposes.
+  keyPoints:
+    - "Main win is enabling independent dependency chains (multiple accumulators) and more ILP"
+    - "Reduces loop overhead µops, though modern cores make that overhead small"
+    - "The OoO core cannot overlap truly dependent operations by itself"
+    - "Costs: code size (L1i, µop cache, BTB pressure), register pressure and spills, remainder code"
+    - "Measure; prefer compiler unrolling except where semantics stop it (FP reassociation)"
+- id: arch-ooo-013
+  topic: computer-architecture
+  subtopic: Out-of-order and speculative execution
+  difficulty: hard
+  type: single
+  tags: [store-forwarding, store-buffer, performance]
+  prompt: |
+    A hot function writes two adjacent 4-byte fields with two separate 4-byte stores, then immediately reads both back with a single 8-byte load. On most x86 cores this is noticeably slower than expected. Why?
+  choices:
+    - id: a
+      text: "Store-to-load forwarding fails, because the load needs data from two different in-flight stores, so it must wait until the stores have committed to L1 (a stall of roughly a dozen or more cycles)."
+    - id: b
+      text: "The 8-byte load is misaligned and raises an alignment fault that the kernel fixes up."
+    - id: c
+      text: "x86 forbids loads from addresses that have pending stores, so the core flushes the pipeline."
+    - id: d
+      text: "The two stores cause false sharing with the load."
+  answer: a
+  explanation: |
+    Stores wait in the **store buffer** until they retire and commit. A later load to the same address normally gets its data forwarded straight from the store buffer in a few cycles. Forwarding typically works only when the load is fully contained in a *single* earlier store. A load that is wider than the store, or spans two stores, usually cannot be forwarded on most Intel and AMD cores, so it waits for the stores to reach L1d. That is a **store-forwarding stall** (Agner Fog's microarchitecture guide lists the rules and penalties per core).
+
+    It shows up in practice when writing struct fields one at a time and then copying the whole struct with a wide `memcpy`, in type-punning through memory, and in writing SIMD lanes separately and then loading the vector.
+
+    - **(b)** x86 does not fault on misaligned integer loads.
+    - **(c)** Loads from addresses with pending stores are routine, and forwarding exists precisely for them.
+    - **(d)** False sharing is a multi-core effect: different cores writing to the same cache line. This is a single thread.
+  source:
+    name: "Agner Fog, The microarchitecture of Intel, AMD and VIA CPUs (store forwarding stalls)"
+    url: https://www.agner.org/optimize/
+- id: arch-ooo-014
+  topic: computer-architecture
+  subtopic: Out-of-order and speculative execution
+  difficulty: medium
+  type: single
+  tags: [speculative-execution, store-buffer, memory-ordering]
+  prompt: |
+    A store instruction executes speculatively on a path that turns out to have been mispredicted. What happens to it?
+  choices:
+    - id: a
+      text: "It never left the store buffer, because stores are written to the cache only after retirement; the entry is discarded when the mispredicted path is flushed, and no other core ever saw it."
+    - id: b
+      text: "It was written to L1d and is rolled back with an undo log."
+    - id: c
+      text: "It was written to L1d, and the cache coherence protocol invalidates other cores' copies to undo it."
+    - id: d
+      text: "It is completed anyway, because stores cannot be cancelled once executed."
+  answer: a
+  explanation: |
+    "Executing" a store only computes its address and data into a store-buffer entry. The store **commits** to L1d, where other cores can observe it, only after it retires. A store on a mispredicted path never retires, so its entry is dropped in the flush. Speculation therefore never changes memory as other cores see it. (Spectre-style leaks go through *cache fills from loads*, not through speculative stores becoming visible.)
+
+    The store buffer also explains the one reordering x86's TSO memory model allows: a later load may complete before an earlier store to a *different* address becomes globally visible (store→load reordering). That is why Dekker/Peterson-style locks need `mfence` or a `lock`-prefixed instruction on x86.
+
+    - **(b)** and **(c)** describe undo mechanisms that do not exist for this.
+    - **(d)** Stores are routinely cancelled before they retire.
+- id: arch-ooo-017
+  topic: computer-architecture
+  subtopic: Out-of-order and speculative execution
+  difficulty: easy
+  type: single
+  tags: [speculative-execution, out-of-order]
+  prompt: |
+    What is **speculative execution**?
+  choices:
+    - id: a
+      text: "Executing instructions before it is known whether they should run at all (for example past a predicted branch), and discarding their results if the guess turns out wrong"
+    - id: b
+      text: "Executing instructions in a different order from the program, but only once it is certain that they must run"
+    - id: c
+      text: "Running both sides of every branch in parallel and keeping the correct one"
+    - id: d
+      text: "The compiler reordering instructions at build time based on profiling data"
+  answer: a
+  explanation: |
+    Speculation means doing work that *might* be wasted. Most of it follows branch prediction, but cores also speculate that a load does not depend on an older store with an unknown address (memory disambiguation). Speculative results stay internal until retirement, and are squashed if the speculation was wrong.
+
+    - **(b)** describes out-of-order execution *without* speculation. Real cores combine both: they execute out of order *and* past unresolved branches.
+    - **(c)** "Eager execution" of both paths is a research idea; mainstream CPUs follow one predicted path.
+    - **(d)** describes compiler instruction scheduling or PGO, which happens at build time.

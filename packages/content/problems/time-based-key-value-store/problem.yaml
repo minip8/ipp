@@ -1,0 +1,23 @@
+slug: time-based-key-value-store
+title: Time-Based Key-Value Store
+difficulty: medium
+tags: [design, hash-table, binary-search]
+signature:
+  className: TimeMap
+  kind: design
+  methods:
+    - name: set
+      params:
+        - { name: key, type: string }
+        - { name: value, type: string }
+        - { name: timestamp, type: int }
+      returns: void
+    - name: get
+      params:
+        - { name: key, type: string }
+        - { name: timestamp, type: int }
+      returns: string
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Time Based Key-Value Store (LeetCode 981)
+  url: https://leetcode.com/problems/time-based-key-value-store/

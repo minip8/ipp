@@ -1,0 +1,23 @@
+slug: lru-cache
+title: LRU Cache
+difficulty: medium
+tags: [design, hash-table, linked-list]
+signature:
+  className: LRUCache
+  kind: design
+  ctorParams:
+    - { name: capacity, type: int }
+  methods:
+    - name: get
+      params:
+        - { name: key, type: int }
+      returns: int
+    - name: put
+      params:
+        - { name: key, type: int }
+        - { name: value, type: int }
+      returns: void
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic design interview question (LeetCode 146; listed on Taro for Amazon, Apple, Snap, ByteDance and others)
+  url: https://www.jointaro.com/interviews/questions/lru-cache/

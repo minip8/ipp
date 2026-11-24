@@ -1,0 +1,17 @@
+slug: permutations
+title: Permutations
+difficulty: medium
+tags: [backtracking, array]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: permute
+      params:
+        - { name: nums, type: { array: int } }
+      returns: { list: { list: int } }
+      compare: unordered
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 46)
+  url: https://leetcode.com/problems/permutations/

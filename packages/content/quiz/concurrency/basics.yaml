@@ -1,0 +1,363 @@
+# Threads vs processes vs coroutines, races vs data races, scaling laws.
+
+- id: conc-basics-001
+  topic: concurrency
+  subtopic: Threads and processes
+  difficulty: easy
+  type: multiple
+  prompt: |
+    Two threads belong to the same process on Linux. Which of the following do they share?
+    (Select all that apply.)
+  choices:
+    - { id: a, text: "The heap and global/static variables" }
+    - { id: b, text: "The open file-descriptor table" }
+    - { id: c, text: "Their call stacks (one stack shared by all threads)" }
+    - { id: d, text: "The virtual address space (page tables)" }
+    - { id: e, text: "The register set, including the program counter" }
+    - { id: f, text: "Signal handlers (dispositions)" }
+  answer: [a, b, d, f]
+  explanation: |
+    Threads of one process share the address space (so heap, globals, code and memory-mapped files),
+    the file-descriptor table, the current directory, and signal *dispositions*.
+
+    Each thread has its **own** stack, register set and program counter, thread-local storage, and its
+    own signal mask and `errno`. The stacks all live in the shared address space, so one thread *can*
+    read another's stack through a pointer (which is how passing a pointer to a local into a thread
+    goes wrong when the local dies), but each thread has a separate stack.
+  tags: [threads, processes, address-space]
+
+- id: conc-basics-002
+  topic: concurrency
+  subtopic: Threads and processes
+  difficulty: easy
+  type: short
+  prompt: |
+    An interviewer asks: "When would you use multiple processes instead of multiple threads, and vice
+    versa?" Answer as you would aloud.
+  reference: |
+    Threads share one address space: communication is cheap (just shared memory), creation and
+    context switches are cheaper, but any thread can corrupt shared state and one crash (segfault)
+    kills the whole process; correctness depends on careful synchronisation.
+
+    Processes are isolated: a crash or memory corruption is contained, privileges can differ, and
+    (in languages like CPython with a GIL) separate processes give true CPU parallelism. The cost is
+    more expensive creation, more memory, and explicit IPC (pipes, sockets, shared memory) with
+    serialisation.
+
+    Choose threads for tightly coupled, shared-memory work with high communication rates (a
+    low-latency engine, a parallel algorithm). Choose processes for fault isolation and security
+    boundaries (browser tabs, worker pools that run untrusted or crash-prone code, pre-fork servers),
+    or to sidestep a GIL.
+  keyPoints:
+    - "Threads share an address space; processes have separate ones"
+    - "Threads communicate cheaply via shared memory; processes need IPC (pipes, sockets, shared memory)"
+    - "Process isolation contains crashes and memory corruption; a crashing thread takes down the process"
+    - "Threads are cheaper to create and switch between (no address-space switch / TLB flush)"
+    - "Processes give real parallelism where a GIL limits threads (CPython)"
+  explanation: |
+    A strong answer frames the choice around **sharing vs isolation**. Threads make sharing free and
+    mistakes global; processes make sharing explicit and failures local. Weak answers stop at "threads
+    are lighter", without mentioning fault isolation, security boundaries, or the GIL. Real systems
+    often mix both: Chrome uses processes per site for isolation and threads inside each; nginx and
+    PostgreSQL use worker processes; trading engines use pinned threads sharing memory.
+  tags: [threads, processes, design]
+
+- id: conc-basics-003
+  topic: concurrency
+  subtopic: Races
+  difficulty: medium
+  type: short
+  prompt: |
+    What is the difference between a *race condition* and a *data race*? Give an example of a race
+    condition that contains no data race.
+  reference: |
+    A **data race** is a specific, language-level notion: two accesses to the same memory location
+    from different threads, at least one a write, not ordered by happens-before, and (in C++/C) not
+    both atomic. In C++ it is undefined behaviour; in Java it is defined but weakly constrained.
+
+    A **race condition** is a higher-level logic bug: the program's correctness depends on the
+    timing or interleaving of operations. It can occur with perfectly synchronised accesses.
+
+    Example: a bank account balance held in a `std::atomic<int>`; `if (balance.load() >= amount)
+    balance -= amount;` Every access is atomic, so there is no data race, but two threads can both
+    pass the check and overdraw the account (check-then-act). The fix is to make the check and
+    update one atomic step (a CAS loop or a mutex around both).
+
+    Conversely, a data race can exist where the outcome "doesn't matter" (e.g. a racy statistics
+    counter), but in C++ it is still UB.
+  keyPoints:
+    - "Data race: conflicting unsynchronised accesses to the same location, at least one a write"
+    - "A data race is undefined behaviour in C++ (defined but weak in Java)"
+    - "Race condition: correctness depends on timing/interleaving; a logic-level bug"
+    - "Race conditions can exist with no data race, e.g. check-then-act on atomics"
+    - "Fix by making the compound operation atomic (CAS loop, lock spanning check and act)"
+  explanation: |
+    Interviewers use this to see whether you know that "no data race" does not mean "correct". The
+    definition of a data race comes from the language memory model ([intro.races] in C++, JLS §17.4 in
+    Java); a race condition is about program logic. Mention that making every variable atomic removes
+    UB but not the logic bug, and that the fix is to widen the atomic step to cover the whole invariant.
+  tags: [race-condition, data-race, check-then-act]
+  source: { name: "John Regehr — Race Condition vs. Data Race", url: "https://blog.regehr.org/archives/490" }
+
+- id: conc-basics-004
+  topic: concurrency
+  subtopic: Scaling
+  difficulty: medium
+  type: single
+  prompt: |
+    90% of a program's running time is perfectly parallelisable and 10% is strictly serial. According to
+    Amdahl's law, what is the maximum speedup on 10 cores, and what is the limit as the number of
+    cores goes to infinity?
+  choices:
+    - { id: a, text: "10x on 10 cores; unbounded as cores grow" }
+    - { id: b, text: "About 5.3x on 10 cores; 10x as cores grow" }
+    - { id: c, text: "9x on 10 cores; 10x as cores grow" }
+    - { id: d, text: "About 5.3x on 10 cores; 90x as cores grow" }
+  answer: b
+  explanation: |
+    Amdahl's law: speedup S(n) = 1 / ((1 - p) + p / n), with parallel fraction p.
+
+    - n = 10: 1 / (0.1 + 0.9 / 10) = 1 / 0.19 ≈ 5.26.
+    - n → ∞: 1 / 0.1 = 10.
+
+    The serial 10% caps you at 10x no matter how many cores you add, and you already lose almost half
+    the ideal speedup at 10 cores. "9x" comes from multiplying 0.9 by 10, which ignores that the serial
+    part still takes its full time. Gustafson's law gives a more optimistic view only when the problem
+    size grows with the core count.
+  tags: [amdahl, scaling, speedup]
+
+- id: conc-basics-005
+  topic: concurrency
+  subtopic: Concurrency vs parallelism
+  difficulty: easy
+  type: single
+  prompt: |
+    Which statement best distinguishes concurrency from parallelism?
+  choices:
+    - { id: a, text: "Concurrency is about structuring a program as independently progressing tasks; parallelism is about executing work simultaneously on multiple hardware units" }
+    - { id: b, text: "Concurrency requires multiple cores; parallelism can happen on a single core" }
+    - { id: c, text: "They are synonyms; the difference is only terminology between languages" }
+    - { id: d, text: "Concurrency means using threads; parallelism means using processes" }
+  answer: a
+  explanation: |
+    Concurrency is a property of program structure: several tasks are in progress over overlapping time
+    periods (they can be interleaved on one core, like an asyncio event loop handling thousands of
+    sockets). Parallelism is about execution: things literally happen at the same instant on multiple
+    cores, SIMD lanes or machines.
+
+    You can have concurrency without parallelism (single-threaded event loop) and parallelism without
+    much concurrency in the program's structure (a vectorised loop). Option b has the definitions
+    backwards; threads vs processes is an orthogonal choice of mechanism.
+  tags: [concurrency, parallelism]
+
+- id: conc-basics-006
+  topic: concurrency
+  subtopic: Threads and processes
+  difficulty: medium
+  type: single
+  prompt: |
+    A multithreaded POSIX program calls `fork()` from one thread while other threads are running (and
+    may be holding locks, e.g. inside `malloc`). What is true of the child process?
+  choices:
+    - { id: a, text: "It contains copies of all threads, each resuming where it was" }
+    - { id: b, text: "It contains only the thread that called fork(); locks held by other threads are copied in their locked state, so until exec() the child should only call async-signal-safe functions" }
+    - { id: c, text: "fork() fails with EAGAIN when more than one thread exists" }
+    - { id: d, text: "It contains only the calling thread, and all mutexes are automatically reset to unlocked" }
+  answer: b
+  explanation: |
+    POSIX specifies that the child is created with a single thread, a replica of the caller. The whole
+    address space is copied, including every mutex in whatever state it was in. A mutex that another
+    thread held at the moment of the fork stays locked forever in the child because its owner does not
+    exist there. If that was the allocator lock, the child deadlocks on the next `malloc`.
+
+    Hence the rule: after `fork()` in a multithreaded program, call only async-signal-safe functions
+    until `exec*()`. `pthread_atfork` handlers exist to work around this but are hard to use
+    correctly. Python 3.12+ emits a `DeprecationWarning` when `os.fork()` is called with threads
+    running, and 3.14 made `multiprocessing` default to `forkserver` on POSIX partly for this reason.
+  tags: [fork, threads, posix, deadlock]
+  source: { name: "POSIX fork() specification", url: "https://pubs.opengroup.org/onlinepubs/9799919799/functions/fork.html" }
+
+- id: conc-basics-007
+  topic: concurrency
+  subtopic: Coroutines
+  difficulty: medium
+  type: short
+  prompt: |
+    Compare OS threads, green threads (stackful coroutines / user-space threads), and stackless
+    coroutines such as C++20 coroutines or Python `async def`. When does each make sense?
+  reference: |
+    **OS threads** are scheduled preemptively by the kernel, each with its own kernel-managed stack
+    (typically megabytes of reserved virtual memory). They give real parallelism and work with blocking
+    calls, but creation and context switches cost microseconds and tens of thousands of them strain
+    memory and the scheduler.
+
+    **Green threads / stackful coroutines** (Go goroutines, Java virtual threads, Boost.Context
+    fibers) are scheduled in user space, usually M:N onto a pool of OS threads. Each has its own small,
+    growable or separately allocated stack, so they can suspend from any call depth. Switching is
+    cheap, and you can have millions. The runtime must intercept blocking calls, or a blocking syscall
+    pins the carrier thread.
+
+    **Stackless coroutines** (C++20, Python/JS/C#/Rust async) compile the function into a state
+    machine whose locals live in a heap (or inline) frame. They can only suspend at explicit
+    `co_await`/`await` points in the coroutine itself, which "colours" functions as async. They are
+    the cheapest in memory and switch cost.
+
+    Use OS threads for CPU parallelism and modest numbers of blocking tasks; coroutines (either kind)
+    for very large numbers of mostly-waiting I/O tasks; stackless when you want minimal overhead and
+    explicit suspension points.
+  keyPoints:
+    - "OS threads are preemptive, kernel scheduled, give parallelism, but are heavyweight (stack, switch cost)"
+    - "Green threads are user-space scheduled (often M:N) with their own stacks; can suspend at any depth"
+    - "Stackless coroutines are state machines that suspend only at explicit await points (function colouring)"
+    - "Coroutines are cooperative; a blocking call or long computation stalls others on that thread"
+    - "Coroutines suit huge numbers of I/O-bound tasks; threads suit CPU-bound parallel work"
+  explanation: |
+    The key distinctions are **who schedules** (kernel vs runtime vs the program at await points),
+    **where the stack lives** (kernel thread stack, separate user stack, or a compiler-generated frame),
+    and **what happens on a blocking call**. Mentioning function colouring for stackless coroutines and
+    M:N scheduling for green threads shows depth. Go and Java 21 virtual threads are the main modern
+    examples of stackful designs.
+  tags: [coroutines, green-threads, threads]
+
+- id: conc-basics-008
+  topic: concurrency
+  subtopic: Threads and processes
+  difficulty: medium
+  type: single
+  prompt: |
+    Why is a context switch between two threads of the **same** process typically cheaper than a switch
+    between threads of two **different** processes?
+  choices:
+    - { id: a, text: "The kernel does not save registers when switching between threads of one process" }
+    - { id: b, text: "No address-space switch is needed, so the page-table root is not changed and TLB entries (and cache contents) for the shared address space stay useful" }
+    - { id: c, text: "Threads of the same process are switched in user space without entering the kernel" }
+    - { id: d, text: "Threads of one process always run on the same core, so no cache migration happens" }
+  answer: b
+  explanation: |
+    Both kinds of switch save and restore registers and go through the kernel scheduler (for OS
+    threads). The extra cost between processes comes from changing the address space: loading a new
+    page-table root (CR3 on x86), which flushes non-global TLB entries unless PCID/ASID tagging is
+    used, and the new process's working set is less likely to be in cache.
+
+    Option c describes green threads, not kernel threads. Threads of one process can run on any core.
+  tags: [context-switch, tlb, threads]
+
+- id: conc-basics-009
+  topic: concurrency
+  subtopic: Thread lifecycle
+  difficulty: easy
+  type: single
+  prompt: |
+    In C++, what happens when a `std::thread` object that is still *joinable* (neither joined nor
+    detached) is destroyed?
+  choices:
+    - { id: a, text: "The destructor joins the thread, waiting for it to finish" }
+    - { id: b, text: "The destructor detaches the thread, which keeps running" }
+    - { id: c, text: "std::terminate() is called" }
+    - { id: d, text: "The thread is cancelled at its next cancellation point" }
+  answer: c
+  explanation: |
+    `std::thread::~thread()` calls `std::terminate()` if `joinable()` is true. The committee chose this
+    because both alternatives were dangerous: implicit join can hang (e.g. during stack unwinding
+    from an exception) and implicit detach leaves a thread referencing destroyed locals.
+
+    So every `std::thread` must be explicitly `join()`ed or `detach()`ed on every path, including
+    exception paths. C++20's `std::jthread` makes the RAII choice explicit: it requests stop and then
+    joins in its destructor.
+  tags: [std-thread, terminate, raii]
+  source: { name: "cppreference — std::thread::~thread", url: "https://en.cppreference.com/w/cpp/thread/thread/~thread" }
+
+- id: conc-basics-010
+  topic: concurrency
+  subtopic: Scaling
+  difficulty: medium
+  type: short
+  prompt: |
+    You parallelise a CPU-bound loop across 16 threads on a 16-core machine and it runs *slower* than
+    the single-threaded version. List the likely causes and how you would confirm each.
+  reference: |
+    Likely causes:
+    1. **Contention on a shared lock or atomic**: every iteration takes a mutex or updates a shared
+       counter, serialising threads and bouncing a cache line. Confirm with a profiler (perf, lock
+       contention stats, off-CPU time).
+    2. **False sharing**: per-thread data sits on the same cache line (e.g. `int counts[16]`).
+       Confirm with `perf c2c` or by padding to 64 bytes and re-measuring.
+    3. **Memory bandwidth bound**: the loop streams data and one core already nearly saturates DRAM
+       bandwidth. Confirm with bandwidth counters or by testing with a smaller, cache-resident input.
+    4. **Overheads larger than work**: creating threads per call, tiny chunks, or task-queue overhead.
+       Confirm by timing with larger chunks or a persistent pool.
+    5. **Oversubscription / SMT / frequency effects**: other threads compete for the cores,
+       hyperthreads share execution units, or turbo frequency drops with all cores active. Confirm by
+       pinning threads and varying the count.
+    6. **Serial fraction** (Amdahl) or load imbalance where one thread gets most of the work.
+  keyPoints:
+    - "Lock or atomic contention serialises work and causes cache-line ping-pong"
+    - "False sharing of per-thread data on one cache line"
+    - "Memory-bandwidth saturation; more cores do not add bandwidth"
+    - "Thread creation / scheduling / chunking overhead exceeding useful work"
+    - "Oversubscription, SMT sharing, or load imbalance; Amdahl's serial fraction"
+    - "Measure with a profiler (perf, perf c2c) and controlled experiments rather than guessing"
+  explanation: |
+    Good answers are hypothesis-driven: name a cause, then the measurement that would confirm it, rather
+    than listing optimisations. Contention and false sharing are the two most frequently expected
+    answers; memory bandwidth and Amdahl's law show broader systems awareness.
+  tags: [scaling, performance, false-sharing, contention]
+
+- id: conc-basics-011
+  topic: concurrency
+  subtopic: Coroutines
+  difficulty: hard
+  type: single
+  prompt: |
+    A runtime uses an N:1 green-thread model: all user-level threads are multiplexed onto a single OS
+    thread, and the runtime does not wrap system calls. One green thread calls a blocking `read()` on
+    a socket with no data available. What happens?
+  choices:
+    - { id: a, text: "The runtime switches to another green thread while the read waits" }
+    - { id: b, text: "The whole process's user-level threads stall until the read returns, because the single OS thread is blocked in the kernel" }
+    - { id: c, text: "The kernel creates a new OS thread to continue running the other green threads" }
+    - { id: d, text: "The read fails immediately with EAGAIN" }
+  answer: b
+  explanation: |
+    The kernel only sees one thread. When it blocks in `read()`, nothing in user space runs, so every
+    green thread stalls. This was the classic weakness of early N:1 systems (e.g. original Java green
+    threads, GNU Pth).
+
+    Modern runtimes avoid it by making sockets non-blocking and parking the green thread on an event
+    loop (Go's netpoller), and by handing off truly blocking syscalls to extra OS threads (M:N
+    scheduling). Option a is what such a runtime does *because* it wraps the call, which the prompt
+    rules out. The read only returns EAGAIN if the descriptor was set non-blocking.
+  tags: [green-threads, blocking-io, scheduling]
+
+- id: conc-basics-012
+  topic: concurrency
+  subtopic: Races
+  difficulty: medium
+  type: short
+  prompt: |
+    Explain the *check-then-act* and *read-modify-write* patterns as sources of race conditions, with
+    one example of each and the standard fix.
+  reference: |
+    **Check-then-act**: a decision is made on a value that may change before acting on it. Example:
+    `if (!map.contains(k)) map.insert(k, make())` from two threads: both see "absent" and both create
+    (or one overwrites the other). Another: `if (file doesn't exist) create it` (a TOCTOU bug).
+    Fix: perform the check and the action atomically: hold a lock across both, or use an atomic
+    primitive like `insert_if_absent`/`try_emplace` under a lock, `compare_exchange`, or `O_CREAT|O_EXCL`.
+
+    **Read-modify-write**: `x = x + 1` is load, add, store. Two threads load the same old value and
+    one increment is lost. Fix: an atomic RMW (`fetch_add`, `x++` on `std::atomic`), or a lock.
+
+    In both cases the individual operations may each be thread-safe; the bug is that the compound
+    operation is not.
+  keyPoints:
+    - "Check-then-act acts on a stale observation (e.g. lazy init, insert-if-absent, TOCTOU on files)"
+    - "Read-modify-write loses updates when two threads interleave load and store"
+    - "Thread-safe individual operations do not compose into a thread-safe compound operation"
+    - "Fix by making the compound step atomic (lock spanning both, CAS loop, fetch_add, O_EXCL)"
+  explanation: |
+    These two patterns cover most real-world race conditions. Point out that composing thread-safe
+    calls does not give a thread-safe sequence (e.g. `ConcurrentHashMap.get` followed by `put`), and
+    that APIs such as `computeIfAbsent`, `try_emplace` under a lock, `fetch_add`, or `O_EXCL` exist
+    precisely to make the compound step atomic.
+  tags: [race-condition, check-then-act, read-modify-write]
+  source: { name: "Goetz et al., Java Concurrency in Practice, ch. 2 (idea)" }

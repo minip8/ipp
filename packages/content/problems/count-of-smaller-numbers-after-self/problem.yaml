@@ -1,0 +1,16 @@
+slug: count-of-smaller-numbers-after-self
+title: Count of Smaller Numbers After Self
+difficulty: hard
+tags: [array, sorting, merge-sort, binary-indexed-tree, divide-and-conquer]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: countSmaller
+      params:
+        - { name: nums, type: { array: int } }
+      returns: { list: int }
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 315); inversion counting via merge sort or a Fenwick tree
+  url: https://leetcode.com/problems/count-of-smaller-numbers-after-self/

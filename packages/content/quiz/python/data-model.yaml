@@ -1,0 +1,354 @@
+# The data model: special ("dunder") methods, operator dispatch, attribute access.
+- id: py-dm-001
+  topic: python
+  subtopic: Data model
+  difficulty: medium
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [hash, eq, data-model]
+  prompt: What does this program print?
+  code: |
+    class P:
+        def __init__(self, x):
+            self.x = x
+        def __eq__(self, other):
+            return self.x == other.x
+
+    print(P(1) == P(1))
+    print({P(1)})
+  answer: { kind: runtime_error }
+  explanation: |
+    The first line prints `True`, then the second raises **TypeError: unhashable type: 'P'**.
+
+    When a class defines `__eq__` but not `__hash__`, Python sets `__hash__ = None` for that class. The inherited identity-based `object.__hash__` would break the rule "objects that compare equal must have equal hashes". Instances therefore can't go in sets or be dict keys. Define `__hash__` consistently with `__eq__` (e.g. `hash(self.x)`, with `x` treated as immutable), or use `@dataclass(frozen=True)`, which generates both. Reference: data model, `object.__hash__`.
+
+- id: py-dm-002
+  topic: python
+  subtopic: Operator dispatch
+  difficulty: hard
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [operators, radd, notimplemented]
+  prompt: What does this program print?
+  code: |
+    class Num:
+        def __add__(self, other):
+            return 'Num.add'
+        def __radd__(self, other):
+            return 'Num.radd'
+
+    class Sub(Num):
+        def __radd__(self, other):
+            return 'Sub.radd'
+
+    print(Num() + Sub(), Sub() + Num())
+  answer: { kind: output, output: "Sub.radd Num.add" }
+  explanation: |
+    Normally `a + b` tries `a.__add__(b)` first and falls back to `b.__radd__(a)` only if that returns `NotImplemented`. There is one exception: **if the right operand's type is a subclass of the left operand's type and provides a different implementation of the reflected method, the reflected method is tried first.** This lets subclasses override how they combine with their base class.
+
+    - `Num() + Sub()`: `Sub` is a subclass of `Num` that overrides `__radd__`, so `Sub.__radd__` wins: `'Sub.radd'`.
+    - `Sub() + Num()`: the left operand is the subclass, so the normal order applies, and `Sub` inherits `__add__` from `Num`: `'Num.add'`.
+
+    Reference: data model, "Emulating numeric types" (note on `__radd__` and friends).
+
+- id: py-dm-003
+  topic: python
+  subtopic: Data model
+  difficulty: easy
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [truthiness, bool, len]
+  prompt: What does this program print?
+  code: |
+    class Empty:
+        def __len__(self):
+            return 0
+
+    class Weird:
+        def __bool__(self):
+            return True
+        def __len__(self):
+            return 0
+
+    print(bool(Empty()), bool(Weird()), bool(object()))
+  answer: { kind: output, output: "False True True" }
+  explanation: |
+    Truth testing calls `__bool__` if it exists. Otherwise it uses `__len__`, where zero means false. If neither is defined, the object is true.
+
+    - `Empty` has only `__len__` returning 0, so it is false.
+    - `Weird` defines `__bool__`, which takes precedence over `__len__`, so it is true.
+    - A plain `object()` defines neither, so it is true.
+
+    Reference: "Built-in types → Truth value testing".
+
+- id: py-dm-004
+  topic: python
+  subtopic: Data model
+  difficulty: hard
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [special-method-lookup, data-model]
+  prompt: What does this program print?
+  code: |
+    class C:
+        def __len__(self):
+            return 1
+
+    c = C()
+    c.__len__ = lambda: 99
+    print(len(c), c.__len__())
+  answer: { kind: output, output: "1 99" }
+  explanation: |
+    Implicit invocations of special methods, such as `len(c)`, `c + d` and `for x in c`, look the method up **on the type**, not on the instance, and bypass the instance `__dict__` (and even `__getattribute__`). So `len(c)` calls `C.__len__` and gets `1`.
+
+    The explicit attribute access `c.__len__` is an ordinary lookup, which finds the instance attribute first and calls the lambda: `99`. This rule (data model, "Special method lookup") is both a speed optimisation and the reason special methods must be defined on the class (or metaclass).
+
+- id: py-dm-005
+  topic: python
+  subtopic: Attribute access
+  difficulty: easy
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [getattr, attributes]
+  prompt: What does this program print?
+  code: |
+    class C:
+        x = 1
+        def __getattr__(self, name):
+            return name.upper()
+
+    c = C()
+    c.z = 2
+    print(c.x, c.y, c.z)
+  answer: { kind: output, output: "1 Y 2" }
+  explanation: |
+    `__getattr__` is a **fallback**: it is called only when normal lookup (instance `__dict__`, the class and its MRO, descriptors) raises `AttributeError`. `x` is found on the class and `z` in the instance dict, so only `y` reaches `__getattr__`, which returns `'Y'`.
+
+    By contrast, `__getattribute__` is called for **every** attribute access, which is why overriding it is rarely needed and easy to get wrong.
+
+- id: py-dm-006
+  topic: python
+  subtopic: Data model
+  difficulty: easy
+  type: single
+  tags: [repr, str]
+  prompt: |
+    A class defines both `__str__` (returns `'S'`) and `__repr__` (returns `'R'`). What does `print([obj])` show?
+  choices:
+    - { id: a, text: "`[S]`" }
+    - { id: b, text: "`[R]`" }
+    - { id: c, text: "`['S']`" }
+    - { id: d, text: "`[<__main__.C object at 0x...>]`" }
+  answer: b
+  explanation: |
+    `print` calls `str()` on the list, and `list.__str__` (inherited from `object`, which uses `__repr__`) formats each element with **`repr()`**. Containers always show their elements' `repr`, which is why `print(['a'])` shows quotes. So you get `[R]`.
+
+    `print(obj)` on its own would show `S`. If a class defines only `__repr__`, `str()` falls back to it; the reverse is not true.
+
+- id: py-dm-007
+  topic: python
+  subtopic: Data model
+  difficulty: medium
+  type: single
+  tags: [functools, total-ordering, comparisons]
+  prompt: |
+    You decorate a class with `@functools.total_ordering`. What is the minimum you must define for it to fill in all six rich comparisons?
+  choices:
+    - { id: a, text: "`__eq__` and `__hash__`" }
+    - { id: b, text: "`__lt__` only; `__eq__` is derived from it" }
+    - { id: c, text: "`__eq__` (or rely on the inherited identity `__eq__`) and one of `__lt__`, `__le__`, `__gt__`, `__ge__`" }
+    - { id: d, text: "`__cmp__`" }
+  answer: c
+  explanation: |
+    `total_ordering` needs one ordering method, and it derives the other three from it plus `__eq__`. The docs say the class "should supply an `__eq__()` method", because otherwise the inherited identity comparison is used, which is rarely what you want.
+
+    It can't derive `__eq__` from `__lt__`, since `not a < b and not b < a` doesn't imply equality for partial orders. `__cmp__` was removed in Python 3, and `__hash__` has nothing to do with ordering.
+
+- id: py-dm-008
+  topic: python
+  subtopic: Iteration protocol
+  difficulty: medium
+  type: multiple
+  tags: [iteration, protocols, getitem]
+  prompt: |
+    For which of these classes does `for x in Obj(): ...` work, iterating without raising `TypeError`? Select all that apply.
+
+    ```python
+    class A:
+        def __iter__(self):
+            return iter([1, 2])
+
+    class B:
+        def __getitem__(self, i):
+            if i >= 2:
+                raise IndexError
+            return i
+
+    class C:
+        def __next__(self):
+            return 1
+
+    class D:
+        def __len__(self):
+            return 2
+        def __contains__(self, x):
+            return True
+    ```
+  choices:
+    - { id: a, text: "`A`" }
+    - { id: b, text: "`B`" }
+    - { id: c, text: "`C`" }
+    - { id: d, text: "`D`" }
+  answer: [a, b]
+  explanation: |
+    `iter(obj)` first looks for `__iter__` on the type (`A`). If there is none, it falls back to the legacy **sequence protocol**: calling `__getitem__` with 0, 1, 2, ... until `IndexError` (`B`, which yields 0 and 1).
+
+    - `C` has `__next__` but no `__iter__`, so it is not iterable (it would be an iterator only if it also had `__iter__`).
+    - `D` supports `len()` and `in`, but neither makes it iterable.
+
+- id: py-dm-009
+  topic: python
+  subtopic: Object creation
+  difficulty: hard
+  type: single
+  tags: [new, init, object-creation]
+  prompt: |
+    ```python
+    class C:
+        def __new__(cls):
+            return 42
+        def __init__(self):
+            print('init')
+
+    x = C()
+    ```
+    What happens?
+  choices:
+    - { id: a, text: "Prints `init`, then `x` is `42`" }
+    - { id: b, text: "`x` is `42` and nothing is printed" }
+    - { id: c, text: "`TypeError`: `__new__` must return an instance of `C`" }
+    - { id: d, text: "Prints `init`, then `x` is a `C` instance" }
+  answer: b
+  explanation: |
+    `C()` calls `type.__call__`, which calls `C.__new__(C)`, and then calls `__init__` **only if the returned object is an instance of `C`**. `42` isn't, so `__init__` is skipped, nothing is printed, and `x` is simply `42`. Python doesn't enforce a return type for `__new__`.
+
+    This is why `__new__` is the hook for immutable types (`int`, `tuple` subclasses), singletons/caches and factories, while `__init__` initialises an object that already exists. Reference: data model, `object.__new__`.
+
+- id: py-dm-010
+  topic: python
+  subtopic: Data model
+  difficulty: medium
+  type: single
+  tags: [hash, eq, contract]
+  prompt: Which rule must `__hash__` satisfy for objects to work correctly as dict keys and set members?
+  choices:
+    - { id: a, text: "Objects that compare equal must have the same hash" }
+    - { id: b, text: "Objects with the same hash must compare equal" }
+    - { id: c, text: "The hash must be unique per object" }
+    - { id: d, text: "The hash must be stable across interpreter runs" }
+  answer: a
+  explanation: |
+    The only requirement (data model, `object.__hash__`) is **`a == b` implies `hash(a) == hash(b)`**, and the hash must not change while the object is in a hash table. The converse need not hold: collisions between unequal objects are allowed and handled by comparing with `==`.
+
+    Hashes are explicitly **not** stable across runs for `str`/`bytes`, because hash randomization (`PYTHONHASHSEED`) is enabled by default to resist collision attacks.
+
+- id: py-dm-011
+  topic: python
+  subtopic: Data model
+  difficulty: easy
+  type: short
+  tags: [repr, str]
+  prompt: What is the difference between `__repr__` and `__str__`, and which would you implement first for a new class?
+  reference: |
+    `__repr__` gives an unambiguous, developer-facing representation. It's used by `repr()`, the REPL, debuggers, logging of containers and f-string `!r`, and ideally looks like a constructor call that would recreate the object (`Point(x=1, y=2)`). `__str__` gives a readable, user-facing form, used by `str()`, `print()` and `format()`. If only `__repr__` is defined, `str()` falls back to it, but not vice versa, so implement `__repr__` first. Containers show their elements' `repr`.
+  keyPoints:
+    - "__repr__: unambiguous, for developers; ideally eval-able / constructor-like"
+    - "__str__: readable, for end users; used by print() and str()"
+    - str() falls back to __repr__ when __str__ is not defined (not the other way round)
+    - Containers format their elements with repr
+    - Implement __repr__ first
+  explanation: |
+    The fallback direction and "containers use repr" are the points candidates most often miss. `dataclasses` and `namedtuple` generate a good `__repr__` automatically, which is worth mentioning.
+
+- id: py-dm-012
+  topic: python
+  subtopic: Operator dispatch
+  difficulty: hard
+  type: short
+  tags: [operators, notimplemented, radd]
+  prompt: Walk through exactly what Python does to evaluate `a + b` when `a` and `b` are instances of user-defined classes. Where does `NotImplemented` come in, and how is it different from raising `NotImplementedError`?
+  reference: |
+    Python looks up `__add__` on `type(a)` (special methods are looked up on the type) and calls `type(a).__add__(a, b)`. If that method doesn't exist or returns the `NotImplemented` singleton, it tries `type(b).__radd__(b, a)`. If that is also missing or returns `NotImplemented`, it raises `TypeError: unsupported operand type(s)`. Exception: if `type(b)` is a subclass of `type(a)` and overrides `__radd__`, the reflected method is tried first. The reflected method is also skipped when both operands have the same type. `NotImplemented` is a return value meaning "I don't know how to handle this operand, let the other side try". Raising `NotImplementedError` is an exception (used for abstract methods); it propagates immediately and prevents the fallback.
+  keyPoints:
+    - Calls type(a).__add__(a, b) first; special methods are looked up on the type
+    - Returning NotImplemented triggers the reflected type(b).__radd__(b, a)
+    - TypeError if both sides return NotImplemented or are missing
+    - "Subclass rule: a right operand whose type is a subclass overriding __radd__ goes first"
+    - NotImplemented is a returned sentinel; NotImplementedError is an exception that stops dispatch
+  explanation: |
+    Reference: data model, "Emulating numeric types", and the `NotImplemented` entry in "Built-in constants". Bonus points for mentioning that `+=` first tries `__iadd__`, and that in 3.14 using `NotImplemented` in a boolean context raises `TypeError`.
+
+- id: py-dm-013
+  topic: python
+  subtopic: Attribute access
+  difficulty: hard
+  type: short
+  tags: [getattr, getattribute, attributes]
+  prompt: Compare `__getattr__` and `__getattribute__`. When is each called, and what is the classic bug when overriding `__getattribute__`?
+  reference: |
+    `__getattribute__` is called on every attribute access (`obj.name`); `object.__getattribute__` implements the normal lookup: data descriptors on the type, then the instance `__dict__`, then non-data descriptors and class attributes. `__getattr__` is called only when that normal lookup raises `AttributeError`, so it's a fallback for missing attributes (proxies, lazy attributes, delegation). The classic bug: inside `__getattribute__`, accessing `self.something` calls `__getattribute__` again, causing infinite recursion. You must delegate with `object.__getattribute__(self, name)` or `super().__getattribute__(name)`. Implicit special-method lookups (`len(obj)`, operators) bypass both.
+  keyPoints:
+    - __getattribute__ runs for every attribute access
+    - __getattr__ runs only after normal lookup fails with AttributeError
+    - Overriding __getattribute__ and touching self.attr inside it recurses infinitely; delegate to object.__getattribute__ / super()
+    - Typical uses of __getattr__ are proxies/delegation and lazy or computed attributes
+    - Implicit special-method lookup bypasses both hooks
+  explanation: |
+    A good follow-up: `__getattr__` that raises something other than `AttributeError` breaks `hasattr()` and `getattr(obj, name, default)`, which both rely on `AttributeError`.
+
+- id: py-dm-014
+  topic: python
+  subtopic: Data model
+  difficulty: medium
+  type: short
+  tags: [protocols, sequence, collections-abc]
+  prompt: You want a class that behaves like a read-only sequence, supporting `len()`, indexing, slicing, iteration, `in` and `reversed()`. What is the least you need to write, and how can the standard library help?
+  reference: |
+    Implement `__len__` and `__getitem__` (handling both ints and `slice` objects, and raising `IndexError` for out-of-range indexes). With just those two, iteration and `in` already work through the sequence-protocol fallback, and `reversed()` works because it uses `__len__` and `__getitem__`. Better: subclass `collections.abc.Sequence`. It requires exactly `__getitem__` and `__len__` and provides mixin implementations of `__contains__`, `__iter__`, `__reversed__`, `index` and `count`, and it makes `isinstance(obj, Sequence)` true.
+  keyPoints:
+    - __len__ and __getitem__ are the core
+    - __getitem__ must handle slice objects and raise IndexError at the end
+    - Iteration and `in` fall back to __getitem__ when __iter__/__contains__ are missing
+    - collections.abc.Sequence supplies __iter__, __contains__, __reversed__, index, count as mixins
+    - Registering or inheriting from the ABC makes isinstance checks work
+  explanation: |
+    See the `collections.abc` table of "abstract methods" vs "mixin methods". Candidates who implement `__iter__` by hand and forget slicing or `IndexError` show they haven't used the protocol much.
+
+- id: py-dm-015
+  topic: python
+  subtopic: Operator dispatch
+  difficulty: hard
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [eq, ne, notimplemented, comparisons]
+  prompt: What does this program print?
+  code: |
+    class A:
+        def __eq__(self, other):
+            return NotImplemented
+
+    a, b = A(), A()
+    print(a == a, a == b, a != b)
+  answer: { kind: output, output: "True False True" }
+  explanation: |
+    For `==`, Python tries `a.__eq__(b)` and then the reflected `b.__eq__(a)`. When both return `NotImplemented`, `==` and `!=` don't raise (unlike `<` and the other orderings); they **fall back to identity**: `a == b` becomes `a is b`. So `a == a` is `True` and `a == b` is `False`.
+
+    `!=` uses `object.__ne__`, which calls `__eq__` and inverts the result **unless it is `NotImplemented`**, in which case `NotImplemented` is passed on. The identity fallback then gives `a is not b`, which is `True`.
+
+    Reference: data model, "Rich comparison methods", and "Expressions → Value comparisons" (the default behaviour for equality comparison is based on identity).

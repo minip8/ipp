@@ -1,0 +1,17 @@
+slug: letter-combinations-of-a-phone-number
+title: Letter Combinations of a Phone Number
+difficulty: easy
+tags: [backtracking, string]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: letterCombinations
+      params:
+        - { name: digits, type: string }
+      returns: { list: string }
+      compare: unordered
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 17)
+  url: https://leetcode.com/problems/letter-combinations-of-a-phone-number/

@@ -1,0 +1,17 @@
+slug: generate-parentheses
+title: Generate Parentheses
+difficulty: medium
+tags: [backtracking, string]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: generateParenthesis
+      params:
+        - { name: n, type: int }
+      returns: { list: string }
+      compare: unordered
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 22)
+  url: https://leetcode.com/problems/generate-parentheses/

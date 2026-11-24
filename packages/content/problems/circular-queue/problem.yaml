@@ -1,0 +1,33 @@
+slug: circular-queue
+title: Circular Queue (Ring Buffer)
+difficulty: easy
+tags: [design, queue, array]
+signature:
+  className: CircularQueue
+  kind: design
+  ctorParams:
+    - { name: capacity, type: int }
+  methods:
+    - name: enqueue
+      params:
+        - { name: value, type: int }
+      returns: bool
+    - name: dequeue
+      params: []
+      returns: bool
+    - name: front
+      params: []
+      returns: int
+    - name: rear
+      params: []
+      returns: int
+    - name: isEmpty
+      params: []
+      returns: bool
+    - name: isFull
+      params: []
+      returns: bool
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Design Circular Queue (LeetCode 622); ring buffers are a staple of low-latency C++ interviews
+  url: https://leetcode.com/problems/design-circular-queue/

@@ -1,0 +1,16 @@
+slug: sqrt-x
+title: Integer Square Root
+difficulty: easy
+tags: [math, binary-search]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: mySqrt
+      params:
+        - { name: x, type: long }
+      returns: long
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 69 "Sqrt(x)", extended to 64-bit inputs)
+  url: https://leetcode.com/problems/sqrtx/

@@ -1,0 +1,16 @@
+slug: climbing-stairs
+title: Climbing Stairs
+difficulty: easy
+tags: [dynamic-programming, math]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: climbStairs
+      params:
+        - { name: n, type: int }
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 70)
+  url: https://leetcode.com/problems/climbing-stairs/

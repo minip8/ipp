@@ -1,0 +1,26 @@
+slug: stock-price-fluctuation
+title: Stock Price Fluctuation
+difficulty: medium
+tags: [design, heap, hash-table, ordered-set]
+signature:
+  className: StockPrice
+  kind: design
+  methods:
+    - name: update
+      params:
+        - { name: timestamp, type: int }
+        - { name: price, type: int }
+      returns: void
+    - name: current
+      params: []
+      returns: int
+    - name: maximum
+      params: []
+      returns: int
+    - name: minimum
+      params: []
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Stock Price Fluctuation (LeetCode 2034)
+  url: https://leetcode.com/problems/stock-price-fluctuation/

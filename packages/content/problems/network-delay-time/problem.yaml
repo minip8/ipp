@@ -1,0 +1,18 @@
+slug: network-delay-time
+title: Network Delay Time
+difficulty: medium
+tags: [graph, shortest-path, dijkstra, heap]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: networkDelayTime
+      params:
+        - { name: times, type: { array: { array: int } } }
+        - { name: n, type: int }
+        - { name: k, type: int }
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 743)
+  url: https://leetcode.com/problems/network-delay-time/

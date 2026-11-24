@@ -1,0 +1,19 @@
+[package]
+name = "ipp-judge-sandbox"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Hardened per-job Docker containers driven through the in-sandbox supervisor (ipp-run)"
+
+[dependencies]
+anyhow.workspace = true
+bollard.workspace = true
+bytes.workspace = true
+futures-util.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tar.workspace = true
+tokio.workspace = true
+tracing.workspace = true

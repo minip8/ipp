@@ -1,0 +1,17 @@
+slug: pacific-atlantic-water-flow
+title: Pacific Atlantic Water Flow
+difficulty: medium
+tags: [graph, bfs, dfs, matrix]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: pacificAtlantic
+      params:
+        - { name: heights, type: { array: { array: int } } }
+      returns: { list: { list: int } }
+      compare: unordered
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 417; Blind 75)
+  url: https://leetcode.com/problems/pacific-atlantic-water-flow/

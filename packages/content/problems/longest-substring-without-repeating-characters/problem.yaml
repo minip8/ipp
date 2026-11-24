@@ -1,0 +1,16 @@
+slug: longest-substring-without-repeating-characters
+title: Longest Substring Without Repeating Characters
+difficulty: medium
+tags: [string, hash-table, sliding-window]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: lengthOfLongestSubstring
+      params:
+        - { name: s, type: string }
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (Blind 75; LeetCode 3)
+  url: https://leetcode.com/problems/longest-substring-without-repeating-characters/

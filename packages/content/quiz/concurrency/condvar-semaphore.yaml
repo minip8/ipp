@@ -1,0 +1,346 @@
+# Condition variables, spurious and lost wakeups, monitors, semaphores, latches and barriers.
+
+- id: conc-cv-001
+  topic: concurrency
+  subtopic: Condition variables
+  difficulty: easy
+  type: single
+  prompt: |
+    Why must a thread waiting on a condition variable re-check its condition in a loop
+    (`while (!ready) cv.wait(lk);`, or equivalently `cv.wait(lk, pred)`) rather than with an `if`?
+  choices:
+    - { id: a, text: "Because wait() may return without any notification (a spurious wakeup), and because another thread may have consumed the state change between the notify and this thread reacquiring the mutex" }
+    - { id: b, text: "Because wait() does not reacquire the mutex before returning" }
+    - { id: c, text: "Because notify_one() always wakes every waiter" }
+    - { id: d, text: "Only for performance: the loop avoids a context switch" }
+  answer: a
+  explanation: |
+    Two separate reasons:
+    1. **Spurious wakeups**: the C++ and POSIX specs both allow `wait` to return without a notify
+       (it simplifies efficient implementations, e.g. on signals or racing futex wakes).
+    2. **Stolen wakeups (Mesa semantics)**: a notify only makes the waiter runnable. Before it gets the
+       mutex back, another thread can run, take the item, and make the condition false again.
+
+    `wait` *does* reacquire the mutex before returning (b), and `notify_one` wakes at most one waiter
+    (c). The predicate overload `cv.wait(lk, pred)` is literally `while (!pred()) wait(lk);`.
+  tags: [condition-variable, spurious-wakeup, mesa]
+  source: { name: "cppreference — std::condition_variable::wait", url: "https://en.cppreference.com/w/cpp/thread/condition_variable/wait" }
+
+- id: conc-cv-002
+  topic: concurrency
+  subtopic: Condition variables
+  difficulty: medium
+  type: short
+  prompt: |
+    What is a *lost wakeup* with condition variables? Show how it happens and what prevents it.
+  reference: |
+    A lost wakeup happens when the notification is sent while the waiter is not yet waiting, so it is
+    missed and the waiter then sleeps forever (or until some unrelated notify).
+
+    Classic buggy sequence: the consumer checks `ready` (false), *then* the producer sets
+    `ready = true` and calls `notify_one()` (nobody is waiting yet, so the notify does nothing), and
+    *then* the consumer calls `wait()` and blocks indefinitely.
+
+    Prevention is the protocol around the condition variable:
+    - The shared state (`ready`) is modified **while holding the mutex**, and the waiter checks it under
+      the same mutex.
+    - `wait()` atomically releases the mutex and starts waiting, so there is no window between the
+      check and the sleep in which the producer could modify state and notify.
+    - Always wait with a predicate, so if the state was already set the waiter never blocks.
+
+    Notably, making `ready` an atomic but setting it without the mutex does *not* fix it: the store and
+    notify can still fall into the window between the waiter's check and its wait.
+  keyPoints:
+    - "Notification sent before the waiter blocks is not remembered; the waiter sleeps forever"
+    - "Modify the shared predicate state while holding the mutex"
+    - "wait() atomically unlocks and blocks, closing the check-then-sleep window"
+    - "Always check the predicate (under the lock) before waiting"
+    - "An atomic flag modified outside the mutex still permits lost wakeups"
+  explanation: |
+    The essential point is the window between "check the condition" and "go to sleep". The
+    mutex-plus-predicate protocol exists to close that window: `wait()` releases the mutex and enqueues
+    the thread atomically with respect to other holders of the mutex, so a notifier that must take the
+    mutex to change state cannot slip in between.
+  tags: [condition-variable, lost-wakeup]
+
+- id: conc-cv-003
+  topic: concurrency
+  subtopic: Condition variables
+  difficulty: hard
+  type: single
+  prompt: |
+    Consider this consumer/producer pair. `ready` is `std::atomic<bool>`, initially false.
+
+    ```cpp
+    // consumer
+    std::unique_lock lk(m);
+    cv.wait(lk, [] { return ready.load(); });
+
+    // producer (does NOT lock m)
+    ready.store(true);
+    cv.notify_one();
+    ```
+
+    What is the problem?
+  choices:
+    - { id: a, text: "None; ready is atomic so there is no data race and the wakeup is guaranteed" }
+    - { id: b, text: "The consumer can evaluate the predicate as false, then the producer stores and notifies before the consumer has started blocking, so the notify is lost and the consumer may wait forever" }
+    - { id: c, text: "It is undefined behaviour because notify_one must be called while holding the mutex" }
+    - { id: d, text: "The consumer may see ready == true but return from wait without the mutex locked" }
+  answer: b
+  explanation: |
+    There is no data race (ready is atomic), but there is a lost-wakeup race. Inside `wait(lk, pred)`
+    the consumer checks the predicate while holding `m` and, if false, calls `wait(lk)` which unlocks
+    and blocks atomically. Because the producer never takes `m`, its store and notify can land in the
+    gap between the predicate check and the block, and then the consumer sleeps despite `ready` being
+    true.
+
+    cppreference states this explicitly: even if the shared variable is atomic, it must be modified
+    while owning the mutex to correctly publish the modification to the waiting thread. The fix is
+    `{ std::lock_guard g(m); ready = true; } cv.notify_one();`. Calling `notify_one` without holding
+    the lock is legal (c is wrong); only the *modification* must happen under the mutex.
+  tags: [condition-variable, lost-wakeup, atomics]
+  source: { name: "cppreference — std::condition_variable", url: "https://en.cppreference.com/w/cpp/thread/condition_variable" }
+
+- id: conc-cv-004
+  topic: concurrency
+  subtopic: Monitors
+  difficulty: medium
+  type: single
+  prompt: |
+    What distinguishes *Hoare* monitor semantics from *Mesa* semantics, which pthreads, C++, Java and
+    Python all use?
+  choices:
+    - { id: a, text: "Under Hoare semantics the signalled thread runs immediately with the monitor handed to it, so the condition is guaranteed true when it resumes; under Mesa semantics signalling just makes the waiter runnable, so it must re-check the condition" }
+    - { id: b, text: "Hoare monitors allow spurious wakeups; Mesa monitors forbid them" }
+    - { id: c, text: "Mesa monitors wake all waiters on every signal; Hoare monitors wake one" }
+    - { id: d, text: "Hoare semantics require busy-waiting; Mesa semantics use sleeping" }
+  answer: a
+  explanation: |
+    With Hoare's original definition, `signal` transfers the monitor directly to a waiter, which runs
+    at once, so the state it waited for still holds. This needs extra context switches and is rarely
+    implemented. Mesa (from the Mesa language at Xerox PARC) made `signal` a hint: the waiter is moved
+    to the ready queue and competes for the lock later, by which time the condition may be false
+    again. That is why every mainstream API says "wait in a loop". Neither model is defined in terms of
+    busy-waiting, and both have a separate broadcast/notify_all operation.
+  tags: [monitor, mesa, hoare, condition-variable]
+  source: { name: "Lampson & Redell, Experience with Processes and Monitors in Mesa (1980)" }
+
+- id: conc-cv-005
+  topic: concurrency
+  subtopic: Condition variables
+  difficulty: medium
+  type: single
+  prompt: |
+    Should `cv.notify_one()` be called while still holding the mutex, or after unlocking it?
+  choices:
+    - { id: a, text: "It must be called while holding the mutex, otherwise the behaviour is undefined" }
+    - { id: b, text: "It must be called after unlocking, otherwise the waiter deadlocks" }
+    - { id: c, text: "Both are correct as long as the shared state was modified under the mutex; notifying after unlocking can avoid the woken thread immediately blocking on the still-held mutex" }
+    - { id: d, text: "It does not matter because notify_one is a no-op when nobody is waiting, and the waiter always rechecks" }
+  answer: c
+  explanation: |
+    Correctness requires that the *state change* happen under the mutex. The notify itself may be
+    issued either way. Notifying after unlocking is often slightly more efficient: otherwise the woken
+    thread may wake only to block again on the mutex the notifier still holds ("hurry up and wait"),
+    though some implementations optimise this with wait morphing.
+
+    One case favours notifying under the lock: if the waiter may destroy the condition variable as
+    soon as it sees the state change (e.g. a stack-allocated cv in a one-shot handshake), notifying
+    after unlocking can touch a destroyed object. Option d is half right but ignores the requirement on
+    the state change.
+  tags: [condition-variable, notify]
+
+- id: conc-cv-006
+  topic: concurrency
+  subtopic: Semaphores
+  difficulty: medium
+  type: multiple
+  prompt: |
+    Which statements correctly contrast a counting semaphore with a mutex? (Select all that apply.)
+  choices:
+    - { id: a, text: "A mutex has an owner: only the thread that locked it may unlock it; a semaphore has no owner, so one thread can acquire and another release" }
+    - { id: b, text: "A semaphore initialised to N admits up to N concurrent holders, e.g. to bound concurrent connections" }
+    - { id: c, text: "A binary semaphore and a mutex are interchangeable in every respect" }
+    - { id: d, text: "Semaphores are useful for signalling between threads (one thread releases to wake another), which mutexes cannot do" }
+    - { id: e, text: "Releasing a std::counting_semaphore beyond its max() is fine; the count simply saturates" }
+  answer: [a, b, d]
+  explanation: |
+    - (a) Ownership is the key difference. `std::mutex::unlock` from a non-owning thread is undefined
+      behaviour; a semaphore's `release` can come from any thread.
+    - (b) Correct: counting semaphores model a pool of N permits.
+    - (c) False: lacking ownership, a binary semaphore cannot support priority inheritance, recursive
+      locking or owner-based error checking, and it permits the signalling pattern in (d).
+    - (d) Correct: e.g. a binary semaphore initialised to 0 that the producer releases to wake a consumer.
+    - (e) False: for `std::counting_semaphore`, `release(update)` requires `update <= max() - counter`;
+      violating that precondition is undefined behaviour, not saturation.
+  tags: [semaphore, mutex, ownership]
+  source: { name: "cppreference — std::counting_semaphore", url: "https://en.cppreference.com/w/cpp/thread/counting_semaphore" }
+
+- id: conc-cv-007
+  topic: concurrency
+  subtopic: Condition variables
+  difficulty: medium
+  type: short
+  prompt: |
+    Implement (in C++ or clear pseudocode) a bounded blocking queue with `push` that blocks when full
+    and `pop` that blocks when empty. Explain why you use the primitives you do.
+  reference: |
+    ```cpp
+    template <class T> class BoundedQueue {
+        std::mutex m_;
+        std::condition_variable not_full_, not_empty_;
+        std::deque<T> q_;
+        size_t cap_;
+    public:
+        explicit BoundedQueue(size_t cap) : cap_(cap) {}
+        void push(T v) {
+            std::unique_lock lk(m_);
+            not_full_.wait(lk, [&] { return q_.size() < cap_; });
+            q_.push_back(std::move(v));
+            lk.unlock();
+            not_empty_.notify_one();
+        }
+        T pop() {
+            std::unique_lock lk(m_);
+            not_empty_.wait(lk, [&] { return !q_.empty(); });
+            T v = std::move(q_.front());
+            q_.pop_front();
+            lk.unlock();
+            not_full_.notify_one();
+            return v;
+        }
+    };
+    ```
+    One mutex protects the deque and size. Two condition variables separate the two conditions, so a
+    push wakes only consumers and a pop wakes only producers (with a single cv you would need
+    `notify_all` to avoid waking the wrong kind of waiter and deadlocking). Predicated waits handle
+    spurious and stolen wakeups. Notifying after unlocking avoids waking a thread straight into a held
+    lock. A production version adds shutdown (a `closed` flag checked in both predicates, with
+    `notify_all` on close) and possibly timed `try_push`/`try_pop`. An alternative is two counting
+    semaphores (free slots, filled slots) plus a mutex.
+  keyPoints:
+    - "One mutex guards the container; all checks and modifications are under it"
+    - "Two condition variables (not_full, not_empty), or a single one with notify_all"
+    - "Waits use predicates / while loops for spurious and stolen wakeups"
+    - "push notifies consumers, pop notifies producers"
+    - "Mentions shutdown/close handling or the two-semaphore alternative"
+  explanation: |
+    Interviewers check for: the predicate loop, the right number of condition variables (or
+    `notify_all`), all state under one mutex, and not holding the lock while doing slow work. Strong
+    answers mention shutdown semantics, since a queue that cannot be closed leaves threads blocked
+    forever at exit.
+  tags: [bounded-queue, producer-consumer, condition-variable]
+
+- id: conc-cv-008
+  topic: concurrency
+  subtopic: Semaphores
+  difficulty: easy
+  type: single
+  prompt: |
+    A service may hold at most 8 concurrent connections to a database. Which C++20 primitive maps
+    most directly onto that requirement?
+  choices:
+    - { id: a, text: "std::counting_semaphore<8> initialised to 8: acquire() before using a connection, release() after" }
+    - { id: b, text: "std::mutex, locked around every query" }
+    - { id: c, text: "std::latch initialised to 8" }
+    - { id: d, text: "std::barrier with 8 participants" }
+  answer: a
+  explanation: |
+    A counting semaphore is a pool of permits: `acquire()` decrements (blocking at zero), `release()`
+    increments. Initialised to 8 it admits at most 8 holders at once. A mutex admits one. A latch is a
+    single-use countdown that threads wait to reach zero; it cannot be "given back". A barrier makes a
+    group of threads wait for each other at a phase boundary, which is unrelated to limiting concurrency.
+  tags: [semaphore, cpp20, resource-limit]
+
+- id: conc-cv-009
+  topic: concurrency
+  subtopic: Latches and barriers
+  difficulty: medium
+  type: single
+  prompt: |
+    What is the key difference between C++20 `std::latch` and `std::barrier`?
+  choices:
+    - { id: a, text: "A latch is single-use (counts down to zero once); a barrier is reusable across phases and can run a completion function at the end of each phase" }
+    - { id: b, text: "A latch can be counted down by only one thread; a barrier by many" }
+    - { id: c, text: "A latch blocks on count_down(); a barrier never blocks" }
+    - { id: d, text: "A latch is implemented with a spinlock; a barrier with a mutex" }
+  answer: a
+  explanation: |
+    `std::latch` is a one-shot countdown: any threads may `count_down()`, and `wait()` blocks until the
+    counter reaches zero. It cannot be reset (like a single "start gun" or "all workers initialised"
+    signal). `std::barrier` is cyclic: each phase, the expected number of participants
+    `arrive_and_wait()`, an optional completion function runs once, and the barrier resets for the
+    next phase, which suits iterative parallel algorithms. `count_down` on a latch does not block
+    (`arrive_and_wait` does). Implementation strategies are not specified.
+  tags: [latch, barrier, cpp20]
+  source: { name: "cppreference — std::barrier", url: "https://en.cppreference.com/w/cpp/thread/barrier" }
+
+- id: conc-cv-010
+  topic: concurrency
+  subtopic: Condition variables
+  difficulty: hard
+  type: short
+  prompt: |
+    You use `notify_one` in a design where both producers and consumers wait on the **same** condition
+    variable (e.g. a bounded buffer with one cv). Explain how this can deadlock and the fixes.
+  reference: |
+    With one cv, the waiters are a mix of producers (waiting for space) and consumers (waiting for
+    data). `notify_one` wakes an arbitrary waiter. Scenario with capacity 1, consumers C1 and C2,
+    producers P1 and P2: both consumers wait on an empty buffer. P1 inserts and its notify wakes C1.
+    Before C1 runs, P1 and P2 both try to insert, find the buffer full, and wait. C1 removes the item
+    and its `notify_one` wakes C2 (another consumer) instead of a producer. C1 loops, finds the buffer
+    empty and waits; C2 finds it empty and waits. Now all four threads sleep, producers waiting for
+    space that exists: the notification went to the wrong kind of waiter and was effectively lost.
+
+    Fixes: use two condition variables (not_full for producers, not_empty for consumers) so a
+    notification always reaches the right kind of waiter; or use `notify_all` on the single cv (correct
+    but causes a thundering herd). Python's `threading.Condition` and Java's intrinsic monitors with a
+    single wait set have exactly this hazard, which is why `java.util.concurrent` locks offer multiple
+    `Condition` objects per lock.
+  keyPoints:
+    - "With one cv, notify_one may wake a waiter of the wrong kind"
+    - "The wrongly woken thread re-waits, so the notification is effectively lost"
+    - "All threads can end up waiting: a deadlock without a lock cycle"
+    - "Fix with separate condition variables per condition"
+    - "Or use notify_all on the shared cv (correct but thundering herd)"
+  explanation: |
+    The pitfall is subtle because every individual wait and notify looks correct. The general rule:
+    `notify_one` is safe only when every waiter on that condition variable is waiting for the same
+    condition and any one of them can make progress. Otherwise use separate condition variables or
+    `notify_all`.
+  tags: [condition-variable, notify-one, deadlock, bounded-buffer]
+
+- id: conc-cv-011
+  topic: concurrency
+  subtopic: Semaphores
+  difficulty: hard
+  type: single
+  prompt: |
+    A bounded buffer uses three semaphores: `empty` (initially N), `full` (initially 0), and a binary
+    semaphore `mutex` (initially 1). The producer is written as:
+
+    ```text
+    wait(mutex)
+    wait(empty)
+    insert item
+    signal(mutex)
+    signal(full)
+    ```
+
+    and the consumer as `wait(full); wait(mutex); remove; signal(mutex); signal(empty)`. What goes wrong?
+  choices:
+    - { id: a, text: "Nothing; the order of the two waits does not matter" }
+    - { id: b, text: "When the buffer is full, a producer blocks on empty while holding mutex, so no consumer can enter to free a slot: deadlock" }
+    - { id: c, text: "Items can be consumed twice" }
+    - { id: d, text: "The consumer can underflow full below zero" }
+  answer: b
+  explanation: |
+    The producer takes the mutex *before* checking for a free slot. If the buffer is full it sleeps on
+    `empty` while still holding `mutex`. Every consumer then blocks on `wait(mutex)` and can never
+    signal `empty`: a deadlock. The correct producer waits on `empty` first and only then takes the
+    mutex, the general rule being: never block waiting for a resource while holding the lock that
+    others need to provide it. Semaphores never go below zero (a wait blocks instead), so d is wrong,
+    and with correct ordering the mutex prevents double consumption.
+  tags: [semaphore, deadlock, producer-consumer, bounded-buffer]
+  source: { name: "Silberschatz et al., Operating System Concepts, bounded-buffer problem (idea)" }

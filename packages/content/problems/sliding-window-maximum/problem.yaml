@@ -1,0 +1,17 @@
+slug: sliding-window-maximum
+title: Sliding Window Maximum
+difficulty: hard
+tags: [array, sliding-window, monotonic-queue, deque]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: maxSlidingWindow
+      params:
+        - { name: nums, type: { array: int } }
+        - { name: k, type: int }
+      returns: { array: int }
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 239; NeetCode 150); a staple of quant/low-latency interviews ("rolling maximum over the last N ticks in O(n)")
+  url: https://leetcode.com/problems/sliding-window-maximum/

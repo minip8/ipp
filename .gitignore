@@ -1,0 +1,43 @@
+# Secrets and local configuration. Only the *.example files are committed.
+.env
+.env.*
+!.env.example
+infra/deploy/.env.prod
+*.pem
+
+# Dependencies and build output
+node_modules/
+target/
+dist/
+.next/
+.next-e2e/
+.turbo/
+*.tsbuildinfo
+next-env.d.ts
+
+# Generated at dev/build time (apps/web/scripts/copy-monaco.mjs)
+apps/web/public/monaco/
+
+# Test output
+coverage/
+playwright-report/
+test-results/
+blob-report/
+apps/web/e2e/.screens/
+
+# Python caches (content generators and checkers)
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Logs and local tooling
+*.log
+.pnpm-install.lock
+.claude/settings.local.json
+
+# Editors and OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db

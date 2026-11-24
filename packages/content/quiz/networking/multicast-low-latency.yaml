@@ -1,0 +1,413 @@
+# IP multicast (market data) and low-latency / kernel-bypass networking.
+- id: net-mcast-001
+  topic: networking
+  subtopic: Multicast
+  difficulty: easy
+  type: single
+  prompt: |
+    Which IPv4 range is reserved for multicast group addresses?
+  choices:
+    - { id: a, text: "224.0.0.0/4 (224.0.0.0–239.255.255.255)" }
+    - { id: b, text: "240.0.0.0/4" }
+    - { id: c, text: "169.254.0.0/16" }
+    - { id: d, text: "192.0.2.0/24" }
+  answer: a
+  explanation: |
+    The former class D, **224.0.0.0/4**, is multicast. Notable sub-ranges: 224.0.0.0/24 is link-local
+    control traffic (OSPF, IGMP, mDNS on 224.0.0.251) and is never forwarded by routers; 232.0.0.0/8 is
+    source-specific multicast; 239.0.0.0/8 is administratively scoped (RFC 2365), used inside
+    organisations much like private unicast space. 240/4 is reserved ("class E"), 169.254/16 is
+    link-local unicast, and 192.0.2.0/24 is documentation space (TEST-NET-1).
+  tags: [multicast, ipv4]
+
+- id: net-mcast-002
+  topic: networking
+  subtopic: Multicast
+  difficulty: medium
+  type: single
+  prompt: |
+    A Linux process wants to receive UDP multicast market data on group 239.1.1.1 port 30001. Besides
+    creating and binding a UDP socket to port 30001, what must it do so the data actually reaches the
+    host?
+  choices:
+    - { id: a, text: "Nothing; multicast is delivered to all hosts on the LAN" }
+    - { id: b, text: "Join the group with setsockopt(IP_ADD_MEMBERSHIP) (or the protocol-independent MCAST_JOIN_GROUP), which makes the kernel program the NIC's multicast filter and send an IGMP membership report so snooping switches and multicast routers forward the group" }
+    - { id: c, text: "connect() the socket to 239.1.1.1" }
+    - { id: d, text: "Set SO_BROADCAST" }
+  answer: b
+  explanation: |
+    Joining is what makes the network deliver the stream. The kernel sends an **IGMP** report (IGMPv2/
+    v3; MLD for IPv6). Switches with **IGMP snooping** then forward the group to this port only, and
+    PIM routers pull the stream across L3 boundaries. Without snooping, switches flood multicast like
+    broadcast, which is choice a's misconception and a real problem on busy networks. connect()
+    restricts the peer address for unicast, and SO_BROADCAST is only needed to *send* broadcasts. For
+    source-specific multicast use IP_ADD_SOURCE_MEMBERSHIP (IGMPv3). On multi-homed hosts, specify the
+    interface explicitly.
+  tags: [multicast, igmp, sockets, market-data]
+
+- id: net-mcast-003
+  topic: networking
+  subtopic: Multicast
+  difficulty: hard
+  type: single
+  prompt: |
+    IPv4 multicast groups are mapped to Ethernet MAC addresses as `01:00:5e` followed by the low 23 bits
+    of the group address. What is a practical consequence?
+  choices:
+    - { id: a, text: "Each multicast group has a globally unique MAC address" }
+    - { id: b, text: "32 different IPv4 groups share each multicast MAC, so a NIC filter (and snooping switches that filter by MAC) can let in traffic for groups you didn't join, which the IP stack must then discard" }
+    - { id: c, text: "Multicast frames can't cross switches" }
+    - { id: d, text: "Only 2²³ multicast groups can exist in IPv4" }
+  answer: b
+  explanation: |
+    A group address has 28 significant bits (224/4), but only 23 fit in the MAC mapping. 5 bits are
+    lost, so 2⁵ = **32** groups map to each MAC. For example, 224.1.1.1 and 239.129.1.1 share
+    01:00:5e:01:01:01. Hardware filtering is therefore imprecise: the kernel must drop datagrams for
+    unjoined groups, which costs CPU on busy feed networks. Exchanges and firms plan group addresses to
+    avoid overlapping MACs. More than 2²³ groups can exist; they just share MACs.
+  tags: [multicast, ethernet, market-data]
+
+- id: net-mcast-004
+  topic: networking
+  subtopic: Market data
+  difficulty: hard
+  type: short
+  prompt: |
+    Exchanges usually publish market data as UDP multicast on two redundant feeds (A and B), each
+    message carrying a sequence number. Explain why UDP multicast is used, and how a feed handler gets
+    a correct, complete book from this design.
+  reference: |
+    Why multicast UDP: one packet from the exchange is copied by switches and routers to every
+    subscriber, so fan-out to hundreds of participants costs the publisher nothing per subscriber.
+    Everyone receives the data at (nearly) the same time, which is a fairness property. There's no
+    per-subscriber connection state and no retransmission or HOL delay, so latency is minimal and
+    predictable. TCP can't do one-to-many, and one slow TCP subscriber would apply backpressure.
+
+    Getting a correct book:
+    - **A/B arbitration**: both feeds carry identical, sequenced packets over physically separate
+      paths. The handler takes whichever copy of sequence number N arrives first and discards the
+      duplicate, so a loss on one line is usually covered by the other, and latency is the minimum of
+      the two.
+    - **Gap detection**: track the next expected sequence number per channel. If N+1 is missing on both
+      feeds after a short wait, there's a gap. Buffer later messages, or mark the book stale.
+    - **Recovery**: request the missing range from a **retransmission** service (usually TCP, rate
+      limited), or rebuild from a **snapshot / refresh** channel (periodic full book state stamped with
+      a sequence number), then apply buffered incremental messages after the snapshot's sequence
+      number.
+    - Detect resets and session changes, and use heartbeats to detect a silent feed. Size socket and
+      NIC buffers large enough, with fast receive paths, to avoid drops.
+  keyPoints:
+    - "Multicast gives one-to-many fan-out with no per-subscriber state, fair simultaneous delivery, low latency"
+    - "A/B arbitration: take the first copy of each sequence number, drop duplicates"
+    - "Sequence numbers allow gap detection per channel"
+    - "Recovery via retransmission request (often TCP) or snapshot/refresh feed, then replay buffered deltas"
+    - "Mentions heartbeats/stale detection or receive-buffer sizing to avoid drops"
+  explanation: |
+    Asked in nearly every trading-infrastructure interview, often as "a market data packet hits your
+    NIC: what happens next?"
+  tags: [multicast, market-data, trading, udp]
+
+- id: net-mcast-005
+  topic: networking
+  subtopic: Multicast
+  difficulty: medium
+  type: single
+  prompt: |
+    A test publisher sends multicast with a default-configured UDP socket. Receivers on the same subnet
+    get the data, but receivers behind a router (with multicast routing correctly configured) see
+    nothing. What's the most likely cause?
+  choices:
+    - { id: a, text: "Multicast can never cross routers" }
+    - { id: b, text: "The sender's IP_MULTICAST_TTL defaults to 1, so routers won't forward the packets beyond the local subnet" }
+    - { id: c, text: "IP_MULTICAST_LOOP is enabled" }
+    - { id: d, text: "The receivers need SO_BROADCAST" }
+  answer: b
+  explanation: |
+    ip(7): IP_MULTICAST_TTL "Set or read the time-to-live value of outgoing multicast packets for this
+    socket… The default is 1, which means that multicast packets don't leave the local network unless
+    the user program explicitly requests it." Raise it (e.g. to 16 or 32) to cross routers. Multicast
+    routing (PIM) does cross routers. IP_MULTICAST_LOOP only controls whether the sending host receives
+    its own packets (enabled by default on Linux).
+  tags: [multicast, sockets, ttl]
+  source: { name: "ip(7) Linux man page", url: "https://man7.org/linux/man-pages/man7/ip.7.html" }
+
+- id: net-mcast-006
+  topic: networking
+  subtopic: Multicast
+  difficulty: hard
+  type: single
+  prompt: |
+    A server has eth0 (management, default route) and eth1 (dedicated market-data network). The feed
+    handler joins 239.10.0.5 with `imr_interface = INADDR_ANY`, but receives nothing. tcpdump on eth1
+    shows no multicast traffic for that group. What's the most likely problem?
+  choices:
+    - { id: a, text: "The NIC on eth1 doesn't support multicast" }
+    - { id: b, text: "With INADDR_ANY the kernel picked the interface from the routing table (the default route via eth0), so the join and its IGMP report went out eth0; specify eth1's address or index when joining" }
+    - { id: c, text: "Multicast requires root privileges" }
+    - { id: d, text: "The socket must be bound to eth1's unicast IP address to receive multicast" }
+  answer: b
+  explanation: |
+    For IP_ADD_MEMBERSHIP, INADDR_ANY means "let the kernel choose an appropriate interface", which in
+    practice is the interface the route to the group points to: here the default route on eth0. The
+    feed switch on eth1 never hears an IGMP report, so it never forwards the group. Fix: pass eth1's
+    address in `imr_interface`, or its index in `ip_mreqn.imr_ifindex` / MCAST_JOIN_GROUP, or add a
+    route for 224.0.0.0/4 via eth1. Once traffic does arrive, the next trap is **reverse-path
+    filtering** dropping it if the *source* isn't routed via eth1. Binding to the unicast address would
+    actually stop multicast from being delivered; bind to the group address or INADDR_ANY plus the
+    port.
+  tags: [multicast, sockets, linux, market-data, debugging]
+
+- id: net-ll-001
+  topic: networking
+  subtopic: Kernel bypass and low latency
+  difficulty: hard
+  type: short
+  prompt: |
+    What is kernel-bypass networking, why do trading firms use it, and what do you give up? Name some
+    concrete technologies.
+  reference: |
+    Kernel bypass means the application reads and writes packets straight from NIC queues mapped into
+    user space, without the kernel network stack in the data path. Examples: **DPDK** (poll-mode
+    drivers), Solarflare/AMD **OpenOnload** (a user-space TCP/UDP stack behind the ordinary sockets
+    API) and **ef_vi** (raw frame-level access), Mellanox/NVIDIA **VMA** and RDMA verbs, Exablaze/Cisco
+    libexanic, and **AF_XDP** (a semi-bypass via XDP sockets). Some setups go further with FPGA NICs.
+
+    Why: the kernel path costs syscalls (mode switches), interrupts and softirq processing, data copies
+    between kernel and user buffers, socket locking, generic protocol processing and scheduler wakeups.
+    Altogether several microseconds, with heavy jitter. Bypass with **busy polling** on an isolated,
+    pinned core (no interrupts, no sleeping) cuts the receive path to a few hundred nanoseconds to a
+    couple of microseconds, and makes the tail much tighter.
+
+    Costs: cores spin at 100% even when idle. You lose (or must replace) the kernel's TCP/IP stack,
+    firewalling, routing, ARP handling and standard tools (tcpdump needs vendor equivalents). There's
+    vendor lock-in, special NICs and drivers, and more complex deployment and debugging. Security
+    isolation is weaker, since applications touch the hardware directly. And it only pays off when the
+    rest of the code path is equally tuned.
+  keyPoints:
+    - "Definition: user space accesses NIC rings directly, kernel stack not in the data path"
+    - "Avoids syscalls, interrupts, copies, context switches and scheduler wakeups"
+    - "Uses busy polling on isolated/pinned cores for low latency and low jitter"
+    - "Examples: DPDK, OpenOnload/ef_vi, VMA/RDMA, AF_XDP"
+    - "Trade-offs: burned cores, lost kernel features/tools, vendor lock-in, complexity"
+  explanation: |
+    Expect follow-ups on where the remaining latency goes (PCIe, NIC, serialisation) and on measuring
+    it with hardware timestamps.
+  tags: [kernel-bypass, low-latency, dpdk, onload, trading]
+
+- id: net-ll-002
+  topic: networking
+  subtopic: Kernel bypass and low latency
+  difficulty: medium
+  type: multiple
+  prompt: |
+    You must cut receive latency and jitter for a UDP feed **without** kernel bypass, on stock Linux.
+    Which changes help? Select all that apply.
+  choices:
+    - { id: a, text: "Busy polling (SO_BUSY_POLL / net.core.busy_poll) so the receiving thread polls the device queue instead of sleeping on an interrupt" }
+    - { id: b, text: "Reduce or disable NIC interrupt coalescing (ethtool -C) on the feed interface" }
+    - { id: c, text: "Pin the receiving thread to an isolated core on the NIC's NUMA node, and steer the queue's IRQ to a nearby core" }
+    - { id: d, text: "Enable LRO/GRO so packets are merged and reach the application sooner" }
+    - { id: e, text: "Increase SO_RCVBUF so each packet is processed faster" }
+  answer: [a, b, c]
+  explanation: |
+    - **a**: busy polling avoids the interrupt-to-wakeup path (the man page notes the extra CPU cost).
+    - **b**: coalescing deliberately delays interrupts to batch packets, trading latency for
+      throughput.
+    - **c**: CPU isolation (isolcpus/nohz_full), pinning and NUMA locality cut scheduler noise and
+      cross-socket memory traffic.
+    - **d** is wrong: LRO/GRO save CPU by *aggregating* packets, which can add delay and is often turned
+      off on latency-critical feed interfaces.
+    - **e** is wrong as stated: a bigger receive buffer prevents **drops** during bursts (important for
+      market data!) but doesn't make any individual packet faster.
+  tags: [low-latency, linux, tuning, busy-polling]
+
+- id: net-ll-003
+  topic: networking
+  subtopic: Kernel bypass and low latency
+  difficulty: easy
+  type: single
+  prompt: |
+    How long does it take just to **serialise** (clock onto the wire) a 1,500-byte frame on a
+    10 Gbit/s link?
+  choices:
+    - { id: a, text: "About 0.12 µs" }
+    - { id: b, text: "About 1.2 µs" }
+    - { id: c, text: "About 12 µs" }
+    - { id: d, text: "About 120 µs" }
+  answer: b
+  explanation: |
+    1,500 bytes × 8 = 12,000 bits; 12,000 / 10¹⁰ bit/s = 1.2 × 10⁻⁶ s = **1.2 µs**. (12 µs is the 1
+    Gbit/s figure.) A 64-byte order message takes only about 51 ns at 10G, which is one reason small
+    messages and faster links (25/40/100G) matter, and why store-and-forward hops, which pay
+    serialisation again at each hop, add up.
+  tags: [low-latency, serialization-delay, quantitative]
+
+- id: net-ll-004
+  topic: networking
+  subtopic: Kernel bypass and low latency
+  difficulty: medium
+  type: single
+  prompt: |
+    Roughly what is the one-way propagation delay over **1,000 km of optical fibre**?
+  choices:
+    - { id: a, text: "About 0.5 ms" }
+    - { id: b, text: "About 3.3 ms" }
+    - { id: c, text: "About 5 ms" }
+    - { id: d, text: "About 50 ms" }
+  answer: c
+  explanation: |
+    Light in fibre travels at about c/1.47 ≈ 2 × 10⁵ km/s, i.e. **~5 µs per km**, so 1,000 km ≈ 5 ms
+    one way (10 ms RTT) before any equipment delay. 3.3 ms is the vacuum speed of light (~3.3 µs/km),
+    which line-of-sight **microwave** and millimetre-wave links between trading venues approach; that's
+    why they beat fibre on routes such as Chicago–New Jersey, despite lower bandwidth and weather
+    sensitivity. Hollow-core fibre also gets close to c.
+  tags: [low-latency, propagation-delay, quantitative, trading]
+
+- id: net-ll-005
+  topic: networking
+  subtopic: Kernel bypass and low latency
+  difficulty: medium
+  type: single
+  prompt: |
+    You want to measure precisely when market-data packets arrive at the server. Which gives the most
+    accurate timestamp of when a packet actually arrived?
+  choices:
+    - { id: a, text: "Calling clock_gettime() right after recv() returns" }
+    - { id: b, text: "Hardware receive timestamps from the NIC (SO_TIMESTAMPING with hardware RX), with the NIC clock disciplined by PTP" }
+    - { id: c, text: "The timestamp in the exchange's message payload" }
+    - { id: d, text: "SO_TIMESTAMP, which records when the application read the packet" }
+  answer: b
+  explanation: |
+    A user-space clock read after recv() includes interrupt delay, stack processing, scheduling and
+    queueing, which is exactly the jitter you're trying to measure. **Hardware timestamps** are taken by
+    the NIC PHY/MAC as the frame arrives. With the NIC clock synchronised by PTP (IEEE 1588) they give
+    nanosecond-scale accuracy and are comparable across machines. SO_TIMESTAMP is a *software*
+    timestamp taken by the kernel on receive (not when the app reads), better than option a but still
+    after the interrupt path. The exchange's timestamp records when it *sent*, by its own clock.
+    Network taps with capture appliances are the other standard way.
+  tags: [low-latency, timestamping, ptp, measurement]
+
+- id: net-ll-006
+  topic: networking
+  subtopic: Market data
+  difficulty: medium
+  type: short
+  prompt: |
+    Trading systems typically take market data over UDP multicast but send orders to the exchange over
+    TCP. Why TCP for order entry, and how do firms keep TCP latency low on that path?
+  reference: |
+    Order entry is a point-to-point **session** with the exchange (FIX or a native binary protocol).
+    Every message matters, and order matters: a lost or reordered cancel or new-order is unacceptable.
+    TCP provides reliability, ordering and flow control, and session protocols add sequence numbers,
+    heartbeats and resend logic on top. Multicast is one-to-many and inherently unreliable, which suits
+    a broadcast data feed but not a private, acknowledged conversation.
+
+    Keeping TCP latency low:
+    - TCP_NODELAY, to avoid Nagle stalls.
+    - Connections established and warmed well before the market opens. The cwnd is grown and kept warm,
+      with no handshakes in the critical path. (Linux resets cwnd after idle unless
+      `tcp_slow_start_after_idle=0`.)
+    - Pre-built message templates, one write per message, busy polling.
+    - Kernel bypass: an OpenOnload-style user-space TCP, or FPGA TCP offload engines.
+    - Co-location with short cabling to the exchange.
+    - Making sure no retransmissions happen: clean links, enough buffers. A retransmission costs at
+      least an RTO, which is enormous at this scale.
+  keyPoints:
+    - "Order entry needs reliable, ordered, point-to-point session semantics: TCP fits, multicast doesn't"
+    - "Session protocol on top (FIX/native) adds sequence numbers, heartbeats, resend"
+    - "TCP_NODELAY; pre-established, warm connections; disable slow start after idle"
+    - "Kernel bypass / user-space TCP / FPGA offload, busy polling"
+    - "Avoid retransmissions and handshakes on the critical path"
+  explanation: |
+    Shows a candidate can match the transport to the semantics, not just "UDP fast, TCP slow".
+  tags: [trading, tcp, udp, multicast, low-latency]
+
+- id: net-ll-007
+  topic: networking
+  subtopic: Kernel bypass and low latency
+  difficulty: medium
+  type: single
+  prompt: |
+    What does **Receive Side Scaling (RSS)** on a multi-queue NIC do?
+  choices:
+    - { id: a, text: "Compresses received packets to save PCIe bandwidth" }
+    - { id: b, text: "Hashes each packet's flow tuple to pick one of several receive queues, each with its own interrupt that can be handled by a different CPU core, so packets of one flow stay on one queue" }
+    - { id: c, text: "Distributes packets of a single TCP flow round-robin across all cores to maximise parallelism" }
+    - { id: d, text: "Scales the TCP receive window automatically" }
+  answer: b
+  explanation: |
+    RSS computes a hash (typically Toeplitz) over the IP addresses and ports and uses an indirection
+    table to pick an RX queue. Spreading **flows** across queues and cores scales packet processing
+    while keeping each flow in order on one core. Spraying one flow across cores (choice c) would
+    reorder it. For low latency you tune this deliberately: steer the feed's flows to a specific queue
+    with ethtool ntuple filters or Flow Director, and pin that queue's IRQ near the consuming thread.
+    RPS/RFS are software equivalents. Window autotuning (choice d) is unrelated.
+  tags: [nic, rss, linux, low-latency]
+
+- id: net-ll-008
+  topic: networking
+  subtopic: Multicast
+  difficulty: medium
+  type: short
+  prompt: |
+    What is IGMP snooping, and what happens on a busy market-data LAN if it is disabled or the IGMP
+    querier is missing?
+  reference: |
+    IGMP snooping makes a layer-2 switch listen to IGMP membership reports and queries, and build a
+    table of which ports want which multicast groups. It then forwards each group only to those ports
+    (plus multicast router ports), instead of flooding it everywhere.
+
+    If snooping is disabled, the switch treats multicast like broadcast and floods every group to every
+    port in the VLAN. Hosts are overwhelmed with feeds they never joined, which wastes NIC, PCIe and CPU
+    time (imperfect MAC filtering makes this worse), and links can saturate.
+
+    If there's **no querier** (no router or switch sending periodic IGMP General Queries), hosts stop
+    re-sending reports after the initial join. Snooping entries time out after a few minutes and the
+    stream suddenly stops (or, depending on the switch, starts flooding). The classic symptom is "the
+    feed dies a few minutes after joining". The fix is to configure an IGMP querier on the VLAN, or
+    a multicast router running PIM.
+  keyPoints:
+    - "Switch learns group membership from IGMP reports and forwards groups only to interested ports"
+    - "Without snooping multicast floods every port in the VLAN"
+    - "Flooding overloads hosts and links; imperfect NIC MAC filtering adds CPU cost"
+    - "Without a querier, membership entries age out and the stream stops after minutes"
+    - "Fix: configure an IGMP querier (or PIM router)"
+  explanation: |
+    The missing-querier failure is a well-known real-world trap on trading networks.
+  tags: [multicast, igmp, switching, market-data]
+
+- id: net-ll-009
+  topic: networking
+  subtopic: Kernel bypass and low latency
+  difficulty: hard
+  type: short
+  prompt: |
+    A market-data handler shows UDP **drops** during bursts at the open, even though average load is
+    low. Where can packets be dropped between the wire and the application on Linux, how do you tell
+    which, and what are the fixes?
+  reference: |
+    Drop points and how to see them:
+    1. **NIC RX ring overflow**: the NIC can't DMA into a full ring because the host didn't replenish
+       it in time. Seen in `ethtool -S` (rx_missed / rx_no_buffer / fifo errors) and in `ip -s link`.
+       Fixes: bigger rings (`ethtool -G`), faster IRQ/softirq handling, more queues/RSS, busy polling.
+    2. **Softirq backlog / netdev budget**: `/proc/net/softnet_stat` drop and time_squeeze columns.
+       Fixes: tune netdev_budget and netdev_max_backlog; IRQ affinity.
+    3. **Socket receive buffer full**: the application doesn't read fast enough. Seen in `netstat -su` /
+       `nstat` as UdpRcvbufErrors, and in the drops column of `/proc/net/udp`. Fixes: larger SO_RCVBUF
+       (raise `net.core.rmem_max`), a faster consumer thread that only reads and hands off to a queue,
+       recvmmsg batching, pinning.
+    4. Upstream: switch egress buffer drops on microbursts. Check switch counters; fixes are faster
+       links or deeper-buffered or cut-through switches.
+
+    Bursts matter because the averages hide **microbursts**: the open can deliver many times the
+    average rate in milliseconds. Capacity must be planned for peak rate × burst duration.
+  keyPoints:
+    - "NIC ring overflow: ethtool -S counters; fix with bigger rings, IRQ/queue tuning"
+    - "Kernel softirq backlog drops: /proc/net/softnet_stat; tune budgets and affinity"
+    - "Socket buffer overflow: UdpRcvbufErrors in netstat -su/nstat; raise rmem_max/SO_RCVBUF, faster reader"
+    - "Microbursts: size for peak, not average; check upstream switch drops too"
+    - "Mentions batching (recvmmsg) or kernel bypass as further steps"
+  explanation: |
+    Practical debugging question that separates people who have run feed handlers from those who
+    haven't.
+  tags: [udp, market-data, linux, debugging, low-latency]

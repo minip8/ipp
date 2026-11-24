@@ -1,0 +1,16 @@
+slug: partition-equal-subset-sum
+title: Partition Equal Subset Sum
+difficulty: medium
+tags: [dynamic-programming, knapsack, bit-manipulation]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: canPartition
+      params:
+        - { name: nums, type: { array: int } }
+      returns: bool
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 416)
+  url: https://leetcode.com/problems/partition-equal-subset-sum/

@@ -1,0 +1,19 @@
+slug: flood-fill
+title: Flood Fill
+difficulty: easy
+tags: [graph, bfs, dfs, matrix]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: floodFill
+      params:
+        - { name: image, type: { array: { array: int } } }
+        - { name: sr, type: int }
+        - { name: sc, type: int }
+        - { name: color, type: int }
+      returns: { array: { array: int } }
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 733)
+  url: https://leetcode.com/problems/flood-fill/

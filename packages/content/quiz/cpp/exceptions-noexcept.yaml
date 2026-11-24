@@ -1,0 +1,351 @@
+# Exceptions, exception safety and noexcept.
+- id: cpp-exceptions-001
+  topic: cpp
+  subtopic: Exceptions and noexcept
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [noexcept, std-terminate]
+  prompt: What does this program print?
+  code: |
+    #include <cstdlib>
+    #include <exception>
+    #include <iostream>
+
+    void parse() noexcept {
+        throw 42;
+    }
+
+    int main() {
+        std::set_terminate([] {
+            std::cout << "terminate" << std::endl;
+            std::_Exit(0);
+        });
+        try {
+            parse();
+        } catch (...) {
+            std::cout << "caught" << std::endl;
+        }
+    }
+  answer: { kind: output, output: "terminate" }
+  explanation: |
+    `noexcept` isn't a compile-time check that the function doesn't throw. It's a promise, and if an
+    exception tries to leave a `noexcept` function, `std::terminate` is called ([except.spec]); the
+    `catch (...)` in `main` never gets a chance. (Whether the stack is unwound before terminating is
+    implementation-defined.) Here the terminate handler prints and exits, so the output is `terminate`.
+    GCC even warns that "throw will always call terminate".
+
+- id: cpp-exceptions-002
+  topic: cpp
+  subtopic: Exceptions and noexcept
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [rethrow, slicing, exceptions]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    struct Error {
+        virtual const char* what() const { return "Error"; }
+        virtual ~Error() = default;
+    };
+    struct NetError : Error {
+        const char* what() const override { return "NetError"; }
+    };
+
+    void rethrow_copy()   { try { throw NetError{}; } catch (Error& e) { throw e; } }
+    void rethrow_same()   { try { throw NetError{}; } catch (Error& e) { throw; } }
+
+    int main() {
+        try { rethrow_copy(); } catch (Error& e) { std::cout << e.what() << ' '; }
+        try { rethrow_same(); } catch (Error& e) { std::cout << e.what() << '\n'; }
+    }
+  answer: { kind: output, output: "Error NetError" }
+  explanation: |
+    `throw e;` throws a *new* exception object copy-initialized from `e`, and the type of the copy is the
+    **static** type of the expression, `Error`. The `NetError` is sliced. A bare `throw;` rethrows the
+    *current exception object* itself, preserving its dynamic type ([expr.throw], /4). Always use
+    `throw;` to rethrow, and catch by reference.
+
+- id: cpp-exceptions-003
+  topic: cpp
+  subtopic: Exceptions and noexcept
+  difficulty: hard
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [destructors, noexcept, std-terminate]
+  prompt: What does this program print?
+  code: |
+    #include <cstdlib>
+    #include <exception>
+    #include <iostream>
+
+    struct Guard {
+        ~Guard() { throw 1; }
+    };
+
+    int main() {
+        std::set_terminate([] {
+            std::cout << "terminate" << std::endl;
+            std::_Exit(0);
+        });
+        try {
+            Guard g;
+        } catch (int) {
+            std::cout << "caught" << std::endl;
+        }
+    }
+  answer: { kind: output, output: "terminate" }
+  explanation: |
+    Since C++11 destructors are implicitly `noexcept` (unless a member or base destructor is
+    `noexcept(false)`) ([class.dtor], [except.spec]). So the exception from `~Guard` can't escape
+    the destructor even though there's no other exception in flight: `std::terminate` is called and
+    `caught` is never printed. Before C++11 this program printed `caught`. (Throwing from a destructor
+    *during* unwinding terminates regardless.) If cleanup can fail, report it another way, or provide an
+    explicit `close()` that may throw.
+
+- id: cpp-exceptions-004
+  topic: cpp
+  subtopic: Exceptions and noexcept
+  difficulty: hard
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [function-try-block, constructors, exceptions]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    struct Member {
+        Member() { throw 7; }
+    };
+
+    struct Owner {
+        Member m;
+        Owner() try : m() {
+        } catch (int e) {
+            std::cout << "handler(" << e << ") ";
+        }
+    };
+
+    int main() {
+        try {
+            Owner o;
+        } catch (int e) {
+            std::cout << "main(" << e << ")\n";
+        }
+    }
+  answer: { kind: output, output: "handler(7) main(7)" }
+  explanation: |
+    A function-try-block on a constructor can catch exceptions thrown by member and base initializers,
+    but it can't swallow them: if the handler doesn't throw something else, the exception is rethrown
+    automatically when control reaches the end of the handler ([except.handle]). There's no
+    `Owner` object to hand back, because one of its members failed to construct. Such handlers are useful
+    for logging or translating the exception, not for recovery.
+
+- id: cpp-exceptions-005
+  topic: cpp
+  subtopic: Exceptions and noexcept
+  difficulty: easy
+  type: single
+  tags: [noexcept-operator]
+  prompt: |
+    Given `void a();` and `void b() noexcept;`, what are the values of
+    `noexcept(a())`, `noexcept(b())` and `noexcept(1 + 1)`?
+  choices:
+    - { id: a, text: "`false`, `true`, `true`" }
+    - { id: b, text: "`true`, `true`, `true`, because none of them actually throws" }
+    - { id: c, text: "`false`, `true`, `false`" }
+    - { id: d, text: "It depends on whether the bodies of `a` and `b` contain `throw`." }
+  answer: a
+  explanation: |
+    The `noexcept` *operator* is a compile-time query on the unevaluated expression: it is `false` if
+    the expression contains a call to a function not declared non-throwing (or a `throw`, `dynamic_cast` to
+    reference, or `typeid` on a polymorphic glvalue). It looks only at declarations, never at function
+    bodies, so `a()` is potentially throwing even if its body can't throw. Built-in arithmetic doesn't
+    throw. It's used in conditional `noexcept(noexcept(...))` specifications and in traits like
+    `std::is_nothrow_move_constructible`.
+
+- id: cpp-exceptions-006
+  topic: cpp
+  subtopic: Exceptions and noexcept
+  difficulty: medium
+  type: single
+  tags: [exception-safety, std-vector, strong-guarantee]
+  prompt: |
+    `v.push_back(x)` on a `std::vector<T>` throws because `T`'s copy constructor throws during
+    reallocation. Assuming `T` is copyable and its move constructor is not `noexcept`, what state is `v` in?
+  choices:
+    - { id: a, text: "Unchanged: `push_back` gives the strong exception guarantee in this case." }
+    - { id: b, text: "Valid but unspecified: some elements may have been moved to the new buffer." }
+    - { id: c, text: "Undefined: using `v` afterwards is undefined behaviour." }
+    - { id: d, text: "`v` is left empty." }
+  answer: a
+  explanation: |
+    `push_back`/`emplace_back` provide the strong guarantee: if an exception is thrown, there are no
+    effects ([vector.modifiers]). To keep this promise during reallocation the vector copies elements
+    (because the move constructor may throw), so the old buffer stays intact and is kept if a copy throws.
+    The guarantee weakens only if `T` is *not* copyable and its move constructor throws: then the effects
+    are unspecified.
+
+- id: cpp-exceptions-007
+  topic: cpp
+  subtopic: Exceptions and noexcept
+  difficulty: hard
+  type: single
+  tags: [stack-unwinding, std-terminate, implementation-defined]
+  prompt: |
+    A program throws an exception that is never caught. Local `std::ofstream` objects in the frames
+    between the `throw` and `main` hold unflushed data. What does the standard guarantee?
+  choices:
+    - { id: a, text: "`std::terminate` is called; whether the stack is unwound (and those destructors run) before that is implementation-defined." }
+    - { id: b, text: "The stack is always fully unwound, so all destructors run and the files are flushed." }
+    - { id: c, text: "The behaviour is undefined." }
+    - { id: d, text: "The exception is converted into a return value of `EXIT_FAILURE` from `main`." }
+  answer: a
+  explanation: |
+    [except.handle]: if no matching handler is found, `std::terminate` is called, and "whether or not the
+    stack is unwound before this call to std::terminate() is implementation-defined". GCC and Clang
+    (Itanium ABI two-phase unwinding) typically do *not* unwind, which is useful because the core dump shows
+    the throw site, so destructors don't run and buffered output can be lost. If cleanup matters, catch
+    everything in `main` (and at thread entry points).
+
+- id: cpp-exceptions-008
+  topic: cpp
+  subtopic: Exceptions and noexcept
+  difficulty: easy
+  type: single
+  tags: [exceptions, catch-by-reference]
+  prompt: Why should exceptions be caught by (const) reference, as in `catch (const std::exception& e)`?
+  choices:
+    - { id: a, text: "Catching by value copies the exception and slices derived types, losing their overridden `what()`; by reference avoids both." }
+    - { id: b, text: "Catching by value is ill-formed for class types." }
+    - { id: c, text: "Catching by reference makes the exception automatically rethrown." }
+    - { id: d, text: "Only references can be caught with `catch (...)`." }
+  answer: a
+  explanation: |
+    `catch (std::exception e)` copy-initializes a `std::exception` from the thrown object. A thrown
+    `std::runtime_error("disk full")` is sliced, and `e.what()` returns a generic string. Copying could
+    also itself throw. Catching by reference binds to the actual exception object. Throw by value, catch by
+    (const) reference (Core Guidelines E.15).
+
+- id: cpp-exceptions-009
+  topic: cpp
+  subtopic: Exceptions and noexcept
+  difficulty: medium
+  type: multiple
+  tags: [noexcept]
+  prompt: Which statements about `noexcept` are true in C++17? Select all that apply.
+  choices:
+    - { id: a, text: "If an exception propagates out of a `noexcept` function, `std::terminate` is called." }
+    - { id: b, text: "The exception specification is part of the function type, so `void(*)() noexcept` and `void(*)()` are different types." }
+    - { id: c, text: "The compiler rejects a `noexcept` function whose body calls a potentially-throwing function." }
+    - { id: d, text: "Destructors are implicitly `noexcept` unless a member or base destructor can throw." }
+    - { id: e, text: "Defaulted move constructors are `noexcept` exactly when all the member/base moves they call are." }
+  answer: [a, b, d, e]
+  explanation: |
+    (c) is false: there's no static checking; violating the promise terminates at run time (compilers may
+    warn for an obvious `throw`). Since C++17 (P0012) `noexcept` is part of the type system: a pointer to a
+    `noexcept` function converts implicitly to a pointer to a potentially-throwing one, but not vice versa.
+    Implicit destructors and defaulted special members deduce their `noexcept` from what they call, which
+    is why `= default` moves are usually `noexcept`.
+
+- id: cpp-exceptions-010
+  topic: cpp
+  subtopic: Exceptions and noexcept
+  difficulty: medium
+  type: short
+  tags: [exception-safety, guarantees]
+  prompt: |
+    Describe the basic, strong and nothrow exception-safety guarantees. Give a concrete technique for
+    achieving the strong guarantee in a member function that modifies two data members.
+  reference: |
+    Nothrow (no-fail): the operation never throws; required of destructors, swap, move operations, and
+    deallocation, the building blocks the other guarantees rely on. Strong (commit-or-rollback): if an
+    exception is thrown, the program state is exactly as before the call; e.g. `vector::push_back`. Basic:
+    if an exception is thrown, no resources leak and all invariants hold, but the state may have changed in
+    a valid but unspecified way (e.g. a partially assigned container). No guarantee means leaks or broken
+    invariants. Technique for strong: do all work that might throw on the side, on temporary copies, then
+    commit with non-throwing operations. For two members, build the new values in locals (copying or
+    constructing may throw, leaving `*this` untouched), then `swap` or move-assign them into the members
+    with `noexcept` operations. The copy-and-swap idiom is the general form. RAII guards
+    (`std::unique_ptr`, scope guards) ensure cleanup of partially acquired resources on the failure path.
+  explanation: |
+    Terminology from Dave Abrahams ("Exception-Safety in Generic Components"). The key technique is
+    "do the throwing work first, then commit with nothrow operations".
+  keyPoints:
+    - "Nothrow: never throws (destructors, swap, moves should be)"
+    - "Strong: commit-or-rollback; no observable change on failure"
+    - "Basic: no leaks, invariants hold, state may change"
+    - Achieve strong by building results in temporaries, then committing with noexcept swap/move
+    - RAII for cleanup on failure paths
+
+- id: cpp-exceptions-011
+  topic: cpp
+  subtopic: Exceptions and noexcept
+  difficulty: hard
+  type: short
+  tags: [exceptions, low-latency, performance, error-handling]
+  prompt: |
+    Many low-latency trading and game codebases compile with `-fno-exceptions` or forbid exceptions on
+    the hot path. Explain the cost model of exceptions in the "zero-cost" implementation, and what
+    alternatives such codebases use.
+  reference: |
+    Mainstream ABIs use table-based ("zero-cost") exceptions: the non-throwing path has no extra
+    instructions for try blocks. Unwind information lives in separate tables (.eh_frame, LSDA) consulted
+    only when something throws. Costs that remain: (1) throwing is very slow, typically microseconds:
+    allocating the exception object, a two-phase table-driven unwind through every frame, RTTI type
+    matching, and global locks in some unwinder implementations that make concurrent throws scale badly;
+    (2) binary size grows from the unwind tables and landing pads, which affects instruction-cache use;
+    (3) the possibility of a throw constrains optimization (code must keep state consistent at every call
+    that may throw, and some code motion is prevented), and `noexcept` helps there; (4) latency becomes
+    unpredictable when an exceptional path is hit. So exceptions are fine for truly exceptional, non-hot
+    failures (startup, config errors), but not for expected outcomes like order rejects. Alternatives: error
+    codes, `std::expected<T, E>` (C++23) or `outcome`/`tl::expected`, status enums, `std::optional`,
+    `[[nodiscard]]` to force checking, and asserting or terminating on invariant violations. With
+    `-fno-exceptions`, library calls that would throw (e.g. `bad_alloc`) abort instead.
+  explanation: |
+    Strong answers distinguish happy-path cost (near zero) from throw cost (large and unpredictable),
+    mention code size and optimization constraints, and give `std::expected` or error codes as the
+    alternative. See P0709 (Herb Sutter, "Zero-overhead deterministic exceptions").
+  keyPoints:
+    - Table-based unwinding gives near-zero cost on the non-throwing path
+    - Throwing is very expensive (allocation, table-driven unwind, RTTI matching) and unpredictable
+    - Code size and unwind tables, plus optimization constraints; noexcept helps
+    - Use exceptions only for rare failures, not expected control flow in hot paths
+    - Alternatives are error codes, std::expected, optional, [[nodiscard]]; -fno-exceptions makes the library abort
+
+- id: cpp-exceptions-012
+  topic: cpp
+  subtopic: Exceptions and noexcept
+  difficulty: medium
+  type: short
+  tags: [exception-ptr, threads, futures]
+  prompt: |
+    A worker thread may throw while processing a job. How do you propagate that exception to the thread
+    that's waiting for the result? What happens if you do nothing?
+  reference: |
+    An exception can't cross a thread boundary by itself: if it escapes the thread's top-level function,
+    `std::terminate` is called and the whole process dies. Options: (1) use `std::packaged_task` or
+    `std::async`, whose shared state captures the exception; `future.get()` in the waiting thread rethrows
+    it; (2) with `std::promise`, catch in the worker and call
+    `promise.set_exception(std::current_exception())`; (3) manually: `catch (...)` in the worker, store
+    `std::current_exception()` in a `std::exception_ptr` shared with the waiter (synchronized, e.g. joined
+    first or via a mutex), and the waiter calls `std::rethrow_exception(ptr)` if it's non-null.
+    `std::exception_ptr` is a reference-counted handle to the exception object, so it's cheap to copy and
+    safe to pass between threads. `std::nested_exception`/`std::throw_with_nested` add context while
+    rethrowing. Thread pools typically wrap each task in try/catch and deliver failures through
+    futures or callbacks.
+  explanation: |
+    Key points: uncaught exceptions in a thread terminate the process; futures/promises transport them;
+    exception_ptr with current_exception and rethrow_exception is the underlying mechanism.
+  keyPoints:
+    - An exception escaping a thread function calls std::terminate
+    - future.get() rethrows exceptions stored by async/packaged_task/promise
+    - promise.set_exception(std::current_exception())
+    - exception_ptr plus rethrow_exception for manual transport between threads
+    - Wrap pool tasks in try/catch and propagate via futures or callbacks

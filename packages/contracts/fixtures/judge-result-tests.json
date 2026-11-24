@@ -1,0 +1,30 @@
+{
+  "v": 1,
+  "runId": "0b9d6c1e-6f0a-4c56-9d3e-0c1c9a1f4f10",
+  "verdict": "accepted",
+  "compile": null,
+  "file": null,
+  "tests": [
+    {
+      "id": "s1",
+      "verdict": "pass",
+      "timeMs": 0.4,
+      "actual": [[0, 1]],
+      "stdout": "",
+      "stderr": "",
+      "message": null
+    },
+    {
+      "id": "c1",
+      "verdict": "ran",
+      "timeMs": 0.3,
+      "actual": [[1, 2]],
+      "stdout": "debug\n",
+      "stderr": "",
+      "message": null
+    }
+  ],
+  "message": null,
+  "timing": { "queueMs": 12, "totalMs": 640 },
+  "sandbox": { "runtime": "runsc", "image": "ipp-sandbox-python:1" }
+}

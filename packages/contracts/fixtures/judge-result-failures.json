@@ -1,0 +1,48 @@
+{
+  "v": 1,
+  "runId": "0b9d6c1e-6f0a-4c56-9d3e-0c1c9a1f4f10",
+  "verdict": "wrong_answer",
+  "compile": { "ok": true, "output": "", "timeMs": 800 },
+  "file": null,
+  "tests": [
+    {
+      "id": "s1",
+      "verdict": "fail",
+      "timeMs": 0.1,
+      "actual": [[1, 0, 2]],
+      "stdout": "",
+      "stderr": "",
+      "message": "call 1 (twoSum): expected [0,1], got [1,0,2]"
+    },
+    {
+      "id": "h1",
+      "verdict": "time_limit",
+      "timeMs": 1000,
+      "actual": null,
+      "stdout": "",
+      "stderr": "",
+      "message": null
+    },
+    {
+      "id": "h2",
+      "verdict": "runtime_error",
+      "timeMs": 2,
+      "actual": null,
+      "stdout": "",
+      "stderr": "",
+      "message": "terminated by SIGSEGV"
+    },
+    {
+      "id": "h3",
+      "verdict": "skipped",
+      "timeMs": 0,
+      "actual": null,
+      "stdout": "",
+      "stderr": "",
+      "message": null
+    }
+  ],
+  "message": null,
+  "timing": { "queueMs": 5, "totalMs": 3100 },
+  "sandbox": { "runtime": "runsc", "image": "ipp-sandbox-cpp:1" }
+}

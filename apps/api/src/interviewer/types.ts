@@ -1,0 +1,18 @@
+/** The interviewer boundary types, owned by packages/interviewer (src/types.ts). */
+import type { QuizQuestion } from '@ipp/contracts';
+
+export type {
+  AiScope,
+  CreateInterviewer,
+  InterviewContext,
+  Interviewer,
+  InterviewerConfig,
+  InterviewerDeps,
+  ModelUsage,
+  NewMessage,
+  ResolvedKey,
+  ShortAnswerGrade,
+  Trigger,
+} from '@ipp/interviewer';
+
+export type QuizQuestionShort = Extract<QuizQuestion, { type: 'short' }>;

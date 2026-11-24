@@ -1,0 +1,18 @@
+slug: word-ladder
+title: Word Ladder
+difficulty: hard
+tags: [graph, bfs, hash-table, string]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: ladderLength
+      params:
+        - { name: beginWord, type: string }
+        - { name: endWord, type: string }
+        - { name: wordList, type: { list: string } }
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 127)
+  url: https://leetcode.com/problems/word-ladder/

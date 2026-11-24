@@ -1,0 +1,16 @@
+slug: max-points-on-a-line
+title: Max Points on a Line
+difficulty: hard
+tags: [array, hash-table, math, geometry]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: maxPoints
+      params:
+        - { name: points, type: { array: { array: int } } }
+      returns: int
+limits: { timeMs: 2000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 149); slope hashing with exact arithmetic
+  url: https://leetcode.com/problems/max-points-on-a-line/

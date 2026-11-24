@@ -1,0 +1,757 @@
+- id: os-vm-001
+  topic: operating-systems
+  subtopic: Virtual memory
+  type: single
+  difficulty: easy
+  tags: [paging, page-size, huge-pages, x86-64]
+  prompt: |
+    Which page sizes does x86-64 hardware support with standard 4-level paging?
+  choices:
+    - id: a
+      text: 4 KiB base pages, plus 2 MiB and 1 GiB large pages
+    - id: b
+      text: 4 KiB only; huge pages are a software illusion built from many 4 KiB pages
+    - id: c
+      text: 8 KiB, 64 KiB and 16 MiB
+    - id: d
+      text: 4 KiB and 4 MiB
+  answer: a
+  explanation: |
+    A 4 KiB page is mapped by a PTE at the last level. A PDE with the PS bit set maps a 2 MiB page
+    directly (skipping the last level), and a PDPTE with PS set maps a 1 GiB page (CPU support flagged by
+    `pdpe1gb` in `/proc/cpuinfo`). Huge pages are real hardware translations, each using a single TLB
+    entry.
+
+    4 MiB large pages exist on 32-bit x86 without PAE; 64 KiB and 16 MiB pages are found on other
+    architectures (e.g. ARM64 granules, POWER).
+
+- id: os-vm-002
+  topic: operating-systems
+  subtopic: Virtual memory
+  type: single
+  difficulty: easy
+  tags: [page-tables, x86-64, quantitative]
+  prompt: |
+    x86-64 with 4-level paging translates 48-bit virtual addresses using 4 KiB pages and 8-byte page-table
+    entries, with each page table occupying exactly one 4 KiB page. How are the 48 bits divided?
+  choices:
+    - id: a
+      text: 9 + 9 + 9 + 9 index bits for the four levels, plus a 12-bit page offset
+    - id: b
+      text: 12 + 12 + 12 index bits, plus a 12-bit page offset
+    - id: c
+      text: 10 + 10 + 10 + 6 index bits, plus a 12-bit page offset
+    - id: d
+      text: 8 + 8 + 8 + 8 index bits, plus a 16-bit page offset
+  answer: a
+  explanation: |
+    Working:
+    - Page offset: 4 KiB = 2^12 bytes → 12 bits.
+    - Entries per table: 4096 B / 8 B = 512 = 2^9 → each level consumes 9 bits.
+    - 48 − 12 = 36 bits = 4 levels × 9 bits (PML4, PDPT, PD, PT).
+
+    10-bit indices come from 32-bit x86 with 4-byte entries (1024 per page). 5-level paging adds one more
+    9-bit level, giving 57-bit virtual addresses.
+
+- id: os-vm-003
+  topic: operating-systems
+  subtopic: Virtual memory
+  type: single
+  difficulty: medium
+  tags: [page-tables, quantitative]
+  prompt: |
+    Why don't 64-bit systems use a single flat page table? Estimate the size of a flat table for a 48-bit
+    virtual address space with 4 KiB pages and 8-byte entries.
+  choices:
+    - id: a
+      text: 512 GiB per process — 2^36 entries × 8 bytes
+    - id: b
+      text: 4 MiB per process — 2^20 entries × 4 bytes
+    - id: c
+      text: 256 TiB per process — one entry per byte of address space
+    - id: d
+      text: 2 GiB per process — 2^28 entries × 8 bytes
+  answer: a
+  explanation: |
+    Working: 2^48 / 2^12 = 2^36 virtual pages; 2^36 × 8 B = 2^39 B = 512 GiB — for every process,
+    regardless of how little memory it uses. A multi-level (radix-tree) table only allocates lower-level
+    tables for regions actually in use, so a small process needs a handful of 4 KiB table pages.
+
+    4 MiB is the classic answer for a flat table on **32-bit** x86 (2^20 entries × 4 B), which is why even
+    32-bit x86 used two levels.
+
+- id: os-vm-004
+  topic: operating-systems
+  subtopic: Virtual memory
+  type: single
+  difficulty: hard
+  tags: [page-tables, huge-pages, quantitative]
+  prompt: |
+    On x86-64 4-level paging, a process maps one 1 GiB region, aligned to 1 GiB, and touches every page.
+    It is the only mapping in the process. How much page-table memory is needed with 4 KiB pages, and with
+    2 MiB pages? (Each table is one 4 KiB page.)
+  choices:
+    - id: a
+      text: 4 KiB pages - 515 table pages (about 2 MiB); 2 MiB pages - 3 table pages (12 KiB)
+    - id: b
+      text: 4 KiB pages - 262,144 table pages (1 GiB); 2 MiB pages - 512 table pages (2 MiB)
+    - id: c
+      text: 4 KiB pages - 4 table pages (16 KiB); 2 MiB pages - 3 table pages (12 KiB)
+    - id: d
+      text: 4 KiB pages - 512 table pages (2 MiB); 2 MiB pages - 1 table page (4 KiB)
+  answer: a
+  explanation: |
+    With 4 KiB pages:
+    - 1 GiB / 4 KiB = 262,144 PTEs; each page table holds 512 → 512 page tables (bottom level).
+    - Those 512 PTs are pointed to by 512 PDEs = exactly one page directory.
+    - Plus one PDPT and one PML4. Total 512 + 1 + 1 + 1 = 515 pages ≈ 2.01 MiB (≈0.2% overhead).
+
+    With 2 MiB pages the PD entries map memory directly, so only the PD (512 entries × 2 MiB = 1 GiB),
+    the PDPT and the PML4 are needed: 3 pages. (With a 1 GiB page it would be just PDPT + PML4.)
+
+    (b) counts PTEs as if each were a page; (d) forgets the upper levels.
+
+- id: os-vm-005
+  topic: operating-systems
+  subtopic: Virtual memory
+  type: single
+  difficulty: medium
+  tags: [tlb, page-walk, quantitative]
+  prompt: |
+    Simplified model: a memory access costs 100 ns, TLB lookup time is negligible, the TLB hit rate is
+    99%, and a TLB miss requires a 4-level page walk where each level is one memory access (no
+    page-walk caches). What is the effective time per memory reference?
+  choices:
+    - id: a
+      text: 104 ns
+    - id: b
+      text: 101 ns
+    - id: c
+      text: 140 ns
+    - id: d
+      text: 500 ns
+  answer: a
+  explanation: |
+    Working:
+    - Hit (99%): 100 ns for the data access.
+    - Miss (1%): 4 × 100 ns walk + 100 ns data = 500 ns.
+    - Effective: 0.99 × 100 + 0.01 × 500 = 99 + 5 = 104 ns.
+
+    101 ns forgets that a walk has four levels; 500 ns is the miss cost alone. In real CPUs, page-walk
+    caches and the data caches make walks much cheaper than four DRAM accesses, but TLB misses on large,
+    randomly accessed working sets are still a significant cost — the motivation for huge pages.
+
+- id: os-vm-007
+  topic: operating-systems
+  subtopic: Virtual memory
+  type: single
+  difficulty: easy
+  tags: [page-fault, minor-fault, major-fault]
+  prompt: |
+    What distinguishes a **major** page fault from a **minor** one on Linux?
+  choices:
+    - id: a
+      text: A major fault must wait for I/O (reading from disk or swap) to satisfy it; a minor fault is resolved purely in memory
+    - id: b
+      text: A major fault kills the process; a minor fault is handled
+    - id: c
+      text: A major fault happens in kernel code; a minor fault happens in user code
+    - id: d
+      text: A major fault involves a huge page; a minor fault involves a 4 KiB page
+  answer: a
+  explanation: |
+    Both are normal, handled page faults. Minor faults are satisfied without I/O: first touch of an
+    anonymous page (allocate a zeroed page), a copy-on-write copy, or mapping a file page that is already
+    in the page cache. Major faults need to read the data from storage (a file page not cached, or a page
+    swapped out) and cost microseconds to milliseconds. You can see both counters with
+    `/usr/bin/time -v`, `ps -o min_flt,maj_flt` or `perf stat -e minor-faults,major-faults`.
+
+    An *invalid* access (no mapping, or wrong permissions) results in SIGSEGV, which is neither.
+
+- id: os-vm-008
+  topic: operating-systems
+  subtopic: Virtual memory
+  type: multiple
+  difficulty: medium
+  tags: [page-fault, minor-fault, copy-on-write, page-cache]
+  prompt: |
+    Which of these events cause a **minor** (no I/O) page fault on Linux? Select all that apply.
+  choices:
+    - id: a
+      text: First write to a freshly malloc'd (mmap'd anonymous) page
+    - id: b
+      text: A child process writes to a page it shares copy-on-write with its parent after fork()
+    - id: c
+      text: First access to an mmap'd file page that is already in the page cache
+    - id: d
+      text: Access to an anonymous page that was swapped out to disk
+    - id: e
+      text: First access to an mmap'd file page that is not in the page cache
+  answer: [a, b, c]
+  explanation: |
+    (a) Anonymous memory is allocated lazily; the first write allocates and zeroes a physical page (a
+    first *read* may map the shared zero page). (b) COW copies the page in memory. (c) The data is in
+    RAM already; the kernel only installs a PTE.
+
+    (d) and (e) require reading from disk, so they are major faults. This is why "warm" file-backed
+    mappings start quickly and why a process restarted on a busy box (its file pages evicted) can be
+    much slower to warm up.
+
+- id: os-vm-009
+  topic: operating-systems
+  subtopic: Virtual memory
+  type: short
+  difficulty: medium
+  tags: [page-fault, demand-paging, kernel]
+  prompt: |
+    Walk me through what happens on a page fault in Linux, from the faulting instruction to it being
+    retried.
+  reference: |
+    The MMU can't translate the address (PTE not present) or the access violates the PTE's permissions
+    (e.g. a write to a read-only page), so the CPU raises #PF, saving the faulting instruction address
+    and putting the faulting virtual address in CR2 and an error code (read/write, user/kernel,
+    present/not-present) on the stack. The kernel's handler looks up the VMA (virtual memory area) that
+    contains the address. If there is none, or the VMA's permissions forbid the access, it sends SIGSEGV
+    (or, for a bad kernel access to user memory, uses the exception table to fail with EFAULT). Otherwise
+    it resolves it: anonymous first touch → allocate a zeroed page; COW write → copy the page (or reuse
+    it if no one else shares it) and make it writable; file mapping → find the page in the page cache or
+    read it from disk (major fault, the task sleeps); swapped page → read it back from swap. It installs
+    the PTE (allocating intermediate page-table levels if needed), updates fault counters and returns
+    from the exception; the CPU re-executes the faulting instruction, which now succeeds.
+  keyPoints:
+    - CPU raises #PF with the faulting address (CR2) and an error code; the instruction will be restarted
+    - Kernel finds the VMA; no VMA or bad permissions → SIGSEGV
+    - Valid cases - zero-fill anonymous, copy-on-write, page-cache lookup or disk read, swap-in
+    - Install the PTE (allocating page-table pages as needed); major faults sleep on I/O
+    - Return and re-execute the faulting instruction
+  explanation: |
+    The VMA check is the part people often skip: the page tables say what is *currently mapped*, while
+    VMAs (the `mmap`/`brk` regions listed in `/proc/<pid>/maps`) say what is *allowed* to be mapped.
+
+- id: os-vm-010
+  topic: operating-systems
+  subtopic: Overcommit and OOM
+  type: single
+  difficulty: medium
+  tags: [overcommit, malloc, rss]
+  prompt: |
+    On a default-configured Linux machine with 4 GiB of RAM in total and no swap, a program calls
+    `malloc(8 GiB)` (a single large block) and checks the result. What usually happens?
+  choices:
+    - id: a
+      text: It fails and returns NULL, because the heuristic overcommit mode rejects a single request that obviously exceeds RAM + swap
+    - id: b
+      text: It succeeds, and the 8 GiB is immediately counted in the process's RSS
+    - id: c
+      text: The kernel immediately invokes the OOM killer
+    - id: d
+      text: It succeeds but the kernel zeroes all 8 GiB up front, taking several seconds
+  answer: a
+  explanation: |
+    With `vm.overcommit_memory = 0` (the default heuristic mode) the kernel refuses allocations that are
+    obviously impossible — roughly, larger than total RAM + swap — so an 8 GiB request on a box this size
+    fails and malloc returns NULL. What the heuristic does *not* do is account for other processes:
+    many smaller allocations that together exceed memory are allowed, and the OOM killer deals with it
+    later if they're all touched.
+
+    Even when an allocation succeeds, pages are only allocated on first touch, so RSS grows as memory
+    is used, not at malloc time — that is the misconception in (b) and (d). With
+    `vm.overcommit_memory = 1` this 8 GiB malloc would succeed.
+  source:
+    name: Linux kernel docs, Overcommit Accounting
+    url: https://www.kernel.org/doc/html/latest/mm/overcommit-accounting.html
+
+- id: os-vm-011
+  topic: operating-systems
+  subtopic: Overcommit and OOM
+  type: single
+  difficulty: hard
+  tags: [overcommit, commit-limit, quantitative]
+  prompt: |
+    A server has 64 GiB of RAM and 8 GiB of swap, configured with `vm.overcommit_memory = 2` and the
+    default `vm.overcommit_ratio = 50` (no huge pages reserved). Roughly what is the system-wide
+    commit limit?
+  choices:
+    - id: a
+      text: 40 GiB — swap + 50% of RAM
+    - id: b
+      text: 72 GiB — all RAM plus swap
+    - id: c
+      text: 36 GiB — 50% of RAM + swap
+    - id: d
+      text: Unlimited; mode 2 means "always overcommit"
+  answer: a
+  explanation: |
+    In strict mode (2), `CommitLimit = swap + RAM × overcommit_ratio / 100` (minus hugetlb pages) =
+    8 + 64 × 0.5 = 40 GiB. Allocations that would push `Committed_AS` (both visible in
+    `/proc/meminfo`) over the limit fail with ENOMEM at allocation time instead of the process being
+    OOM-killed later. Note this default of 50% means a box configured this way may refuse allocations
+    while half its RAM is unused — people switching to mode 2 usually raise the ratio or set
+    `overcommit_kbytes`.
+
+    (c) applies the 50% to swap too. Mode 1, not 2, is "always overcommit".
+  source:
+    name: Linux kernel docs, Overcommit Accounting
+    url: https://www.kernel.org/doc/html/latest/mm/overcommit-accounting.html
+
+- id: os-vm-012
+  topic: operating-systems
+  subtopic: Overcommit and OOM
+  type: short
+  difficulty: medium
+  tags: [oom-killer, cgroups, memory]
+  prompt: |
+    A process disappears and the logs show it was killed with SIGKILL; `dmesg` mentions "Out of memory".
+    Explain how the Linux OOM killer chooses a victim and what you can do about it.
+  reference: |
+    Because Linux overcommits, memory can run out at page-fault time when no allocation can fail
+    gracefully. When reclaim (dropping page cache, swapping) can't free enough, the OOM killer picks a
+    victim by a badness score: essentially the fraction of memory the process uses (RSS + swap + page
+    tables), adjusted by `oom_score_adj` (−1000 to 1000; −1000 exempts the process), and visible as
+    `/proc/<pid>/oom_score`. It sends SIGKILL, which can't be caught. In containers, hitting a cgroup's
+    `memory.max` triggers an OOM kill within that cgroup only. What to do: find the real consumer (the
+    dmesg report lists per-process memory), fix leaks or bound caches, set cgroup memory limits per
+    service, adjust `oom_score_adj` to protect critical daemons, use `vm.overcommit_memory=2` where
+    failing allocations are preferable, add swap/zram as a buffer, or use a user-space early OOM daemon
+    (systemd-oomd, earlyoom) that acts on memory pressure (PSI) before the system thrashes.
+  keyPoints:
+    - Triggered when allocation at fault time can't be satisfied after reclaim (consequence of overcommit)
+    - Victim chosen by badness - mostly memory footprint (RSS + swap + page tables), adjusted by oom_score_adj
+    - Kills with SIGKILL; /proc/<pid>/oom_score and dmesg show the decision
+    - cgroup memory limits cause per-cgroup OOM kills (containers)
+    - Remedies - fix usage, cgroup limits, oom_score_adj, strict overcommit, swap, systemd-oomd/earlyoom
+  explanation: |
+    In Kubernetes this shows up as "OOMKilled" with exit code 137 (128 + 9). Knowing that the container's
+    cgroup limit, not the host's free memory, is what triggered it is a common follow-up.
+
+- id: os-vm-013
+  topic: operating-systems
+  subtopic: Virtual memory
+  type: single
+  difficulty: medium
+  tags: [mmap, map-private, map-shared]
+  prompt: |
+    A process maps a file with `mmap(..., PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0)` and writes to the
+    mapping. What happens to the file on disk?
+  choices:
+    - id: a
+      text: Nothing; the first write to each page creates a private copy-on-write copy, and changes are never written back to the file
+    - id: b
+      text: The changes are written back when the process calls msync()
+    - id: c
+      text: The changes are written back when the mapping is unmapped
+    - id: d
+      text: The changes are immediately visible to other processes that mapped the same file with MAP_SHARED
+  answer: a
+  explanation: |
+    MAP_PRIVATE means copy-on-write: reads come from the shared page-cache page, but the first write to a
+    page gives the process its own anonymous copy. Those copies are never written to the file, and other
+    processes don't see them. (This is how the dynamic loader maps a library's data segment.)
+
+    `MAP_SHARED` is the mode where writes go into the page cache, become visible to other mappers and
+    `read()` callers, and are written back by normal writeback or `msync()`. (One subtlety: with
+    MAP_PRIVATE, POSIX leaves it unspecified whether changes made to the *file* by others after mapping
+    are visible in pages you haven't yet written.)
+  source:
+    name: mmap(2) man page
+    url: https://man7.org/linux/man-pages/man2/mmap.2.html
+
+- id: os-vm-014
+  topic: operating-systems
+  subtopic: Virtual memory
+  type: multiple
+  difficulty: medium
+  tags: [mmap, shared-memory, page-cache]
+  prompt: |
+    Which statements about `mmap` on Linux are true? Select all that apply.
+  choices:
+    - id: a
+      text: "`MAP_SHARED | MAP_ANONYMOUS` memory created before fork() is shared between parent and child, so writes by one are seen by the other"
+    - id: b
+      text: Mapping a 10 GiB file reads the whole file into memory before mmap() returns
+    - id: c
+      text: Accessing a mapping beyond the end of the underlying file (but inside the mapping) can raise SIGBUS
+    - id: d
+      text: "`MAP_POPULATE` pre-faults the pages so later accesses don't take page faults"
+    - id: e
+      text: A file mapped with MAP_SHARED and the same file read with read() see the same page-cache pages
+  answer: [a, c, d, e]
+  explanation: |
+    (a) Shared anonymous mappings survive fork as truly shared memory — a simple way for related
+    processes to share data. (c) Pages wholly beyond EOF have no backing data; touching them raises
+    SIGBUS (a classic bug when another process truncates a file you have mapped). (d) MAP_POPULATE does
+    the faulting up front (read-ahead for files). (e) On Linux, file mappings and `read`/`write` both go
+    through the page cache, so they're coherent.
+
+    (b) is false: mmap only sets up a VMA; pages are loaded lazily on fault (demand paging), which is
+    why mapping a huge file is instant.
+  source:
+    name: mmap(2) man page
+    url: https://man7.org/linux/man-pages/man2/mmap.2.html
+
+- id: os-vm-015
+  topic: operating-systems
+  subtopic: Virtual memory
+  type: short
+  difficulty: hard
+  tags: [thp, huge-pages, latency, khugepaged]
+  prompt: |
+    Transparent Huge Pages can speed up memory-heavy workloads, yet many latency-sensitive systems
+    (databases, trading systems) disable them or restrict them to `madvise`. Why? What would you use
+    instead if you want huge pages?
+  reference: |
+    THP backs anonymous memory with 2 MiB pages automatically, reducing TLB misses and page-walk cost.
+    Downsides: allocating a huge page may require compacting memory, and in `always` mode with
+    synchronous defrag that can stall the faulting thread for milliseconds; `khugepaged` scans and
+    collapses small pages into huge pages in the background, taking locks and causing TLB shootdowns;
+    sparse access patterns waste memory (touching one byte commits 2 MiB — memory bloat, e.g. Redis and
+    allocators with scattered frees); copy-on-write after fork copies 2 MiB instead of 4 KiB, amplifying
+    latency and memory use (Redis snapshots); and splitting huge pages has costs. Safer options:
+    set THP to `madvise` (only regions requested with `madvise(MADV_HUGEPAGE)` get them) and set
+    `defrag` to `defer` or `madvise`; or use explicit hugetlbfs pages reserved at boot
+    (`vm.nr_hugepages`, `MAP_HUGETLB`, or a hugetlbfs mount), which are preallocated, never swapped and
+    give predictable latency, combined with pre-faulting at startup.
+  keyPoints:
+    - Benefit - fewer TLB misses and cheaper page walks
+    - Compaction/defrag can stall allocations; khugepaged collapsing causes background work and shootdowns
+    - Memory bloat for sparse access; COW after fork copies 2 MiB at a time
+    - Use madvise mode (MADV_HUGEPAGE) and a less aggressive defrag setting
+    - Or explicit hugetlbfs pages reserved up front (nr_hugepages, MAP_HUGETLB) for predictable latency
+  explanation: |
+    The kernel's THP defaults have become less aggressive over time and depend on the distribution's
+    configuration (`/sys/kernel/mm/transparent_hugepage/enabled` and `.../defrag` show the current
+    settings), so the right answer in an interview is "measure, and prefer explicit control for
+    latency-critical paths".
+  source:
+    name: Linux kernel docs, Transparent Hugepage Support
+    url: https://www.kernel.org/doc/html/latest/admin-guide/mm/transhuge.html
+
+- id: os-vm-016
+  topic: operating-systems
+  subtopic: Virtual memory
+  type: single
+  difficulty: medium
+  tags: [rss, vsz, pss, memory]
+  prompt: |
+    Ten worker processes forked from the same parent each show an RSS of 500 MiB in `ps`, mostly
+    shared, unmodified pages inherited from the parent. Which statement is correct?
+  choices:
+    - id: a
+      text: Physical memory used is likely far below 5 GiB, because RSS counts shared pages in full for every process; PSS (proportional set size) divides shared pages among sharers and sums sensibly
+    - id: b
+      text: The workers use exactly 5 GiB of RAM, because RSS is the private memory of each process
+    - id: c
+      text: VSZ, not RSS, is the right number to sum for physical usage
+    - id: d
+      text: RSS includes pages swapped out to disk, so actual RAM use is lower than RSS
+  answer: a
+  explanation: |
+    RSS (resident set size) counts every resident page mapped by the process, whether or not other
+    processes map it too, so summing RSS double-counts shared libraries and COW-shared heap. PSS
+    (`/proc/<pid>/smaps_rollup`, `smem`) charges each shared page 1/N to each of its N sharers, so PSS
+    sums to the real total; USS counts only private pages (what you'd free by killing that process).
+
+    VSZ is the total virtual address space mapped, including never-touched and reserved regions — often
+    far bigger than physical usage. Swapped-out pages are not resident, so they are excluded from RSS.
+
+- id: os-vm-017
+  topic: operating-systems
+  subtopic: Virtual memory
+  type: single
+  difficulty: medium
+  tags: [mlock, low-latency, page-fault]
+  prompt: |
+    A low-latency service calls `mlockall(MCL_CURRENT | MCL_FUTURE)` at startup. What does that achieve?
+  choices:
+    - id: a
+      text: All current and future mappings are made resident and locked in RAM, so the process doesn't take page faults from swapping or reclaim of its pages on the hot path
+    - id: b
+      text: It prevents other processes from reading the process's memory
+    - id: c
+      text: It pins the process's threads to their current CPUs
+    - id: d
+      text: It makes all memory accesses bypass the CPU cache
+  answer: a
+  explanation: |
+    `mlockall` faults in and locks the pages: they won't be swapped out or reclaimed (file pages won't be
+    dropped from the cache while locked), and with `MCL_FUTURE` new mappings are locked — and populated —
+    as they are created. That removes major faults and most minor faults from the critical path. Caveats:
+    it requires `CAP_IPC_LOCK` or a sufficient `RLIMIT_MEMLOCK`, locked memory can't be reclaimed under
+    pressure, `MCL_FUTURE` can make large `mmap`s (like thread stacks) fail or be slow, and it does not
+    prevent COW faults after fork or faults from NUMA migration. Memory locks are not inherited by fork
+    children.
+
+    It has nothing to do with access control, CPU affinity or cacheability.
+  source:
+    name: mlock(2) man page
+    url: https://man7.org/linux/man-pages/man2/mlock.2.html
+
+- id: os-vm-018
+  topic: operating-systems
+  subtopic: Virtual memory
+  type: single
+  difficulty: hard
+  tags: [madvise, allocator, anonymous-memory]
+  prompt: |
+    A memory allocator calls `madvise(p, len, MADV_DONTNEED)` on a range of private anonymous memory it
+    no longer needs, but leaves it mapped. What does a later read of that range return on Linux?
+  choices:
+    - id: a
+      text: Zeros — the pages were freed and the next access faults in fresh zero-filled pages
+    - id: b
+      text: The old contents, because MADV_DONTNEED is only a hint the kernel may ignore
+    - id: c
+      text: SIGSEGV, because the range is no longer mapped
+    - id: d
+      text: Unspecified garbage left over from other processes
+  answer: a
+  explanation: |
+    For private anonymous mappings Linux defines MADV_DONTNEED strictly: the pages are dropped
+    immediately (RSS goes down) and the next access gets zero-filled pages. Allocators (glibc, jemalloc,
+    tcmalloc) rely on this to return memory to the OS while keeping the address range reserved. The
+    side effect is TLB shootdowns to every CPU running the process.
+
+    `MADV_FREE` (Linux 4.5+) is the lazy variant: the kernel frees the pages only under memory pressure,
+    so a later read may return either the old data or zeros. The mapping remains valid, so no SIGSEGV,
+    and the kernel never leaks another process's data.
+  source:
+    name: madvise(2) man page
+    url: https://man7.org/linux/man-pages/man2/madvise.2.html
+
+- id: os-vm-019
+  topic: operating-systems
+  subtopic: Virtual memory
+  type: short
+  difficulty: hard
+  tags: [fork, copy-on-write, redis, page-tables]
+  prompt: |
+    Redis persists data by forking and letting the child write a snapshot while the parent keeps serving
+    writes. Why is the fork fast even for a 50 GiB process, and what costs can still bite?
+  reference: |
+    fork doesn't copy memory; it duplicates the page tables and marks private pages read-only in both
+    processes so they share the physical pages copy-on-write. Costs that remain: (1) copying the page
+    tables themselves is proportional to mapped memory (≈100 MiB of PTEs for 50 GiB of 4 KiB pages) and
+    blocks the parent for that duration — tens to hundreds of milliseconds; (2) every page the parent
+    writes during the snapshot triggers a COW fault and a 4 KiB copy, so a write-heavy workload can
+    approach double memory use and risk the OOM killer (hence overcommit_memory=1 advice for Redis); (3)
+    with THP, each COW fault copies 2 MiB, magnifying latency and memory growth, so Redis recommends
+    disabling THP; (4) TLB flushes when pages are write-protected and each COW fault adds latency to the
+    parent's requests. Alternatives: fork during low-write periods, use huge pages carefully, or use
+    snapshotting that doesn't rely on fork.
+  keyPoints:
+    - fork shares pages copy-on-write; no data is copied up front
+    - Page-table copy is proportional to mapped memory and stalls the parent
+    - Writes during the snapshot trigger COW faults - memory growth up to 2x and latency
+    - THP makes COW copy 2 MiB at a time - recommendation to disable THP
+    - Overcommit/OOM risk when many pages are duplicated
+  explanation: |
+    Working for the page-table figure: 50 GiB / 4 KiB ≈ 13.1 million PTEs × 8 B ≈ 100 MiB (plus a small
+    amount for upper levels). Redis's own documentation discusses both the fork latency and the THP
+    issue.
+  source:
+    name: Redis documentation, latency and persistence
+    url: https://redis.io/docs/latest/operate/oss_and_stack/management/optimization/latency/
+
+- id: os-vm-020
+  topic: operating-systems
+  subtopic: Virtual memory
+  type: single
+  difficulty: medium
+  tags: [swap, swappiness, reclaim, page-cache]
+  prompt: |
+    What does the Linux `vm.swappiness` setting control?
+  choices:
+    - id: a
+      text: How the kernel balances reclaiming anonymous memory (by swapping it) against reclaiming file-backed page cache when it needs free memory
+    - id: b
+      text: The percentage of RAM that must be in use before the kernel starts swapping
+    - id: c
+      text: The maximum size of the swap file as a percentage of RAM
+    - id: d
+      text: How often (in seconds) the kernel writes dirty pages to swap
+  answer: a
+  explanation: |
+    When memory is short, the kernel can either drop/write back page-cache pages or swap out anonymous
+    pages. Swappiness (0–200 in modern kernels, default 60) sets the relative cost the reclaim code
+    assigns to these: lower values favour dropping file cache; higher values swap anonymous memory more
+    readily (useful with fast swap like zram). Even swappiness 0 doesn't strictly forbid swapping.
+
+    The "swap starts when RAM is X% full" interpretation is a widespread myth — reclaim is triggered by
+    free memory dropping below the zone watermarks, not by a swappiness threshold.
+  source:
+    name: Linux kernel docs, /proc/sys/vm documentation
+    url: https://www.kernel.org/doc/html/latest/admin-guide/sysctl/vm.html
+
+- id: os-vm-021
+  topic: operating-systems
+  subtopic: Virtual memory
+  type: single
+  difficulty: medium
+  tags: [address-space, x86-64, canonical-addresses]
+  prompt: |
+    With 4-level paging (48-bit virtual addresses) on x86-64 Linux, how large is a user process's
+    virtual address space?
+  choices:
+    - id: a
+      text: 128 TiB (addresses 0 to 0x0000_7fff_ffff_ffff); the upper half of the canonical space is reserved for the kernel
+    - id: b
+      text: 16 EiB — the full 64-bit range
+    - id: c
+      text: 256 TiB — the full 48-bit range
+    - id: d
+      text: 4 GiB, as in 32-bit processes
+  answer: a
+  explanation: |
+    Addresses must be canonical: bits 63..48 must copy bit 47. That gives two 128 TiB halves: the lower
+    half (0 … 0x00007fffffffffff) for user space and the upper half (0xffff800000000000 …) for the
+    kernel. Pointers outside these ranges cause a general-protection fault. With 5-level paging (57-bit)
+    user space can grow to 64 PiB, but Linux only hands out addresses above 47 bits when a program
+    explicitly asks via an `mmap` hint, because some programs stash tags in the high pointer bits.
+
+- id: os-vm-022
+  topic: operating-systems
+  subtopic: Virtual memory
+  type: multiple
+  difficulty: easy
+  tags: [virtual-memory, isolation]
+  prompt: |
+    Which of the following are benefits provided by virtual memory? Select all that apply.
+  choices:
+    - id: a
+      text: Each process gets an isolated address space and cannot address another process's memory
+    - id: b
+      text: Programs can be linked to run at the same virtual addresses regardless of where physical memory is
+    - id: c
+      text: Pages can be shared (shared libraries, copy-on-write after fork) while appearing private
+    - id: d
+      text: Memory accesses become faster than physical addressing because translation is free
+    - id: e
+      text: Per-page permissions (read/write/execute) allow non-executable stacks and read-only code
+  answer: [a, b, c, e]
+  explanation: |
+    Virtual memory provides isolation, a uniform address-space layout, sharing and per-page protection,
+    plus demand paging and the ability to overcommit or swap.
+
+    It is not faster: translation costs TLB lookups and, on a miss, page walks. Hardware hides most of
+    the cost with TLBs, but "free" is wrong — the cost becomes visible with large random working sets.
+  source:
+    name: OSTEP, Address Spaces and Paging chapters
+    url: https://pages.cs.wisc.edu/~remzi/OSTEP/
+
+- id: os-vm-023
+  topic: operating-systems
+  subtopic: Virtual memory
+  type: single
+  difficulty: easy
+  tags: [page-tables, quantitative]
+  prompt: |
+    A 32-bit system uses 4 KiB pages and 4-byte page-table entries. How large is a single-level
+    (flat) page table for one process's full address space?
+  choices:
+    - id: a
+      text: 4 MiB
+    - id: b
+      text: 4 KiB
+    - id: c
+      text: 1 MiB
+    - id: d
+      text: 4 GiB
+  answer: a
+  explanation: |
+    Working: 2^32 / 2^12 = 2^20 pages; 2^20 entries × 4 B = 4 MiB. That is per process, mostly describing
+    unused address space, which is why 32-bit x86 used a two-level scheme (a 4 KiB page directory of
+    1,024 entries, each pointing at a 4 KiB page table covering 4 MiB).
+
+    1 MiB is the number of entries, not bytes; 4 GiB is the address space itself.
+  source:
+    name: OSTEP ch. 20, Paging - Smaller Tables
+    url: https://pages.cs.wisc.edu/~remzi/OSTEP/vm-smalltables.pdf
+
+- id: os-vm-024
+  topic: operating-systems
+  subtopic: Virtual memory
+  type: short
+  difficulty: easy
+  tags: [copy-on-write, fork]
+  prompt: |
+    Explain copy-on-write as used by `fork()`. What happens when the parent or child writes to a shared
+    page?
+  reference: |
+    Instead of copying the parent's memory, fork makes the child's page tables point at the same physical
+    pages and marks the private, writable pages read-only in both processes (the kernel remembers they
+    are logically writable via the VMA flags and page reference counts). Reads proceed with no cost.
+    When either process writes, the CPU raises a protection page fault; the kernel sees it's a COW page,
+    allocates a new physical page, copies the 4 KiB, maps the copy writable in the writing process and
+    restarts the instruction. If the page is no longer shared (the other side already copied it or
+    exited), the kernel can simply make it writable again without copying. The result: fork is cheap,
+    and fork-then-exec (which discards the address space) copies almost nothing.
+  keyPoints:
+    - Child shares parent's physical pages; private writable pages are marked read-only in both
+    - A write triggers a protection page fault
+    - Kernel copies the page, maps the copy writable for the writer, restarts the instruction
+    - If the page isn't shared any more, just make it writable (no copy)
+    - Makes fork cheap, especially fork+exec
+  explanation: |
+    Follow-ups often ask what *is* still copied (page tables, kernel structures — see the Redis question)
+    and why `vfork`/`posix_spawn` exist despite COW.
+
+- id: os-vm-025
+  topic: operating-systems
+  subtopic: Virtual memory
+  type: short
+  difficulty: medium
+  tags: [mmap, read, page-cache, io]
+  prompt: |
+    When would you read a large file with `mmap` rather than `read()`, and when is `read()` the better
+    choice?
+  reference: |
+    Both go through the page cache. `mmap` avoids the copy from the page cache into a user buffer and
+    the per-call syscall overhead, and gives random access with pointer arithmetic — good for random
+    lookups in large read-mostly files (indexes, databases, shared read-only data among processes, which
+    then share the same physical pages). `read()` (with a reasonably large buffer) is often as fast or
+    faster for sequential streaming: mmap pays a page fault per page (or per fault-around batch) plus page
+    table setup and TLB shootdowns on munmap, which can exceed the copy cost; read lets you handle I/O
+    errors as return codes, whereas mmap turns I/O errors and truncation into SIGBUS; mmap can't be used
+    on pipes/sockets; and on 32-bit systems address space limits mapping size. For control over latency
+    with mmap you need `madvise` (SEQUENTIAL/WILLNEED), `MAP_POPULATE`, or `mlock`, since a page fault
+    can block on disk at any memory access.
+  keyPoints:
+    - Both use the page cache; mmap avoids the copy and syscalls per chunk
+    - mmap is good for random access to large read-mostly files and sharing pages between processes
+    - read is often equal or better for sequential streaming (fault and TLB/munmap costs vs copy)
+    - Error handling - mmap turns I/O errors/truncation into SIGBUS; read returns errors
+    - With mmap, any access can block on a page fault; mitigate with madvise/MAP_POPULATE/mlock
+  explanation: |
+    "mmap is always faster because zero-copy" is the misconception interviewers are probing for.
+    Benchmarks routinely show sequential `read` with a 128 KiB+ buffer matching mmap.
+
+- id: os-vm-026
+  topic: operating-systems
+  subtopic: Virtual memory
+  type: short
+  difficulty: hard
+  tags: [low-latency, page-fault, prefault, huge-pages, mlock]
+  prompt: |
+    A latency-critical C++ service has fast steady-state performance, but the first few thousand
+    requests after startup (and occasional requests later) are slow, and `perf stat` shows lots of page
+    faults. How would you eliminate page faults from the hot path?
+  reference: |
+    Page faults happen on first touch of heap, stack, and mapped memory (and of code and data pages of
+    the binary and libraries), on COW, and after the kernel reclaims or migrates pages. Remedies:
+    pre-allocate memory pools and object arenas at startup and touch every page (or use MAP_POPULATE /
+    `mlockall(MCL_CURRENT|MCL_FUTURE)`, which also prevents later swap-out/reclaim of the process's
+    pages); pre-touch thread stacks; warm up code paths with synthetic traffic so code pages are resident;
+    avoid returning memory to the OS on the hot path (tune the allocator so it doesn't munmap/madvise
+    freed memory, which causes refaults and TLB shootdowns); use huge pages (explicit hugetlbfs or
+    MADV_HUGEPAGE) to reduce both faults and TLB misses; disable automatic NUMA balancing for the
+    process or bind memory with numactl to avoid migration faults; avoid fork in the process (COW); and
+    verify with `perf stat -e page-faults` / `perf trace -F all` during steady state.
+  keyPoints:
+    - Faults come from first touch, COW, reclaim/swap and NUMA migration
+    - Pre-allocate and pre-touch memory (pools, stacks), MAP_POPULATE
+    - mlockall to lock memory and prevent reclaim
+    - Keep allocator from returning memory to the OS; use huge pages
+    - Control NUMA balancing; avoid fork; measure faults with perf
+  explanation: |
+    This is a common trading-firm question. A good answer pairs each fault source with its mitigation
+    and ends with how to verify the fix.

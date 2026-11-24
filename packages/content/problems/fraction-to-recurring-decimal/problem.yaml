@@ -1,0 +1,17 @@
+slug: fraction-to-recurring-decimal
+title: Fraction to Recurring Decimal
+difficulty: medium
+tags: [math, hash-table, string]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: fractionToDecimal
+      params:
+        - { name: numerator, type: int }
+        - { name: denominator, type: int }
+      returns: string
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 166); long division with cycle detection, heavy on edge cases
+  url: https://leetcode.com/problems/fraction-to-recurring-decimal/

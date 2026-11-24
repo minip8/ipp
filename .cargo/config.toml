@@ -1,0 +1,3 @@
+# The dev machine is memory-constrained and shared (docs/ARCHITECTURE.md section 2).
+[build]
+jobs = 4

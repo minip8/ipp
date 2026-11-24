@@ -1,0 +1,628 @@
+# Virtual functions, dynamic dispatch, RTTI, inheritance, object layout.
+- id: cpp-virtual-001
+  topic: cpp
+  subtopic: Virtual dispatch and the object model
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [virtual-functions, constructors]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    struct Base {
+        Base() { hello(); }
+        virtual ~Base() { hello(); }
+        virtual void hello() { std::cout << "B"; }
+    };
+
+    struct Derived : Base {
+        void hello() override { std::cout << "D"; }
+    };
+
+    int main() {
+        Derived d;
+        d.hello();
+    }
+  answer: { kind: output, output: "BDB" }
+  explanation: |
+    While a base class constructor or destructor runs, the object's dynamic type is the base
+    ([class.cdtor]): during `Base()` the `Derived` part doesn't exist yet, and during `~Base()` it has
+    already been destroyed. Virtual calls from there go to `Base::hello` → `B` ... `B`. In between,
+    `d.hello()` dispatches normally → `D`. (Unlike Java and C#, which dispatch to the derived override
+    and expose uninitialized fields.)
+
+- id: cpp-virtual-002
+  topic: cpp
+  subtopic: Virtual dispatch and the object model
+  difficulty: hard
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [virtual-functions, default-arguments]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    struct Base {
+        virtual void f(int x = 1) { std::cout << "B" << x << ' '; }
+        virtual ~Base() = default;
+    };
+
+    struct Derived : Base {
+        void f(int x = 2) override { std::cout << "D" << x << ' '; }
+    };
+
+    int main() {
+        Derived d;
+        Base& b = d;
+        b.f();
+        d.f();
+        std::cout << '\n';
+    }
+  answer: { kind: output, output: "D1 D2" }
+  explanation: |
+    The function body is chosen at run time by the dynamic type, but default arguments are filled in at
+    compile time from the declaration found via the **static** type ([dcl.fct.default]). `b.f()`
+    calls `Derived::f` with `Base`'s default `1`. Core Guidelines C.140: "Do not provide different
+    default arguments for a virtual function and an overrider."
+
+- id: cpp-virtual-003
+  topic: cpp
+  subtopic: Virtual dispatch and the object model
+  difficulty: easy
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [slicing, virtual-functions]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    struct Animal {
+        virtual const char* name() const { return "animal"; }
+        virtual ~Animal() = default;
+    };
+    struct Dog : Animal {
+        const char* name() const override { return "dog"; }
+    };
+
+    void by_value(Animal a)      { std::cout << a.name() << ' '; }
+    void by_ref(const Animal& a) { std::cout << a.name() << '\n'; }
+
+    int main() {
+        Dog d;
+        by_value(d);
+        by_ref(d);
+    }
+  answer: { kind: output, output: "animal dog" }
+  explanation: |
+    Passing a `Dog` to a by-value `Animal` parameter copy-constructs a new `Animal` from the `Animal`
+    subobject: *object slicing*. The copy really is an `Animal` (its vptr points to `Animal`'s vtable),
+    so `name()` returns `animal`. Polymorphism requires a reference or pointer. A common defence for
+    polymorphic bases is to make the copy operations protected or deleted (Core Guidelines C.67).
+
+- id: cpp-virtual-004
+  topic: cpp
+  subtopic: Virtual dispatch and the object model
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [virtual-destructor, undefined-behavior]
+  prompt: What does this program do?
+  code: |
+    #include <iostream>
+    #include <string>
+
+    struct Base {
+        ~Base() { std::cout << "~Base\n"; }
+    };
+
+    struct Derived : Base {
+        std::string name = "a string long enough to need a heap allocation";
+        ~Derived() { std::cout << "~Derived\n"; }
+    };
+
+    int main() {
+        Base* p = new Derived;
+        delete p;
+    }
+  answer: { kind: undefined }
+  explanation: |
+    Deleting an object through a pointer to a base class whose destructor is not virtual is undefined
+    behaviour ([expr.delete]). In practice only `~Base` runs, so `~Derived` and the `std::string` member's
+    destructor are skipped (a leak), and the deallocation may be passed the wrong size.
+    AddressSanitizer reports `new-delete-type-mismatch`.
+
+    Rule (Core Guidelines C.35): a base class destructor should be either public and virtual, or
+    protected and non-virtual.
+
+- id: cpp-virtual-005
+  topic: cpp
+  subtopic: Virtual dispatch and the object model
+  difficulty: hard
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [virtual-inheritance, diamond, constructors]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    struct A { explicit A(int x) { std::cout << "A" << x; } };
+    struct B : virtual A { B() : A(1) { std::cout << "B"; } };
+    struct C : virtual A { C() : A(2) { std::cout << "C"; } };
+    struct D : B, C { D() : A(3) { std::cout << "D"; } };
+
+    int main() {
+        D d;
+        std::cout << '\n';
+    }
+  answer: { kind: output, output: "A3BCD" }
+  explanation: |
+    With virtual inheritance there's a single shared `A` subobject, and it is initialized by the **most
+    derived** class ([class.base.init], /13). Virtual bases are constructed first, using `D`'s
+    mem-initializer `A(3)`. The `A(1)` and `A(2)` in `B` and `C` are ignored when they aren't the most
+    derived type. Then the non-virtual bases `B` and `C` (in declaration order), then `D`'s body.
+
+    If `D` didn't mention `A`, it would need a default constructor of `A`, and this code would fail to
+    compile, a common surprise with virtual bases.
+
+- id: cpp-virtual-006
+  topic: cpp
+  subtopic: Virtual dispatch and the object model
+  difficulty: easy
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [dynamic-cast, rtti]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+    #include <typeinfo>
+
+    struct Base { virtual ~Base() = default; };
+    struct Derived : Base {};
+
+    int main() {
+        Base b;
+        Base* p = &b;
+        std::cout << (dynamic_cast<Derived*>(p) == nullptr) << ' ';
+        try {
+            Derived& d = dynamic_cast<Derived&>(*p);
+            (void)d;
+            std::cout << "cast ok\n";
+        } catch (const std::bad_cast&) {
+            std::cout << "bad_cast\n";
+        }
+    }
+  answer: { kind: output, output: "1 bad_cast" }
+  explanation: |
+    `dynamic_cast` checks the dynamic type at run time (it requires a polymorphic source type). `p`
+    points to a plain `Base`, so the downcast fails. A failing pointer cast returns a null pointer, while
+    a failing reference cast throws `std::bad_cast`, because there's no such thing as a null reference
+    ([expr.dynamic.cast]). A `static_cast` here would compile and yield undefined behaviour on use.
+
+- id: cpp-virtual-007
+  topic: cpp
+  subtopic: Virtual dispatch and the object model
+  difficulty: easy
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [override, virtual-functions]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    struct Base {
+        virtual void process(int) { std::cout << "Base\n"; }
+        virtual ~Base() = default;
+    };
+
+    struct Derived : Base {
+        void process(long) override { std::cout << "Derived\n"; }
+    };
+
+    int main() {
+        Derived d;
+        Base& b = d;
+        b.process(1);
+    }
+  answer: { kind: compile_error }
+  explanation: |
+    `process(long)` has a different parameter list, so it doesn't override `process(int)`. It declares a
+    new function that *hides* the base one. Without `override` the program would compile and print
+    `Base`, a silent bug. With `override`, the compiler must reject a function that doesn't override
+    anything ([class.virtual]). This is why Core Guidelines C.128 says to use `override` (or `final`) on every
+    overrider and to not repeat `virtual`.
+
+- id: cpp-virtual-008
+  topic: cpp
+  subtopic: Virtual dispatch and the object model
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [rtti, typeid, polymorphic-types]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+    #include <typeinfo>
+
+    struct A {};
+    struct B : A {};
+
+    struct P { virtual ~P() = default; };
+    struct Q : P {};
+
+    int main() {
+        B b;
+        A& a = b;
+        Q q;
+        P& p = q;
+        std::cout << (typeid(a) == typeid(B)) << (typeid(p) == typeid(Q)) << '\n';
+    }
+  answer: { kind: output, output: "01" }
+  explanation: |
+    `typeid` on an lvalue of *polymorphic* class type (one with at least one virtual function) reports
+    the dynamic type, read from the vtable ([expr.typeid]). For a non-polymorphic type there's no runtime
+    type information in the object, so `typeid(a)` is just the static type `A` ([expr.typeid]).
+
+- id: cpp-virtual-009
+  topic: cpp
+  subtopic: Virtual dispatch and the object model
+  difficulty: hard
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [access-control, virtual-functions]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    struct Base {
+        virtual void run() { std::cout << "Base\n"; }
+        virtual ~Base() = default;
+    };
+
+    struct Derived : Base {
+    private:
+        void run() override { std::cout << "Derived\n"; }
+    };
+
+    int main() {
+        Derived d;
+        Base& b = d;
+        b.run();
+    }
+  answer: { kind: output, output: "Derived" }
+  explanation: |
+    Access control is checked at compile time against the *static* type of the expression
+    ([class.access.virt]): `b.run()` names `Base::run`, which is public. Dispatch then reaches the private
+    override at run time. `d.run()` would fail to compile. This is the basis of the Non-Virtual Interface
+    idiom, where the public interface is non-virtual and the customization points are private virtuals.
+
+- id: cpp-virtual-010
+  topic: cpp
+  subtopic: Virtual dispatch and the object model
+  difficulty: easy
+  type: single
+  tags: [object-layout, empty-classes]
+  prompt: |
+    For `struct Empty {};`, what does `sizeof(Empty)` give on mainstream compilers, and why?
+  choices:
+    - { id: a, text: "1: every complete object must have a non-zero size so that distinct objects have distinct addresses." }
+    - { id: b, text: "0: it has no members." }
+    - { id: c, text: "8: every class object stores a hidden type tag." }
+    - { id: d, text: "It does not compile: empty classes are not allowed." }
+  answer: a
+  explanation: |
+    [intro.object] requires complete objects (and array elements) to have non-zero size, so that, e.g.,
+    `&arr[0] != &arr[1]`. The exact size is implementation-defined, but it's 1 on all mainstream ABIs.
+    An empty *base class* subobject can occupy zero bytes (the empty base optimization), and since C++20
+    `[[no_unique_address]]` allows the same for empty members. That's how `std::unique_ptr` with a
+    stateless deleter stays the size of a raw pointer. Only polymorphic classes carry a hidden vptr.
+
+- id: cpp-virtual-011
+  topic: cpp
+  subtopic: Virtual dispatch and the object model
+  difficulty: medium
+  type: single
+  tags: [vtable, virtual-functions, implementation]
+  prompt: |
+    In the typical implementation (Itanium C++ ABI as used by GCC/Clang, and MSVC similarly), how does a
+    virtual call `p->f()` work?
+  choices:
+    - { id: a, text: "Each polymorphic object holds a pointer (vptr) to a per-class table of function pointers (vtable); the call loads the vptr, loads the slot for `f`, and calls through it." }
+    - { id: b, text: "Each object stores its own copy of a function pointer for every virtual function." }
+    - { id: c, text: "The compiler looks up `f` by name in a hash table of the dynamic type at each call." }
+    - { id: d, text: "The call is resolved by `dynamic_cast`ing `p` to each derived class in turn." }
+  answer: a
+  explanation: |
+    One vtable per class (per polymorphic subobject layout), shared by all objects of that class; each
+    object pays one pointer (more with multiple inheritance). A call is two dependent loads plus an
+    indirect call. The standard doesn't mandate vtables, but every mainstream implementation uses them.
+    The bigger cost in practice is usually that indirect calls can't be inlined, plus possible
+    indirect-branch mispredictions. Objects storing per-function pointers (b) would waste memory, and
+    name lookup (c) happens only at compile time.
+
+- id: cpp-virtual-012
+  topic: cpp
+  subtopic: Virtual dispatch and the object model
+  difficulty: medium
+  type: multiple
+  tags: [virtual-functions]
+  prompt: Which of these member functions can be declared `virtual`? Select all that apply.
+  choices:
+    - { id: a, text: "A destructor" }
+    - { id: b, text: "A constructor" }
+    - { id: c, text: "A static member function" }
+    - { id: d, text: "A member function template (`template <class T> virtual void f(T);`)" }
+    - { id: e, text: "A copy assignment operator" }
+    - { id: f, text: "A `const` member function" }
+  answer: [a, e, f]
+  explanation: |
+    - Constructors can't be virtual: there is no object (and no vptr) yet to dispatch on. The
+      "virtual constructor" idiom is a virtual `clone()` member or a factory.
+    - Static members have no object to dispatch on.
+    - Member function templates can't be virtual, because the vtable would need an unbounded number
+      of slots, one per instantiation ([temp.mem]).
+    - Destructors, assignment operators (rarely a good idea) and const member functions can all be virtual.
+
+- id: cpp-virtual-013
+  topic: cpp
+  subtopic: Virtual dispatch and the object model
+  difficulty: hard
+  type: single
+  tags: [multiple-inheritance, pointer-conversion, object-layout]
+  prompt: |
+    Given
+
+    ```cpp
+    struct A { int a; };
+    struct B { int b; };
+    struct C : A, B {};
+    C c;
+    B* pb = &c;
+    ```
+
+    which statement is true?
+  choices:
+    - { id: a, text: "`pb` points to the `B` subobject, whose address generally differs from `&c`, yet `pb == &c` is `true` because `&c` is converted to `B*` before comparing." }
+    - { id: b, text: "`pb` holds exactly the same address as `&c`, because all bases start at offset 0." }
+    - { id: c, text: "`pb == &c` is `false` because the addresses differ." }
+    - { id: d, text: "The conversion `B* pb = &c;` requires `reinterpret_cast`." }
+  answer: a
+  explanation: |
+    With multiple inheritance, base subobjects live at different offsets, and the implicit derived-to-base
+    pointer conversion *adjusts* the address ([conv.ptr]). `A` and `B` are distinct non-empty subobjects,
+    so at most one of them can share `c`'s address. Comparing `pb == &c` first converts `&c` to `B*`
+    (applying the same adjustment), so it's `true`. Comparing `static_cast<void*>(pb)` with
+    `static_cast<void*>(&c)` may give `false`.
+
+    This is why `reinterpret_cast` between base and derived pointers, or casting through `void*` with a
+    different type, is broken: it skips the adjustment.
+
+- id: cpp-virtual-014
+  topic: cpp
+  subtopic: Virtual dispatch and the object model
+  difficulty: hard
+  type: single
+  tags: [pure-virtual, destructors]
+  prompt: |
+    A base class declares `virtual ~Shape() = 0;` to make the class abstract. What else is required for a
+    program that creates `Circle` objects (derived from `Shape`) to link?
+  choices:
+    - { id: a, text: "A definition `Shape::~Shape() {}` must be provided, because every derived destructor calls it." }
+    - { id: b, text: "Nothing: pure virtual functions never have definitions." }
+    - { id: c, text: "`Circle` must declare its own destructor `= 0` too." }
+    - { id: d, text: "`Shape` must also declare a pure virtual constructor." }
+  answer: a
+  explanation: |
+    A pure virtual function *may* have a definition, and a pure virtual destructor *must* have one:
+    destroying a `Circle` implicitly calls `Shape::~Shape()` non-virtually after `~Circle()`, so a missing
+    definition is a link error ("undefined reference to Shape::~Shape()"). Declaring a pure virtual
+    destructor is the usual trick to make a class abstract when it has no other natural pure virtual
+    function. Constructors can't be virtual.
+
+- id: cpp-virtual-015
+  topic: cpp
+  subtopic: Virtual dispatch and the object model
+  difficulty: medium
+  type: single
+  tags: [final, devirtualization, performance]
+  prompt: |
+    In a hot loop you call `obj.price()` on a `Bond&` where `Bond` overrides a virtual `price()`. Which
+    change most directly allows the compiler to devirtualize (and inline) the call without changing the design?
+  choices:
+    - { id: a, text: "Mark `Bond` (or `Bond::price`) as `final`." }
+    - { id: b, text: "Mark `price()` as `inline`." }
+    - { id: c, text: "Make `price()` `noexcept`." }
+    - { id: d, text: "Call it through a `Bond*` instead of a `Bond&`." }
+  answer: a
+  explanation: |
+    A call through `Bond&` could reach an override in some class derived from `Bond`. If `Bond` (or the
+    function) is `final`, no further override can exist, so the compiler can call `Bond::price` directly
+    and inline it. Link-time optimization with whole-program visibility can sometimes prove the same thing.
+    `inline` doesn't affect dispatch; `noexcept` may reduce unwinding overhead but doesn't remove
+    the indirection; pointers and references dispatch the same way.
+
+- id: cpp-virtual-016
+  topic: cpp
+  subtopic: Virtual dispatch and the object model
+  difficulty: easy
+  type: short
+  tags: [virtual-destructor]
+  prompt: |
+    Why should a base class intended for polymorphic use have a virtual destructor? Is a virtual
+    destructor ever *not* needed for a base class?
+  reference: |
+    If an object of a derived class is deleted through a pointer to the base (`delete basePtr;`), the
+    destructor called is chosen by the static type unless it's virtual. With a non-virtual base destructor
+    that's undefined behaviour; in practice the derived destructor and its members' destructors don't run
+    (leaks, unreleased locks or files) and the wrong size may be deallocated. A virtual destructor makes
+    `delete` dispatch to the most derived destructor. It's not needed when objects are never deleted
+    polymorphically. The guideline: a base destructor should be either public and virtual, or protected and
+    non-virtual. The protected form prevents `delete basePtr` from compiling at all, as used for mixin and
+    CRTP bases where you don't want a vptr. `std::shared_ptr<Base>` created from `make_shared<Derived>`
+    happens to call the right destructor anyway because it captures the deleter at construction, but
+    `std::unique_ptr<Base>` does not.
+  explanation: |
+    Look for the UB on delete-through-base, the consequences, and the public-virtual / protected-non-virtual
+    guideline (Core Guidelines C.35; Herb Sutter, "Virtuality", Guideline #4).
+  keyPoints:
+    - delete through a base pointer with a non-virtual destructor is undefined behaviour
+    - In practice derived destructors and members' destructors are skipped (leaks)
+    - Virtual destructor dispatches to the most-derived destructor
+    - Not needed if never deleted polymorphically; then make the base destructor protected and non-virtual
+    - unique_ptr<Base> has the same requirement; shared_ptr captures the deleter at creation
+
+- id: cpp-virtual-017
+  topic: cpp
+  subtopic: Virtual dispatch and the object model
+  difficulty: hard
+  type: short
+  tags: [virtual-inheritance, diamond, multiple-inheritance]
+  prompt: |
+    What is the "diamond problem" in C++ multiple inheritance, how does virtual inheritance solve it, and
+    what does virtual inheritance cost?
+  reference: |
+    If `B` and `C` both derive from `A`, and `D` derives from both `B` and `C`, then by default a `D`
+    contains *two* `A` subobjects. Accessing an `A` member from `D` is ambiguous, converting `D*` to `A*` is
+    ambiguous, and state is duplicated. Declaring the bases as `class B : virtual public A` and
+    `class C : virtual public A` makes `D` contain a single shared `A`. Costs: the shared base's location
+    is no longer at a fixed offset, so access to virtual-base members goes through an extra indirection
+    (a vbase offset in the vtable or a vbptr). Objects get bigger. The *most derived class* is responsible
+    for constructing the virtual base, so intermediate classes' initializers for `A` are ignored, which
+    surprises people, and every further-derived class must be able to construct `A`. `static_cast` from a
+    virtual base down to derived is not allowed (use `dynamic_cast`). Virtual bases are also constructed
+    before all non-virtual ones. Prefer designs that avoid diamonds with state, e.g. pure interfaces.
+  explanation: |
+    Key items: two copies by default, the shared subobject with `virtual`, most-derived-class initialization,
+    and the runtime and layout overhead.
+  keyPoints:
+    - Without virtual inheritance D contains two A subobjects (ambiguity, duplicated state)
+    - Virtual inheritance shares a single A subobject
+    - The most derived class constructs the virtual base; intermediate initializers are ignored
+    - "Costs: extra indirection/offset lookup, larger objects, no static_cast downcast from the virtual base"
+    - Virtual bases are constructed before non-virtual bases
+
+- id: cpp-virtual-018
+  topic: cpp
+  subtopic: Virtual dispatch and the object model
+  difficulty: medium
+  type: short
+  tags: [slicing, polymorphism, copying]
+  prompt: |
+    What is object slicing? Give an example of how it happens accidentally and how you would design a
+    polymorphic class hierarchy to prevent it.
+  reference: |
+    Slicing happens when a derived object is copied into an object of base type: only the base subobject
+    is copied, so derived data is lost and the copy's dynamic type is the base, which changes virtual
+    dispatch. Typical accidents: passing by value (`void f(Base b)`), catching exceptions by value
+    (`catch (Base e)`), storing derived objects in a `std::vector<Base>`, and assignment through base
+    references (`Base& r = d1; r = d2;` copies only the base part, a "partial assignment"). Prevention:
+    pass and catch by reference, store `std::unique_ptr<Base>` (or a `std::variant`) in containers, and
+    make polymorphic bases non-copyable by deleting or protecting the copy/move operations (Core Guidelines
+    C.67). If copies are needed, provide a virtual `clone()` returning `std::unique_ptr<Base>`.
+  explanation: |
+    Strong answers list several accidental sources (by-value parameters, catch by value, containers,
+    assignment through a base reference) and the design fix (non-copyable base plus clone).
+  keyPoints:
+    - Copying a derived object into a base object keeps only the base part; the dynamic type becomes Base
+    - Happens with by-value parameters, catch by value, vector<Base>, assignment via Base&
+    - Use references or pointers, or containers of unique_ptr<Base>
+    - Delete or protect copy operations in polymorphic bases; provide a virtual clone() if copying is needed
+
+- id: cpp-virtual-019
+  topic: cpp
+  subtopic: Virtual dispatch and the object model
+  difficulty: medium
+  type: short
+  tags: [aggregates, trivially-copyable, standard-layout, object-model]
+  prompt: |
+    What do the type categories "aggregate", "trivially copyable" and "standard-layout" mean, and why do
+    they matter in practice? (The old term "POD" combined two of them.)
+  reference: |
+    An aggregate is an array or a class with no user-declared or inherited constructors (C++20 wording),
+    no private or protected direct non-static data members, no virtual functions, and no virtual,
+    private or protected bases. It can be initialized with braces member by member (`Point p{1, 2};`,
+    designated initializers) and with parentheses since C++20. Trivially copyable means copying and moving
+    are trivial (bitwise) and the destructor is trivial, so the object can be copied with `memcpy` or
+    `std::bit_cast`, sent over shared memory or the network as bytes, and containers can relocate it with
+    `memmove`. Standard-layout means the class has a C-compatible, predictable layout: all non-static members
+    have the same access control, no virtual functions or virtual bases, members aren't split across
+    several classes in the hierarchy, and so on. Then `offsetof` is valid, the address of the object equals
+    the address of its first member, and it can interoperate with C structs. "POD" was trivial plus
+    standard-layout (deprecated as a term in C++20). They matter for zero-copy message parsing and
+    serialization, C interop, `memcpy`-based optimizations in containers, and initialization syntax. Check
+    them with `std::is_aggregate`, `std::is_trivially_copyable` and `std::is_standard_layout`.
+  explanation: |
+    Precise definitions vary by standard version; a good answer captures the intent of each category and
+    one practical use (memcpy/bit_cast, C interop, brace init).
+  keyPoints:
+    - "Aggregate: no user-declared constructors, no private members, no virtuals; brace/designated init"
+    - "Trivially copyable: trivial copy/move/destructor; memcpy, bit_cast and memmove relocation are valid"
+    - "Standard-layout: C-compatible predictable layout; offsetof, first-member address"
+    - POD equalled trivial plus standard-layout (term deprecated)
+    - Check with type traits (is_trivially_copyable, is_standard_layout, is_aggregate)
+
+- id: cpp-virtual-020
+  topic: cpp
+  subtopic: Virtual dispatch and the object model
+  difficulty: medium
+  type: single
+  tags: [covariant-return-types, virtual-functions]
+  prompt: |
+    `Base` declares `virtual Base* clone() const;`. Which declaration in `Derived : public Base` validly
+    **overrides** it?
+  choices:
+    - { id: a, text: "`Derived* clone() const override;`" }
+    - { id: b, text: "`std::unique_ptr<Derived> clone() const override;`" }
+    - { id: c, text: "`Derived clone() const override;`" }
+    - { id: d, text: "`Base* clone() override;`" }
+  answer: a
+  explanation: |
+    Overriders may have a *covariant* return type: if the base returns a pointer or reference to a class
+    `B`, the overrider may return a pointer or reference to a class derived from `B`, with the same or less
+    cv-qualification ([class.virtual]). That lets `derived.clone()` return `Derived*` without a cast.
+    Covariance doesn't extend to smart pointers or by-value returns (b, c), which is why `clone()` returning
+    `std::unique_ptr<Base>` loses the derived type. A common workaround is a non-virtual public function
+    wrapping a private virtual one, or CRTP. (d) drops `const`, so it's a different signature, which
+    `override` rejects.
+
+- id: cpp-virtual-021
+  topic: cpp
+  subtopic: Virtual dispatch and the object model
+  difficulty: medium
+  type: short
+  tags: [dynamic-cast, rtti, performance]
+  prompt: |
+    How does `dynamic_cast` work, what does it cost, and what would you use instead in performance-sensitive
+    code that needs to distinguish message types?
+  reference: |
+    `dynamic_cast<D*>(b)` requires a polymorphic source type. It reads the object's vptr to get the RTTI
+    (`std::type_info`) of the dynamic type, then searches the class hierarchy (described in the RTTI data)
+    for a public, unambiguous `D` subobject. If found, it returns the adjusted pointer; otherwise it returns
+    null (or throws `std::bad_cast` for references). Casting to `void*` gives the most-derived object. The
+    cost is a library call (`__dynamic_cast` in the Itanium ABI) that walks base-class tables and compares
+    type_info objects (often by name-string comparison when types come from different shared libraries),
+    so it's tens to hundreds of cycles and grows with hierarchy depth and multiple inheritance, far more
+    than a virtual call. Repeated `dynamic_cast` chains ("if it's an A... else if it's a B...") are also a
+    design smell. Alternatives: a virtual function doing the type-specific work (double dispatch or visitor
+    if two hierarchies interact); an explicit type tag or enum field plus `static_cast` when the set of
+    types is closed (common in message decoders); `std::variant` + `std::visit`; or comparing `typeid` for an
+    exact-type check (cheaper than a hierarchy walk). Builds with `-fno-rtti` disable `dynamic_cast`
+    entirely.
+  explanation: |
+    Look for: the vptr→RTTI→hierarchy search mechanism, a cost well above a virtual call, and closed-set
+    alternatives (tag plus static_cast, variant, virtual dispatch).
+  keyPoints:
+    - Uses the vptr to reach RTTI and searches the hierarchy for the target subobject
+    - Returns null for pointers or throws bad_cast for references; adjusts pointers
+    - Much more expensive than a virtual call; worse with deep or multiple inheritance and cross-DSO comparisons
+    - Chains of dynamic_cast are a design smell
+    - Alternatives are virtual functions or visitors, type tags with static_cast, std::variant, typeid exact checks

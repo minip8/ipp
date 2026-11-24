@@ -1,0 +1,489 @@
+# Initialization: default/value/aggregate/list initialization, initializer_list, narrowing, order.
+- id: cpp-init-001
+  topic: cpp
+  subtopic: Initialization
+  difficulty: easy
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [most-vexing-parse]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    struct S {
+        S() { std::cout << "S"; }
+    };
+
+    int main() {
+        S s();
+        std::cout << "|\n";
+    }
+  answer: { kind: output, output: "|" }
+  explanation: |
+    `S s();` does not create an object. Anything that can be parsed as a declaration is a declaration
+    ([dcl.ambig.res]), and this one declares a *function* named `s` that takes no arguments and returns `S`.
+    No constructor runs. This is the "most vexing parse". Write `S s;` or `S s{};`.
+
+- id: cpp-init-002
+  topic: cpp
+  subtopic: Initialization
+  difficulty: easy
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [list-initialization, initializer-list, std-vector]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+    #include <vector>
+
+    int main() {
+        std::vector<int> a(3, 1);
+        std::vector<int> b{3, 1};
+        std::cout << a.size() << ' ' << b.size() << '\n';
+    }
+  answer: { kind: output, output: "3 2" }
+  explanation: |
+    Parentheses call the "count, value" constructor: `a` is `{1, 1, 1}`. Braces strongly prefer an
+    `std::initializer_list` constructor when one is viable ([over.match.list]), so `b` is the two-element
+    vector `{3, 1}`. This is the standard argument against "always use braces" for containers.
+
+- id: cpp-init-003
+  topic: cpp
+  subtopic: Initialization
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [list-initialization, initializer-list, overload-resolution]
+  prompt: What does this program print?
+  code: |
+    #include <initializer_list>
+    #include <iostream>
+
+    struct S {
+        S() { std::cout << "default "; }
+        S(int, int) { std::cout << "pair "; }
+        S(std::initializer_list<int>) { std::cout << "list "; }
+    };
+
+    int main() {
+        S a(1, 2);
+        S b{1, 2};
+        S c{};
+        S d({});
+        std::cout << '\n';
+    }
+  answer: { kind: output, output: "pair list default list" }
+  explanation: |
+    - `S a(1, 2)`: ordinary overload resolution → `pair`.
+    - `S b{1, 2}`: list-initialization tries initializer-list constructors first ([over.match.list])
+      → `list`.
+    - `S c{}`: special case: empty braces on a class with a default constructor mean
+      *value-initialization*, which calls the default constructor ([dcl.init.list]) → `default`.
+    - `S d({})`: now the argument is an empty braced list passed to a constructor; it can initialize an
+      `std::initializer_list<int>` (empty) → `list`.
+
+- id: cpp-init-004
+  topic: cpp
+  subtopic: Initialization
+  difficulty: easy
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [narrowing, list-initialization]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    int main() {
+        double d = 3.7;
+        int a = d;
+        int b{d};
+        std::cout << a << b << '\n';
+    }
+  answer: { kind: compile_error }
+  explanation: |
+    `int a = d;` is an implicit floating-to-integral conversion (truncating to 3) and is allowed.
+    `int b{d};` is list-initialization, which forbids *narrowing conversions* ([dcl.init.list],
+    [dcl.init.list]). Double to int is always narrowing, so the program is ill-formed. GCC reports it
+    as an error for constants and, for a variable like this, as a diagnostic that becomes an error under
+    `-pedantic-errors`; Clang always errors. This protection is one of the main reasons to prefer brace
+    initialization for scalars.
+
+- id: cpp-init-005
+  topic: cpp
+  subtopic: Initialization
+  difficulty: easy
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [aggregate-initialization, zero-initialization]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    struct P { int a; int b; int c; };
+
+    int global;
+
+    int main() {
+        P p{1};
+        int x{};
+        static int s;
+        std::cout << p.a << p.b << p.c << x << global << s << '\n';
+    }
+  answer: { kind: output, output: "100000" }
+  explanation: |
+    - Aggregate initialization with fewer initializers than members initializes the rest from their default
+      member initializer or, if none, by copy-initializing from an empty list, i.e. value-initialization
+      → `0` ([dcl.init.aggr]).
+    - `int x{};` value-initializes → `0`.
+    - Variables with static storage duration (`global`, the local `static int s`) are zero-initialized
+      before anything else ([basic.start.static]).
+
+    Only a plain `int x;` with automatic storage would be indeterminate.
+
+- id: cpp-init-006
+  topic: cpp
+  subtopic: Initialization
+  difficulty: medium
+  type: single
+  tags: [designated-initializers, cpp20, aggregate-initialization]
+  prompt: |
+    Given `struct P { int a; int b; int c; };`, which C++20 declaration is well-formed?
+  choices:
+    - { id: a, text: "`P p{.c = 3, .a = 1};`" }
+    - { id: b, text: "`P p{.a = 1, 2, 3};`" }
+    - { id: c, text: "`P p{.a = 1, .c = 3};`" }
+    - { id: d, text: "`P p{.b = 2, .b = 3};`" }
+  answer: c
+  explanation: |
+    C++20 designated initializers ([dcl.init.aggr]) must name members in *declaration order*, but may
+    skip members; skipped members are initialized from their default member initializer or
+    value-initialized. So (c) is valid and `p.b == 0`.
+
+    - (a) Out of order: ill-formed in C++, although allowed in C99. (Clang accepts it as an extension
+      with a `-Wreorder-init-list` warning; GCC rejects it.)
+    - (b) Mixing designated and positional initializers is not allowed in C++.
+    - (d) Designators must be in strictly increasing declaration order, so a member cannot be
+      designated twice (GCC rejects it; Clang again only warns, with `-Winitializer-overrides`).
+
+    The ordering rule exists because C++ always initializes members in declaration order, and the
+    source should not suggest otherwise.
+
+- id: cpp-init-007
+  topic: cpp
+  subtopic: Initialization
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [default-member-initializers, member-initialization]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    int f(int x) { std::cout << x; return x; }
+
+    struct S {
+        int a = f(1);
+        int b = f(2);
+        S() : b(f(3)) {}
+        S(int) {}
+    };
+
+    int main() {
+        S s1;
+        std::cout << ' ';
+        S s2(0);
+        std::cout << '\n';
+    }
+  answer: { kind: output, output: "13 12" }
+  explanation: |
+    A default member initializer is only a fallback: if a constructor's mem-initializer list names the
+    member, that initializer is used and the default one is *not evaluated at all* ([class.base.init]).
+    So `S()` runs `f(1)` for `a` and `f(3)` for `b`; `f(2)` never happens. `S(int)` names neither member,
+    so both defaults run: `12`.
+
+- id: cpp-init-008
+  topic: cpp
+  subtopic: Initialization
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [member-initialization, uninitialized, construction-order]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    struct Range {
+        int size;
+        int end;
+        Range(int begin, int n) : end(begin + n), size(end - begin) {}
+    };
+
+    int main() {
+        Range r(10, 5);
+        std::cout << r.size << '\n';
+    }
+  answer: { kind: undefined }
+  explanation: |
+    Members are initialized in declaration order: `size` first, then `end`, regardless of the order
+    written in the mem-initializer list ([class.base.init]). So `size(end - begin)` reads `end` before
+    it has been initialized. Its value is indeterminate, and using an indeterminate `int` is undefined
+    behaviour (C++26 relabels it "erroneous behaviour", but in C++17 it is UB).
+
+    `-Wall` catches it (`-Wreorder`, and Clang's `-Wuninitialized` "field 'end' is uninitialized when
+    used here"). Fix by reordering the declarations or computing from parameters only.
+
+- id: cpp-init-009
+  topic: cpp
+  subtopic: Initialization
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [auto, initializer-list, type-deduction]
+  prompt: What does this program print?
+  code: |
+    #include <initializer_list>
+    #include <iostream>
+    #include <type_traits>
+
+    int main() {
+        auto a = {1};
+        auto b{1};
+        auto c = 1;
+        std::cout << std::is_same_v<decltype(a), std::initializer_list<int>>
+                  << std::is_same_v<decltype(b), int>
+                  << std::is_same_v<decltype(c), int> << '\n';
+    }
+  answer: { kind: output, output: "111" }
+  explanation: |
+    `auto` with copy-list-initialization (`= {...}`) deduces `std::initializer_list<T>`
+    ([dcl.type.auto.deduct]), so `a` is `std::initializer_list<int>`. With direct-list-initialization
+    and a single element (`auto b{1}`), N3922 (applied to C++17 and as a DR to C++14 by compilers)
+    deduces plain `int`; `auto b{1, 2}` would be ill-formed. This special case is why
+    `auto x = {1};` surprises people.
+
+- id: cpp-init-010
+  topic: cpp
+  subtopic: Initialization
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [explicit, copy-initialization]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    struct Meters {
+        explicit Meters(double v) : v(v) {}
+        double v;
+    };
+
+    void print(Meters m) { std::cout << m.v << '\n'; }
+
+    int main() {
+        Meters a{1.5};
+        Meters b = {2.5};
+        print(a);
+        print(b);
+    }
+  answer: { kind: compile_error }
+  explanation: |
+    `Meters a{1.5}` is direct-list-initialization, which may call explicit constructors. `Meters b = {2.5}`
+    is *copy-list-initialization*; overload resolution still considers the explicit constructor, and if it
+    is chosen the program is ill-formed ([over.match.list]). So the second declaration fails to compile.
+    `explicit` exists to stop exactly these implicit conversions, including `print(2.5)` or
+    `return {2.5};` in a function returning `Meters`.
+
+- id: cpp-init-011
+  topic: cpp
+  subtopic: Initialization
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++20
+  tags: [aggregate-initialization, cpp20, emplace]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+    #include <vector>
+
+    struct P { int a; int b; };
+
+    int main() {
+        P p(1, 2);
+        std::vector<P> v;
+        v.emplace_back(3, 4);
+        std::cout << p.a + p.b + v[0].a + v[0].b << '\n';
+    }
+  answer: { kind: output, output: "10" }
+  explanation: |
+    C++20 (P0960) allows aggregates to be initialized with *parentheses*: `P p(1, 2)` performs aggregate
+    initialization. That also makes `emplace_back(3, 4)` work for aggregates, since the allocator constructs
+    the element with `::new (p) P(3, 4)`. Before C++20 both lines were errors (no matching constructor).
+    Unlike braces, parenthesized aggregate init allows narrowing and does not extend the lifetime of
+    temporaries bound to reference members.
+
+- id: cpp-init-012
+  topic: cpp
+  subtopic: Initialization
+  difficulty: hard
+  type: multiple
+  tags: [default-initialization, value-initialization, indeterminate-values]
+  prompt: |
+    After the following declarations (all at block scope inside a function except where noted), which
+    objects have an **indeterminate** value of `x`? Select all that apply.
+
+    ```cpp
+    struct A { int x; };
+    struct B { int x; B() {} };
+    struct C { int x; C() = default; };
+
+    A a1;            // (1)
+    A a2{};          // (2)
+    B b{};           // (3)
+    C c{};           // (4)
+    static A a3;     // (5)
+    ```
+  choices:
+    - { id: "1", text: "(1) `a1.x`" }
+    - { id: "2", text: "(2) `a2.x`" }
+    - { id: "3", text: "(3) `b.x`" }
+    - { id: "4", text: "(4) `c.x`" }
+    - { id: "5", text: "(5) `a3.x`" }
+  answer: ["1", "3"]
+  explanation: |
+    - (1) default-initialization of an automatic object leaves `x` indeterminate.
+    - (2) `A` is an aggregate; `{}` aggregate-initializes and `x` is value-initialized → 0.
+    - (3) `B` has a *user-provided* default constructor. `B b{}` value-initializes, which for such a class
+      just calls the constructor, and that constructor doesn't initialize `x` → indeterminate.
+    - (4) `C()` is defaulted on its first declaration, so not user-provided. Value-initialization first
+      zero-initializes the object, then calls the trivial constructor → 0. (In C++17 `C` is still an
+      aggregate; in C++20 it isn't, but the result is 0 either way.)
+    - (5) static storage duration → zero-initialized.
+
+    The difference between (3) and (4), `{}` versus `= default`, is subtle and a favourite interview
+    question. See cppreference "value initialization".
+
+- id: cpp-init-013
+  topic: cpp
+  subtopic: Initialization
+  difficulty: medium
+  type: single
+  tags: [initialization-order, static-initialization]
+  prompt: |
+    `a.cpp` defines `Logger g_log;` and `b.cpp` defines `Config g_cfg;` whose constructor calls
+    `g_log.write("...")`. Both are namespace-scope objects with dynamic initialization. What does the
+    standard guarantee?
+  choices:
+    - { id: a, text: "Nothing about their relative order: `g_cfg` may be initialized before `g_log`, so the call may use an unconstructed object." }
+    - { id: b, text: "Objects are initialized in the order the translation units appear on the linker command line." }
+    - { id: c, text: "`g_log` is always initialized first because `g_cfg` depends on it." }
+    - { id: d, text: "All namespace-scope objects are constant-initialized at compile time, so there is no problem." }
+  answer: a
+  explanation: |
+    This is the *static initialization order fiasco*. Within one translation unit, dynamically initialized
+    namespace-scope variables are initialized in definition order, but across translation units the order
+    is unspecified ([basic.start.dynamic]). (b) describes what some linkers happen to do and cannot be
+    relied on. Fixes: a function-local static ("construct on first use"), `constinit`/`constexpr` so the
+    object is constant-initialized, or explicit initialization from `main`.
+
+- id: cpp-init-014
+  topic: cpp
+  subtopic: Initialization
+  difficulty: medium
+  type: short
+  tags: [list-initialization, initializer-list, narrowing]
+  prompt: |
+    Compare `T x(args)`, `T x{args}` and `T x = args`. What are the practical advantages and pitfalls of
+    brace initialization?
+  reference: |
+    `T x(args)` is direct-initialization: normal overload resolution, explicit constructors allowed,
+    narrowing allowed, and it is vulnerable to the most vexing parse (`T x();` declares a function).
+    `T x = arg` is copy-initialization: only non-explicit constructors and conversion functions are
+    considered. `T x{args}` is direct-list-initialization: it is uniform (works for aggregates, arrays,
+    classes and scalars), it forbids narrowing conversions, it never parses as a function declaration,
+    and `T x{}` value-initializes (zeroing scalars). Pitfalls: if the class has an
+    `std::initializer_list` constructor, braces strongly prefer it (`std::vector<int>{3, 1}` is two
+    elements, not three ones), and with `auto x = {1}` you get an `initializer_list`. Copy-list-init
+    (`T x = {args}`) is ill-formed if it selects an explicit constructor.
+  explanation: |
+    Look for: narrowing protection, no vexing parse, value-initialization with `{}`, and the
+    initializer_list preference trap. Core Guidelines ES.23 ("Prefer the {}-initializer syntax")
+    documents the trade-off.
+  keyPoints:
+    - Braces forbid narrowing conversions
+    - Braces avoid the most vexing parse; empty braces value-initialize
+    - initializer_list constructors are strongly preferred with braces (vector{3,1} vs vector(3,1))
+    - Copy-initialization (=) does not consider explicit constructors
+    - "auto x = {1} deduces std::initializer_list"
+
+- id: cpp-init-015
+  topic: cpp
+  subtopic: Initialization
+  difficulty: hard
+  type: short
+  tags: [static-initialization, constinit, initialization-order]
+  prompt: |
+    What is the "static initialization order fiasco"? Describe two or three ways to avoid it, and the
+    trade-offs of each.
+  reference: |
+    Namespace-scope (and static member) objects with dynamic initialization in different translation
+    units are initialized in an unspecified order relative to each other. If one's constructor uses another
+    from a different TU, it may run before that object is constructed and read zero-initialized memory. (A
+    mirror problem exists at shutdown: objects are destroyed in reverse order, so a destructor can use an
+    already-destroyed object.) Fixes: (1) construct-on-first-use, i.e. replace the global with a function
+    returning a reference to a function-local static. Since C++11 its initialization is thread-safe, but
+    every access pays a guard check, and destruction order can still bite; the leaky variant
+    `static T& t = *new T;` avoids destruction issues. (2) Make the object constant-initialized:
+    `constexpr` or C++20 `constinit` guarantees it is initialized at compile time before any dynamic
+    initialization, and `constinit` turns a violation into a compile error. That only works for types with
+    constexpr constructors. (3) Avoid globals and pass dependencies explicitly, or initialize everything in
+    a defined order from `main`. A Schwarz/nifty counter (as used for `std::cout`) is another option.
+  explanation: |
+    A good answer names cross-TU dynamic initialization as the cause, mentions the destruction-order
+    mirror image, and gives function-local statics and `constinit` as fixes with their costs. See the
+    isocpp FAQ entry "What's the static initialization order fiasco?" and cppreference `constinit`.
+  keyPoints:
+    - Dynamic initialization order across translation units is unspecified
+    - A global's constructor may use another TU's global before it is constructed
+    - Construct-on-first-use via function-local static (thread-safe since C++11, small guard cost)
+    - constexpr/constinit give constant initialization, so the object is ready before any dynamic init
+    - Destruction order has the mirror-image problem
+
+- id: cpp-init-016
+  topic: cpp
+  subtopic: Initialization
+  difficulty: easy
+  type: short
+  tags: [explicit, implicit-conversions, constructors]
+  prompt: |
+    What does `explicit` on a constructor (or conversion operator) do, and what's a good default policy
+    for using it?
+  reference: |
+    An `explicit` constructor can't be used for implicit conversions or copy-initialization: with
+    `explicit Meters(double)`, `Meters m = 3.0;`, `f(3.0)` for `f(Meters)` and `return 3.0;` in a function
+    returning `Meters` all fail to compile, while `Meters m(3.0)`, `Meters m{3.0}` and `static_cast<Meters>(3.0)`
+    work. That prevents surprising conversions such as passing a raw `double` where a unit type is expected,
+    or `std::vector<int> v = 10;`. An `explicit operator bool()` allows use in conditions (`if (p)`, `!p`,
+    `&&`) via contextual conversion but not `int x = p;` or `p + 1`, which is the "safe bool" idiom. Policy:
+    make single-argument constructors (including those with defaults and variadic ones) `explicit` unless
+    the conversion is genuinely lossless and natural (e.g. `std::string` from `const char*`, a `span`
+    from an array); conversion operators too. C++20 `explicit(bool)` lets wrappers like `std::pair`
+    be conditionally explicit.
+  explanation: |
+    Core Guidelines C.46: "By default, declare single-argument constructors explicit". Mention contextual
+    conversion for `explicit operator bool`.
+  keyPoints:
+    - explicit blocks implicit conversions and copy-initialization through that constructor
+    - Direct-initialization and casts still work
+    - explicit operator bool still works in conditions (contextual conversion)
+    - Default to explicit for single-argument constructors; allow implicit only for natural, lossless conversions
+    - C++20 explicit(bool) for conditional explicitness

@@ -1,0 +1,17 @@
+slug: palindrome-partitioning
+title: Palindrome Partitioning
+difficulty: medium
+tags: [backtracking, dynamic-programming, string]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: partition
+      params:
+        - { name: s, type: string }
+      returns: { list: { list: string } }
+      compare: unordered
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 131)
+  url: https://leetcode.com/problems/palindrome-partitioning/

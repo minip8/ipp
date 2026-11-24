@@ -1,0 +1,18 @@
+- slug: cpp
+  title: C++
+  description: Language rules, the standard library, object lifetime, templates, and what programs actually print.
+- slug: python
+  title: Python
+  description: Language semantics, the data model, the standard library, and common gotchas.
+- slug: computer-architecture
+  title: Computer architecture
+  description: CPUs, caches, memory hierarchy, pipelines, data representation, and performance.
+- slug: operating-systems
+  title: Operating systems
+  description: Processes, threads, scheduling, virtual memory, file systems, and system calls.
+- slug: networking
+  title: Networking
+  description: TCP/IP, UDP, DNS, HTTP, TLS, sockets, and how packets get from A to B.
+- slug: concurrency
+  title: Concurrency
+  description: Threads, locks, atomics, memory models, lock-free structures, and classic bugs.

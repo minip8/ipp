@@ -1,0 +1,672 @@
+# Atomics, compare-and-swap, memory ordering, happens-before, hardware models, Java's model.
+
+- id: conc-mm-001
+  topic: concurrency
+  subtopic: Atomics
+  difficulty: easy
+  type: single
+  prompt: |
+    `std::atomic<int> x{0};` is shared by several threads. Each thread executes `x = x + 1;`.
+    Which statement is true?
+  choices:
+    - { id: a, text: "It is an atomic increment because x is std::atomic" }
+    - { id: b, text: "It is an atomic load followed by a separate atomic store, so increments can be lost; use x.fetch_add(1) or ++x" }
+    - { id: c, text: "It is a data race and therefore undefined behaviour" }
+    - { id: d, text: "It does not compile because atomic<int> has no operator+" }
+  answer: b
+  explanation: |
+    `x + 1` converts `x` to `int` via an atomic `load()`, and `x = …` is an atomic `store()`. Each is
+    atomic, but the pair is not: two threads can load the same value and both store value+1, losing an
+    increment. There is no data race (every access is atomic), so it is not UB; it is a race condition
+    with an unspecified (but well-defined) result. It compiles because of the implicit conversion to
+    `int`. Use an atomic read-modify-write: `x.fetch_add(1)`, `x++`, `++x` or `x += 1`.
+  tags: [atomics, read-modify-write, race-condition]
+
+- id: conc-mm-002
+  topic: concurrency
+  subtopic: Compare-and-swap
+  difficulty: medium
+  type: single
+  prompt: |
+    Why may `compare_exchange_weak` fail even when the current value equals `expected`, and how should
+    it be used?
+  choices:
+    - { id: a, text: "It never fails spuriously; weak only means it uses relaxed ordering" }
+    - { id: b, text: "On LL/SC architectures (ARM, POWER, RISC-V) the store-conditional can fail for reasons such as an interrupt or cache-line eviction; use it in a retry loop, where it can be cheaper than the strong version" }
+    - { id: c, text: "It fails whenever another thread has read the variable since the load" }
+    - { id: d, text: "It may spuriously succeed, so you must re-check the value afterwards" }
+  answer: b
+  explanation: |
+    The weak form is allowed to fail spuriously: return `false` even though the values compared equal.
+    This matches load-linked/store-conditional hardware, where the SC fails if the reservation was lost
+    for any reason. The strong version must hide that with an internal loop.
+
+    Since a CAS is almost always inside a retry loop anyway (`while (!x.compare_exchange_weak(old,
+    f(old))) {}`), use weak there; use strong when a spurious failure would be expensive to handle (e.g.
+    a single-shot attempt whose failure path is costly). On x86, both compile to `lock cmpxchg`.
+    Ordering is separate: both take success/failure memory-order arguments. A CAS never spuriously
+    *succeeds*.
+  tags: [compare-and-swap, ll-sc, atomics]
+  source: { name: "cppreference — std::atomic::compare_exchange", url: "https://en.cppreference.com/w/cpp/atomic/atomic/compare_exchange" }
+
+- id: conc-mm-003
+  topic: concurrency
+  subtopic: Memory ordering
+  difficulty: medium
+  type: short
+  prompt: |
+    Explain release/acquire semantics in C++ using the "publish a message" example. What exactly is
+    guaranteed, and what is not?
+  reference: |
+    ```cpp
+    int data;                 // plain
+    std::atomic<bool> ready{false};
+    // producer
+    data = 42;
+    ready.store(true, std::memory_order_release);
+    // consumer
+    if (ready.load(std::memory_order_acquire)) assert(data == 42);
+    ```
+    A **release** store prevents earlier reads and writes in that thread from being reordered after it.
+    An **acquire** load prevents later reads and writes from being reordered before it. When the
+    acquire load *reads the value written by* the release store, the store **synchronizes-with** the
+    load, so everything sequenced before the store **happens-before** everything after the load. The
+    consumer is guaranteed to see `data == 42`, and the access to `data` is not a data race.
+
+    Not guaranteed: (1) that the consumer sees `true` at any particular time; it may see `false` and
+    must retry. (2) Anything if the load reads a different value (no synchronisation). (3) A single
+    global order of independent release/acquire operations on different variables as seen by all
+    threads: that requires `seq_cst` (see the store-buffering and IRIW litmus tests). Release/acquire
+    is pairwise, between a writer and a reader of the same atomic.
+  keyPoints:
+    - "Release store: prior memory operations cannot move after it"
+    - "Acquire load: subsequent memory operations cannot move before it"
+    - "Synchronizes-with only when the acquire reads the value written by the release (or a later value in its release sequence)"
+    - "Gives happens-before, so the plain data written before the release is visible after the acquire"
+    - "Does not give a single total order across different variables (that needs seq_cst)"
+  explanation: |
+    This is the single most important memory-ordering pattern, and interviewers expect the word
+    "synchronizes-with" or an equivalent, plus the condition that the acquire must read the released
+    value. Mentioning release sequences (an RMW chain continuing the release) and that x86 gives this
+    pattern for free with plain `mov`s while ARM needs `stlr`/`ldar` shows depth.
+  tags: [memory-order, acquire-release, happens-before]
+  source: { name: "Preshing on Programming — The Synchronizes-With Relation", url: "https://preshing.com/20130823/the-synchronizes-with-relation/" }
+
+- id: conc-mm-004
+  topic: concurrency
+  subtopic: Memory ordering
+  difficulty: medium
+  type: single
+  prompt: |
+    Message passing with relaxed atomics. Initially `data == 0` and `flag == 0` (both
+    `std::atomic<int>`).
+
+    ```cpp
+    // Thread 1
+    data.store(42, std::memory_order_relaxed);
+    flag.store(1, std::memory_order_relaxed);
+
+    // Thread 2
+    int f = flag.load(std::memory_order_relaxed);
+    int d = data.load(std::memory_order_relaxed);
+    ```
+
+    Is the outcome `f == 1 && d == 0` allowed by the C++ memory model?
+  choices:
+    - { id: a, text: "No, because the stores are in program order in thread 1" }
+    - { id: b, text: "Yes; relaxed operations on different variables impose no ordering, so thread 2 may observe flag's new value but data's old one" }
+    - { id: c, text: "No, because atomics are always sequentially consistent" }
+    - { id: d, text: "It is undefined behaviour, so the question has no answer" }
+  answer: b
+  explanation: |
+    Relaxed atomics guarantee atomicity and a single modification order **per variable** (coherence),
+    but no ordering between different variables, and no synchronizes-with. Both the compiler and the
+    hardware may make the two stores or the two loads visible out of order; on ARM or POWER this
+    outcome is observable in practice. On x86 the hardware keeps store-store and load-load order, but
+    the compiler may still reorder relaxed operations, so the model allows it there too.
+
+    It is not UB: every access is atomic. Fix: `flag.store(1, release)` and `flag.load(acquire)`;
+    then `f == 1` implies `d == 42`.
+  tags: [memory-order, relaxed, litmus-test, message-passing]
+
+- id: conc-mm-005
+  topic: concurrency
+  subtopic: Memory ordering
+  difficulty: hard
+  type: single
+  prompt: |
+    Store buffering. `x` and `y` are `std::atomic<int>`, initially 0.
+
+    ```cpp
+    // Thread 1                       // Thread 2
+    x.store(1, ORDER_ST);             y.store(1, ORDER_ST);
+    r1 = y.load(ORDER_LD);            r2 = x.load(ORDER_LD);
+    ```
+
+    For which choice of orders is the outcome `r1 == 0 && r2 == 0` **forbidden**?
+  choices:
+    - { id: a, text: "Only when every operation is memory_order_seq_cst" }
+    - { id: b, text: "When the stores are memory_order_release and the loads memory_order_acquire" }
+    - { id: c, text: "With memory_order_relaxed everywhere, on x86 only" }
+    - { id: d, text: "It is never forbidden; both zero is always possible" }
+  answer: a
+  explanation: |
+    A release store only stops *earlier* operations from moving after it, and an acquire load only
+    stops *later* operations from moving before it. Nothing stops a release store followed by an
+    acquire load (of a different variable) from being reordered with each other. So each thread's store
+    can sit in its core's store buffer while its subsequent load reads the old value of the other
+    variable: both read 0. This is the one reordering even x86-TSO permits (store→load), so (c) is wrong as well.
+
+    With `seq_cst` on all four operations, there is a single total order of these operations consistent
+    with program order. Whichever store comes first in that order, the other thread's later load must
+    see it, so at least one of r1, r2 is 1. Compilers implement this on x86 with `xchg` (or
+    `mov`+`mfence`) for the seq_cst store. This is the core of Dekker's and Peterson's algorithms and
+    why they need seq_cst (or full fences).
+  tags: [memory-order, seq-cst, store-buffering, litmus-test]
+  source: { name: "Preshing on Programming — Memory Reordering Caught in the Act", url: "https://preshing.com/20120515/memory-reordering-caught-in-the-act/" }
+
+- id: conc-mm-006
+  topic: concurrency
+  subtopic: Hardware memory models
+  difficulty: medium
+  type: single
+  prompt: |
+    Under the x86-64 (TSO) memory model, for ordinary loads and stores to normal write-back memory,
+    which reordering can a program observe?
+  choices:
+    - { id: a, text: "A later load can appear to happen before an earlier store to a different address (store→load reordering, due to store buffers)" }
+    - { id: b, text: "A later store can become visible before an earlier store (store→store)" }
+    - { id: c, text: "A later load can be satisfied before an earlier load (load→load)" }
+    - { id: d, text: "None; x86 is sequentially consistent" }
+  answer: a
+  explanation: |
+    x86-TSO (total store order) preserves load→load, load→store and store→store order. Its only
+    visible relaxation is that a store may wait in the core's store buffer while later loads (to other
+    addresses) proceed, so store→load order is not preserved. A core also reads its own buffered stores
+    (store forwarding). `mfence` or any `lock`-prefixed instruction drains the store buffer.
+
+    Consequence for C++: acquire loads and release stores compile to plain `mov` on x86; only a
+    `seq_cst` store (or a fence) needs `xchg`/`mfence`. ARM and POWER are much weaker and allow all four
+    reorderings without barriers.
+  tags: [x86, tso, memory-model, store-buffer]
+  source: { name: "Sewell et al., x86-TSO: A Rigorous and Usable Programmer's Model (CACM 2010)" }
+
+- id: conc-mm-007
+  topic: concurrency
+  subtopic: Memory ordering
+  difficulty: hard
+  type: short
+  prompt: |
+    Peterson's mutual-exclusion algorithm, written with plain `bool flag[2]` and `int turn`, is proven
+    correct in textbooks, yet fails on a real x86 machine. Why, and how do you fix it in C++?
+  reference: |
+    Peterson's lock for thread i: `flag[i] = true; turn = j; while (flag[j] && turn == j) {}`. The proof
+    assumes sequential consistency: once thread i has written `flag[i]`, thread j's later read of
+    `flag[i]` sees it.
+
+    On x86, the store `flag[i] = true` can sit in i's store buffer while i's subsequent load of
+    `flag[j]` reads the old `false` (store→load reordering, which TSO allows). Both threads can do this
+    simultaneously, both read the other's flag as false, and both enter the critical section. On ARM it
+    fails in even more ways. Independently, with plain variables it is a data race, i.e. undefined
+    behaviour, and the compiler may reorder or cache the accesses.
+
+    Fix: make `flag` and `turn` `std::atomic` with the default `memory_order_seq_cst`, which on x86
+    compiles the stores to `xchg` (or `mov`+`mfence`) and forbids the store→load reordering;
+    alternatively insert `std::atomic_thread_fence(std::memory_order_seq_cst)` between the stores and
+    the loads. Release/acquire is *not* sufficient, because this is a store-buffering pattern.
+    In practice, just use a mutex.
+  keyPoints:
+    - "The algorithm assumes sequential consistency"
+    - "x86 store buffers allow a store to be delayed past a later load to another address"
+    - "Both threads can read the other's flag as false and both enter"
+    - "Plain variables also make it a data race (UB) and let the compiler reorder"
+    - "Fix with seq_cst atomics or a seq_cst fence between the stores and the loads; acquire/release is not enough"
+  explanation: |
+    Peterson/Dekker are the standard demonstration that hardware is not sequentially consistent. The
+    crucial insight is identifying the store→load reordering and knowing that release/acquire cannot
+    prevent it; only a full (StoreLoad) barrier, which seq_cst provides, can.
+  tags: [peterson, store-buffering, seq-cst, x86]
+  source: { name: "Bartosz Milewski — Who ordered memory fences on an x86?", url: "https://bartoszmilewski.com/2008/11/05/who-ordered-memory-fences-on-an-x86/" }
+
+- id: conc-mm-008
+  topic: concurrency
+  subtopic: volatile
+  difficulty: medium
+  type: single
+  prompt: |
+    In C++, a flag shared between threads is declared `volatile bool done;`. Which statement is correct?
+  choices:
+    - { id: a, text: "volatile makes accesses atomic and ordered, so it is a lightweight alternative to std::atomic<bool>" }
+    - { id: b, text: "volatile prevents the compiler from caching or eliding accesses, but provides no atomicity and no inter-thread ordering; concurrent unsynchronised access is still a data race (UB). Use std::atomic" }
+    - { id: c, text: "volatile is equivalent to memory_order_acquire on loads and memory_order_release on stores" }
+    - { id: d, text: "volatile is deprecated and may not be used on bool" }
+  answer: b
+  explanation: |
+    C++ `volatile` exists for memory-mapped I/O and `setjmp`/signal-handler interactions: every access
+    in the source must be performed, in order relative to other volatile accesses. It says nothing about
+    other threads: it gives no atomicity guarantee, no happens-before, no hardware barriers, and does
+    not order non-volatile accesses around it. A data race on a volatile object is still UB.
+
+    MSVC historically gave `volatile` acquire/release semantics on x86 (`/volatile:ms`), which spread
+    the misconception, but that is a vendor extension. C++20 deprecated some volatile uses (compound
+    assignment, increment), but plain volatile bools remain legal. Java's `volatile` is entirely
+    different: it *is* a synchronisation construct.
+  tags: [volatile, atomics, data-race]
+
+- id: conc-mm-009
+  topic: concurrency
+  subtopic: Java memory model
+  difficulty: medium
+  type: single
+  prompt: |
+    In Java (JSR-133 memory model, Java 5+), what does declaring a field `volatile` guarantee?
+  choices:
+    - { id: a, text: "Only that reads are not cached in registers; no ordering of other fields" }
+    - { id: b, text: "A write to a volatile field happens-before every subsequent read of that field, so writes made before the volatile write are visible to a thread after it reads the value; volatile accesses are also sequentially consistent with one another" }
+    - { id: c, text: "Compound operations such as count++ on the field become atomic" }
+    - { id: d, text: "Mutual exclusion, like synchronized" }
+  answer: b
+  explanation: |
+    Java `volatile` is a synchronisation construct: a volatile write has release semantics, a volatile
+    read has acquire semantics, and all volatile accesses are totally ordered (roughly like C++
+    `seq_cst` atomics). This is what makes safe publication via a volatile field work, and what fixed
+    double-checked locking in Java 5.
+
+    It does **not** make `count++` atomic (that is read, add, write); use `AtomicInteger` or a lock. It
+    does not provide mutual exclusion. Option a describes the broken pre-Java-5 intuition.
+  tags: [java, volatile, happens-before, jmm]
+  source: { name: "JSR-133 (Java Memory Model) FAQ", url: "https://www.cs.umd.edu/~pugh/java/memoryModel/jsr-133-faq.html" }
+
+- id: conc-mm-010
+  topic: concurrency
+  subtopic: Memory ordering
+  difficulty: hard
+  type: short
+  prompt: |
+    What is wrong with classic double-checked locking for lazy initialisation, and how do you write it
+    correctly in modern C++?
+  reference: |
+    Classic DCLP:
+    ```cpp
+    Widget* p = nullptr;
+    Widget* get() {
+        if (!p) {                         // 1st check, no lock
+            std::lock_guard lk(m);
+            if (!p) p = new Widget;       // 2nd check under lock
+        }
+        return p;
+    }
+    ```
+    The unlocked read of `p` races with the write under the lock: a data race, so UB. Concretely,
+    `p = new Widget` is "allocate, construct, store pointer", and the compiler or CPU may make the
+    pointer store visible before the constructor's writes. Another thread can then see a non-null `p`
+    and use a partly constructed object. Without acquire on the read side, even a correctly ordered
+    store does not guarantee the reader sees the fields.
+
+    Correct versions:
+    1. Simplest: a function-local static (`static Widget w; return w;`), thread-safe since C++11.
+    2. `std::call_once` with a `std::once_flag`.
+    3. Hand-written DCLP with `std::atomic<Widget*> p;`: first check `p.load(std::memory_order_acquire)`,
+       and under the mutex publish with `p.store(tmp, std::memory_order_release)` after constructing.
+  keyPoints:
+    - "The unsynchronised first read of the pointer is a data race (UB)"
+    - "The pointer store can become visible before the object's construction writes"
+    - "Readers can observe a non-null pointer to a partially constructed object"
+    - "Fix with an atomic pointer: acquire load on the fast path, release store after construction"
+    - "Prefer magic statics (function-local static) or std::call_once"
+  explanation: |
+    DCLP is the canonical example of "looks right, is broken" in pre-memory-model C++ and pre-Java-5
+    Java (where the fix is declaring the field `volatile`). The paper by Meyers and Alexandrescu
+    popularised the problem. A strong answer explains the reordering concretely and then recommends
+    not writing DCLP by hand at all.
+  tags: [double-checked-locking, singleton, acquire-release]
+  source: { name: "Meyers & Alexandrescu, C++ and the Perils of Double-Checked Locking (2004)" }
+
+- id: conc-mm-011
+  topic: concurrency
+  subtopic: Happens-before
+  difficulty: hard
+  type: multiple
+  prompt: |
+    In C++, which of the following establish a happens-before relationship from an operation A in
+    thread T1 to an operation B in thread T2? (Select all that apply.)
+  choices:
+    - { id: a, text: "A is sequenced before T1's unlock of mutex m, and B is sequenced after T2's subsequent lock of m" }
+    - { id: b, text: "A is sequenced before constructing the std::thread T2, and B is in T2's thread function" }
+    - { id: c, text: "A is sequenced before a relaxed store to atomic flag, and B is sequenced after a relaxed load in T2 that reads that value" }
+    - { id: d, text: "A is in thread T1's function, and B is sequenced after T2 calls T1.join()" }
+    - { id: e, text: "A is sequenced before a store to a volatile int, and B after a volatile load that reads it" }
+    - { id: f, text: "A is sequenced before a release store to flag, and B is sequenced after an acquire load in T2 that reads that value" }
+  answer: [a, b, d, f]
+  explanation: |
+    Inter-thread happens-before comes from synchronizes-with edges:
+    - (a) An unlock synchronizes-with the next lock of the same mutex.
+    - (b) Completion of the `std::thread` constructor synchronizes-with the start of the thread
+      function.
+    - (d) Completion of the thread synchronizes-with the return of `join()`.
+    - (f) A release store synchronizes-with an acquire load that reads the stored value.
+
+    (c) Relaxed operations never synchronize, so reading the value tells you nothing about other memory.
+    (e) `volatile` is not a synchronisation mechanism in C++, and those accesses would be a data race.
+  tags: [happens-before, synchronizes-with, memory-model]
+  source: { name: "cppreference — std::memory_order", url: "https://en.cppreference.com/w/cpp/atomic/memory_order" }
+
+- id: conc-mm-012
+  topic: concurrency
+  subtopic: Memory ordering
+  difficulty: medium
+  type: single
+  prompt: |
+    What, precisely, does `memory_order_relaxed` still guarantee for operations on a single atomic
+    variable?
+  choices:
+    - { id: a, text: "Nothing; relaxed operations can even tear" }
+    - { id: b, text: "Atomicity (no torn reads or writes, no lost RMW updates) and a single modification order for that variable that every thread's reads respect (coherence)" }
+    - { id: c, text: "That all threads see all writes to all atomics in the same order" }
+    - { id: d, text: "That the operation becomes visible to other threads within a bounded time" }
+  answer: b
+  explanation: |
+    Even relaxed atomics are indivisible, and each atomic object has one total modification order.
+    Coherence rules then forbid, for example, a thread reading a newer value and then an older one of
+    the same variable. That is enough for statistics counters, reference-count increments, and
+    generating unique ids with `fetch_add`.
+
+    What relaxed lacks is ordering relative to *other* memory locations and any synchronizes-with
+    edge. A single order across all atomics (c) is the seq_cst guarantee. The standard only says
+    implementations *should* make stores visible "within a reasonable amount of time", so (d) is a
+    recommendation, not a guarantee.
+  tags: [memory-order, relaxed, coherence]
+
+- id: conc-mm-013
+  topic: concurrency
+  subtopic: Memory ordering
+  difficulty: hard
+  type: single
+  prompt: |
+    IRIW (independent reads of independent writes). `x`, `y` are atomics, initially 0. Thread A does
+    `x.store(1)`, thread B does `y.store(1)`. Thread C reads `x` then `y`; thread D reads `y` then `x`.
+    The stores are `release` and all loads `acquire`. Is it allowed that C sees `x==1, y==0` while D sees
+    `y==1, x==0`, i.e. the two readers disagree about which write happened first?
+  choices:
+    - { id: a, text: "No; acquire/release guarantees all threads agree on the order of writes" }
+    - { id: b, text: "Yes; release/acquire gives no single global order of writes to different variables, so the readers may disagree. Making all operations seq_cst forbids it" }
+    - { id: c, text: "Yes, and even seq_cst cannot forbid it" }
+    - { id: d, text: "No, because x and y are different variables" }
+  answer: b
+  explanation: |
+    Under release/acquire, each reader synchronises only with the writer whose value it read; nothing
+    requires C and D to agree on the relative order of two writes to *different* locations. The model
+    allows the "disagreement" outcome, and it is observable on hardware that is not multi-copy atomic
+    (e.g. POWER). x86 (TSO) and ARMv8 (other-multi-copy-atomic since 2017) do not show it when the
+    loads are ordered, but portable C++ cannot rely on that.
+
+    `seq_cst` provides a single total order over all seq_cst operations that every thread observes
+    consistently, which rules this outcome out. IRIW is the standard example of what seq_cst buys
+    beyond acquire/release.
+  tags: [memory-order, iriw, seq-cst, multi-copy-atomicity]
+
+- id: conc-mm-014
+  topic: concurrency
+  subtopic: Memory ordering
+  difficulty: medium
+  type: single
+  prompt: |
+    What is the practical status of `std::memory_order_consume`?
+  choices:
+    - { id: a, text: "It is the recommended cheap alternative to acquire on all platforms" }
+    - { id: b, text: "Its specification proved impractical to implement as intended, so compilers simply strengthen it to memory_order_acquire, and its use is discouraged" }
+    - { id: c, text: "It is identical to memory_order_relaxed" }
+    - { id: d, text: "It provides sequential consistency for dependent loads only" }
+  answer: b
+  explanation: |
+    `consume` was meant to order only loads that carry a data dependency on the loaded value (like
+    dereferencing a just-loaded pointer), which is free on ARM and POWER because the hardware respects
+    address dependencies. But tracking "carries a dependency" through compiler optimisations proved
+    unworkable, so every major compiler implements it as `acquire`. The standard itself has
+    discouraged its use since C++17 (P0371), and later work moves to deprecate it. The Linux kernel
+    achieves similar effects with `READ_ONCE`/`rcu_dereference` and compiler-specific assumptions.
+  tags: [memory-order, consume]
+  source: { name: "cppreference — std::memory_order (consume)", url: "https://en.cppreference.com/w/cpp/atomic/memory_order" }
+
+- id: conc-mm-015
+  topic: concurrency
+  subtopic: Data races
+  difficulty: medium
+  type: short
+  prompt: |
+    Why does the C++ standard make data races undefined behaviour instead of just giving "some value"?
+    Give a concrete compiler optimisation that would break a racy program.
+  reference: |
+    Making races UB lets compilers optimise single-threaded code freely: in a race-free program, no
+    other thread can observe or modify a non-atomic variable between synchronisation points, so the
+    compiler may keep values in registers, merge or eliminate loads and stores, reorder independent
+    accesses, and even introduce speculative reads. Defining racy behaviour would forbid many of these
+    transformations and require barriers everywhere. This is the "SC for data-race-free programs"
+    contract: if your program has no data races, it behaves as if sequentially consistent (using
+    seq_cst atomics); if it has one, there are no guarantees.
+
+    Concrete breakage: `while (!stop) { work(); }` with a plain `bool stop` set by another thread. If
+    `work()` is inlined and does not write `stop`, the compiler may load `stop` once and turn the loop
+    into an infinite loop. Other examples: two stores to a plain flag merged into one; a store moved
+    earlier past the writes it was meant to publish; a read of a plain `int` that is torn on a
+    platform where it takes two instructions.
+  keyPoints:
+    - "UB lets the compiler assume no other thread touches non-atomic data between synchronisation points"
+    - "Enables register caching, load/store elimination and reordering"
+    - "DRF-SC contract: data-race-free programs appear sequentially consistent"
+    - "Example: hoisting a plain flag load out of a loop produces an infinite loop"
+    - "Other effects: merged or reordered stores, torn reads"
+  explanation: |
+    The key idea is the bargain: programmers promise no data races, and in exchange get
+    sequential-consistency semantics without the compiler having to treat every memory access as
+    potentially shared. The hoisted-flag example is the one most interviewers expect.
+  tags: [data-race, undefined-behaviour, compiler-optimisation, drf-sc]
+  source: { name: "Boehm & Adve, Foundations of the C++ Concurrency Memory Model (PLDI 2008)" }
+
+- id: conc-mm-016
+  topic: concurrency
+  subtopic: Fences
+  difficulty: hard
+  type: single
+  prompt: |
+    ```cpp
+    // Thread 1
+    data = 42;                                              // plain int
+    std::atomic_thread_fence(std::memory_order_release);
+    flag.store(1, std::memory_order_relaxed);
+
+    // Thread 2
+    while (flag.load(std::memory_order_relaxed) != 1) {}
+    std::atomic_thread_fence(std::memory_order_acquire);
+    assert(data == 42);
+    ```
+    Is the assertion guaranteed to hold?
+  choices:
+    - { id: a, text: "No; relaxed operations never synchronise, fences or not" }
+    - { id: b, text: "Yes; a release fence followed by an atomic store, paired with an atomic load that reads that value followed by an acquire fence, establishes synchronizes-with between the fences" }
+    - { id: c, text: "Only on x86" }
+    - { id: d, text: "Only if the fences are memory_order_seq_cst" }
+  answer: b
+  explanation: |
+    The standard's fence rules ([atomics.fences]): if a release fence F is sequenced before an atomic
+    store X, and an atomic load Y reads the value written by X (or later in its release sequence), and
+    Y is sequenced before an acquire fence G, then F synchronizes-with G. So `data = 42` happens-before
+    the assert, and there is no data race on `data`.
+
+    Fences are useful when one fence can cover several relaxed operations, e.g. checking many flags with
+    relaxed loads and issuing one acquire fence only on the path that proceeds. Note that a fence alone,
+    without the atomic store/load pair, synchronises nothing.
+  tags: [fences, memory-order, acquire-release]
+  source: { name: "cppreference — std::atomic_thread_fence", url: "https://en.cppreference.com/w/cpp/atomic/atomic_thread_fence" }
+
+- id: conc-mm-017
+  topic: concurrency
+  subtopic: Atomics
+  difficulty: medium
+  type: single
+  prompt: |
+    On x86-64 Linux with GCC/libstdc++, `struct P { long a, b, c; };` (24 bytes). What is true of
+    `std::atomic<P>`?
+  choices:
+    - { id: a, text: "It does not compile; std::atomic only accepts integers and pointers" }
+    - { id: b, text: "It compiles (P is trivially copyable), but is not lock-free: operations are implemented with a lock inside libatomic, so you may need to link -latomic and it is unsuitable for signal handlers" }
+    - { id: c, text: "It is always lock-free because x86-64 has 128-bit and wider CAS instructions" }
+    - { id: d, text: "It is lock-free but only with memory_order_relaxed" }
+  answer: b
+  explanation: |
+    `std::atomic<T>` works for any trivially copyable `T`. When no suitable instruction exists, the
+    implementation falls back to a lock (libatomic uses a table of locks hashed by address). x86-64
+    has `cmpxchg16b` for 16 bytes, but nothing for 24, so this type is not lock-free;
+    `std::atomic<P>::is_always_lock_free` is `false`. Lock-based atomics are not async-signal-safe and
+    lose the progress guarantees people usually want from atomics.
+
+    Check with `is_always_lock_free` (C++17, compile time) or `is_lock_free()` (run time). Even for 16-byte
+    types, whether GCC treats them as lock-free depends on flags and version, so check rather than
+    assume.
+  tags: [atomics, lock-free, libatomic]
+
+- id: conc-mm-018
+  topic: concurrency
+  subtopic: Hardware memory models
+  difficulty: medium
+  type: single
+  prompt: |
+    On x86-64, which C++ atomic operation typically compiles to something more expensive than an
+    ordinary `mov`?
+  choices:
+    - { id: a, text: "load(memory_order_acquire)" }
+    - { id: b, text: "store(memory_order_release)" }
+    - { id: c, text: "store(memory_order_seq_cst)" }
+    - { id: d, text: "load(memory_order_seq_cst)" }
+  answer: c
+  explanation: |
+    Because x86-TSO already preserves load→load, load→store and store→store order, acquire loads,
+    release stores and seq_cst loads are all plain `mov`s (they still constrain *compiler* reordering).
+    The only reordering TSO allows is store→load, so a seq_cst store must prevent a later seq_cst load
+    from passing it: compilers emit `xchg` (implicitly locked) or `mov` followed by `mfence`. RMW
+    operations such as `fetch_add` are `lock`-prefixed regardless of order.
+
+    On ARMv8 the picture differs: acquire loads use `ldar`/`ldapr` and release stores `stlr`, which
+    also suffice for seq_cst.
+  tags: [x86, seq-cst, codegen, memory-order]
+  source: { name: "Peter Sewell et al. — C/C++11 mappings to processors", url: "https://www.cl.cam.ac.uk/~pes20/cpp/cpp0xmappings.html" }
+
+- id: conc-mm-019
+  topic: concurrency
+  subtopic: Memory ordering
+  difficulty: hard
+  type: short
+  prompt: |
+    What does `memory_order_seq_cst` give you beyond acquire/release, what does it cost, and when do you
+    actually need it?
+  reference: |
+    Beyond pairwise acquire/release synchronisation, seq_cst adds a **single total order** over all
+    seq_cst operations, consistent with each thread's program order, that every thread agrees on.
+
+    You need it when correctness depends on ordering between operations on *different* variables as
+    observed by different threads: store-buffering patterns (Dekker/Peterson, "set my flag then check
+    yours", some hazard-pointer and sleep/wake protocols where a waiter publishes "I'm sleeping" and then
+    re-checks a condition) and IRIW-style reasoning where readers must agree on the order of
+    independent writes.
+
+    Cost: on x86 a seq_cst store needs `xchg` or `mfence` (tens of cycles, drains the store buffer);
+    on ARM/POWER extra barriers are needed (`dmb` or heavyweight `sync`). Loads are cheap on x86.
+
+    Guidance: default to seq_cst (it is the default for a reason) unless profiling shows the cost
+    matters; then use acquire/release where the pattern is a simple publish/consume handoff, and relaxed
+    for pure counters. Weaker orders are a common source of subtle bugs.
+  keyPoints:
+    - "seq_cst adds a single total order over all seq_cst operations that all threads observe"
+    - "Needed for store-buffering patterns (Dekker/Peterson, flag-then-check-other-flag protocols)"
+    - "Also forbids IRIW disagreement among readers"
+    - "Cost: full barrier on stores on x86 (xchg/mfence), extra barriers on ARM/POWER"
+    - "Default to seq_cst; weaken only for clear patterns (publish/consume, counters) when it matters"
+  explanation: |
+    Interviewers want to hear the "single total order" phrase and a concrete pattern that breaks
+    without it. Knowing that x86 seq_cst loads are free but stores are not shows hardware awareness.
+  tags: [memory-order, seq-cst, performance]
+
+- id: conc-mm-020
+  topic: concurrency
+  subtopic: Java memory model
+  difficulty: medium
+  type: single
+  prompt: |
+    How does Java's treatment of a data race differ from C++'s?
+  choices:
+    - { id: a, text: "They are the same: a data race is undefined behaviour in both" }
+    - { id: b, text: "In Java a racy program still has defined (if weak) semantics: reads may see stale or reordered values, but memory and type safety are preserved and out-of-thin-air values are forbidden; in C++ a data race is undefined behaviour" }
+    - { id: c, text: "Java prevents data races at compile time" }
+    - { id: d, text: "Java makes every field access sequentially consistent, so data races cannot occur" }
+  answer: b
+  explanation: |
+    Java must preserve its security model even for buggy programs, so the JMM (JLS chapter 17) gives
+    racy programs semantics: a racy read returns the value of *some* write to that field that the
+    happens-before rules do not exclude, and causality rules forbid values appearing "out of thin
+    air". The program cannot crash the VM or forge references. It can still observe
+    surprising reorderings, so racy Java code is almost always a bug. C++ instead declares data races
+    UB, enabling more optimisations. Both share the guarantee that data-race-free programs behave
+    sequentially consistently.
+  tags: [java, jmm, data-race]
+  source: { name: "Java Language Specification, chapter 17", url: "https://docs.oracle.com/javase/specs/jls/se21/html/jls-17.html" }
+
+- id: conc-mm-021
+  topic: concurrency
+  subtopic: Data races
+  difficulty: medium
+  type: single
+  prompt: |
+    ```cpp
+    bool stop = false;            // plain bool
+    void worker() { while (!stop) { ++local_counter; } }
+    // another thread later sets: stop = true;
+    ```
+    Compiled with optimisation, the worker never exits. Why is this allowed?
+  choices:
+    - { id: a, text: "It is a compiler bug" }
+    - { id: b, text: "The access to stop is a data race (UB); in a race-free program nothing inside the loop can change stop, so the compiler may load it once and turn the loop into while (true)" }
+    - { id: c, text: "The CPU cache never refreshes stop because it is in a register" }
+    - { id: d, text: "Because stop should have been declared static" }
+  answer: b
+  explanation: |
+    The loop body does not write `stop` and contains no synchronisation, so under the as-if rule (and
+    since races are UB) the compiler may hoist the load out of the loop. Cache coherence is not the
+    culprit (c): hardware caches *are* coherent; the problem is the compiler keeping the value in a
+    register. Declaring it `std::atomic<bool>` forces a real load each iteration (relaxed suffices for
+    termination; use acquire if the flag also publishes data).
+  tags: [data-race, compiler-optimisation, atomics]
+
+- id: conc-mm-022
+  topic: concurrency
+  subtopic: Atomics
+  difficulty: hard
+  type: short
+  prompt: |
+    Is `std::shared_ptr` thread-safe? Distinguish the cases precisely, and mention what C++20 adds.
+  reference: |
+    - **The control block's reference counts are thread-safe.** Different threads may copy, assign
+      and destroy *different* `shared_ptr` objects that share ownership of the same object; the counts
+      are updated atomically (typically relaxed increments, acq_rel decrements so the deleter sees all
+      writes). The last owner deletes the object exactly once.
+    - **A single `shared_ptr` object is not thread-safe** for concurrent modification: if one thread
+      assigns or resets `p` while another reads or copies the *same* `p`, that is a data race (UB),
+      just like any other non-atomic object. Concurrent const access (copying from it) is fine.
+    - **The pointee is not protected at all.** Shared ownership says nothing about synchronising
+      access to the `T` it points to.
+
+    For a shared, mutable `shared_ptr` variable (e.g. a configuration snapshot swapped by a writer
+    and read by many readers), C++20 provides `std::atomic<std::shared_ptr<T>>`, replacing the
+    deprecated free functions `std::atomic_load`/`std::atomic_store` on `shared_ptr`. It is often not
+    lock-free in current implementations.
+  keyPoints:
+    - "Reference counting in the control block is atomic; separate shared_ptr copies can be used from different threads"
+    - "Concurrent writes to the same shared_ptr object (or a write and a read) are a data race"
+    - "The pointed-to object is not synchronised by shared_ptr"
+    - "C++20 std::atomic<std::shared_ptr<T>> for a shared mutable pointer; older atomic_load/atomic_store overloads deprecated"
+  explanation: |
+    The confusion comes from "the reference count is atomic". Candidates should separate three things:
+    the control block (safe), the `shared_ptr` instance (not safe to mutate concurrently), and the
+    object (your responsibility). The copy-on-write snapshot pattern with `atomic<shared_ptr>` is a
+    common follow-up.
+  tags: [shared-ptr, atomics, cpp20]
+  source: { name: "cppreference — std::shared_ptr (thread safety notes)", url: "https://en.cppreference.com/w/cpp/memory/shared_ptr" }

@@ -1,0 +1,226 @@
+# Iterators, generators, comprehensions and lazy evaluation.
+- id: py-iter-001
+  topic: python
+  subtopic: Iterators
+  difficulty: easy
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [iterators, map, exhaustion]
+  prompt: What does this program print?
+  code: |
+    nums = map(lambda x: x * 2, [1, 2, 3])
+    print(list(nums), sum(nums))
+  answer: { kind: output, output: "[2, 4, 6] 0" }
+  explanation: |
+    In Python 3, `map` (like `filter`, `zip`, generators and file objects) returns a **one-shot iterator**, not a list. `list(nums)` consumes it completely, so `sum(nums)` sees an empty iterator and returns `0`. Nothing raises; exhausted iterators simply produce nothing more.
+
+    Materialise once (`nums = list(map(...))`) if you need to traverse the results more than once.
+
+- id: py-iter-002
+  topic: python
+  subtopic: Generators
+  difficulty: hard
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [generator-expressions, lazy-evaluation]
+  source: { name: "wtfpython (idea: evaluation time discrepancy)", url: "https://github.com/satwikkansal/wtfpython", license: WTFPL }
+  prompt: What does this program print?
+  code: |
+    array = [1, 8, 15]
+    g = (x for x in array if array.count(x) > 0)
+    array = [2, 8, 22]
+    print(list(g))
+  answer: { kind: output, output: "[8]" }
+  explanation: |
+    In a generator expression, only the **outermost iterable** (`array` after the first `in`) is evaluated immediately, when the generator is created. Everything else, including the `if` condition, runs lazily during iteration and looks names up at that time.
+
+    So `x` iterates over the **old** list `[1, 8, 15]`, but the condition calls `count` on the **new** list `[2, 8, 22]`. Only `8` appears in both. Reference: "Expressions → Generator expressions" (PEP 289 explains why the first iterable is bound early).
+
+- id: py-iter-003
+  topic: python
+  subtopic: Iterators
+  difficulty: hard
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [zip, iterators]
+  prompt: What does this program print?
+  code: |
+    it = iter([1, 2, 3, 4, 5])
+    pairs = list(zip(it, 'ab'))
+    print(pairs, list(it))
+  answer: { kind: output, output: "[(1, 'a'), (2, 'b')] [4, 5]" }
+  explanation: |
+    `zip` stops when **any** input is exhausted, but it pulls from its inputs **left to right**. On the third round it has already taken `3` from `it` before discovering that `'ab'` is exhausted, so `3` is consumed and thrown away. Only `4, 5` remain.
+
+    When zipping a shared iterator with a shorter iterable, put the shorter one first, or use `itertools.zip_longest`, or `zip(..., strict=True)` (3.10+) if the lengths must match.
+
+- id: py-iter-004
+  topic: python
+  subtopic: Generators
+  difficulty: hard
+  type: output
+  language: python
+  standard: Python 3.3+
+  tags: [generators, yield-from, send]
+  prompt: What does this program print?
+  code: |
+    def inner():
+        x = yield 1
+        print('got', x)
+        return 'done'
+
+    def outer():
+        result = yield from inner()
+        yield result
+
+    g = outer()
+    print(next(g))
+    print(g.send('hello'))
+  answer:
+    kind: output
+    output: |
+      1
+      got hello
+      done
+  explanation: |
+    `next(g)` runs `outer` into `inner` and stops at `yield 1`, so `1` is printed by the caller.
+
+    `g.send('hello')`: `yield from` forwards the sent value straight to `inner`, so `x = 'hello'` and `inner` prints `got hello`. `inner` then **returns** `'done'`, which raises `StopIteration('done')` internally. `yield from` catches it and uses its value as the value of the `yield from` expression (PEP 380). `outer` then yields `result`, so `send` returns `'done'`.
+
+- id: py-iter-005
+  topic: python
+  subtopic: Iterators
+  difficulty: medium
+  type: multiple
+  tags: [iterators, iterables]
+  prompt: Which of these objects are **iterators** (they have `__next__` and are exhausted after one pass), as opposed to merely iterable? Select all that apply.
+  choices:
+    - { id: a, text: "`range(10)`" }
+    - { id: b, text: "`(x for x in [1, 2])`" }
+    - { id: c, text: "`enumerate(['a', 'b'])`" }
+    - { id: d, text: "`{'a': 1}.keys()`" }
+    - { id: e, text: "`[1, 2, 3]`" }
+    - { id: f, text: "An open text file, `open('data.txt')`" }
+    - { id: g, text: "`zip([1], [2])`" }
+  answer: [b, c, f, g]
+  explanation: |
+    An **iterable** has `__iter__` returning an iterator; an **iterator** additionally has `__next__`, and its `__iter__` returns itself.
+
+    - Iterators: generator objects, `enumerate`, `zip`, `map`, `filter` and file objects (they read lines from the current position, so a second loop gets nothing).
+    - Re-iterable, non-iterator iterables: `range` is a lazy *sequence* (supports `len`, indexing and repeated iteration), dict views are live views that can be iterated many times, and lists.
+
+    You can test with `iter(x) is x`, which is true for iterators.
+
+- id: py-iter-006
+  topic: python
+  subtopic: Generators
+  difficulty: easy
+  type: single
+  tags: [generators, lazy-evaluation]
+  prompt: |
+    ```python
+    def gen():
+        print('start')
+        yield 1
+
+    g = gen()
+    ```
+    What has been printed after this line runs?
+  choices:
+    - { id: a, text: "`start`" }
+    - { id: b, text: "Nothing" }
+    - { id: c, text: "`start` and `1`" }
+    - { id: d, text: "`<generator object gen at 0x...>`" }
+  answer: b
+  explanation: |
+    Calling a generator function runs **none** of its body; it just creates a generator object, suspended before the first line. The body starts on the first `next(g)` (or the first iteration), which would print `start` and then yield `1`. This laziness is also why argument validation in a generator function is deferred, a common gotcha: wrap the generator in a regular function that validates eagerly if errors must surface at call time.
+
+- id: py-iter-007
+  topic: python
+  subtopic: Generators
+  difficulty: medium
+  type: single
+  tags: [generators, stopiteration, pep-479]
+  prompt: Since Python 3.7, what happens if code inside a generator raises `StopIteration` (for example an unguarded `next(it)` on an exhausted iterator)?
+  choices:
+    - { id: a, text: "The generator silently ends, as if it had returned" }
+    - { id: b, text: "The `StopIteration` is converted into a `RuntimeError`" }
+    - { id: c, text: "The `StopIteration` propagates unchanged to the caller's `for` loop, which stops" }
+    - { id: d, text: "The generator restarts from the beginning" }
+  answer: b
+  explanation: |
+    PEP 479 (default since 3.7) turns a `StopIteration` escaping from a generator body into **`RuntimeError: generator raised StopIteration`**. Before that, it silently ended the generator, and also any loop consuming it, which hid bugs. To end a generator, use `return`. When calling `next()` inside a generator, give it a default or catch `StopIteration` explicitly.
+
+- id: py-iter-008
+  topic: python
+  subtopic: Iterators
+  difficulty: medium
+  type: single
+  tags: [range, complexity]
+  prompt: What is the time complexity of `n in range(0, 10**18, 3)` for an `int` `n`, in CPython 3?
+  choices:
+    - { id: a, text: "O(1): `range` computes membership arithmetically" }
+    - { id: b, text: "O(len(range)): it iterates until it finds `n`" }
+    - { id: c, text: "O(log len(range)): it binary-searches" }
+    - { id: d, text: "It raises `OverflowError` because the range is too large" }
+  answer: a
+  explanation: |
+    A `range` object stores only `start`, `stop` and `step`. For an `int` (or a type whose hash and equality match int's, like `bool`), `range.__contains__` checks the bounds and that `(n - start) % step == 0`, which takes constant time (in the number of elements; huge ints cost a little more to divide). For other types, such as `float` or a custom class, it falls back to a linear scan.
+
+    Huge ranges are fine as long as you don't call `len()` on one bigger than `sys.maxsize`, which raises `OverflowError`.
+
+- id: py-iter-009
+  topic: python
+  subtopic: Iterators
+  difficulty: easy
+  type: short
+  tags: [iterators, iterables, for-loop]
+  prompt: What is the difference between an iterable and an iterator? Describe what a `for` loop does under the hood.
+  reference: |
+    An iterable is any object you can get an iterator from: it implements `__iter__` (or the legacy `__getitem__` sequence protocol). Lists, tuples, dicts, sets, strings and ranges are iterables. An iterator is an object that produces values one at a time through `__next__`, raises `StopIteration` when done, and returns itself from `__iter__`. It is stateful and single-pass. `for x in obj:` calls `it = iter(obj)` once, then repeatedly calls `next(it)` and binds the result to `x`, running the body, until `StopIteration` is raised, which ends the loop (and runs the `else` clause, if any). Each `for` over a list gets a fresh iterator, which is why lists can be looped over many times while a generator can't.
+  keyPoints:
+    - Iterable has __iter__ (or __getitem__) and can produce a fresh iterator
+    - Iterator has __next__, raises StopIteration at the end, __iter__ returns self
+    - Iterators are single-pass and stateful; containers are re-iterable
+    - for calls iter() once, then next() until StopIteration
+  explanation: |
+    Bonus: the loop's `else` runs when the loop ends by exhaustion and not via `break`. Iterators that are also their own iterable (generators, files) are the source of "my second loop does nothing" bugs.
+
+- id: py-iter-010
+  topic: python
+  subtopic: Generators
+  difficulty: medium
+  type: short
+  tags: [generators, memory, pipelines]
+  prompt: When would you use a generator instead of building a list? Give an example and mention any downsides.
+  reference: |
+    Use a generator when you process items one at a time and don't need them all at once: very large or unbounded streams (log files, database cursors, infinite sequences), pipelines of transformations (`lines → parsed → filtered`), or when you may stop early (`any`, `next`, `break`). Memory stays O(1) per stage instead of O(n), and the first results arrive before all the input has been processed. Example: `total = sum(len(line) for line in open(path))` never holds the file in memory. Downsides: single pass, so you can't re-iterate, index or call `len()`; errors surface lazily, away from where the generator was created; late-bound names in generator expressions; resources (open files) stay open until the generator is exhausted or closed; and slightly more per-item overhead than a list comprehension when you need everything anyway.
+  keyPoints:
+    - Lazy evaluation gives constant memory for large or infinite streams
+    - Composable pipelines and early termination (any/next/break) avoid unnecessary work
+    - A concrete example such as streaming a file or a DB cursor
+    - "Downsides: single-pass, no len/indexing, lazy error surfacing"
+    - Resource lifetime and closing (generator.close, context managers) need care
+  explanation: |
+    Strong candidates mention `yield from` for delegating, and that `itertools` (`islice`, `chain`, `groupby`) works naturally with generator pipelines (see David Beazley's "Generator Tricks for Systems Programmers").
+
+- id: py-iter-011
+  topic: python
+  subtopic: Comprehensions
+  difficulty: medium
+  type: short
+  tags: [comprehensions, map, filter]
+  prompt: Compare list comprehensions, generator expressions and `map`/`filter`. Which would you use where?
+  reference: |
+    A list comprehension builds the whole list eagerly. It's the idiomatic choice when you need a list and the logic is a simple transform/filter, and it's generally faster than an explicit loop with `append`. A generator expression has the same syntax in parentheses but is lazy: use it when the result is consumed once, especially inside a call like `sum(x*x for x in xs)` or `any(...)`, to avoid an intermediate list. `map`/`filter` return lazy iterators too. They're concise and fast when you already have a named function (`map(str, nums)`), but with a `lambda` they're usually less readable and no faster than a comprehension. Set and dict comprehensions build those types directly. Avoid deeply nested or side-effecting comprehensions; use a loop instead.
+  keyPoints:
+    - List comprehension is eager and creates a list; idiomatic and fast
+    - Generator expression is lazy, saving memory; ideal as an argument to sum/any/max
+    - map/filter are lazy in Py3; good with existing functions, worse with lambdas
+    - Comprehensions have their own scope for the loop variable
+    - Readability first; use loops for complex logic or side effects
+  explanation: |
+    The trap is claiming `map` is always faster. With a lambda it adds a Python function call per item, which a comprehension avoids.

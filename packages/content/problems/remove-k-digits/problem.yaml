@@ -1,0 +1,17 @@
+slug: remove-k-digits
+title: Remove K Digits
+difficulty: medium
+tags: [string, stack, monotonic-stack, greedy]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: removeKdigits
+      params:
+        - { name: num, type: string }
+        - { name: k, type: int }
+      returns: string
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 402); greedy + monotonic stack
+  url: https://leetcode.com/problems/remove-k-digits/

@@ -1,0 +1,17 @@
+slug: longest-common-subsequence
+title: Longest Common Subsequence
+difficulty: medium
+tags: [dynamic-programming, string]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: longestCommonSubsequence
+      params:
+        - { name: text1, type: string }
+        - { name: text2, type: string }
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 1143)
+  url: https://leetcode.com/problems/longest-common-subsequence/

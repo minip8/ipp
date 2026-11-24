@@ -1,0 +1,16 @@
+slug: largest-number
+title: Largest Number
+difficulty: medium
+tags: [array, string, sorting, greedy]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: largestNumber
+      params:
+        - { name: nums, type: { array: int } }
+      returns: string
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 179) — custom comparator sorting
+  url: https://leetcode.com/problems/largest-number/

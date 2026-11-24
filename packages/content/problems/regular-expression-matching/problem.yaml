@@ -1,0 +1,17 @@
+slug: regular-expression-matching
+title: Regular Expression Matching
+difficulty: hard
+tags: [dynamic-programming, string, recursion]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: isMatch
+      params:
+        - { name: s, type: string }
+        - { name: p, type: string }
+      returns: bool
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 10)
+  url: https://leetcode.com/problems/regular-expression-matching/

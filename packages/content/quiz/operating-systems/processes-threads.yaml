@@ -1,0 +1,613 @@
+- id: os-proc-001
+  topic: operating-systems
+  subtopic: Processes and threads
+  type: single
+  difficulty: easy
+  tags: [processes, threads]
+  prompt: |
+    Two threads belong to the same process on Linux. Which of the following do they **share**?
+  choices:
+    - id: a
+      text: The virtual address space (heap, globals, code, mappings) and the file descriptor table
+    - id: b
+      text: Their register state and stack pointer
+    - id: c
+      text: Their thread ID and signal mask
+    - id: d
+      text: Nothing; each thread gets a copy-on-write copy of the parent's memory
+  answer: a
+  explanation: |
+    Threads of one process share one address space and the same file descriptor table (and signal
+    handlers, cwd, etc.). That is the whole point: they can communicate through ordinary memory.
+
+    Each thread has its own register state (including the stack pointer and instruction pointer), its
+    own stack, its own TID and its own signal mask. Copy-on-write memory is what `fork()` gives a new
+    *process*, not a new thread.
+
+- id: os-proc-002
+  topic: operating-systems
+  subtopic: Processes and threads
+  type: multiple
+  difficulty: medium
+  tags: [threads, linux]
+  prompt: |
+    On Linux with glibc/NPTL, which of the following are **per-thread** rather than shared by all
+    threads of a process? Select all that apply.
+  choices:
+    - id: a
+      text: "`errno`"
+    - id: b
+      text: The signal mask
+    - id: c
+      text: Signal dispositions (which handler runs for SIGINT)
+    - id: d
+      text: The current working directory
+    - id: e
+      text: The thread's stack
+    - id: f
+      text: Thread-local variables declared `thread_local`
+  answer: [a, b, e, f]
+  explanation: |
+    - `errno` is thread-local in every modern C library (it expands to something like `(*__errno_location())`),
+      otherwise one thread's failing call would clobber another's.
+    - Each thread has its own **signal mask** (`pthread_sigmask`), which is how you dedicate one thread
+      to handling signals.
+    - Each thread has its own stack and its own `thread_local` storage (addressed via the FS segment
+      base on x86-64).
+
+    Signal **dispositions** are process-wide (threads are created with `CLONE_SIGHAND`), and so is the
+    current working directory (`CLONE_FS`): a `chdir` in one thread affects all of them, which is why
+    `openat` with directory fds exists.
+
+- id: os-proc-003
+  topic: operating-systems
+  subtopic: Process lifecycle
+  type: single
+  difficulty: easy
+  tags: [processes, zombie, wait]
+  prompt: |
+    `ps` shows a process in state `Z` (`<defunct>`). What is it?
+  choices:
+    - id: a
+      text: A process that has exited but whose parent has not yet collected its exit status with wait()/waitpid()
+    - id: b
+      text: A process whose parent has exited and which is now running unattended
+    - id: c
+      text: A process stuck in uninterruptible sleep waiting for disk I/O
+    - id: d
+      text: A process that has been stopped with SIGSTOP
+  answer: a
+  explanation: |
+    A zombie has already exited: its memory, file descriptors and most other resources are freed, but
+    the kernel keeps a small task entry (PID, exit status, resource usage) so the parent can retrieve it
+    with `wait()`. Once the parent reaps it, the entry disappears.
+
+    A process whose parent died is an **orphan**; it keeps running and is re-parented. Uninterruptible
+    sleep is state `D`; a stopped process is state `T`. Zombies cannot be killed with signals because
+    they are already dead — you fix them by making the parent reap (or by killing the parent, so init
+    adopts and reaps them).
+
+- id: os-proc-004
+  topic: operating-systems
+  subtopic: Process lifecycle
+  type: single
+  difficulty: medium
+  tags: [processes, orphan, init]
+  prompt: |
+    A parent process exits while its child is still running. On Linux, what happens to the child?
+  choices:
+    - id: a
+      text: It is re-parented to the nearest ancestor marked as a "child subreaper", or to PID 1 of its PID namespace if there is none, and keeps running
+    - id: b
+      text: The kernel sends it SIGKILL because a process cannot exist without a parent
+    - id: c
+      text: It becomes a zombie immediately
+    - id: d
+      text: It keeps running with its parent PID unchanged, pointing at the dead parent
+  answer: a
+  explanation: |
+    Orphans are adopted. By default the new parent is PID 1 (init/systemd, or the init process of the
+    container's PID namespace), which reaps them when they exit. A process can call
+    `prctl(PR_SET_CHILD_SUBREAPER)` to adopt orphaned descendants instead — systemd user managers and
+    container runtimes use this.
+
+    The child is not killed automatically (unless it requested `PR_SET_PDEATHSIG`, or it gets SIGHUP
+    because it belonged to a terminal session whose leader exited). It doesn't become a zombie — a zombie
+    is a child that has *exited*. Its `getppid()` changes to the adopter's PID.
+  source:
+    name: prctl(2) man page
+    url: https://man7.org/linux/man-pages/man2/prctl.2.html
+
+- id: os-proc-005
+  topic: operating-systems
+  subtopic: Process lifecycle
+  type: short
+  difficulty: medium
+  tags: [zombie, sigchld, wait]
+  prompt: |
+    You run a server that forks a child for each job and doesn't wait for them, and over a few days
+    thousands of `<defunct>` entries accumulate. Why is that a problem, and how would you fix it?
+  reference: |
+    Each un-reaped child stays a zombie: it holds a PID and a kernel task entry until its parent calls
+    wait. With enough of them you hit `pid_max` / the user's process limit (`RLIMIT_NPROC`, cgroup
+    `pids.max`) and `fork()` starts failing with EAGAIN. Fixes: install a SIGCHLD handler that loops
+    `while (waitpid(-1, &st, WNOHANG) > 0)` (looping because several SIGCHLDs can coalesce into one), or
+    set SIGCHLD's disposition to `SIG_IGN` / use `SA_NOCLDWAIT` so the kernel reaps children
+    automatically (if you don't need exit statuses), or reap from the main loop (e.g. via a `pidfd` or
+    `signalfd` in the event loop). Killing the zombies doesn't work; killing the parent does, because init
+    adopts and reaps them.
+  keyPoints:
+    - Zombies hold a PID and a task entry, not memory; the risk is exhausting PIDs / process limits so fork fails
+    - Parent must reap with wait/waitpid
+    - SIGCHLD handler must loop with WNOHANG because signals coalesce
+    - Alternatives - SIG_IGN for SIGCHLD or SA_NOCLDWAIT for auto-reaping, or pidfd/signalfd in an event loop
+    - You cannot kill a zombie; killing the parent lets init reap them
+  explanation: |
+    A frequent follow-up is "why loop in the handler?" — standard signals are not queued, so if three
+    children exit while SIGCHLD is pending you get one delivery and must reap all three. Note `SIG_IGN`
+    on SIGCHLD is a special case defined by POSIX: it means "don't create zombies", not just "don't run a
+    handler".
+
+- id: os-proc-006
+  topic: operating-systems
+  subtopic: fork and exec
+  type: multiple
+  difficulty: medium
+  tags: [fork, linux]
+  prompt: |
+    After a successful `fork()` on Linux, which of the following does the child process **inherit**
+    from the parent? Select all that apply.
+  choices:
+    - id: a
+      text: Copies of the open file descriptors, referring to the same open file descriptions (shared file offsets)
+    - id: b
+      text: The parent's signal handlers and signal mask
+    - id: c
+      text: The parent's pending signals
+    - id: d
+      text: Memory locks taken with mlock()/mlockall()
+    - id: e
+      text: The parent's memory contents (as copy-on-write pages)
+    - id: f
+      text: Record locks taken with fcntl(F_SETLK)
+  answer: [a, b, e]
+  explanation: |
+    The child gets duplicated fds that point to the **same** open file descriptions, so file offset and
+    status flags are shared — a read in one moves the offset for the other. It inherits signal
+    dispositions and the signal mask, and a copy-on-write image of memory.
+
+    fork(2) explicitly lists what is *not* inherited, including: the pending signal set (the child starts
+    with none), memory locks (`mlock`/`mlockall`), fcntl record locks, timers, and outstanding
+    asynchronous I/O.
+  source:
+    name: fork(2) man page
+    url: https://man7.org/linux/man-pages/man2/fork.2.html
+
+- id: os-proc-007
+  topic: operating-systems
+  subtopic: fork and exec
+  type: multiple
+  difficulty: medium
+  tags: [exec, signals, file-descriptors]
+  prompt: |
+    A process calls `execve()` successfully. Which of the following are **preserved** in the new
+    program image? Select all that apply.
+  choices:
+    - id: a
+      text: The process ID
+    - id: b
+      text: Open file descriptors that do not have the close-on-exec flag
+    - id: c
+      text: Custom signal handlers installed with sigaction()
+    - id: d
+      text: Signals whose disposition is SIG_IGN stay ignored
+    - id: e
+      text: The signal mask and the set of pending signals
+    - id: f
+      text: Other threads of the process
+  answer: [a, b, d, e]
+  explanation: |
+    `execve` replaces the program in the *same* process: same PID, same parent, same fds (except those
+    marked `FD_CLOEXEC`/`O_CLOEXEC`), same signal mask, same pending signals, and ignored signals remain
+    ignored (this is how `nohup` works: it ignores SIGHUP and then execs your program).
+
+    Handlers can't survive because the handler code lived in the old image, so handled signals are reset
+    to `SIG_DFL`. All other threads are destroyed; the new program starts single-threaded.
+  source:
+    name: execve(2) and signal(7) man pages
+    url: https://man7.org/linux/man-pages/man7/signal.7.html
+
+- id: os-proc-008
+  topic: operating-systems
+  subtopic: fork and exec
+  type: short
+  difficulty: hard
+  tags: [fork, threads, async-signal-safe, deadlock]
+  prompt: |
+    Why is calling `fork()` from a multithreaded program dangerous, and what is the safe way to use it?
+  reference: |
+    fork duplicates only the calling thread. Every other thread vanishes in the child, but the memory
+    they were using is copied as-is — including any mutex they held (e.g. the malloc arena lock, the
+    stdio lock, a logging lock) and any data structure they were halfway through updating. In the child
+    nobody will ever unlock those mutexes, so calling `malloc`, `printf` or anything that takes such a
+    lock can deadlock or see corrupt state. POSIX therefore says that after fork in a multithreaded
+    process the child may only call async-signal-safe functions until it calls exec. Safe pattern: fork
+    and immediately `execve` (or better, use `posix_spawn`, which glibc implements with
+    `clone(CLONE_VM|CLONE_VFORK)` and avoids copying), and set close-on-exec on fds so the child doesn't
+    leak them. `pthread_atfork` handlers can acquire/release locks around fork, but they're hard to get
+    right for third-party libraries and are a last resort. Alternatively fork a helper process early,
+    before creating any threads.
+  keyPoints:
+    - Only the calling thread exists in the child
+    - Locks held by other threads at fork time are copied in the locked state and never released (malloc, stdio, logging) - deadlock or inconsistent data
+    - Child may only call async-signal-safe functions until exec
+    - Safe usage is fork-then-exec immediately, or posix_spawn; or fork a helper before starting threads
+    - pthread_atfork exists but is fragile; also mind O_CLOEXEC to avoid leaking fds
+  explanation: |
+    Interviewers like this because it shows whether you understand that fork copies *memory*, not
+    *execution state of all threads*. The classic production bug is a child that hangs forever in
+    `malloc` because some other thread was inside malloc at the instant of fork.
+
+- id: os-proc-009
+  topic: operating-systems
+  subtopic: fork and exec
+  type: single
+  difficulty: easy
+  tags: [fork]
+  prompt: |
+    How many lines does this program print (all processes together)? Assume every `fork()` succeeds.
+
+    ```c
+    int main(void) {
+        for (int i = 0; i < 3; i++)
+            fork();
+        printf("x\n");
+        fflush(stdout);
+        return 0;
+    }
+    ```
+  choices:
+    - id: a
+      text: "3"
+    - id: b
+      text: "4"
+    - id: c
+      text: "6"
+    - id: d
+      text: "8"
+  answer: d
+  explanation: |
+    Every process that exists at each iteration forks, so the number of processes doubles each time:
+    1 → 2 → 4 → 8. All 8 processes reach the `printf`, giving 8 lines.
+
+    3 counts the fork calls made by the original process only; 6 is a common miscount that ignores
+    grandchildren forking. In general `n` iterations create `2^n − 1` new processes. (The `printf` is
+    after the loop, so stdio buffering can't duplicate output here.)
+
+- id: os-proc-010
+  topic: operating-systems
+  subtopic: fork and exec
+  type: output
+  difficulty: medium
+  tags: [fork, stdio, buffering]
+  language: cpp
+  standard: C++20
+  prompt: |
+    What does this program write to stdout on Linux (parent and child output combined)?
+  code: |
+    #include <cstdio>
+    #include <sys/wait.h>
+    #include <unistd.h>
+
+    int main() {
+        std::setvbuf(stdout, nullptr, _IOFBF, 4096);  // fully buffered
+        std::printf("A");
+        pid_t pid = fork();
+        if (pid == 0) {
+            std::printf("C");
+            return 0;  // child: normal exit flushes stdio
+        }
+        waitpid(pid, nullptr, 0);
+        std::printf("P\n");
+    }
+  answer:
+    kind: output
+    output: ACAP
+  explanation: |
+    `"A"` is still sitting in the parent's user-space stdio buffer when `fork()` runs, and fork copies
+    the whole address space — buffer included. So both processes have `"A"` pending.
+
+    The child appends `"C"` and flushes `"AC"` when it returns from `main`. The parent waits for the
+    child, then appends `"P\n"` and flushes `"AP\n"` at exit. Result: `ACAP`.
+
+    The same thing happens in real programs when stdout is redirected to a file or pipe (stdio switches
+    from line-buffered to fully buffered) — the classic "my log line appears twice after fork" bug. Fix:
+    `fflush` before `fork`, and have children that don't exec leave via `_exit`, which skips stdio
+    flushing.
+  source:
+    name: CS:APP ch. 8 (exceptional control flow), fork and buffering exercises
+
+- id: os-proc-011
+  topic: operating-systems
+  subtopic: fork and exec
+  type: output
+  difficulty: easy
+  tags: [fork, copy-on-write]
+  language: cpp
+  standard: C++20
+  prompt: |
+    What does this program print on Linux?
+  code: |
+    #include <cstdio>
+    #include <sys/wait.h>
+    #include <unistd.h>
+
+    int x = 10;
+
+    int main() {
+        pid_t pid = fork();
+        if (pid == 0) {
+            x += 5;
+            std::printf("child %d\n", x);
+            return 0;
+        }
+        waitpid(pid, nullptr, 0);
+        std::printf("parent %d\n", x);
+    }
+  answer:
+    kind: output
+    output: |
+      child 15
+      parent 10
+  explanation: |
+    After fork the processes have separate address spaces. The kernel shares the physical pages
+    copy-on-write, but as soon as the child writes `x` it gets its own private copy of that page, so the
+    parent's `x` is still 10. The order is deterministic because the parent waits for the child (which
+    flushes its output when it exits) before printing.
+
+    If you wanted the update to be visible you'd need explicit shared memory, e.g.
+    `mmap(MAP_SHARED | MAP_ANONYMOUS)` before the fork.
+
+- id: os-proc-012
+  topic: operating-systems
+  subtopic: Process lifecycle
+  type: output
+  difficulty: medium
+  tags: [exit-status, wait]
+  language: cpp
+  standard: C++20
+  prompt: |
+    What does this program print on Linux?
+  code: |
+    #include <cstdio>
+    #include <sys/wait.h>
+    #include <unistd.h>
+
+    int main() {
+        pid_t pid = fork();
+        if (pid == 0) _exit(256);
+        int status = 0;
+        waitpid(pid, &status, 0);
+        std::printf("%d %d\n", WIFEXITED(status) ? 1 : 0, WEXITSTATUS(status));
+    }
+  answer:
+    kind: output
+    output: 1 0
+  explanation: |
+    Only the low 8 bits of the value passed to `_exit`/`exit` reach the parent (`status & 0377`). 256 is
+    `0x100`, whose low byte is 0, so the child is reported as having exited normally with status 0 —
+    "success". This is why scripts that `exit(count_of_errors)` can report success after exactly 256
+    errors, and why the shell shows 128+N for a child killed by signal N (that is the shell's own
+    encoding, not the kernel's).
+
+- id: os-proc-013
+  topic: operating-systems
+  subtopic: Processes and threads
+  type: short
+  difficulty: medium
+  tags: [context-switch, tlb, cache, performance]
+  prompt: |
+    Walk me through what a context switch on x86-64 Linux has to save and restore, and why a switch
+    between two threads of the same process is cheaper than a switch between two processes.
+  reference: |
+    The kernel enters on a timer interrupt, syscall or blocking call; the user registers are already on
+    the kernel stack from the entry path. `schedule()` picks the next task and `context_switch()`
+    switches the kernel stack pointer and callee-saved registers (`__switch_to`), the FS/GS base
+    (thread-local storage), and the FPU/SIMD state (XSAVE area, which can be large with AVX-512). If the
+    next task belongs to a different address space it also loads a new CR3 (page-table root). Direct cost
+    is roughly a microsecond or a few; the bigger cost is indirect: the new task finds the caches, TLB and
+    branch predictors full of the old task's state. Switching between threads of the same process keeps
+    the same `mm`, so CR3 doesn't change and TLB entries remain valid; the shared working set may still
+    be in cache. With PCID, even a process switch need not flush the whole TLB, but the entries for the
+    other process are useless to the new one anyway. Mitigations (KPTI, IBPB on some configurations) add
+    cost to switches.
+  keyPoints:
+    - Saves/restores general registers, instruction and stack pointer, flags, FS/GS base for TLS, FPU/SIMD (XSAVE) state
+    - A process switch also changes the page-table root (CR3); a same-process thread switch does not
+    - Indirect costs dominate - cache, TLB and branch-predictor pollution
+    - PCID tags TLB entries so a CR3 switch need not flush everything
+    - Direct cost is on the order of microseconds; avoid switches on hot paths (pinning, busy polling, fewer threads than cores)
+  explanation: |
+    Strong answers separate the *direct* cost (the switch code itself) from the *indirect* cost (cold
+    caches and TLB afterwards), and know that the TLB argument is the main reason threads switch more
+    cheaply than processes. Exact microsecond figures vary a lot by CPU and mitigations, so treat any
+    single number with suspicion.
+
+- id: os-proc-014
+  topic: operating-systems
+  subtopic: fork and exec
+  type: single
+  difficulty: medium
+  tags: [vfork, posix-spawn, fork]
+  prompt: |
+    A service using 40 GiB of memory launches a small helper with `fork()` + `exec()` many times per
+    second and it is slow. Why does `posix_spawn()` (or `vfork()`) help?
+  choices:
+    - id: a
+      text: The child borrows the parent's address space until it execs, so the kernel doesn't have to copy the parent's page tables or mark 40 GiB of pages copy-on-write
+    - id: b
+      text: posix_spawn copies the parent's memory eagerly in a background thread, so the parent is not blocked
+    - id: c
+      text: fork copies all 40 GiB of physical memory immediately, while posix_spawn uses copy-on-write
+    - id: d
+      text: posix_spawn runs the helper as a thread inside the parent instead of a new process
+  answer: a
+  explanation: |
+    Even with copy-on-write, `fork()` must duplicate the page tables and write-protect every private
+    page of the parent, which is proportional to the mapped size (40 GiB of 4 KiB pages is about 10.5
+    million 8-byte PTEs, roughly 80 MiB of page tables, if it is all populated) — and the parent then takes COW faults on its next writes. `vfork()` (and glibc's
+    `posix_spawn`, implemented with `clone(CLONE_VM | CLONE_VFORK)` since glibc 2.24) runs the child in
+    the parent's address space, suspending the parent until the child execs or exits, so none of that
+    work happens.
+
+    fork does **not** copy physical memory eagerly — that was the misconception in (c). The spawned
+    helper is still a separate process with its own PID once it execs.
+  source:
+    name: vfork(2), posix_spawn(3) man pages
+    url: https://man7.org/linux/man-pages/man3/posix_spawn.3.html
+
+- id: os-proc-015
+  topic: operating-systems
+  subtopic: Processes and threads
+  type: single
+  difficulty: hard
+  tags: [clone, threads, linux]
+  prompt: |
+    On Linux both processes and threads are created with `clone()`. Which flag is what makes the new
+    task part of the caller's **thread group**, so that `getpid()` returns the same value in both and a
+    process-directed signal can be delivered to either?
+  choices:
+    - id: a
+      text: CLONE_THREAD
+    - id: b
+      text: CLONE_VM
+    - id: c
+      text: CLONE_FILES
+    - id: d
+      text: CLONE_SIGHAND
+  answer: a
+  explanation: |
+    In the kernel every thread is a task with its own TID. `CLONE_THREAD` puts the new task in the same
+    thread group; the thread group ID (TGID) is what user space calls the PID, so `getpid()` matches
+    while `gettid()` differs.
+
+    `CLONE_VM` shares the address space, `CLONE_FILES` shares the fd table, and `CLONE_SIGHAND` shares
+    signal handlers (it is required by `CLONE_THREAD`, and itself requires `CLONE_VM`). You can combine
+    `CLONE_VM` without `CLONE_THREAD` to get a task that shares memory but is a separate "process" —
+    which shows that "thread vs process" on Linux is really a question of which resources are shared.
+
+- id: os-proc-016
+  topic: operating-systems
+  subtopic: fork and exec
+  type: short
+  difficulty: medium
+  tags: [shell, fork, exec, dynamic-linking]
+  prompt: |
+    Walk me through what happens, at the OS level, when you type `ls` in bash and press Enter.
+  reference: |
+    The terminal driver delivers the line to bash's `read()` on stdin. Bash parses it, finds `ls` by
+    searching `$PATH` (with its hash cache), and calls `fork()` (or `clone`). In the child it sets up
+    redirections and the process group / foreground terminal for job control, resets signal handlers,
+    and calls `execve("/usr/bin/ls", argv, envp)`. The kernel opens the ELF file, discards the old
+    address space, maps the program's segments, sees the `PT_INTERP` header and maps the dynamic loader
+    (`ld-linux-x86-64.so.2`), builds the initial stack (argv, envp, auxv) and returns to user mode at the
+    loader's entry point. The loader maps libc and other shared libraries, performs relocations, runs
+    initialisers and jumps to `_start` → `__libc_start_main` → `main`. `ls` makes syscalls such as
+    `openat`, `getdents64`, `fstat`/`statx` and `write` to the terminal, then `exit_group`. The kernel
+    tears down the process, which becomes a zombie and sends SIGCHLD to bash; bash, blocked in
+    `waitpid`, reaps it, records `$?` and prints the next prompt.
+  keyPoints:
+    - Shell reads the line, resolves the command via PATH, and forks
+    - Child sets up redirections/job control then calls execve
+    - Kernel loads the ELF, maps the dynamic loader (PT_INTERP), sets up stack with argv/envp/auxv
+    - Dynamic loader maps shared libraries and relocates before main runs
+    - ls uses syscalls (openat/getdents64/stat/write) then exits; parent waitpid reaps the zombie and gets the status
+  explanation: |
+    This is an open-ended prompt; interviewers probe wherever you show depth — page faults during
+    loading, how the terminal echoes, or how the loader finds libraries. Mentioning that `cd` can't be an
+    external program (it must change the shell's own cwd) is a nice touch.
+
+- id: os-proc-017
+  topic: operating-systems
+  subtopic: fork and exec
+  type: single
+  difficulty: medium
+  tags: [fork, file-descriptors, file-offset]
+  prompt: |
+    A process opens a 100-byte file, then calls `fork()`. The child calls `read(fd, buf, 10)` and
+    exits; afterwards the parent calls `read(fd, buf, 10)` on the same fd. Which bytes does the parent
+    get?
+  choices:
+    - id: a
+      text: Bytes 10–19, because parent and child share the same open file description and therefore the same file offset
+    - id: b
+      text: Bytes 0–9, because the child's read happened in a copy-on-write copy of the descriptor
+    - id: c
+      text: Nothing; the fd was closed when the child exited
+    - id: d
+      text: It is undefined which bytes the parent gets
+  answer: a
+  explanation: |
+    fork duplicates the *descriptor table*, but the duplicated descriptors point at the same kernel open
+    file description, which holds the offset and status flags. The child's read advanced that shared
+    offset to 10, so the parent continues from there.
+
+    Copy-on-write applies to memory pages, not kernel objects. The child exiting closes only the child's
+    descriptor; the open file description stays alive while the parent still references it. Two
+    separate `open()` calls on the same path, by contrast, would have independent offsets.
+
+- id: os-proc-018
+  topic: operating-systems
+  subtopic: Process lifecycle
+  type: short
+  difficulty: easy
+  tags: [exit, stdio, atexit]
+  prompt: |
+    What is the difference between returning from `main`, calling `exit()`, and calling `_exit()`?
+    When would you deliberately use `_exit()`?
+  reference: |
+    Returning from `main` is equivalent to calling `exit()` with that value. `exit()` is a C library
+    function: it runs `atexit`/`on_exit` handlers and C++ static destructors, flushes and closes stdio
+    streams, then calls the `_exit` / `exit_group` system call. `_exit()` goes straight to the kernel:
+    no handlers, no destructors, no stdio flush; the kernel still closes fds, releases memory and
+    notifies the parent. Use `_exit()` in a forked child that doesn't exec (or whose exec failed), so it
+    doesn't flush the parent's duplicated stdio buffers a second time or run the parent's cleanup (e.g.
+    deleting temp files, sending a "goodbye" on a shared socket), and in contexts where only
+    async-signal-safe calls are allowed (signal handlers, after fork in a multithreaded process).
+  keyPoints:
+    - Returning from main calls exit()
+    - exit() runs atexit handlers and static destructors and flushes stdio, then makes the syscall
+    - _exit() is the raw syscall - no user-space cleanup; kernel still frees resources and notifies the parent
+    - Use _exit in forked children that fail to exec, and where only async-signal-safe functions are allowed
+  explanation: |
+    The "duplicate output after fork" and "child deleted the parent's temp file in a destructor" bugs
+    both come from children leaving through `exit()` instead of `_exit()`.
+
+- id: os-proc-019
+  topic: operating-systems
+  subtopic: Processes and threads
+  type: short
+  difficulty: easy
+  tags: [processes, threads, isolation]
+  prompt: |
+    Explain the difference between a process and a thread. When would you choose multiple processes
+    over multiple threads?
+  reference: |
+    A process is a unit of isolation and resource ownership: its own virtual address space, fd table,
+    credentials and so on. A thread is a unit of execution (registers, stack, scheduling state) inside a
+    process; threads of a process share memory and most resources. Threads make sharing cheap and
+    creating/switching between them cheaper, but a bug in one thread (memory corruption, crash, leaked
+    lock) takes down or corrupts all of them, and shared state needs synchronisation. Choose processes
+    when you want fault isolation (a crash or leak in one worker doesn't kill the rest, as in browsers'
+    per-site processes or pre-fork servers), security isolation (different privileges, sandboxing),
+    independent restarts/upgrades, or to escape a global lock (Python's GIL). Choose threads for
+    fine-grained sharing of large in-memory state with low communication latency.
+  keyPoints:
+    - Process - own address space and resources; thread - execution context sharing the process's resources
+    - Threads communicate through shared memory cheaply but need synchronisation
+    - Processes give fault and security isolation (one crash doesn't take down others)
+    - Thread creation and switching are cheaper (no address-space switch)
+    - Examples - browser site isolation, pre-fork servers, sidestepping the GIL
+  explanation: |
+    On Linux both are "tasks" created by `clone()` with different sharing flags, which is a useful
+    detail to add but not a substitute for the conceptual distinction.

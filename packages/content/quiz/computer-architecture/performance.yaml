@@ -1,0 +1,696 @@
+- id: arch-perf-001
+  topic: computer-architecture
+  subtopic: Performance analysis
+  type: single
+  difficulty: easy
+  prompt: |
+    90% of a program's runtime is perfectly parallelisable and the rest is serial. By Amdahl's law, what speedup do you get on 8 cores?
+  choices:
+    - { id: a, text: "About 4.7×" }
+    - { id: b, text: "About 7.2×" }
+    - { id: c, text: "8×" }
+    - { id: d, text: "10×" }
+  answer: a
+  explanation: |
+    Speedup = 1 / (s + p/N) = 1 / (0.1 + 0.9/8) = 1 / (0.1 + 0.1125) = 1 / 0.2125 ≈ **4.71**.
+    10× is the limit as N → ∞ (1/0.1); 7.2× is 0.9 × 8, which wrongly scales only the parallel fraction; 8× ignores the serial part entirely.
+    Even a 10% serial fraction wastes over 40% of 8 cores.
+  tags: [amdahl, speedup, quantitative]
+
+- id: arch-perf-002
+  topic: computer-architecture
+  subtopic: Performance analysis
+  type: single
+  difficulty: medium
+  prompt: |
+    Profiling shows JSON parsing takes 40% of a request's latency. You make the parser 4× faster. What is the overall speedup of the request?
+  choices:
+    - { id: a, text: "About 1.43×" }
+    - { id: b, text: "1.6×" }
+    - { id: c, text: "About 2.5×" }
+    - { id: d, text: "4×" }
+  answer: a
+  explanation: |
+    New time = 0.6 + 0.4/4 = 0.6 + 0.1 = 0.7 of the original, so speedup = 1/0.7 ≈ **1.43×** (latency down 30%).
+    1.6× is a common error from adding fractions incorrectly (1 + 0.4 × 1.5). Even an infinitely fast parser would give only 1/0.6 ≈ 1.67×,
+    which is the key Amdahl lesson: optimise what dominates the profile.
+  tags: [amdahl, speedup, quantitative, profiling]
+
+- id: arch-perf-003
+  topic: computer-architecture
+  subtopic: Performance analysis
+  type: single
+  difficulty: hard
+  prompt: |
+    On a core where a vector FMA has 4-cycle latency and two FMA units (throughput: 2 per cycle), a dot-product loop accumulates into one vector
+    register: `acc = fma(a[i], b[i], acc)`. Ignoring memory limits, how many independent accumulators are needed to reach peak FMA throughput, and how far
+    below peak is the single-accumulator loop?
+  choices:
+    - { id: a, text: "8 accumulators; one accumulator runs at 1/8 of peak (one FMA every 4 cycles)" }
+    - { id: b, text: "2 accumulators; one accumulator runs at 1/2 of peak" }
+    - { id: c, text: "4 accumulators; one accumulator runs at 1/4 of peak" }
+    - { id: d, text: "1 accumulator is enough because the CPU executes out of order" }
+  answer: a
+  explanation: |
+    Each FMA into `acc` depends on the previous one, so the loop is bound by the 4-cycle latency chain: 1 FMA per 4 cycles. Peak is 2 per cycle = 8 per 4 cycles.
+    Required parallelism = latency × throughput = 4 × 2 = **8** independent chains (e.g. `acc0..acc7`, summed at the end). This latency-vs-throughput
+    distinction is the essence of why unrolling with multiple accumulators helps. Out-of-order execution (d) cannot overlap operations that are truly dependent.
+    These figures match Intel Skylake (FMA latency 4, two FMA ports); compilers do this transformation for floats only with reassociation allowed.
+  tags: [latency-vs-throughput, ilp, fma, unrolling, quantitative]
+  source: { name: "Agner Fog, Instruction tables (Skylake FMA latency/throughput)", url: "https://www.agner.org/optimize/instruction_tables.pdf" }
+
+- id: arch-perf-004
+  topic: computer-architecture
+  subtopic: Performance analysis
+  type: single
+  difficulty: medium
+  prompt: |
+    A simulation run on 64 cores spends 5% of its (parallel-machine) time in serial code. Under Gustafson's law (problem size scaled with the core count),
+    what is the scaled speedup?
+  choices:
+    - { id: a, text: "About 60.9×" }
+    - { id: b, text: "About 15.4×" }
+    - { id: c, text: "20×" }
+    - { id: d, text: "64×" }
+  answer: a
+  explanation: |
+    Gustafson: S = N − s × (N − 1) = 64 − 0.05 × 63 = 64 − 3.15 = **60.85**.
+    15.4× is Amdahl's answer for a 5% serial fraction of the *single-core* runtime (1 / (0.05 + 0.95/64) ≈ 15.4), and 20× is Amdahl's limit.
+    The two laws answer different questions: Amdahl fixes the problem size (strong scaling); Gustafson lets the problem grow with the machine (weak scaling),
+    with the serial fraction measured on the parallel run.
+  tags: [gustafson, amdahl, scaling, quantitative]
+
+- id: arch-perf-005
+  topic: computer-architecture
+  subtopic: Performance analysis
+  type: single
+  difficulty: easy
+  prompt: |
+    `perf stat` reports 2.0 billion instructions and 4.0 billion cycles for a hot loop on a 4-wide out-of-order core. What is the IPC, and what does it suggest?
+  choices:
+    - { id: a, text: "IPC = 0.5; the core is mostly stalled, often on memory or long dependency chains — worth checking cache misses" }
+    - { id: b, text: "IPC = 2.0; the code is near peak" }
+    - { id: c, text: "IPC = 0.5; the code is compute-bound and needs a faster ALU" }
+    - { id: d, text: "IPC cannot be computed without the clock frequency" }
+  answer: a
+  explanation: |
+    IPC = instructions / cycles = 2.0 / 4.0 = **0.5**, far below the 4-wide core's potential. Low IPC usually means stalls: cache/TLB misses, branch
+    mispredictions or serial dependency chains. Next steps: `perf stat -e cache-misses,branch-misses,...` or top-down analysis (`perf stat --topdown`,
+    `toplev`). Frequency is not needed (d) — both counts are in cycles. Note that IPC alone is not "good" or "bad": a SIMD-heavy loop can be fast with modest IPC.
+  tags: [ipc, perf, performance-counters]
+
+- id: arch-perf-006
+  topic: computer-architecture
+  subtopic: Performance analysis
+  type: multiple
+  difficulty: medium
+  prompt: |
+    Which of these are real pitfalls when writing a C++ microbenchmark? Select all that apply.
+  choices:
+    - { id: a, text: "The compiler deletes or hoists the code under test because its result is unused or constant" }
+    - { id: b, text: "The first iterations run with cold caches, cold branch predictors and unfaulted pages" }
+    - { id: c, text: "CPU frequency scaling and turbo make results depend on what ran before and on temperature" }
+    - { id: d, text: "Timing one very short operation per clock read, so timer overhead and resolution dominate" }
+    - { id: e, text: "Using std::chrono::steady_clock instead of system_clock" }
+  answer: [a, b, c, d]
+  explanation: |
+    - (a) Use the result (`benchmark::DoNotOptimize`, write to a volatile sink, or an inline-asm escape) and make inputs opaque.
+    - (b) Warm up, or deliberately measure cold behaviour if that is what production sees.
+    - (c) Pin the core, fix the frequency governor (`performance`), disable turbo for repeatability, and report variance.
+    - (d) Time many operations per measurement, or use rdtsc carefully with serialisation.
+    - (e) is *correct practice*, not a pitfall: steady_clock is monotonic; system_clock can jump (NTP adjustments).
+    Also: benchmarking an unrealistic data set that fits in L1, and the benchmark's own allocation patterns differing from production.
+  tags: [benchmarking, microbenchmark, methodology]
+
+- id: arch-perf-007
+  topic: computer-architecture
+  subtopic: Performance analysis
+  type: short
+  difficulty: medium
+  prompt: |
+    You have a Linux service with a CPU hot spot. Explain how you'd use `perf` to find which functions and instructions are responsible, and the difference
+    between `perf stat` and `perf record`.
+  reference: |
+    `perf stat` *counts* events (cycles, instructions, cache-misses, branch-misses, context switches…) over the whole run or a process (`-p PID`) and prints
+    totals and ratios like IPC — it tells you *what kind* of problem you have, not where. `perf record` *samples*: every N events (or at a frequency) it
+    records the instruction pointer and optionally the call stack (`-g`, `--call-graph dwarf` or `lbr`), writing perf.data; `perf report` aggregates samples
+    by function/call chain and `perf annotate` shows hot instructions in the disassembly; flame graphs visualise the stacks. Sample a specific event
+    (`-e cache-misses`, `-e branch-misses`) to locate where misses occur. Caveats: build with symbols (and frame pointers or use DWARF unwinding), sampling skid
+    means the attributed instruction may be slightly after the culprit (precise events `:pp` / PEBS reduce this), and inlined code is attributed to the caller.
+  keyPoints:
+    - perf stat counts events and gives ratios (IPC, miss rates) for diagnosis
+    - perf record samples IPs/stacks; perf report and annotate locate hot functions and instructions
+    - Call graphs need frame pointers / DWARF / LBR; symbols required
+    - Can sample on specific events such as cache-misses or branch-misses
+    - Mentions skid / precise events (PEBS) or flame graphs
+  explanation: |
+    See Brendan Gregg's perf examples page for idiomatic one-liners.
+  tags: [perf, profiling, performance-counters, linux]
+  source: { name: "Brendan Gregg, perf Examples", url: "https://www.brendangregg.com/perf.html" }
+
+- id: arch-perf-008
+  topic: computer-architecture
+  subtopic: Performance analysis
+  type: single
+  difficulty: hard
+  prompt: |
+    A machine peaks at 1 TFLOP/s (double precision) and 100 GB/s DRAM bandwidth. Using the roofline model, what is the attainable performance of
+    DAXPY (`y[i] = a * x[i] + y[i]` over arrays far larger than cache)?
+  choices:
+    - { id: a, text: "About 8 GFLOP/s — the kernel is memory-bound" }
+    - { id: b, text: "1 TFLOP/s — DAXPY is compute-bound" }
+    - { id: c, text: "100 GFLOP/s" }
+    - { id: d, text: "About 25 GFLOP/s" }
+  answer: a
+  explanation: |
+    Per element: 2 FLOPs (multiply + add). Bytes: read x (8) + read y (8) + write y (8) = 24 bytes.
+    Arithmetic intensity = 2 / 24 ≈ 0.083 FLOP/byte. The ridge point is 1000 GFLOP/s / 100 GB/s = 10 FLOP/byte, so DAXPY is far left of it: memory-bound.
+    Attainable = min(peak, AI × bandwidth) = 0.083 × 100 ≈ **8.3 GFLOP/s**, under 1% of peak.
+    (d) uses only 8 bytes per element (counting only x); (c) assumes 1 FLOP per byte. With write-allocate the store also triggers a read, but y is already being
+    read here, so 24 bytes is right. Optimising arithmetic will not help; fusing it with neighbouring kernels to reuse data in cache will.
+  tags: [roofline, arithmetic-intensity, bandwidth, quantitative]
+  source: { name: "Williams, Waterman & Patterson, 'Roofline: An Insightful Visual Performance Model' (CACM 2009)" }
+
+- id: arch-perf-009
+  topic: computer-architecture
+  subtopic: Performance analysis
+  type: short
+  difficulty: hard
+  prompt: |
+    A load generator sends a request, waits for the reply, then sends the next, and reports p99 latency. Why can this badly under-report tail latency
+    ("coordinated omission"), and how should latency be measured instead?
+  reference: |
+    If the system stalls for, say, 1 second, a closed-loop generator simply stops sending during the stall, so it records one slow request instead of
+    the hundreds that real, independently arriving users would have experienced (all queued behind the stall). The measurement coordinates with the system
+    under test and omits exactly the bad samples, so percentiles look far better than reality. Fixes: use an open-loop generator that sends on a fixed schedule
+    independent of responses and measures latency from the *intended* send time; or correct for missed intervals (as HdrHistogram's
+    `recordValueWithExpectedInterval` does). Report full percentile distributions (p50/p99/p99.9/max) from histograms rather than averages, over enough samples
+    to make the tail meaningful.
+  keyPoints:
+    - Closed-loop generator pauses during a stall, so it records too few slow samples
+    - Real arrivals are independent; queued requests would all see the stall
+    - Measure from intended send time / open-loop constant-rate generation (e.g. wrk2)
+    - Use histograms and full percentile reporting (HdrHistogram), not averages
+  explanation: |
+    The term comes from Gil Tene's talk "How NOT to Measure Latency"; wrk2 and HdrHistogram exist largely to address it.
+  tags: [latency, tail-latency, benchmarking, coordinated-omission]
+  source: { name: "Gil Tene, 'How NOT to Measure Latency' (talk)" }
+
+- id: arch-perf-010
+  topic: computer-architecture
+  subtopic: Performance analysis
+  type: single
+  difficulty: medium
+  prompt: |
+    On a modern x86-64 CPU with an invariant TSC, what does the difference between two `rdtsc` readings measure?
+  choices:
+    - { id: a, text: "Ticks of a constant-rate reference clock (roughly the nominal frequency), independent of the core's actual current frequency and of idle states" }
+    - { id: b, text: "Actual core clock cycles at the current turbo frequency" }
+    - { id: c, text: "Instructions retired" }
+    - { id: d, text: "Nanoseconds since boot" }
+  answer: a
+  explanation: |
+    With invariant TSC (CPUID flag, present on all recent Intel/AMD parts) the counter increments at a fixed rate regardless of P-states, turbo or C-states,
+    so it is a fast wall-clock timer, not a cycle counter. To count *core* cycles use the performance counter (e.g. `perf stat -e cycles` or
+    `CPU_CLK_UNHALTED.THREAD`). You must also calibrate ticks → ns (Linux exposes the TSC frequency in the kernel log; clock_gettime via the vDSO
+    already uses the TSC). `rdtsc` is not serialising, so out-of-order execution can move it relative to the timed code — use `rdtscp` and/or `lfence`.
+  tags: [rdtsc, timing, benchmarking, x86-64]
+
+- id: arch-perf-011
+  topic: computer-architecture
+  subtopic: Performance analysis
+  type: short
+  difficulty: hard
+  prompt: |
+    After an innocuous-looking change, a hot loop got 2× slower. The instruction count barely changed. How would you systematically find out why?
+  reference: |
+    Same instructions but more cycles means IPC dropped, so find which pipeline resource is stalling. Use top-down microarchitecture analysis
+    (`perf stat --topdown` / `toplev`) to split slots into frontend-bound, bad speculation, backend-bound (memory vs core) and retiring, and compare before/after.
+    Then drill down with targeted counters: cache misses at each level and DTLB misses (layout or footprint change, new false sharing), branch mispredictions
+    (data-dependent branch introduced), frontend/DSB misses or code alignment changes (the change moved the loop across a 64-byte/32-byte boundary — the JCC
+    erratum mitigation is a known case), store-forwarding failures or 4K aliasing, a longer dependency chain, denormals, or AVX frequency effects. Compare
+    `perf annotate` of old vs new to see where cycles moved and diff the generated assembly. Control the environment (same core, frequency, inputs, NUMA node)
+    and confirm with A/B runs that the regression is not noise.
+  keyPoints:
+    - Recognises IPC/cycles changed, not work — look at stalls
+    - Top-down method (frontend / bad speculation / backend memory or core / retiring)
+    - Specific counters — cache/TLB misses, branch-misses, frontend/DSB — to narrow it down
+    - Compare assembly and perf annotate before and after; consider code alignment and layout effects
+    - Controls for noise — pinning, frequency, repeated A/B runs
+  explanation: |
+    Interviewers like this because it separates people who guess from people who measure. Ahmad Yasin's top-down method is described in Intel's optimisation manual.
+  tags: [performance-debugging, top-down, perf, regression]
+  source: { name: "Ahmad Yasin, 'A Top-Down Method for Performance Analysis and Counters Architecture' (ISPASS 2014)" }
+
+- id: arch-perf-012
+  topic: computer-architecture
+  subtopic: Performance analysis
+  type: short
+  difficulty: easy
+  prompt: |
+    Explain the difference between latency and throughput, with a hardware example where improving one does not improve the other.
+  reference: |
+    Latency is the time for one operation to complete from start to finish; throughput is how many operations complete per unit time. Pipelining and
+    parallelism raise throughput without shortening each operation: a pipelined multiplier may take 3–4 cycles per multiply (latency) yet start a new one
+    every cycle (throughput 1/cycle). Similarly DRAM: adding channels doubles bandwidth but a single cache miss still takes ~100 ns; a pointer-chasing
+    program is latency-bound and gains nothing. Little's law ties them: concurrency = throughput × latency, so high throughput at fixed latency needs many
+    operations in flight. Conversely a faster clock can cut latency, and batching raises throughput while often increasing the latency of individual items.
+  keyPoints:
+    - Correct definitions — time per operation vs operations per unit time
+    - Pipelining / parallelism raise throughput without reducing latency
+    - Concrete example (pipelined FU, DRAM channels, network bandwidth vs RTT)
+    - Little's law or batching trade-off
+  explanation: |
+    For low-latency roles, expect follow-ups on how batching trades latency for throughput (e.g. Nagle, interrupt coalescing).
+  tags: [latency-vs-throughput, littles-law]
+
+- id: arch-perf-013
+  topic: computer-architecture
+  subtopic: Performance analysis
+  type: single
+  difficulty: easy
+  prompt: |
+    5% of a program is inherently serial. According to Amdahl's law, what is the maximum speedup achievable with any number of processors?
+  choices:
+    - { id: a, text: "20×" }
+    - { id: b, text: "95×" }
+    - { id: c, text: "Unlimited" }
+    - { id: d, text: "5×" }
+  answer: a
+  explanation: |
+    As N → ∞, speedup = 1 / (s + p/N) → 1/s = 1/0.05 = **20×**. The serial part alone takes 5% of the original time, so you can never be more than 20× faster.
+  tags: [amdahl, quantitative]
+
+- id: arch-perf-014
+  topic: computer-architecture
+  subtopic: Performance analysis
+  type: short
+  difficulty: medium
+  prompt: |
+    A data-parallel job scales nicely to 8 threads but gets *slower* at 32 threads on a 32-core machine, even though the work is independent per item.
+    What hardware-level reasons could explain this?
+  reference: |
+    Memory bandwidth saturation: once enough cores stream from DRAM, more cores just queue on the memory controllers, and latency rises. Shared cache
+    capacity: per-thread working sets that fit in L3 at 8 threads spill at 32, turning hits into DRAM misses. Coherence costs: false sharing of per-thread
+    output slots, a shared atomic counter or work-queue index, or a lock causing cache-line ping-pong. NUMA: threads on the second socket hitting memory first-
+    touched on the first. Frequency: all-core turbo is lower than few-core turbo (and AVX-heavy code drops further). SMT: if the 32 "cores" are 16 physical with
+    hyperthreading, siblings compete for execution units and L1/L2. Plus software effects such as allocator contention and oversubscription with other processes.
+  keyPoints:
+    - Memory bandwidth saturation
+    - Shared LLC capacity / cache thrashing
+    - False sharing or contended atomics/locks
+    - NUMA remote accesses
+    - Lower all-core turbo / SMT sharing
+  explanation: |
+    Diagnose with `perf stat` (LLC misses, memory bandwidth via uncore counters / `pcm`), `perf c2c` and `numastat`, comparing per-thread throughput as threads increase.
+  tags: [scalability, multicore, bandwidth, false-sharing, numa]
+
+- id: arch-perf-015
+  topic: computer-architecture
+  subtopic: Performance analysis
+  type: single
+  difficulty: medium
+  prompt: |
+    Two versions of a function have identical runtime. Version A retires 1.2 billion instructions at IPC 3.0; version B retires 0.6 billion instructions.
+    What is B's IPC, and what is the lesson?
+  choices:
+    - { id: a, text: "1.5; IPC alone does not measure efficiency — B does half the work but stalls more per instruction" }
+    - { id: b, text: "6.0; B is twice as efficient per cycle" }
+    - { id: c, text: "3.0; same runtime implies same IPC" }
+    - { id: d, text: "0.75; B has four times as many stalls" }
+  answer: a
+  explanation: |
+    Same runtime and same frequency ⇒ same cycles. A: cycles = 1.2e9 / 3.0 = 0.4e9. B: IPC = 0.6e9 / 0.4e9 = **1.5**.
+    Runtime = instructions × CPI / frequency, so both instruction count and IPC matter. A "high IPC" can come from executing lots of cheap redundant
+    instructions; vectorising code often *lowers* IPC while making it faster.
+  tags: [ipc, performance-equation, quantitative]
+
+- id: arch-io-001
+  topic: computer-architecture
+  subtopic: Storage and I/O
+  type: single
+  difficulty: easy
+  prompt: |
+    What is DMA (direct memory access) used for?
+  choices:
+    - { id: a, text: "Letting a device such as a NIC or SSD controller transfer data to or from main memory itself, so the CPU need not copy each word" }
+    - { id: b, text: "Letting user programs read physical memory without page tables" }
+    - { id: c, text: "Letting the CPU bypass the cache for every load" }
+    - { id: d, text: "Mapping a file into a process's address space" }
+  answer: a
+  explanation: |
+    With DMA the driver gives the device descriptors pointing at memory buffers (physical/IO-virtual addresses, translated by the IOMMU when enabled);
+    the device moves the data over PCIe and typically raises an interrupt or updates a completion queue when done. The CPU is free meanwhile. Without it,
+    the CPU would have to move each word with programmed I/O. (d) is `mmap`; (b) and (c) are not what DMA means.
+  tags: [dma, io, pcie]
+
+- id: arch-io-002
+  topic: computer-architecture
+  subtopic: Storage and I/O
+  type: single
+  difficulty: medium
+  prompt: |
+    Why does NVMe scale to millions of IOPS on many-core machines where the older AHCI/SATA interface could not?
+  choices:
+    - { id: a, text: "NVMe supports up to ~64K I/O queues, each up to ~64K commands deep, so each core can have its own submission/completion queue pair without locking; AHCI has one queue of 32 commands" }
+    - { id: b, text: "NVMe drives use DRAM instead of flash" }
+    - { id: c, text: "NVMe removes the need for interrupts entirely" }
+    - { id: d, text: "NVMe transfers data over the CPU's memory bus rather than PCIe" }
+  answer: a
+  explanation: |
+    AHCI exposes a single command queue with depth 32, shared by all cores, plus register reads in the I/O path. NVMe was designed for low-latency flash on
+    PCIe: up to 65,535 I/O queue pairs with up to 65,536 entries each, doorbell writes instead of uncached register reads, and MSI-X interrupts steerable per queue.
+    Linux's blk-mq maps per-CPU software queues onto these hardware queues. NVMe drives still use flash (b), still use interrupts (though polling is supported) (c),
+    and run over PCIe (d).
+  tags: [nvme, ssd, storage, queues]
+  source: { name: "NVM Express Base Specification" }
+
+- id: arch-io-003
+  topic: computer-architecture
+  subtopic: Storage and I/O
+  type: single
+  difficulty: medium
+  prompt: |
+    For a device with very frequent completions (e.g. a NIC at millions of packets/s), why do high-performance systems switch from interrupts to polling?
+  choices:
+    - { id: a, text: "Each interrupt costs a context entry/exit, cache/TLB disturbance and handler overhead; at high event rates polling amortises that cost and gives lower, more predictable latency, at the price of burning a CPU" }
+    - { id: b, text: "Interrupts cannot be delivered for network devices" }
+    - { id: c, text: "Polling uses less power than interrupts at any load" }
+    - { id: d, text: "Polling avoids the need for DMA" }
+  answer: a
+  explanation: |
+    At low rates interrupts are efficient: the CPU sleeps until work arrives. At high rates the per-interrupt overhead dominates and can cause livelock.
+    Linux NAPI switches a NIC to polling under load (interrupt disabled while a softirq drains the ring), interrupt coalescing batches events, and kernel-bypass
+    stacks (DPDK, Onload/ef_vi) busy-poll from user space on a dedicated core for minimal latency. The cost is a core at 100% even when idle — the reverse of (c).
+    Polling still relies on DMA into rings (d).
+  tags: [interrupts, polling, napi, latency]
+
+- id: arch-io-004
+  topic: computer-architecture
+  subtopic: Storage and I/O
+  type: short
+  difficulty: medium
+  prompt: |
+    What is kernel-bypass networking (e.g. DPDK, Solarflare/AMD Onload or ef_vi, RDMA, AF_XDP), and why does it reduce latency? What do you give up?
+  reference: |
+    Kernel bypass lets a user-space process drive the NIC directly: the NIC's descriptor rings and buffers are mapped into the process, which posts
+    transmit descriptors and polls receive rings itself. This removes system calls and user/kernel transitions, interrupt handling and softirq scheduling,
+    the generic kernel TCP/IP stack's processing and locking, and data copies between kernel and user buffers. Combined with busy-polling on an isolated core,
+    latency drops from several microseconds to roughly a microsecond or less and jitter falls sharply. Costs: dedicated CPUs spinning at 100%; you lose (or must
+    reimplement) the kernel's stack features — TCP, firewalling, routing, observability tools like tcpdump/ss — or use a vendor user-space stack; more complex
+    deployment (hugepages, NIC driver binding, specific hardware); and weaker isolation/security. AF_XDP is a middle ground that keeps the kernel driver.
+  keyPoints:
+    - User space accesses NIC rings directly (mapped memory)
+    - Avoids syscalls, interrupts, kernel stack processing and copies
+    - Busy polling on dedicated cores for low and predictable latency
+    - Trade-offs — CPU burn, loss of kernel stack features/tools, hardware specificity, complexity
+  explanation: |
+    Standard topic in HFT interviews; be ready to compare with tuning the kernel path (busy_poll sysctl, IRQ affinity, coalescing off).
+  tags: [kernel-bypass, dpdk, networking, latency]
+
+- id: arch-io-005
+  topic: computer-architecture
+  subtopic: Storage and I/O
+  type: single
+  difficulty: easy
+  prompt: |
+    Roughly how do random 4 KiB read IOPS compare between a 7200 rpm hard disk and a modern NVMe SSD?
+  choices:
+    - { id: a, text: "Hundreds for the HDD vs hundreds of thousands or more for the NVMe SSD" }
+    - { id: b, text: "About the same; the SSD wins only on sequential throughput" }
+    - { id: c, text: "Tens of thousands for the HDD vs hundreds of thousands for the SSD" }
+    - { id: d, text: "The HDD is faster for random reads because of its cache" }
+  answer: a
+  explanation: |
+    A random HDD read requires a seek (several ms) plus on average half a rotation (60 s / 7200 / 2 ≈ 4.2 ms), so ~8–12 ms per I/O → on the order of
+    **100–200 IOPS**. NVMe SSDs have no moving parts, ~tens of µs read latency and deep parallelism across flash dies, giving **hundreds of thousands to over a
+    million** IOPS at high queue depth. That 3+ orders of magnitude gap is why random-I/O workloads moved to flash. Sequential throughput differs much less
+    (~200 MB/s vs several GB/s).
+  tags: [storage, ssd, hdd, iops]
+
+- id: arch-io-006
+  topic: computer-architecture
+  subtopic: Storage and I/O
+  type: single
+  difficulty: hard
+  prompt: |
+    Why do SSDs need a flash translation layer (FTL) and suffer from write amplification?
+  choices:
+    - { id: a, text: "NAND flash is written in pages but erased only in much larger blocks, and a page cannot be overwritten in place; the FTL writes updates to fresh pages, remaps them, and garbage-collects blocks by copying still-valid pages — those copies are extra writes" }
+    - { id: b, text: "Flash cells are read destructively, so each read must be followed by a rewrite" }
+    - { id: c, text: "SSDs store each block three times for redundancy" }
+    - { id: d, text: "The OS file system writes every block twice, once to a journal" }
+  answer: a
+  explanation: |
+    Flash programs pages (KiBs) only into erased cells and erases in blocks (MiBs). An overwrite therefore goes out-of-place to a new page, the old page is
+    marked stale, and a logical→physical map is maintained. Garbage collection later relocates valid pages out of a victim block before erasing it — extra
+    physical writes per logical write (write amplification), which costs bandwidth, latency spikes and endurance. TRIM/discard, over-provisioning and
+    sequential write patterns reduce it. (b) describes DRAM, not flash. (d) file-system journaling is a separate, host-level amplification.
+  tags: [ssd, ftl, write-amplification, flash]
+
+- id: arch-io-007
+  topic: computer-architecture
+  subtopic: Storage and I/O
+  type: single
+  difficulty: medium
+  prompt: |
+    PCIe 4.0 runs at 16 GT/s per lane with 128b/130b encoding. What is the approximate usable bandwidth of a x16 link in **each direction**?
+  choices:
+    - { id: a, text: "About 32 GB/s" }
+    - { id: b, text: "About 256 GB/s" }
+    - { id: c, text: "About 16 GB/s" }
+    - { id: d, text: "About 2 GB/s" }
+  answer: a
+  explanation: |
+    Per lane: 16 × 10^9 transfers/s × 1 bit × 128/130 ≈ 15.75 Gb/s ≈ 1.97 GB/s. × 16 lanes ≈ **31.5 GB/s** per direction (full duplex, so ~63 GB/s total).
+    2 GB/s is one lane; 16 GB/s is PCIe 3.0 x16; 256 GB/s forgets to convert bits to bytes. Protocol overhead (TLP headers) reduces achieved throughput further.
+    Each PCIe generation doubles this: Gen5 x16 ≈ 63 GB/s per direction.
+  tags: [pcie, bandwidth, quantitative]
+
+- id: arch-io-008
+  topic: computer-architecture
+  subtopic: Storage and I/O
+  type: short
+  difficulty: hard
+  prompt: |
+    Walk me through what happens, from the wire to a `recv()` returning in user space, when a TCP packet arrives at a Linux server's NIC (standard kernel stack).
+  reference: |
+    1. The NIC receives the frame, checks the FCS, possibly does checksum offload and RSS hashing to pick a receive queue, and DMAs the packet into a buffer
+       described by the next descriptor in that queue's RX ring in host memory, then writes back the descriptor status.
+    2. It raises an MSI-X interrupt (subject to interrupt coalescing) on the CPU tied to that queue. The hard-IRQ handler does minimal work: it disables
+       further interrupts for the queue and schedules NAPI polling (NET_RX softirq).
+    3. The softirq poll loop pulls packets from the ring, builds `sk_buff`s (GRO may merge segments), refills the ring with fresh buffers, and passes packets up:
+       IP processing (routing, netfilter), then TCP (socket lookup, sequence checks, ACK generation, queueing data on the socket's receive queue).
+    4. If a thread is blocked in `recv()`/`epoll_wait` on that socket it is woken (scheduler); it returns to user space after the kernel copies data from the
+       sk_buffs into the user buffer and releases them.
+    Latency sources: interrupt coalescing, softirq deferral to ksoftirqd, scheduler wake-up, cache misses on cross-CPU processing, copies — which is what
+    busy polling, IRQ affinity, RSS/RFS and kernel bypass address.
+  keyPoints:
+    - NIC DMAs the frame into a pre-posted RX ring buffer (RSS selects a queue)
+    - Interrupt (coalesced) → hard IRQ handler schedules NAPI softirq
+    - Softirq polls the ring, builds sk_buffs, runs IP and TCP processing, queues to socket
+    - Waiting thread is woken; data copied to user buffer on recv()
+    - Identifies latency sources and tuning (coalescing, affinity, busy poll, bypass)
+  explanation: |
+    A favourite question for infrastructure and HFT roles; strong candidates mention where each microsecond goes.
+  tags: [networking, nic, napi, interrupts, dma, linux]
+  source: { name: "Linux kernel networking documentation (NAPI, scaling)", url: "https://www.kernel.org/doc/html/latest/networking/scaling.html" }
+
+- id: arch-io-009
+  topic: computer-architecture
+  subtopic: Storage and I/O
+  type: short
+  difficulty: medium
+  prompt: |
+    A device DMAs data into a buffer in RAM. How does the CPU avoid reading stale data from its caches, and how is this handled on modern x86 servers?
+  reference: |
+    The concern is coherence between device writes and CPU caches. On x86 DMA is cache-coherent: device accesses on PCIe are snooped, so a DMA write invalidates
+    (or updates) any cached copies and a DMA read gets the latest dirty data — drivers do not need explicit cache flushes. Intel's DDIO (Data Direct I/O)
+    goes further, letting inbound DMA write directly into a portion of the LLC rather than DRAM, so the CPU finds the packet in L3 and memory bandwidth is saved
+    (with the risk of evicting useful data or the packet itself being evicted under load). On some non-coherent architectures (many embedded ARM systems)
+    drivers must explicitly clean/invalidate cache lines around DMA through the DMA mapping API (`dma_map_single`, `dma_sync_*`). Ordering also matters: the driver
+    must read the descriptor's "done" flag before the data, using appropriate barriers (`dma_rmb`).
+  keyPoints:
+    - Problem — caches could hold stale copies of DMA'd memory
+    - x86 PCIe DMA is snooped / cache-coherent, no manual flush
+    - DDIO writes inbound DMA into the LLC
+    - Non-coherent platforms need explicit cache maintenance via the DMA API
+    - Ordering barriers between descriptor status and data reads
+  explanation: |
+    See the kernel's DMA-API documentation for the non-coherent case.
+  tags: [dma, coherence, ddio, drivers]
+  source: { name: "Linux kernel DMA API HOWTO", url: "https://www.kernel.org/doc/html/latest/core-api/dma-api-howto.html" }
+
+- id: arch-numbers-001
+  topic: computer-architecture
+  subtopic: Numbers every engineer should know
+  type: single
+  difficulty: easy
+  prompt: |
+    On a modern 3–5 GHz x86-64 core, roughly how long does an L1 data-cache hit take?
+  choices:
+    - { id: a, text: "About 4–5 cycles, i.e. around 1 ns" }
+    - { id: b, text: "About 40 cycles, i.e. around 10 ns" }
+    - { id: c, text: "About 300 cycles, i.e. around 100 ns" }
+    - { id: d, text: "Less than one cycle" }
+  answer: a
+  explanation: |
+    L1D load-to-use latency on recent Intel and AMD cores is 4–5 cycles (≈1 ns). ~40 cycles is in the L3-hit range, ~300 cycles a DRAM miss.
+    Register operands are effectively free (they are read in the pipeline), but a memory load is never sub-cycle.
+  tags: [latency-numbers, cache]
+
+- id: arch-numbers-002
+  topic: computer-architecture
+  subtopic: Numbers every engineer should know
+  type: single
+  difficulty: easy
+  prompt: |
+    What order of magnitude is the latency of a load that misses all caches and goes to local DRAM on a typical server?
+  choices:
+    - { id: a, text: "~100 ns" }
+    - { id: b, text: "~1 ns" }
+    - { id: c, text: "~10 µs" }
+    - { id: d, text: "~1 ms" }
+  answer: a
+  explanation: |
+    Idle local DRAM latency is roughly 70–120 ns on current servers (more on multi-socket remote accesses and under load). At 3 GHz, 100 ns is ~300 cycles —
+    time for hundreds of instructions. ~1 ns is an L1 hit; ~10 µs is the scale of a fast NVMe read or a kernel network round trip; ~1 ms is closer to an HDD
+    rotation fraction or a cross-datacenter-region hop.
+  tags: [latency-numbers, dram]
+
+- id: arch-numbers-003
+  topic: computer-architecture
+  subtopic: Numbers every engineer should know
+  type: single
+  difficulty: medium
+  prompt: |
+    Order these from fastest to slowest: (1) branch misprediction penalty, (2) L3 cache hit, (3) local DRAM access, (4) NVMe SSD 4 KiB random read,
+    (5) HDD random read, (6) New York ↔ London network round trip.
+  choices:
+    - { id: a, text: "1 < 2 < 3 < 4 < 5 < 6" }
+    - { id: b, text: "2 < 1 < 3 < 4 < 6 < 5" }
+    - { id: c, text: "1 < 2 < 4 < 3 < 5 < 6" }
+    - { id: d, text: "1 < 3 < 2 < 4 < 6 < 5" }
+  answer: a
+  explanation: |
+    Orders of magnitude on current hardware:
+    - Branch mispredict: ~15–20 cycles ≈ 5 ns
+    - L3 hit: ~40–70 cycles ≈ 10–20 ns
+    - DRAM: ~100 ns
+    - NVMe random read: ~tens of µs (≈10–100 µs depending on drive)
+    - HDD random read: ~5–10 ms (seek + rotation)
+    - NY–London RTT: ~60–75 ms (light in fiber needs ~27 ms each way over the ~5,600 km great-circle distance, so ~55 ms round trip before longer cable routes and equipment)
+
+    The tempting swap is the HDD vs transatlantic RTT: a disk seek is a few milliseconds, an ocean crossing tens.
+  tags: [latency-numbers]
+  source: { name: "Jeff Dean / Peter Norvig 'latency numbers every programmer should know' (updated with current hardware)" }
+
+- id: arch-numbers-004
+  topic: computer-architecture
+  subtopic: Numbers every engineer should know
+  type: short
+  difficulty: medium
+  prompt: |
+    Back-of-the-envelope: roughly how long does it take to read 1 GB sequentially from (a) DRAM with one thread, (b) a modern NVMe SSD, (c) a hard disk,
+    (d) over a 10 Gb/s network link? Show your reasoning.
+  reference: |
+    (a) A single core streams roughly 10–20 GB/s from DRAM (a whole socket can do ~100+ GB/s with all channels busy) → ~50–100 ms.
+    (b) PCIe 4.0 NVMe drives read sequentially at ~3–7 GB/s → ~0.15–0.3 s.
+    (c) A hard disk streams ~150–250 MB/s on outer tracks → ~4–7 s.
+    (d) 10 Gb/s = 1.25 GB/s raw, a bit less after protocol overhead (~1.1–1.2 GB/s) → ~0.9 s.
+    Takeaways: each step is roughly an order of magnitude; note bits vs bytes for network links.
+  keyPoints:
+    - DRAM single-thread around 10+ GB/s → tens of milliseconds
+    - NVMe a few GB/s → a few hundred milliseconds or less
+    - HDD ~100–250 MB/s → several seconds
+    - 10 Gb/s ≈ 1.25 GB/s (bits vs bytes) → about a second
+    - Shows the arithmetic (size ÷ bandwidth)
+  explanation: |
+    Interviewers accept ranges; what matters is the right order of magnitude and the bits-vs-bytes conversion.
+  tags: [latency-numbers, bandwidth, estimation]
+
+- id: arch-numbers-005
+  topic: computer-architecture
+  subtopic: Numbers every engineer should know
+  type: single
+  difficulty: easy
+  prompt: |
+    Light in optical fiber travels at about two-thirds of its vacuum speed. What is the approximate one-way propagation delay per 1000 km of fiber?
+  choices:
+    - { id: a, text: "About 5 ms" }
+    - { id: b, text: "About 0.5 ms" }
+    - { id: c, text: "About 3.3 ms" }
+    - { id: d, text: "About 50 ms" }
+  answer: a
+  explanation: |
+    c ≈ 300,000 km/s; in glass (refractive index ≈ 1.47) ≈ 204,000 km/s → 1000 km / 204,000 km/s ≈ **4.9 ms**, i.e. ~5 µs per km. 3.3 ms is the vacuum/air
+    figure (≈3.3 µs/km), which is why trading firms use line-of-sight microwave links between exchanges: they are ~30% faster than fiber even though their
+    bandwidth is low.
+  tags: [latency-numbers, networking, physics]
+
+- id: arch-numbers-006
+  topic: computer-architecture
+  subtopic: Numbers every engineer should know
+  type: single
+  difficulty: medium
+  prompt: |
+    A 3 GHz core that sustains an IPC of 4 stalls completely on a 100 ns DRAM miss. Roughly how many instructions' worth of work does that one miss cost?
+  choices:
+    - { id: a, text: "About 1,200" }
+    - { id: b, text: "About 300" }
+    - { id: c, text: "About 30" }
+    - { id: d, text: "About 12,000" }
+  answer: a
+  explanation: |
+    100 ns × 3 cycles/ns = 300 cycles; × 4 instructions/cycle = **1,200 instructions**. (300 is the cycle count, not instructions.)
+    In practice out-of-order execution overlaps some independent work with the miss (its reorder buffer holds a few hundred µops), but a dependent miss
+    — pointer chasing — pays nearly the full cost, which is why one cache miss can outweigh a lot of arithmetic.
+  tags: [latency-numbers, quantitative, cache-miss]
+
+- id: arch-numbers-007
+  topic: computer-architecture
+  subtopic: Numbers every engineer should know
+  type: short
+  difficulty: medium
+  prompt: |
+    A market-data handler must process 10 million messages per second on one 3 GHz core. What is the per-message budget, and what does that imply
+    about cache misses and system calls in the hot path?
+  reference: |
+    1 s / 10^7 = 100 ns per message ≈ 300 cycles. A single DRAM miss (~100 ns) consumes the whole budget, and a system call (hundreds of ns to µs including
+    mitigations) or a context switch (µs) is several times over it. So the hot path must be essentially cache-resident: compact data structures that fit in
+    L1/L2 (order books, symbol tables), no heap allocation, no locks or contended atomics, no syscalls (kernel bypass and busy polling for I/O), predictable
+    branches, and batching or prefetching where misses are unavoidable; independent misses can overlap, but serial dependent misses cannot.
+  keyPoints:
+    - Computes ~100 ns ≈ 300 cycles per message
+    - One DRAM miss uses the entire budget
+    - Syscalls/context switches far exceed it — kernel bypass/polling
+    - Hot data must stay in L1/L2; avoid allocation, locks, mispredicts
+    - Mentions MLP / prefetching / batching for unavoidable misses
+  explanation: |
+    Budget arithmetic like this is a staple in low-latency interviews: always convert rates to ns and cycles per item.
+  tags: [latency-numbers, low-latency, estimation, budget]
+
+- id: arch-numbers-008
+  topic: computer-architecture
+  subtopic: Numbers every engineer should know
+  type: short
+  difficulty: hard
+  prompt: |
+    Chicago and the New Jersey exchange data centres are about 1,150 km apart in a straight line. Estimate the best possible round-trip time over
+    (a) fiber and (b) line-of-sight microwave, and explain why real figures are higher.
+  reference: |
+    (a) Fiber: light travels ~204,000 km/s in glass (~4.9 µs/km). Straight line one way ≈ 1,150 × 4.9 µs ≈ 5.6 ms → RTT ≈ 11.3 ms. Real fiber routes are longer
+    than the great-circle path (following roads/railways), so the best dedicated fiber routes are around 13 ms RTT.
+    (b) Microwave through air: ~3.3 µs/km → one way ≈ 3.8 ms → RTT ≈ 7.7 ms; real microwave networks are close to this (around 8 ms RTT) since towers can follow a
+    nearly straight path. Extra latency comes from route length, repeaters/regeneration, equipment and serialisation; microwave also trades off bandwidth and
+    weather sensitivity (rain fade).
+  keyPoints:
+    - Uses ~5 µs/km for fiber and ~3.3 µs/km for air
+    - Fiber RTT ≈ 11 ms theoretical, ~13 ms in practice
+    - Microwave RTT ≈ 7.7 ms theoretical, ~8 ms in practice
+    - Explains route length, equipment/regeneration overheads, and microwave's bandwidth/weather trade-offs
+  explanation: |
+    The fiber-vs-microwave race between Chicago and New York is well documented (e.g. Spread Networks' straight fiber route, then microwave networks);
+    the point of the question is the arithmetic and the physics, not memorised vendor figures.
+  tags: [latency-numbers, networking, hft, estimation]
+  source: { name: "Michael Lewis, Flash Boys (Spread Networks fiber route) and public reporting on Chicago–NJ microwave links" }

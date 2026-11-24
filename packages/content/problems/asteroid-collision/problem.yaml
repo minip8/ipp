@@ -1,0 +1,16 @@
+slug: asteroid-collision
+title: Asteroid Collision
+difficulty: medium
+tags: [array, stack, simulation]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: asteroidCollision
+      params:
+        - { name: asteroids, type: { array: int } }
+      returns: { array: int }
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 735); frequently reported at Amazon, Lyft and Uber
+  url: https://leetcode.com/problems/asteroid-collision/

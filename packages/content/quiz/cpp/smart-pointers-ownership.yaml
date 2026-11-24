@@ -1,0 +1,487 @@
+# Smart pointers and ownership: unique_ptr, shared_ptr, weak_ptr, make_shared, enable_shared_from_this.
+- id: cpp-smartptr-001
+  topic: cpp
+  subtopic: Smart pointers and ownership
+  difficulty: easy
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [unique-ptr, move-semantics]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+    #include <memory>
+    #include <utility>
+
+    int main() {
+        auto p = std::make_unique<int>(5);
+        auto q = std::move(p);
+        std::cout << (p == nullptr) << *q << '\n';
+    }
+  answer: { kind: output, output: "15" }
+  explanation: |
+    `std::unique_ptr` is move-only. Its move constructor transfers ownership and is *specified* to leave
+    the source null ([unique.ptr.single.ctor]), unlike most moved-from library types, whose state is merely
+    "valid but unspecified". So `p == nullptr` is `true` (printed as `1`) and `*q` is `5`.
+
+- id: cpp-smartptr-002
+  topic: cpp
+  subtopic: Smart pointers and ownership
+  difficulty: easy
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [shared-ptr, reference-counting]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+    #include <memory>
+
+    int main() {
+        auto a = std::make_shared<int>(1);
+        auto b = a;
+        {
+            auto c = a;
+            std::cout << a.use_count();
+        }
+        std::cout << a.use_count();
+        b.reset();
+        std::cout << a.use_count() << '\n';
+    }
+  answer: { kind: output, output: "321" }
+  explanation: |
+    Each `shared_ptr` copy increments the shared strong count in the control block; destruction or
+    `reset()` decrements it. `a`, `b`, `c` → 3; `c` leaves scope → 2; `b.reset()` → 1. (In multithreaded
+    code `use_count()` is only a snapshot and shouldn't drive logic.)
+
+- id: cpp-smartptr-003
+  topic: cpp
+  subtopic: Smart pointers and ownership
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [shared-ptr, reference-cycles, weak-ptr]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+    #include <memory>
+
+    struct Node {
+        std::shared_ptr<Node> next;
+        ~Node() { std::cout << "~Node "; }
+    };
+
+    int main() {
+        {
+            auto a = std::make_shared<Node>();
+            auto b = std::make_shared<Node>();
+            a->next = b;
+            b->next = a;
+        }
+        std::cout << "end\n";
+    }
+  answer: { kind: output, output: "end" }
+  explanation: |
+    `a` and `b` own each other. When the locals go out of scope each count drops from 2 to 1, never to 0,
+    so neither destructor runs and both nodes leak. Reference counting can't reclaim cycles. Break
+    them by making one direction non-owning: `std::weak_ptr<Node>` for back/parent pointers (or a raw
+    pointer when the lifetime is otherwise guaranteed). A leak is not undefined behaviour, so the output
+    is well-defined: just `end`.
+
+- id: cpp-smartptr-004
+  topic: cpp
+  subtopic: Smart pointers and ownership
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [shared-ptr, double-free]
+  prompt: What does this program do?
+  code: |
+    #include <iostream>
+    #include <memory>
+
+    int main() {
+        int* raw = new int(42);
+        std::shared_ptr<int> a(raw);
+        std::shared_ptr<int> b(raw);
+        std::cout << *a + *b << '\n';
+    }
+  answer: { kind: undefined }
+  explanation: |
+    Each `shared_ptr` constructed from a raw pointer creates its *own* control block, so `a` and `b`
+    each believe they are the sole owner. Both delete `raw` when they go out of scope: a double free,
+    undefined behaviour (AddressSanitizer: attempting double-free). Create shared ownership once
+    (`std::make_shared`) and copy the `shared_ptr`. To get a `shared_ptr` to `this` from inside a
+    member function, use `std::enable_shared_from_this`.
+
+- id: cpp-smartptr-005
+  topic: cpp
+  subtopic: Smart pointers and ownership
+  difficulty: hard
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [enable-shared-from-this, shared-ptr, exceptions]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+    #include <memory>
+
+    struct Session : std::enable_shared_from_this<Session> {
+        std::shared_ptr<Session> self() { return shared_from_this(); }
+    };
+
+    int main() {
+        auto owned = std::make_shared<Session>();
+        std::cout << owned->self().use_count() << ' ';
+
+        Session on_stack;
+        try {
+            auto p = on_stack.self();
+            std::cout << "ok\n";
+        } catch (const std::bad_weak_ptr&) {
+            std::cout << "bad_weak_ptr\n";
+        }
+    }
+  answer: { kind: output, output: "2 bad_weak_ptr" }
+  explanation: |
+    `enable_shared_from_this` stores a `weak_ptr` to the object, which is filled in when the object is first
+    owned by a `shared_ptr`. For `owned`, `shared_from_this()` returns a new `shared_ptr` sharing the
+    existing control block, so the count is `2` while that temporary is alive.
+
+    `on_stack` was never owned by a `shared_ptr`, so the internal `weak_ptr` is empty. Since C++17,
+    `shared_from_this()` then throws `std::bad_weak_ptr` ([util.smartptr.enab]); before C++17 it was
+    undefined behaviour. A common pattern is to make the constructor private and expose a `create()`
+    factory, so the object can only ever be owned by a `shared_ptr`.
+
+- id: cpp-smartptr-006
+  topic: cpp
+  subtopic: Smart pointers and ownership
+  difficulty: hard
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [shared-ptr, deleters, virtual-destructor]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+    #include <memory>
+
+    struct Base { ~Base() { std::cout << "~Base "; } };
+    struct Derived : Base { ~Derived() { std::cout << "~Derived "; } };
+
+    int main() {
+        {
+            std::shared_ptr<Base> p = std::make_shared<Derived>();
+        }
+        std::cout << '\n';
+    }
+  answer: { kind: output, output: "~Derived ~Base" }
+  explanation: |
+    `Base` has no virtual destructor, yet the right destructor runs. A `shared_ptr`'s deleter is captured
+    in the control block when ownership is first established, with the *original* type: the
+    `make_shared<Derived>` control block destroys a `Derived`. Converting to `shared_ptr<Base>` only
+    changes the stored pointer, not the deleter.
+
+    `std::unique_ptr<Base> p = std::make_unique<Derived>();` would *not* do this: its deleter is
+    `std::default_delete<Base>`, so it would `delete` through `Base*`, which is undefined behaviour without a
+    virtual destructor. Don't rely on the `shared_ptr` behaviour as a design; give polymorphic bases virtual
+    destructors.
+
+- id: cpp-smartptr-007
+  topic: cpp
+  subtopic: Smart pointers and ownership
+  difficulty: easy
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [unique-ptr, move-only]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+    #include <memory>
+    #include <vector>
+
+    int main() {
+        std::vector<std::unique_ptr<int>> v;
+        auto p = std::make_unique<int>(1);
+        v.push_back(p);
+        std::cout << v.size() << '\n';
+    }
+  answer: { kind: compile_error }
+  explanation: |
+    `push_back(p)` with an lvalue tries to *copy* the `unique_ptr`, and its copy constructor is deleted:
+    sole ownership can't be duplicated. Write `v.push_back(std::move(p));` (leaving `p` null) or
+    `v.push_back(std::make_unique<int>(1));`. The error points at the root problem: there would be two
+    owners.
+
+- id: cpp-smartptr-008
+  topic: cpp
+  subtopic: Smart pointers and ownership
+  difficulty: hard
+  type: single
+  tags: [make-shared, weak-ptr, memory]
+  prompt: |
+    An object of a large type `Big` is created with `auto sp = std::make_shared<Big>();` and a
+    `std::weak_ptr<Big> wp = sp;` is stored in a long-lived cache. After the last `shared_ptr` is
+    destroyed, what happens?
+  choices:
+    - { id: a, text: "`Big`'s destructor runs, but the memory block holding the object and control block is not freed until the last `weak_ptr` is gone too." }
+    - { id: b, text: "Nothing: the `weak_ptr` keeps the object alive." }
+    - { id: c, text: "The object is destroyed and its memory freed immediately; only a small separate control block remains." }
+    - { id: d, text: "The `weak_ptr` becomes dangling and using `lock()` is undefined behaviour." }
+  answer: a
+  explanation: |
+    `make_shared` typically uses one allocation for both the control block and the object (the standard
+    encourages it, and every mainstream library does it). The object is *destroyed* when the strong count reaches
+    zero, but the control block must survive while weak references exist (it holds the weak count), and
+    because they share one allocation, the object's storage can't be returned either. With
+    `std::shared_ptr<Big>(new Big)` there are two allocations, and the object's memory is freed as soon as
+    the strong count hits zero, so (c) describes that case. `weak_ptr::lock()` is always safe; it returns an
+    empty `shared_ptr` once the object is gone.
+
+- id: cpp-smartptr-009
+  topic: cpp
+  subtopic: Smart pointers and ownership
+  difficulty: medium
+  type: single
+  tags: [shared-ptr, thread-safety]
+  prompt: Which statement about `std::shared_ptr` and threads is correct?
+  choices:
+    - { id: a, text: "Different `shared_ptr` instances sharing one object may be copied and destroyed concurrently (the reference count is atomic), but concurrent writes to the *same* `shared_ptr` instance, or unsynchronized access to the pointed-to object, are data races." }
+    - { id: b, text: "`shared_ptr` makes the pointed-to object thread-safe." }
+    - { id: c, text: "Nothing about `shared_ptr` is thread-safe; even copying two different instances that share ownership needs a mutex." }
+    - { id: d, text: "Any operation on the same `shared_ptr` instance from multiple threads is safe because all its members are atomic." }
+  answer: a
+  explanation: |
+    The control block's counts are updated atomically, so separate `shared_ptr` objects (even when they
+    share ownership) can be used from different threads ([util.smartptr.shared]). A single `shared_ptr`
+    *object* is like any other object: one thread assigning while another reads it is a data race (use
+    `std::atomic<std::shared_ptr<T>>` in C++20, or a mutex). The managed object gets no protection at all.
+    The atomic refcount also has a cost: copying a `shared_ptr` is an atomic RMW, which is one reason to pass
+    it by reference when you don't need a copy.
+
+- id: cpp-smartptr-010
+  topic: cpp
+  subtopic: Smart pointers and ownership
+  difficulty: medium
+  type: single
+  tags: [unique-ptr, deleters, empty-base-optimization]
+  prompt: |
+    On a typical 64-bit implementation, what are the sizes of these types?
+
+    ```cpp
+    auto close_file = [](std::FILE* f) { std::fclose(f); };
+    using A = std::unique_ptr<int>;
+    using B = std::unique_ptr<std::FILE, decltype(close_file)>;
+    using C = std::unique_ptr<std::FILE, int (*)(std::FILE*)>;
+    ```
+  choices:
+    - { id: a, text: "A = 8, B = 8, C = 16" }
+    - { id: b, text: "A = 8, B = 16, C = 16" }
+    - { id: c, text: "A = 16, B = 16, C = 16" }
+    - { id: d, text: "A = 8, B = 8, C = 8" }
+  answer: a
+  explanation: |
+    `unique_ptr` stores the deleter alongside the pointer, but implementations apply the empty base
+    optimization (or `[[no_unique_address]]`) so a *stateless* deleter like `std::default_delete` or a
+    captureless lambda takes no space: one pointer. A function-pointer deleter is state that must be
+    stored, so `C` is two pointers. Prefer stateless deleter types (lambda, or a struct with
+    `operator()`) for zero overhead.
+
+- id: cpp-smartptr-011
+  topic: cpp
+  subtopic: Smart pointers and ownership
+  difficulty: easy
+  type: single
+  tags: [unique-ptr, arrays, undefined-behavior]
+  prompt: |
+    What is wrong with `std::unique_ptr<int> p(new int[100]);`?
+  choices:
+    - { id: a, text: "The default deleter calls `delete`, not `delete[]`, on memory from `new[]`, which is undefined behaviour; use `std::unique_ptr<int[]>` or `std::vector<int>`." }
+    - { id: b, text: "Nothing: `unique_ptr` detects arrays automatically." }
+    - { id: c, text: "It doesn't compile: `unique_ptr<int>` can't be constructed from an `int*`." }
+    - { id: d, text: "It leaks 99 of the 100 elements, but is otherwise well-defined." }
+  answer: a
+  explanation: |
+    `std::unique_ptr<T>` uses `std::default_delete<T>`, which calls `delete p`. Mixing `new[]` with
+    `delete` is undefined behaviour ([expr.delete]). For element types with destructors, typical
+    implementations don't run them and corrupt the heap. The partial specialization
+    `std::unique_ptr<T[]>` uses `delete[]` and provides `operator[]`; `std::make_unique<int[]>(100)` creates
+    one. Usually `std::vector` is the better choice anyway.
+
+- id: cpp-smartptr-012
+  topic: cpp
+  subtopic: Smart pointers and ownership
+  difficulty: medium
+  type: multiple
+  tags: [weak-ptr, shared-ptr]
+  prompt: Which statements about `std::weak_ptr` are true? Select all that apply.
+  choices:
+    - { id: a, text: "It can break `shared_ptr` reference cycles, e.g. for parent or back pointers." }
+    - { id: b, text: "`lock()` atomically returns a `shared_ptr` that keeps the object alive, or an empty one if it has expired." }
+    - { id: c, text: "It is suitable for caches and observer lists that must not extend object lifetimes." }
+    - { id: d, text: "It keeps the managed object alive as long as the `weak_ptr` exists." }
+    - { id: e, text: "It can be dereferenced directly with `*wp` or `wp->`." }
+  answer: [a, b, c]
+  explanation: |
+    A `weak_ptr` observes without owning: it increments only the weak count, so it doesn't keep the
+    object alive (d is false). It has no `operator*`/`operator->` (e is false). You must call `lock()` to
+    get a temporary `shared_ptr`, which avoids the check-then-use race of `if (!wp.expired()) use(*wp)`.
+    Typical uses: breaking cycles, caches, observers, and the `enable_shared_from_this` implementation.
+
+- id: cpp-smartptr-013
+  topic: cpp
+  subtopic: Smart pointers and ownership
+  difficulty: medium
+  type: short
+  tags: [smart-pointers, parameter-passing, ownership]
+  prompt: |
+    How should a function take a parameter when it (a) just uses a `Widget`, (b) takes ownership of it,
+    (c) might share ownership, (d) might reseat the caller's `unique_ptr`? Explain why passing
+    `const std::shared_ptr<Widget>&` everywhere is not the answer.
+  reference: |
+    (a) Just using the object: take `Widget&` or `const Widget&` (or `Widget*` if null is allowed). The
+    function shouldn't care how the caller owns it, and this works for stack objects, `unique_ptr` and
+    `shared_ptr` alike. (b) Taking ownership: `std::unique_ptr<Widget>` *by value*. The caller must
+    `std::move`, which documents the transfer at the call site. (c) Sharing ownership (storing a copy):
+    `std::shared_ptr<Widget>` by value and move it into place; if it might or might not keep a copy,
+    `const std::shared_ptr<Widget>&` avoids an atomic increment when it doesn't. (d) Reseating the caller's
+    pointer: `std::unique_ptr<Widget>&` (non-const reference). Passing smart pointers for mere use
+    couples the API to an ownership policy, prevents passing stack or `unique_ptr`-owned objects, and for
+    `shared_ptr` by value costs atomic refcount operations. Pass smart pointers only when the function
+    deals with ownership.
+  explanation: |
+    This follows Herb Sutter's GotW #91 "Smart Pointer Parameters" and Core Guidelines F.7 and R.30–R.37.
+    Graders should look for "use raw references when not dealing with ownership" and "by-value
+    unique_ptr for sinks".
+  keyPoints:
+    - Non-owning use takes T& / const T& / T* and is independent of the ownership policy
+    - Ownership transfer takes unique_ptr by value; the caller std::moves
+    - Shared ownership takes shared_ptr by value and moves it into storage
+    - Reseating takes unique_ptr& or shared_ptr&
+    - Copying shared_ptr costs atomic refcount operations; don't pass smart pointers just to use the object
+
+- id: cpp-smartptr-014
+  topic: cpp
+  subtopic: Smart pointers and ownership
+  difficulty: hard
+  type: short
+  tags: [shared-ptr, control-block, implementation]
+  prompt: |
+    Describe how `std::shared_ptr` is implemented: what is in a `shared_ptr` object, what is in the
+    control block, and what happens on copy, on destruction of the last owner, and on destruction of the
+    last `weak_ptr`?
+  reference: |
+    A `shared_ptr<T>` holds two pointers: the stored pointer (what `get()` returns, which can differ from the
+    owned object via the aliasing constructor or base conversions) and a pointer to a control block.
+    The control block contains the strong (use) count, the weak count (typically +1 while any strong
+    owner exists), the type-erased deleter and allocator, and either a pointer to the owned object or, for
+    `make_shared`, the object itself inline. Copying a `shared_ptr` atomically increments the strong count
+    (relaxed is enough); destroying one atomically decrements it with acquire-release ordering. When the
+    strong count reaches zero, the deleter destroys the object, and then the implicit weak reference is
+    released. When the weak count reaches zero, the control block itself is deallocated (and with
+    `make_shared`, the object's storage too, since they share an allocation). `weak_ptr::lock()` does a
+    compare-and-swap increment of the strong count only if it's non-zero. Costs: two-pointer size, an extra
+    allocation unless `make_shared` is used, atomic RMW on every copy and destroy, and type-erased deleter calls.
+  explanation: |
+    A strong answer covers the two pointers, both counts, the type-erased deleter, the
+    destroy-object/free-block split, and the atomic operations (and why decrement needs acquire-release:
+    so all writes to the object happen-before its destruction).
+  keyPoints:
+    - shared_ptr holds a stored pointer plus a control block pointer
+    - Control block holds strong and weak counts, the deleter/allocator, and the object or a pointer to it
+    - Copies atomically increment; the last strong release destroys the object via the deleter
+    - Control block freed when the weak count reaches zero (make_shared storage too)
+    - lock() increments only if the count is non-zero (CAS); atomic RMW is the main runtime cost
+
+- id: cpp-smartptr-015
+  topic: cpp
+  subtopic: Smart pointers and ownership
+  difficulty: easy
+  type: short
+  tags: [unique-ptr, shared-ptr, ownership]
+  prompt: |
+    When should you use `std::unique_ptr` versus `std::shared_ptr`? Why is "use `shared_ptr` everywhere to
+    be safe" a bad policy?
+  reference: |
+    `std::unique_ptr` expresses exclusive ownership: exactly one owner, transferred with `std::move`,
+    destroyed deterministically when the owner goes away. It has zero overhead over a raw pointer (with a
+    stateless deleter) and should be the default for heap-allocated objects (factories, pimpl,
+    polymorphic members, containers of polymorphic objects). `std::shared_ptr` expresses shared ownership:
+    the object lives until the last owner releases it. Use it only when ownership is genuinely shared and
+    lifetimes can't be determined statically, e.g. an object referenced by several asynchronous operations
+    or a cache entry used by multiple consumers. "shared_ptr everywhere" is bad because it obscures who owns
+    what and when objects die (destruction can happen on any thread at an unpredictable time), costs a
+    control block allocation and atomic reference-count updates on every copy, makes cycles and leaks
+    easy, and makes the object effectively shared mutable state across threads. A `unique_ptr` converts to
+    a `shared_ptr` if needed later, but not vice versa.
+  explanation: |
+    Core Guidelines R.20/R.21: "Prefer unique_ptr over shared_ptr unless you need to share ownership".
+  keyPoints:
+    - unique_ptr gives exclusive, zero-overhead, deterministic ownership and is the default
+    - shared_ptr only for genuinely shared ownership with non-static lifetimes
+    - shared_ptr costs a control block, atomic refcounts on copies, and cycle risk
+    - It obscures ownership and destruction timing/thread
+    - unique_ptr converts to shared_ptr but not the reverse
+
+- id: cpp-smartptr-016
+  topic: cpp
+  subtopic: Smart pointers and ownership
+  difficulty: hard
+  type: single
+  tags: [make-unique, exception-safety, order-of-evaluation, cpp17]
+  prompt: |
+    The classic advice "use `make_unique`/`make_shared`, because `f(std::unique_ptr<A>(new A), g());` can
+    leak" refers to a specific problem. In **C++17 and later**, can this call leak `A` if `g()` throws?
+  choices:
+    - { id: a, text: "No. Since C++17 each function argument is fully evaluated before another starts (indeterminately sequenced), so `new A` and the `unique_ptr` construction can't be separated by `g()`. `make_unique` is still preferred for clarity and to avoid writing `new`." }
+    - { id: b, text: "Yes. The compiler may still evaluate `new A`, then `g()`, then the `unique_ptr` constructor." }
+    - { id: c, text: "Yes, but only on compilers that evaluate arguments right to left." }
+    - { id: d, text: "No, because `unique_ptr`'s constructor is `noexcept`, which was also true before C++17." }
+  answer: a
+  explanation: |
+    Before C++17 the evaluations of different arguments could interleave: `new A`, then `g()` (throws),
+    and the raw pointer was never handed to the `unique_ptr`, so it leaked. P0145 (C++17) specifies that
+    the initialization of each parameter, including all its value computations and side effects, is
+    indeterminately sequenced with respect to the others ([expr.call]), so interleaving is no longer
+    allowed. The order of the two arguments is still unspecified, but whichever runs first runs to
+    completion. `make_unique`/`make_shared` remain the recommended style (no naked `new`, no repetition of
+    the type, and for `make_shared` a single allocation). The `noexcept` constructor in (d) was never the
+    issue.
+
+- id: cpp-smartptr-017
+  topic: cpp
+  subtopic: Smart pointers and ownership
+  difficulty: medium
+  type: short
+  tags: [unique-ptr, implementation, move-semantics]
+  prompt: |
+    Sketch how you would implement a simplified `unique_ptr<T>` (single object, default deleter). Which
+    special member functions does it need, and what are the subtle points?
+  reference: |
+    It holds a single `T* ptr_ = nullptr;`. The constructor `explicit unique_ptr(T* p = nullptr) noexcept`
+    is explicit so a raw pointer isn't adopted implicitly. The destructor calls `delete ptr_` (deleting null
+    is fine). The copy constructor and copy assignment are `= delete`, since ownership is exclusive. The
+    move constructor is `noexcept`: steal the pointer and set the source to null (`ptr_(std::exchange(o.ptr_,
+    nullptr))`). Move assignment is `noexcept`: handle self-assignment, e.g.
+    `reset(o.release()); return *this;`. Other members: `T* release() noexcept` (gives up ownership without
+    deleting), `void reset(T* p = nullptr) noexcept` (store the new pointer first, then delete the old one,
+    so it's safe even if `T`'s destructor reaches back into this object), `get()`, `operator*`,
+    `operator->`, and `explicit operator bool()`. Subtle points: moves must be `noexcept` so containers move
+    rather than fail to copy; self-move-assignment must not delete the owned object; a converting move
+    constructor from `unique_ptr<U>` (for derived-to-base) constrained on pointer convertibility; deleting an
+    incomplete type is UB, which the real implementation catches with a `static_assert(sizeof(T) > 0)`. A real
+    one also supports custom deleters stored with the empty base optimization and the `T[]` specialization
+    with `delete[]`.
+  explanation: |
+    Classic "write your own smart pointer" interview task. Look for deleted copies, noexcept moves that null
+    the source, release/reset semantics, and explicit constructor and bool conversion.
+  keyPoints:
+    - Holds a raw pointer; destructor deletes it
+    - Copy operations deleted; move operations noexcept and null the source
+    - explicit constructor and explicit operator bool
+    - release() and reset() (reset assigns the new pointer before deleting the old)
+    - Self-move safety, converting moves for derived types, incomplete types, deleters via EBO, T[] specialization

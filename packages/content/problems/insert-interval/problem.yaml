@@ -1,0 +1,17 @@
+slug: insert-interval
+title: Insert Interval
+difficulty: medium
+tags: [array, intervals]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: insert
+      params:
+        - { name: intervals, type: { array: { array: int } } }
+        - { name: newInterval, type: { array: int } }
+      returns: { array: { array: int } }
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (Blind 75; LeetCode 57)
+  url: https://leetcode.com/problems/insert-interval/

@@ -1,0 +1,17 @@
+slug: graph-valid-tree
+title: Graph Valid Tree
+difficulty: medium
+tags: [graph, union-find, dfs, bfs]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: validTree
+      params:
+        - { name: n, type: int }
+        - { name: edges, type: { array: { array: int } } }
+      returns: bool
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 261)
+  url: https://leetcode.com/problems/graph-valid-tree/

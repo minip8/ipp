@@ -1,0 +1,16 @@
+slug: last-stone-weight
+title: Last Stone Weight
+difficulty: easy
+tags: [heap, simulation]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: lastStoneWeight
+      params:
+        - { name: stones, type: { array: int } }
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 1046)
+  url: https://leetcode.com/problems/last-stone-weight/

@@ -1,0 +1,16 @@
+slug: candy
+title: Candy
+difficulty: hard
+tags: [array, greedy]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: candy
+      params:
+        - { name: ratings, type: { array: int } }
+      returns: long
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 135); two-pass greedy
+  url: https://leetcode.com/problems/candy/

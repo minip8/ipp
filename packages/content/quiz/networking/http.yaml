@@ -1,0 +1,429 @@
+# HTTP/1.1, HTTP/2, HTTP/3 and QUIC, WebSockets.
+- id: net-http-001
+  topic: networking
+  subtopic: HTTP/1.1
+  difficulty: easy
+  type: single
+  prompt: |
+    Why does HTTP/1.1 require a `Host` header in every request?
+  choices:
+    - { id: a, text: "So the server can do reverse DNS on the client" }
+    - { id: b, text: "So many websites can share one IP address and port (name-based virtual hosting)" }
+    - { id: c, text: "Because TCP has no field for the server's address" }
+    - { id: d, text: "To support proxy authentication" }
+  answer: b
+  explanation: |
+    The request line carries only the path. Without the host name a server on one IP can't tell which
+    site the request is for. HTTP/1.1 (RFC 9112 §3.2) requires Host, and servers must reply 400 if it's
+    missing. HTTP/2 and HTTP/3 carry the same information in the `:authority` pseudo-header. For HTTPS,
+    the TLS SNI extension does the same job earlier, during the handshake, so the right certificate can
+    be chosen.
+  tags: [http, http1]
+
+- id: net-http-002
+  topic: networking
+  subtopic: HTTP semantics
+  difficulty: medium
+  type: multiple
+  prompt: |
+    Which HTTP methods are defined as **idempotent** by RFC 9110? Select all that apply.
+  choices:
+    - { id: a, text: "GET" }
+    - { id: b, text: "PUT" }
+    - { id: c, text: "DELETE" }
+    - { id: d, text: "POST" }
+    - { id: e, text: "PATCH" }
+  answer: [a, b, c]
+  explanation: |
+    A method is idempotent if repeating the request has the same *intended effect on the server* as
+    sending it once (RFC 9110 §9.2.2). The idempotent methods are GET, HEAD, OPTIONS, TRACE (all also
+    **safe**), and PUT and DELETE. PUT replaces the resource with the given representation, and
+    deleting twice still leaves it deleted. The status code may differ (404 the second time), which is
+    fine. **POST** and **PATCH** are not idempotent in general. This matters because clients and
+    proxies may automatically retry idempotent requests after a connection failure. To make POST safe
+    to retry, use idempotency keys.
+  tags: [http, idempotency, rest]
+  source: { name: "RFC 9110 §9.2.2", url: "https://www.rfc-editor.org/rfc/rfc9110#section-9.2.2" }
+
+- id: net-http-003
+  topic: networking
+  subtopic: HTTP semantics
+  difficulty: easy
+  type: single
+  prompt: |
+    Your reverse proxy returns errors to clients when the application server takes 90 s to answer and
+    the proxy's upstream timeout is 60 s. Which status code should the proxy return?
+  choices:
+    - { id: a, text: "500 Internal Server Error" }
+    - { id: b, text: "502 Bad Gateway" }
+    - { id: c, text: "503 Service Unavailable" }
+    - { id: d, text: "504 Gateway Timeout" }
+  answer: d
+  explanation: |
+    **504** means a gateway or proxy didn't get a timely response from the upstream server. **502**
+    means it got an *invalid* response, or none at all because the connection was refused or reset.
+    **503** means the server is temporarily unable to handle the request (overload, maintenance), often
+    with Retry-After. **500** is a generic error raised by the origin itself. Telling 502 from 504
+    tells an on-call engineer whether the backend is crashing or just slow.
+  tags: [http, status-codes, proxy]
+
+- id: net-http-004
+  topic: networking
+  subtopic: HTTP semantics
+  difficulty: medium
+  type: single
+  prompt: |
+    An API endpoint has moved permanently. Clients send `POST` requests to it with JSON bodies, and you
+    want those redirected **without** the method turning into GET. Which status code should you use?
+  choices:
+    - { id: a, text: "301 Moved Permanently" }
+    - { id: b, text: "302 Found" }
+    - { id: c, text: "303 See Other" }
+    - { id: d, text: "308 Permanent Redirect" }
+  answer: d
+  explanation: |
+    For historical reasons user agents may (and browsers do) change POST to GET when following a
+    **301** or **302** (RFC 9110 §15.4). **303** *requires* switching to GET; it's used for
+    "post/redirect/get". **307** (temporary) and **308** (permanent, RFC 9110; originally RFC 7538)
+    were added precisely to guarantee that the method and body are preserved.
+  tags: [http, status-codes, redirects]
+
+- id: net-http-005
+  topic: networking
+  subtopic: HTTP/1.1
+  difficulty: medium
+  type: single
+  prompt: |
+    What problem does HTTP/1.1 `Transfer-Encoding: chunked` solve?
+  choices:
+    - { id: a, text: "It compresses the body" }
+    - { id: b, text: "It lets a server stream a body whose total length isn't known in advance on a persistent connection; a zero-length chunk marks the end" }
+    - { id: c, text: "It splits a response across several TCP connections" }
+    - { id: d, text: "It lets the client upload files in parallel" }
+  answer: b
+  explanation: |
+    On a persistent connection the receiver must know where one message ends. That requires either a
+    Content-Length or chunked framing, where each chunk is prefixed with its size in hex and a `0`
+    chunk (optionally followed by trailers) terminates the body. Without either, the only way to end a
+    body is to close the connection. HTTP/2 and HTTP/3 have their own framing (DATA frames with an
+    END_STREAM flag) and forbid chunked encoding. Inconsistent handling of Content-Length versus
+    Transfer-Encoding between proxies and servers is the root of **request smuggling** attacks.
+  tags: [http, http1, chunked]
+
+- id: net-http-006
+  topic: networking
+  subtopic: HTTP/2
+  difficulty: medium
+  type: short
+  prompt: |
+    What performance problems of HTTP/1.1 does HTTP/2 address, and how? What problem does it leave
+    unsolved?
+  reference: |
+    HTTP/1.1 problems: only one outstanding request per connection in practice. Pipelining exists but
+    responses must come back in order (head-of-line blocking) and it was poorly supported, so browsers
+    opened about six connections per origin. Each connection paid its own handshakes and slow start and
+    competed with the others. Headers are verbose and repeated text on every request. Workarounds
+    included domain sharding, sprite sheets and inlining.
+
+    HTTP/2 (RFC 9113) uses **binary framing** and **multiplexes** many concurrent **streams** over one
+    TCP connection, with frames interleaved, so a slow response doesn't block others at the HTTP layer.
+    It compresses headers with **HPACK** (static and dynamic tables plus Huffman coding, RFC 7541),
+    which shrinks repeated headers. It adds per-stream and connection-level flow control and
+    prioritisation (the original priority tree was deprecated in RFC 9113; RFC 9218 offers a simpler
+    scheme).
+
+    Unsolved: **TCP-level head-of-line blocking**. A lost segment stalls every stream, and one
+    connection's congestion window carries everything. HTTP/3 over QUIC addresses this.
+  keyPoints:
+    - "HTTP/1.1: one request at a time per connection (pipelining HOL), so ~6 connections per origin"
+    - "HTTP/2: binary frames, many streams multiplexed on one connection"
+    - "HPACK header compression"
+    - "Per-stream flow control and prioritisation"
+    - "Still suffers TCP head-of-line blocking on packet loss"
+  explanation: |
+    Strong answers note that HTTP/1.1-era workarounds such as domain sharding hurt HTTP/2.
+  tags: [http2, http1, hol-blocking, hpack]
+
+- id: net-http-007
+  topic: networking
+  subtopic: HTTP/2
+  difficulty: medium
+  type: multiple
+  prompt: |
+    Which statements about HTTP/2 are true? Select all that apply.
+  choices:
+    - { id: a, text: "Messages are split into binary frames that belong to numbered streams" }
+    - { id: b, text: "Many requests and responses can be in flight at once over a single TCP connection" }
+    - { id: c, text: "Header fields are compressed with HPACK" }
+    - { id: d, text: "It removes all head-of-line blocking, including at the TCP layer" }
+    - { id: e, text: "The specification forbids HTTP/2 without TLS" }
+  answer: [a, b, c]
+  explanation: |
+    a–c are the core of RFC 9113. (d) is the classic misconception: a lost TCP segment still stalls
+    every stream. (e) is false: the spec defines h2 over TLS (negotiated with ALPN) **and** cleartext
+    h2c. It's browsers that only implement HTTP/2 over TLS, while h2c is common between backend
+    services, e.g. gRPC inside a cluster.
+  tags: [http2]
+
+- id: net-http-008
+  topic: networking
+  subtopic: HTTP/3 and QUIC
+  difficulty: medium
+  type: single
+  prompt: |
+    HTTP/3 runs over QUIC, which runs over UDP. What is the main reason QUIC is built on UDP instead of
+    being a new IP protocol or a TCP extension?
+  choices:
+    - { id: a, text: "UDP is inherently faster than TCP" }
+    - { id: b, text: "UDP passes through existing NATs and firewalls, and lets the transport be implemented and updated in user space, whereas new IP protocols and changes to TCP get blocked or mangled by middleboxes and depend on OS kernel upgrades" }
+    - { id: c, text: "QUIC doesn't need reliability, so UDP is sufficient" }
+    - { id: d, text: "UDP provides built-in encryption" }
+  answer: b
+  explanation: |
+    New transport protocols (SCTP, for example) barely work across the Internet, because NATs and
+    firewalls only understand TCP and UDP. Even new TCP options get stripped by middleboxes
+    ("ossification"). Building on UDP gets through, and lets QUIC live in user-space libraries that
+    browsers and servers can update every few weeks. QUIC then provides its own reliability, congestion
+    control, streams and integrated TLS 1.3, and it encrypts most of its own header so middleboxes
+    can't ossify it again.
+
+    UDP isn't "faster" in itself. QUIC is fully reliable per stream, and UDP has no encryption.
+  tags: [quic, http3, udp]
+
+- id: net-http-009
+  topic: networking
+  subtopic: HTTP/3 and QUIC
+  difficulty: hard
+  type: multiple
+  prompt: |
+    Which statements about QUIC (RFC 9000/9001/9002) are true? Select all that apply.
+  choices:
+    - { id: a, text: "Connections are identified by connection IDs, so a connection can survive the client's IP or port changing (e.g. Wi-Fi to cellular)" }
+    - { id: b, text: "The TLS 1.3 handshake is integrated with the transport handshake, so a new connection typically needs 1 RTT before application data" }
+    - { id: c, text: "Packet numbers are never reused; retransmitted data goes in a new packet with a new number, which removes TCP's retransmission ambiguity" }
+    - { id: d, text: "0-RTT data is protected against replay by the protocol" }
+    - { id: e, text: "Data on different streams is delivered to the application in one global order" }
+  answer: [a, b, c]
+  explanation: |
+    - **a**: connection migration (RFC 9000 §9), validated with path challenges.
+    - **b**: QUIC carries the TLS 1.3 handshake in CRYPTO frames. A fresh connection needs 1 RTT,
+      against TCP + TLS 1.3's 2 RTT. Resumption can use 0-RTT.
+    - **c**: QUIC's packet numbers increase monotonically, and loss recovery (RFC 9002) tracks
+      *frames*, so RTT samples are never ambiguous (cf. Karn's algorithm).
+    - **d** is false: 0-RTT data **can be replayed** by an attacker. Applications must only send
+      replay-safe (idempotent) requests in it (RFC 9001 §9.2; HTTP status 425 Too Early).
+    - **e** is false: each stream is ordered independently. That independence is the whole point, as
+      it avoids cross-stream HOL blocking.
+  tags: [quic, http3, tls13]
+
+- id: net-http-010
+  topic: networking
+  subtopic: HTTP/3 and QUIC
+  difficulty: hard
+  type: short
+  prompt: |
+    QUIC moves the transport out of the kernel into user space and encrypts nearly all of its headers.
+    What are the benefits, and what are the costs or operational downsides?
+  reference: |
+    Benefits:
+    - **Fast evolution**: congestion control, loss recovery and features ship with the application or
+      library, without waiting years for OS kernels to be deployed.
+    - **No HOL blocking across streams**, and a combined transport + crypto handshake (1-RTT, or
+      0-RTT on resumption).
+    - **Connection migration** via connection IDs.
+    - **Anti-ossification and privacy**: middleboxes can't read or rewrite transport headers, so they
+      can't come to depend on them. The spin bit is an optional, limited signal for passive RTT
+      measurement.
+
+    Costs:
+    - **CPU**: user-space send/receive, a syscall per packet unless batched (sendmmsg, GSO/GRO for
+      UDP), per-packet encryption including header protection, and no TCP segmentation offload. It has
+      historically used noticeably more CPU per byte than kernel TCP with TLS.
+    - **Network treatment**: some networks rate-limit or block UDP/443, so clients must fall back to
+      TCP (happy-eyeballs-style racing). NAT bindings for UDP time out sooner.
+    - **Observability**: encrypted headers make tcpdump-style debugging harder. You need qlog or
+      endpoint keys, and operators lose the passive RTT and loss measurement they had with TCP.
+    - Load balancers must route by connection ID to keep migrating connections on the same backend.
+  keyPoints:
+    - "User-space transport evolves quickly; avoids kernel and middlebox ossification"
+    - "Independent streams, 1-RTT/0-RTT handshake, connection migration"
+    - "Higher CPU cost: syscalls, crypto per packet, fewer NIC offloads (mitigated by GSO/GRO, batching)"
+    - "UDP blocked or throttled on some networks; TCP fallback needed"
+    - "Harder to observe and debug passively; LBs need connection-ID-aware routing"
+  explanation: |
+    Senior infra interviews value a balanced view; QUIC isn't a free win.
+  tags: [quic, http3, performance]
+
+- id: net-http-011
+  topic: networking
+  subtopic: HTTP semantics
+  difficulty: easy
+  type: single
+  prompt: |
+    What does setting the `HttpOnly` attribute on a cookie do?
+  choices:
+    - { id: a, text: "The cookie is only sent over plain HTTP, never HTTPS" }
+    - { id: b, text: "JavaScript in the page (document.cookie) can't read it, which limits theft of session cookies through XSS; the browser still sends it with requests" }
+    - { id: c, text: "The cookie isn't sent on cross-site requests" }
+    - { id: d, text: "The cookie expires when the TCP connection closes" }
+  answer: b
+  explanation: |
+    **HttpOnly** hides the cookie from scripts (RFC 6265 §4.1.2.6). **Secure** (sent only over HTTPS)
+    is the attribute choice a garbles. **SameSite=Lax/Strict** controls sending on cross-site requests
+    (choice c), a CSRF defence. Cookie lifetime is set by Expires/Max-Age; without either it's a
+    session cookie that lasts until the browser session ends, not until a TCP connection closes.
+  tags: [http, cookies, security]
+
+- id: net-http-012
+  topic: networking
+  subtopic: HTTP semantics
+  difficulty: medium
+  type: single
+  prompt: |
+    A frontend at `https://app.example.com` calls `https://api.example.com` with `fetch()` and gets a
+    CORS error in the browser, yet the same request works with `curl`. Which statement is correct?
+  choices:
+    - { id: a, text: "The API server is rejecting the request at the TCP level for browsers" }
+    - { id: b, text: "CORS is enforced by the browser: the server must return suitable Access-Control-Allow-* headers (and answer the preflight OPTIONS for non-simple requests); curl doesn't enforce the same-origin policy" }
+    - { id: c, text: "CORS is a firewall rule on the API server that only applies to traffic from port 443" }
+    - { id: d, text: "The fix is to add Access-Control-Allow-Origin to the request headers in fetch()" }
+  answer: b
+  explanation: |
+    CORS is a **browser** mechanism that relaxes the same-origin policy. Different subdomains are
+    different origins. For "non-simple" requests (e.g. `Content-Type: application/json`, custom headers,
+    PUT/DELETE) the browser first sends a preflight **OPTIONS** request, and the server must answer
+    with headers such as Access-Control-Allow-Origin, -Methods and -Headers (plus -Credentials if
+    cookies are involved, in which case `*` isn't allowed). Request-side headers can't grant permission
+    to yourself (choice d). CORS doesn't protect the server from non-browser clients; it protects
+    *users' browsers* from cross-origin reads.
+  tags: [http, cors, security]
+
+- id: net-http-013
+  topic: networking
+  subtopic: WebSockets
+  difficulty: easy
+  type: single
+  prompt: |
+    How is a WebSocket connection (RFC 6455) established?
+  choices:
+    - { id: a, text: "Over a separate UDP port negotiated by DNS" }
+    - { id: b, text: "With an HTTP/1.1 GET carrying `Upgrade: websocket`, `Connection: Upgrade` and a `Sec-WebSocket-Key`; the server answers `101 Switching Protocols` with a matching `Sec-WebSocket-Accept`, and the TCP connection then carries WebSocket frames" }
+    - { id: c, text: "The server pushes a WebSocket frame on an existing HTTP/2 stream without any client request" }
+    - { id: d, text: "By sending a POST to /websocket that never completes" }
+  answer: b
+  explanation: |
+    The opening handshake is an HTTP/1.1 Upgrade. The server proves it understood the WebSocket
+    handshake by returning base64(SHA-1(key + a fixed GUID)) as Sec-WebSocket-Accept. After the 101
+    response the same TCP (and TLS, for wss://) connection carries framed, full-duplex messages. Over
+    HTTP/2, RFC 8441 uses an extended CONNECT on a stream instead, and RFC 9220 does the same for
+    HTTP/3. Choice d describes long-polling and streaming hacks.
+  tags: [websockets, http]
+
+- id: net-http-014
+  topic: networking
+  subtopic: WebSockets
+  difficulty: hard
+  type: single
+  prompt: |
+    RFC 6455 requires that every frame from client to server be **masked** with a random 32-bit key
+    (server-to-client frames aren't). Why?
+  choices:
+    - { id: a, text: "To encrypt the payload so eavesdroppers can't read it" }
+    - { id: b, text: "To stop attacker-controlled script from making bytes on the wire look like HTTP requests, which could poison caches in intermediaries that don't understand WebSockets" }
+    - { id: c, text: "To compress the payload" }
+    - { id: d, text: "To provide integrity protection against bit flips" }
+  answer: b
+  explanation: |
+    The key is sent in the clear in the frame header, so masking gives **no confidentiality** (that's
+    what wss://, i.e. TLS, is for) and no integrity. Researchers showed that if a malicious page could
+    send chosen raw bytes, a transparent proxy that misread the traffic could be tricked into treating
+    them as an HTTP request and caching a forged response for another site. A fresh unpredictable mask
+    per frame stops script from choosing the wire bytes (RFC 6455 §10.3). Server frames come from the
+    server, which isn't attacker-controlled script, so they're unmasked.
+  tags: [websockets, security]
+  source: { name: "RFC 6455 §10.3", url: "https://www.rfc-editor.org/rfc/rfc6455#section-10.3" }
+
+- id: net-http-015
+  topic: networking
+  subtopic: HTTP/1.1
+  difficulty: medium
+  type: short
+  prompt: |
+    Why do HTTP clients use connection pooling and keep-alive? Describe a subtle failure mode where a
+    pooled connection's idle timeout is longer than the server's (or load balancer's), and how to fix
+    it.
+  reference: |
+    Reusing a connection skips the TCP handshake (1 RTT) and the TLS handshake (1–2 RTTs), and keeps a
+    congestion window that has already grown instead of restarting slow start. It also saves CPU on
+    crypto and avoids TIME_WAIT churn and ephemeral-port exhaustion. HTTP/1.1 connections are
+    persistent by default.
+
+    Failure mode: the server or load balancer closes idle connections after, say, 60 s, while the
+    client pool keeps them for 90 s. The client picks a connection the server has just closed (its FIN
+    is in flight or not yet noticed) and writes a request. The result is an RST, "connection reset" or
+    an empty response. For non-idempotent requests the client can't safely retry blindly, because it
+    doesn't know whether the server processed the request.
+
+    Fixes: make the client's idle timeout **shorter** than every server-side one along the path; check
+    a connection's liveness before reuse (e.g. poll for readability/EOF); retry idempotent requests
+    automatically on such errors; use idempotency keys for others. HTTP/2 GOAWAY gives a graceful
+    signal.
+  keyPoints:
+    - "Reuse avoids TCP + TLS handshake RTTs and slow start; saves CPU and ports"
+    - "Race: server/LB closes an idle connection just as the client reuses it -> reset/empty response"
+    - "Non-idempotent requests can't be blindly retried"
+    - "Fix: client idle timeout shorter than server/LB; validate before reuse; retry idempotent requests"
+  explanation: |
+    A real production bug class (e.g. "ECONNRESET on keep-alive connections behind AWS ALB").
+  tags: [http, keep-alive, connection-pooling]
+
+- id: net-http-016
+  topic: networking
+  subtopic: HTTP semantics
+  difficulty: easy
+  type: single
+  prompt: |
+    A browser has a cached copy of `/app.js` with `ETag: "v42"`. It revalidates with
+    `If-None-Match: "v42"`, and the file hasn't changed. What does the server answer?
+  choices:
+    - { id: a, text: "200 OK with the full file" }
+    - { id: b, text: "304 Not Modified with no body; the browser uses its cached copy" }
+    - { id: c, text: "204 No Content" }
+    - { id: d, text: "412 Precondition Failed" }
+  answer: b
+  explanation: |
+    A conditional GET whose validator still matches gets **304 Not Modified** (RFC 9110 §15.4.5),
+    which saves the transfer but still costs a round trip. Cache-Control: max-age (or `immutable` with
+    fingerprinted file names) avoids even that. 412 applies to failed preconditions such as If-Match on
+    writes. 204 is a successful response with no content, unrelated to caching.
+  tags: [http, caching, etag]
+
+- id: net-http-017
+  topic: networking
+  subtopic: HTTP/3 and QUIC
+  difficulty: medium
+  type: short
+  prompt: |
+    Explain how HTTP/3 over QUIC removes the transport-level head-of-line blocking that HTTP/2 over TCP
+    suffers. Is head-of-line blocking now completely gone?
+  reference: |
+    QUIC gives each HTTP request/response its own **stream** inside the transport. Every stream has its
+    own ordering and flow control, and loss recovery works on the frames carrying each stream's data.
+    When a packet is lost, only the streams with data in that packet wait for the retransmission. Data
+    already received for other streams is handed to the application straight away. Under TCP, one
+    ordered byte stream underneath all HTTP/2 streams made everything wait.
+
+    It isn't entirely gone: each stream is still ordered, so a stream waits for its own lost data. The
+    header-compression state is shared across streams. QPACK (RFC 9204) moves dynamic-table updates
+    onto separate unidirectional streams and lets the encoder avoid references that could block,
+    trading some compression for less HOL. Congestion control is also per connection, so one loss
+    still reduces the sending rate for all streams.
+  keyPoints:
+    - "QUIC streams are independent at the transport layer: per-stream ordering"
+    - "Lost packet only delays streams whose data it carried"
+    - "Within a single stream ordering still causes HOL"
+    - "QPACK designed to limit cross-stream blocking from header compression (vs HPACK)"
+    - "Congestion window still shared per connection"
+  explanation: |
+    Complements net-tcpperf-012 and net-http-006.
+  tags: [http3, quic, hol-blocking, qpack]

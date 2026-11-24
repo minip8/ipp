@@ -1,0 +1,46 @@
+{
+  "v": 1,
+  "runId": "0b9d6c1e-6f0a-4c56-9d3e-0c1c9a1f4f10",
+  "language": "python",
+  "source": "class Solution:\n    def twoSum(self, nums: list[int], target: int) -> list[int]:\n        seen = {}\n        for i, x in enumerate(nums):\n            if target - x in seen:\n                return [seen[target - x], i]\n            seen[x] = i\n        return []\n\n\nif __name__ == \"__main__\":\n    print(Solution().twoSum([2, 7, 11, 15], 9))\n",
+  "mode": "tests",
+  "stdin": "",
+  "signature": {
+    "className": "Solution",
+    "kind": "function",
+    "ctorParams": [],
+    "methods": [
+      {
+        "name": "twoSum",
+        "params": [
+          { "name": "nums", "type": { "array": "int" } },
+          { "name": "target", "type": "int" }
+        ],
+        "returns": { "array": "int" },
+        "compare": "unordered"
+      }
+    ]
+  },
+  "tests": [
+    {
+      "id": "s1",
+      "ctorArgs": [],
+      "calls": [{ "method": "twoSum", "args": [[2, 7, 11, 15], 9] }],
+      "expected": [[0, 1]]
+    },
+    {
+      "id": "c1",
+      "ctorArgs": [],
+      "calls": [{ "method": "twoSum", "args": [[1, 2, 3], 5] }],
+      "expected": null
+    }
+  ],
+  "limits": {
+    "compileMs": 5000,
+    "runMs": 4000,
+    "totalMs": 60000,
+    "memoryMb": 320,
+    "outputBytes": 65536
+  },
+  "enqueuedAt": "2026-11-24T10:00:00.000Z"
+}

@@ -1,0 +1,16 @@
+slug: spiral-matrix
+title: Spiral Matrix
+difficulty: medium
+tags: [array, matrix, simulation]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: spiralOrder
+      params:
+        - { name: matrix, type: { array: { array: int } } }
+      returns: { list: int }
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (Blind 75; LeetCode 54)
+  url: https://leetcode.com/problems/spiral-matrix/

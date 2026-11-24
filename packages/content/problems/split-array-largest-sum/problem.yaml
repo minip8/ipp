@@ -1,0 +1,17 @@
+slug: split-array-largest-sum
+title: Split Array Largest Sum
+difficulty: hard
+tags: [array, binary-search, greedy, dynamic-programming]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: splitArray
+      params:
+        - { name: nums, type: { array: int } }
+        - { name: k, type: int }
+      returns: long
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 410; also known as the "painter's partition" / book allocation problem)
+  url: https://leetcode.com/problems/split-array-largest-sum/

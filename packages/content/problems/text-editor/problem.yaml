@@ -1,0 +1,28 @@
+slug: text-editor
+title: Text Editor with a Cursor
+difficulty: hard
+tags: [design, stack, linked-list, string]
+signature:
+  className: TextEditor
+  kind: design
+  methods:
+    - name: addText
+      params:
+        - { name: text, type: string }
+      returns: void
+    - name: deleteText
+      params:
+        - { name: k, type: int }
+      returns: int
+    - name: cursorLeft
+      params:
+        - { name: k, type: int }
+      returns: string
+    - name: cursorRight
+      params:
+        - { name: k, type: int }
+      returns: string
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Design a Text Editor (LeetCode 2296); text-buffer design (gap buffer / rope) is a classic systems interview topic
+  url: https://leetcode.com/problems/design-a-text-editor/

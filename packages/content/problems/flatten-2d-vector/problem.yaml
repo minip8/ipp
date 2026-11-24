@@ -1,0 +1,20 @@
+slug: flatten-2d-vector
+title: Flatten 2D Vector Iterator
+difficulty: medium
+tags: [design, iterator, array]
+signature:
+  className: Vector2D
+  kind: design
+  ctorParams:
+    - { name: vec, type: { array: { array: int } } }
+  methods:
+    - name: next
+      params: []
+      returns: int
+    - name: hasNext
+      params: []
+      returns: bool
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Flatten 2D Vector (LeetCode 251; reported at Airbnb, Google and others)
+  url: https://leetcode.com/problems/flatten-2d-vector/

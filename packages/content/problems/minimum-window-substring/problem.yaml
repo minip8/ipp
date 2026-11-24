@@ -1,0 +1,17 @@
+slug: minimum-window-substring
+title: Minimum Window Substring
+difficulty: hard
+tags: [string, hash-table, sliding-window]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: minWindow
+      params:
+        - { name: s, type: string }
+        - { name: t, type: string }
+      returns: string
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (Blind 75; LeetCode 76); frequently reported at Meta, Airbnb and LinkedIn
+  url: https://leetcode.com/problems/minimum-window-substring/

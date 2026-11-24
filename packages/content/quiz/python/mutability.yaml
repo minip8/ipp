@@ -1,0 +1,382 @@
+# Mutability, aliasing, identity vs equality, copying.
+- id: py-mut-001
+  topic: python
+  subtopic: Mutability and aliasing
+  difficulty: easy
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [aliasing, lists]
+  prompt: What does this program print?
+  code: |
+    a = [1, 2]
+    b = a
+    b += [3]
+    b = b + [4]
+    print(a, b)
+  answer: { kind: output, output: "[1, 2, 3] [1, 2, 3, 4]" }
+  explanation: |
+    `b = a` copies the *reference*, so both names refer to one list. For lists, `b += [3]` calls `list.__iadd__`, which **extends the list in place**, so `a` sees the `3`. `b = b + [4]` builds a **new** list and rebinds only `b`, so `a` is unaffected.
+
+    The difference between `+=` (in-place for mutable types that define `__iadd__`) and `x = x + y` (always a new object) is a frequent interview point.
+
+- id: py-mut-002
+  topic: python
+  subtopic: Mutability and aliasing
+  difficulty: hard
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [tuples, augmented-assignment]
+  source: { name: "wtfpython (idea: mutating the immutable)", url: "https://github.com/satwikkansal/wtfpython", license: WTFPL }
+  prompt: What does this program print?
+  code: |
+    t = ([1, 2],)
+    try:
+        t[0] += [3]
+    except TypeError:
+        print('TypeError')
+    print(t)
+  answer:
+    kind: output
+    output: |
+      TypeError
+      ([1, 2, 3],)
+  explanation: |
+    `t[0] += [3]` is executed as two steps: `tmp = t[0].__iadd__([3])` and then `t[0] = tmp`.
+
+    1. `list.__iadd__` extends the list **in place** and succeeds.
+    2. Storing the result back into the tuple calls `tuple.__setitem__`, which doesn't exist, so it raises `TypeError: 'tuple' object does not support item assignment`.
+
+    So you get the exception *and* the mutation. The language reference ("Augmented assignment statements") describes this read-modify-write behaviour; the Python FAQ discusses this exact case. Use `t[0].extend([3])` to mutate without the failing store.
+
+- id: py-mut-003
+  topic: python
+  subtopic: Mutability and aliasing
+  difficulty: easy
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [lists, aliasing]
+  prompt: What does this program print?
+  code: |
+    grid = [[0] * 2] * 3
+    grid[0][0] = 1
+    print(grid)
+  answer: { kind: output, output: "[[1, 0], [1, 0], [1, 0]]" }
+  explanation: |
+    Sequence repetition copies **references**. `[[0] * 2] * 3` builds one inner list and puts three references to it in the outer list, so writing through `grid[0]` shows up in every row.
+
+    (`[0] * 2` itself is fine, because ints are immutable: `grid[0][0] = 1` rebinds a slot rather than mutating the `0`.) Build independent rows with a comprehension: `[[0] * 2 for _ in range(3)]`.
+
+- id: py-mut-004
+  topic: python
+  subtopic: Copying
+  difficulty: medium
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [copy, deepcopy]
+  prompt: What does this program print?
+  code: |
+    import copy
+
+    a = [[1], [2]]
+    b = a[:]
+    c = copy.deepcopy(a)
+    a[0].append(9)
+    a.append([3])
+    print(b, c)
+  answer: { kind: output, output: "[[1, 9], [2]] [[1], [2]]" }
+  explanation: |
+    `a[:]` is a **shallow** copy: a new outer list holding the same inner list objects. Appending to `a` itself doesn't affect `b`, but mutating the shared inner list `a[0]` does. `copy.deepcopy` recursively copies the inner lists, so `c` is fully independent.
+
+    `list(a)`, `a.copy()` and `copy.copy(a)` are all shallow, like `a[:]`.
+
+- id: py-mut-005
+  topic: python
+  subtopic: Mutability and aliasing
+  difficulty: medium
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [arguments, augmented-assignment]
+  prompt: What does this program print?
+  code: |
+    def add_plus(lst):
+        lst = lst + [1]
+
+    def add_iadd(lst):
+        lst += [1]
+
+    a = []
+    add_plus(a)
+    add_iadd(a)
+    print(a)
+  answer: { kind: output, output: "[1]" }
+  explanation: |
+    Arguments are passed by object reference ("call by sharing"): the parameter `lst` is a new local name bound to the caller's list.
+
+    - In `add_plus`, `lst + [1]` creates a new list and rebinds the *local* name; the caller's list is untouched.
+    - In `add_iadd`, `lst += [1]` calls `list.__iadd__`, which mutates the shared list in place (then rebinds the local name to that same object).
+
+    So exactly one `1` is appended.
+
+- id: py-mut-006
+  topic: python
+  subtopic: Identity and equality
+  difficulty: easy
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [identity, equality]
+  prompt: What does this program print?
+  code: |
+    a = [1, 2]
+    b = [1, 2]
+    print(a == b, a is b, a[:] is a)
+  answer: { kind: output, output: "True False False" }
+  explanation: |
+    `==` compares **values** (it calls `__eq__`); `is` compares **identity** (whether both operands are the same object). `a` and `b` are two distinct lists with equal contents. Slicing a list always makes a new list object, so `a[:] is a` is `False` too.
+
+- id: py-mut-007
+  topic: python
+  subtopic: Identity and equality
+  difficulty: medium
+  type: single
+  tags: [identity, none, pep8]
+  prompt: |
+    Why does PEP 8 recommend `if x is None:` over `if x == None:`?
+  choices:
+    - { id: a, text: "`==` can be overridden by `__eq__`, so `x == None` may return something other than the truth; `is` checks identity with the singleton `None` and cannot be overridden" }
+    - { id: b, text: "`x == None` raises `TypeError` for most non-None objects" }
+    - { id: c, text: "`is` compares hashes, which is faster than comparing values" }
+    - { id: d, text: "There is no difference; it is purely a style convention" }
+  answer: a
+  explanation: |
+    `None` is a singleton, so identity is the precise test. `==` dispatches to `x.__eq__(None)`, which a class can define however it likes. For example, a NumPy array compared to `None` returns an elementwise array, and an ORM column returns an expression object. `is` cannot be overloaded and is also marginally faster.
+
+    `x == None` doesn't raise for ordinary objects (the default `__eq__` falls back to identity), and `is` has nothing to do with hashes.
+
+- id: py-mut-008
+  topic: python
+  subtopic: Identity and equality
+  difficulty: hard
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [nan, containment, identity]
+  source: { name: "wtfpython (idea: NaN reflexivity)", url: "https://github.com/satwikkansal/wtfpython", license: WTFPL }
+  prompt: What does this program print?
+  code: |
+    nan = float('nan')
+    lst = [nan]
+    print(nan == nan, nan in lst, lst == [nan], [float('nan')] == [float('nan')])
+  answer: { kind: output, output: "False True True False" }
+  explanation: |
+    IEEE 754 NaN is not equal to anything, including itself, so `nan == nan` is `False`.
+
+    But containment and comparisons of built-in containers check **identity first**: `x in lst` is true if any element `e` satisfies `e is x or e == x`, and list equality compares elements the same way. The *same* NaN object is found by identity, so the 2nd and 3rd results are `True`. In the last comparison there are two **different** NaN objects, neither identical nor equal, so it is `False`.
+
+    Reference: "Expressions → Comparisons" ("Built-in containers typically assume identical objects are equal to themselves").
+
+- id: py-mut-009
+  topic: python
+  subtopic: Identity and equality
+  difficulty: medium
+  type: output
+  language: python
+  standard: CPython 3.x (result not guaranteed by the language)
+  tags: [identity, interning, implementation-detail]
+  prompt: What does this program print?
+  code: |
+    a = int('1000')
+    b = int('1000')
+    print(a is b)
+  answer: { kind: unspecified }
+  explanation: |
+    **Unspecified.** Whether two equal immutable values are the same object is an implementation detail. CPython caches small ints (-5 to 256) and some strings, and the compiler may merge equal constants within one code object, so `is` can return `True` or `False` for equal ints and strings depending on the value, version and how they were created. Current CPython prints `False` here because each `int()` call creates a new object for a value outside the small-int cache, but no Python implementation is required to do that.
+
+    The lesson: use `==` for value comparison. Use `is` only for singletons (`None`, sentinels, `True`/`False`) or when you really mean identity. CPython 3.8+ even emits `SyntaxWarning: "is" with a literal` for code like `x is 1000`.
+
+- id: py-mut-010
+  topic: python
+  subtopic: Mutability and aliasing
+  difficulty: easy
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [hashing, dict, tuples]
+  prompt: What does this program print?
+  code: |
+    d = {}
+    d[(1, 2)] = 'ok'
+    d[(1, [2])] = 'x'
+    print(d)
+  answer: { kind: runtime_error }
+  explanation: |
+    It raises **TypeError** (unhashable type: `'list'`). A tuple's hash combines the hashes of its elements, so a tuple is hashable only if everything in it is hashable. `(1, 2)` works as a key; `(1, [2])` contains a list, which has no hash because it is mutable.
+
+    Being immutable is not enough: a tuple's *contents* may still be mutable objects.
+
+- id: py-mut-011
+  topic: python
+  subtopic: Mutability and aliasing
+  difficulty: easy
+  type: multiple
+  tags: [mutability, builtins]
+  prompt: Which of these built-in types are **immutable**? Select all that apply.
+  choices:
+    - { id: a, text: "`tuple`" }
+    - { id: b, text: "`bytearray`" }
+    - { id: c, text: "`frozenset`" }
+    - { id: d, text: "`bytes`" }
+    - { id: e, text: "`set`" }
+    - { id: f, text: "`str`" }
+    - { id: g, text: "`dict`" }
+  answer: [a, c, d, f]
+  explanation: |
+    Immutable built-ins: `int`, `float`, `complex`, `bool`, `str`, `bytes`, `tuple`, `frozenset`, `range` and `NoneType`. Mutable: `list`, `dict`, `set` and `bytearray`, the mutable counterpart of `bytes`.
+
+    The immutable types are hashable when their contents are; that's why `frozenset` exists, so you can have sets of sets or use a set as a dict key.
+
+- id: py-mut-012
+  topic: python
+  subtopic: Mutability and aliasing
+  difficulty: medium
+  type: short
+  tags: [arguments, call-by-sharing]
+  prompt: Is Python "pass by value" or "pass by reference"? Explain with what happens when a function mutates vs rebinds a parameter.
+  reference: |
+    Neither, strictly. Python is "call by object reference" (call by sharing). Every value is an object, and calling a function binds the parameter name to the same object the caller passed; nothing is copied. If the function mutates that object (e.g. `lst.append(1)`), the caller sees the change because it is the same object. If the function rebinds the parameter (`lst = [1]`), only the local name changes and the caller's variable is unaffected. Immutable arguments (ints, strings, tuples) can't be mutated, so they behave as if passed by value.
+  keyPoints:
+    - Parameters are new local names bound to the same objects the caller passed (no copy)
+    - Mutating a mutable argument is visible to the caller
+    - Rebinding the parameter name inside the function does not affect the caller
+    - Immutable objects cannot be changed in place, so they appear to be passed by value
+    - Not C++-style references; the function cannot rebind the caller's variable
+  explanation: |
+    Interviewers want the mutate-vs-rebind distinction. "Pass by reference" is wrong because a function can't make the caller's variable point somewhere else; "pass by value" is wrong because no copy is made. Watch for candidates who say "immutables are passed by value": the mechanism is the same for every type, and only what you can do with the object differs.
+
+- id: py-mut-013
+  topic: python
+  subtopic: Mutability and aliasing
+  difficulty: easy
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [lists, sort, none]
+  prompt: What does this program print?
+  code: |
+    a = [3, 1, 2]
+    b = a.sort()
+    c = sorted(a, reverse=True)
+    print(a, b, c)
+  answer: { kind: output, output: "[1, 2, 3] None [3, 2, 1]" }
+  explanation: |
+    `list.sort()` sorts **in place** and returns `None`. The convention for mutating methods (`append`, `extend`, `reverse`, `sort`, `dict.update`, ...) is to return `None`, so you can't mistake them for functions that return a new object. `sorted()` takes any iterable and returns a **new** list, leaving `a` unchanged.
+
+- id: py-mut-014
+  topic: python
+  subtopic: Copying
+  difficulty: medium
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [copy, objects]
+  prompt: What does this program print?
+  code: |
+    import copy
+
+    class Box:
+        def __init__(self):
+            self.items = []
+
+    a = Box()
+    b = copy.copy(a)
+    b.items.append(1)
+    b.name = 'b'
+    print(a.items, hasattr(a, 'name'))
+  answer: { kind: output, output: "[1] False" }
+  explanation: |
+    `copy.copy` on an ordinary instance creates a new object and **shallow-copies its `__dict__`**: the new instance has its own attribute dictionary, but the values are the same objects. So `b.items` is the same list as `a.items`, and the append shows up in `a`. Adding the attribute `name` to `b` changes only `b`'s own `__dict__`.
+
+    Use `copy.deepcopy`, or define `__copy__`, if the instance must own its containers.
+
+- id: py-mut-015
+  topic: python
+  subtopic: Copying
+  difficulty: hard
+  type: short
+  tags: [deepcopy, copy-protocol]
+  prompt: How does `copy.deepcopy` cope with self-referencing structures, and how can a class customise how it is copied?
+  reference: |
+    `deepcopy` keeps a memo dict mapping `id(original)` to its copy. Before copying an object it checks the memo; if the object has already been copied (or is being copied, as in a cycle), it returns the existing copy. So cycles and shared references are preserved in the copy rather than recursing forever or being duplicated. A class can customise copying by defining `__copy__(self)` for shallow copies and `__deepcopy__(self, memo)` for deep copies; the latter should pass `memo` to `copy.deepcopy` for its children and register itself in the memo. Without those hooks, copy uses the pickle protocol (`__reduce_ex__`, `__getstate__`/`__setstate__`). Immutable atoms like ints, strings and functions are returned as-is.
+  keyPoints:
+    - Uses a memo dict keyed by id() of already-copied objects
+    - Memo makes cycles terminate and preserves shared substructure (aliasing) in the copy
+    - "`__deepcopy__(self, memo)` hook; must pass memo through to nested deepcopy calls"
+    - "`__copy__` for shallow copies"
+    - Falls back to the pickle reduce protocol (`__reduce_ex__`, `__getstate__`/`__setstate__`)
+  explanation: |
+    See the `copy` module docs. A strong answer mentions that forgetting to pass `memo` in a custom `__deepcopy__` breaks cycle handling, and that deep copies of objects holding resources (locks, files, sockets) usually make no sense, which is why such classes customise or forbid copying.
+
+- id: py-mut-016
+  topic: python
+  subtopic: Mutability and aliasing
+  difficulty: medium
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [lists, iteration]
+  prompt: What does this program print?
+  code: |
+    a = [1, 2, 3, 4]
+    for x in a:
+        a.remove(x)
+    print(a)
+  answer: { kind: output, output: "[2, 4]" }
+  explanation: |
+    A list iterator just keeps an index. Iteration 1 sees index 0 (`1`) and removes it, which shifts everything left, so `2` is now at index 0. Iteration 2 looks at index 1, which is now `3`, so `2` is skipped. After `3` is removed the list is `[2, 4]`, and index 2 is past the end, so the loop stops.
+
+    Lists don't detect modification during iteration the way dicts and sets do. Iterate over a copy (`for x in a[:]`) or build a new list with a comprehension.
+
+- id: py-mut-017
+  topic: python
+  subtopic: Mutability and aliasing
+  difficulty: easy
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [dict, iteration]
+  prompt: What does this program print?
+  code: |
+    d = {'a': 1, 'b': 2}
+    for k in d:
+        if d[k] == 1:
+            d['c'] = 3
+    print(d)
+  answer: { kind: runtime_error }
+  explanation: |
+    It raises **RuntimeError: dictionary changed size during iteration**. Dict (and set) iterators detect a change in size and fail rather than producing undefined results. Changing the *value* of an existing key during iteration is allowed; inserting or deleting keys is not.
+
+    Iterate over a snapshot (`for k in list(d):`) or collect the changes and apply them after the loop.
+
+- id: py-mut-018
+  topic: python
+  subtopic: Mutability and aliasing
+  difficulty: medium
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [dict, fromkeys, aliasing]
+  prompt: What does this program print?
+  code: |
+    d = dict.fromkeys('ab', [])
+    d['a'].append(1)
+    print(d)
+  answer: { kind: output, output: "{'a': [1], 'b': [1]}" }
+  explanation: |
+    `dict.fromkeys(keys, value)` stores the **same** `value` object under every key; it doesn't call a factory per key. Both keys refer to one list, so appending through `'a'` is visible through `'b'`.
+
+    Use `{k: [] for k in 'ab'}` or `collections.defaultdict(list)` to get a separate list per key. It's the same aliasing trap as `[[]] * n`.

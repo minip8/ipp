@@ -1,0 +1,17 @@
+slug: subsets
+title: Subsets
+difficulty: easy
+tags: [backtracking, bit-manipulation, array]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: subsets
+      params:
+        - { name: nums, type: { array: int } }
+      returns: { list: { list: int } }
+      compare: unordered_deep
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 78)
+  url: https://leetcode.com/problems/subsets/

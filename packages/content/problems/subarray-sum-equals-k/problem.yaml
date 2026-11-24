@@ -1,0 +1,17 @@
+slug: subarray-sum-equals-k
+title: Subarray Sum Equals K
+difficulty: medium
+tags: [array, hash-table, prefix-sum]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: subarraySum
+      params:
+        - { name: nums, type: { array: int } }
+        - { name: k, type: int }
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 560); one of the most frequently reported Meta questions
+  url: https://leetcode.com/problems/subarray-sum-equals-k/

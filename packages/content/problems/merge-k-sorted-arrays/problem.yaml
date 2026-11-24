@@ -1,0 +1,16 @@
+slug: merge-k-sorted-arrays
+title: Merge K Sorted Arrays
+difficulty: medium
+tags: [heap, divide-and-conquer, merge]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: mergeKArrays
+      params:
+        - { name: arrays, type: { array: { array: int } } }
+      returns: { array: int }
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 23, Merge k Sorted Lists, expressed with arrays)
+  url: https://leetcode.com/problems/merge-k-sorted-lists/

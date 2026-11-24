@@ -1,0 +1,19 @@
+slug: rate-limiter
+title: Sliding Window Rate Limiter
+difficulty: medium
+tags: [design, queue, hash-table]
+signature:
+  className: RateLimiter
+  kind: design
+  ctorParams:
+    - { name: maxRequests, type: int }
+    - { name: windowSeconds, type: int }
+  methods:
+    - name: allow
+      params:
+        - { name: clientId, type: int }
+        - { name: timestamp, type: int }
+      returns: bool
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Per-client sliding-window-log rate limiter (common practical design question at API companies such as Stripe and Uber)

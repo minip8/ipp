@@ -1,0 +1,203 @@
+# Type hints: runtime behaviour, annotations evaluation, generics, Protocols, variance.
+- id: py-typ-001
+  topic: python
+  subtopic: Type hints
+  difficulty: easy
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [type-hints, runtime]
+  prompt: What does this program print?
+  code: |
+    def double(x: int) -> int:
+        return x * 2
+
+    print(double('ab'), double([0]))
+  answer: { kind: output, output: "abab [0, 0]" }
+  explanation: |
+    Type annotations are **not enforced at runtime**. The interpreter stores them (for `typing.get_type_hints`, `annotationlib`, frameworks) but never checks arguments against them. `'ab' * 2` and `[0] * 2` are valid operations, so the calls succeed. A static checker such as mypy or pyright would report both calls; runtime validation needs a library such as pydantic, beartype or typeguard.
+
+- id: py-typ-002
+  topic: python
+  subtopic: Annotations
+  difficulty: hard
+  type: output
+  language: python
+  standard: Python 3.14+
+  tags: [annotations, pep-649, deferred-evaluation, python-3-14]
+  prompt: What does this program print when run on Python 3.14?
+  code: |
+    def f(x: Undefined) -> None:
+        pass
+
+    print('defined')
+    print(f.__annotations__)
+  answer: { kind: runtime_error }
+  explanation: |
+    It prints `defined`, then **NameError: name 'Undefined' is not defined** is raised when `f.__annotations__` is accessed.
+
+    Since 3.14 (PEP 649/749), annotations are **evaluated lazily**: the compiler stores them in an `__annotate__` function, which runs only when something asks for the annotations. Defining `f` therefore succeeds even though `Undefined` doesn't exist, which is what makes forward references work without quotes. Asking for the values evaluates them, and that fails. (`annotationlib.get_annotations(f, format=Format.STRING)` or `Format.FORWARDREF` would succeed.)
+
+    On 3.13 and earlier, without `from __future__ import annotations`, annotations were evaluated eagerly, so the `def` itself would raise `NameError` and `defined` would never print.
+
+- id: py-typ-003
+  topic: python
+  subtopic: Type hints
+  difficulty: easy
+  type: single
+  tags: [optional, union]
+  prompt: In a type hint, what does `Optional[int]` mean?
+  choices:
+    - { id: a, text: "The parameter may be omitted by the caller" }
+    - { id: b, text: "The value may be an `int` or `None`, i.e. `int | None`" }
+    - { id: c, text: "The value is an `int` that defaults to `0`" }
+    - { id: d, text: "Type checking is skipped for this value" }
+  answer: b
+  explanation: |
+    `Optional[X]` is exactly `Union[X, None]`, written `X | None` since 3.10 (PEP 604). It says nothing about whether an argument has a default. A parameter can be required yet accept `None` (`def f(x: int | None)`), or have a default without accepting `None` (`def f(x: int = 0)`). The misleading name is one reason modern style prefers `int | None`.
+
+- id: py-typ-004
+  topic: python
+  subtopic: Protocols
+  difficulty: medium
+  type: single
+  tags: [protocol, structural-typing, abc]
+  prompt: What is the key difference between a `typing.Protocol` and an `abc.ABC` as an interface?
+  choices:
+    - { id: a, text: "A Protocol is satisfied structurally, by any class with matching methods and attributes, without inheriting from it; an ABC is nominal, so classes must subclass or `register` with it" }
+    - { id: b, text: "Protocols are enforced at runtime on every call; ABCs are checked only by static type checkers" }
+    - { id: c, text: "ABCs cannot have abstract methods; Protocols can" }
+    - { id: d, text: "They are interchangeable aliases" }
+  answer: a
+  explanation: |
+    PEP 544 Protocols formalise **static duck typing**: a type checker accepts any object whose type has the required members. That suits interfaces you don't control (e.g. "anything with `.read()`"). ABCs use nominal subtyping and enforce abstract methods at **instantiation** time.
+
+    Protocols are not checked at runtime by default. `@runtime_checkable` enables `isinstance()` checks, which only test that the methods *exist*, not their signatures.
+
+- id: py-typ-005
+  topic: python
+  subtopic: Generics and variance
+  difficulty: hard
+  type: single
+  tags: [variance, generics, mypy]
+  prompt: |
+    ```python
+    from collections.abc import Sequence
+
+    def total(xs: list[float]) -> float: ...
+    def total_seq(xs: Sequence[float]) -> float: ...
+
+    ints: list[int] = [1, 2, 3]
+    total(ints)
+    total_seq(ints)
+    ```
+    What does a static type checker (mypy or pyright) report?
+  choices:
+    - { id: a, text: "Both calls are fine, because `int` is acceptable where `float` is expected" }
+    - { id: b, text: "`total(ints)` is an error because `list` is invariant; `total_seq(ints)` is fine because `Sequence` is covariant" }
+    - { id: c, text: "Both calls are errors, because `int` is not a subclass of `float`" }
+    - { id: d, text: "`total_seq(ints)` is an error because `Sequence` is abstract" }
+  answer: b
+  explanation: |
+    PEP 484's numeric shorthand makes `int` acceptable where `float` is expected. But **mutable** generic containers are **invariant**: if `list[int]` were accepted as a `list[float]`, `total` could legally `xs.append(1.5)` and corrupt the caller's `list[int]`. Read-only `Sequence` is **covariant** (it has no mutating methods), so `Sequence[int]` is a subtype of `Sequence[float]`.
+
+    The practical lesson: annotate parameters with the most abstract, read-only type you need (`Sequence`, `Mapping`, `Iterable`).
+
+- id: py-typ-006
+  topic: python
+  subtopic: Generics and variance
+  difficulty: medium
+  type: single
+  tags: [pep-695, generics, type-parameters]
+  prompt: Which is valid Python 3.12+ syntax for a generic function, using the PEP 695 type-parameter syntax?
+  choices:
+    - { id: a, text: "`def first[T](xs: list[T]) -> T: ...`" }
+    - { id: b, text: "`def first<T>(xs: list<T>) -> T: ...`" }
+    - { id: c, text: "`def first(xs: list[T]) -> T: ...` with no declaration of `T` anywhere" }
+    - { id: d, text: "`generic T def first(xs: list[T]) -> T: ...`" }
+  answer: a
+  explanation: |
+    PEP 695 (3.12) adds type-parameter lists in square brackets after the name of a function or class, `class Box[T]: ...`, and the `type` statement for aliases, `type Pair[T] = tuple[T, T]`. Type parameters are scoped to the definition, so there is no module-level `T = TypeVar('T')` boilerplate. Bounds and constraints are written `[T: float]` and `[T: (int, str)]`, and 3.13 added defaults (`[T = int]`, PEP 696).
+
+    Option c is the old style without the required `TypeVar` declaration: a `NameError` on 3.13 and earlier, and a type-checker error in any case.
+
+- id: py-typ-007
+  topic: python
+  subtopic: Type hints
+  difficulty: medium
+  type: multiple
+  tags: [any, object, type-hints]
+  prompt: Which statements about `Any` and `object` as type hints are correct? Select all that apply.
+  choices:
+    - { id: a, text: "Every type is compatible with `Any`, and `Any` is compatible with every type: it switches type checking off for that value" }
+    - { id: b, text: "With `x: object`, the checker accepts any value, but only lets you use operations that every object supports, until you narrow it (e.g. with `isinstance`)" }
+    - { id: c, text: "`x: object` and `x: Any` behave identically under mypy" }
+    - { id: d, text: "Prefer `object` over `Any` when a function genuinely accepts anything but only uses generic operations" }
+  answer: [a, b, d]
+  explanation: |
+    `Any` is the gradual-typing escape hatch: it is both a top and a bottom type, so `x: Any` allows `x.foo()` and passing `x` anywhere, and errors go unnoticed. `object` is the true top type: any value can be assigned to it, but you can't call `.foo()` on it without narrowing. Using `object` keeps the checker useful, which is why typing guides recommend it for "accepts anything" parameters.
+
+- id: py-typ-008
+  topic: python
+  subtopic: Type hints
+  difficulty: medium
+  type: short
+  tags: [gradual-typing, mypy, type-hints]
+  prompt: What value do type hints bring to a Python codebase if the interpreter ignores them? How would you introduce them into a large untyped project?
+  reference: |
+    Hints are checked by static tools (mypy, pyright, IDEs), which catch whole classes of bugs before runtime: `None` handling, wrong argument types, typos in attributes, API misuse across modules. They also serve as verified documentation, enable reliable refactoring and autocompletion, and are used at runtime by frameworks (dataclasses, pydantic, FastAPI) via introspection. Python's typing is gradual: unannotated code is treated as `Any`, so you can adopt it incrementally. In a big project: add a checker to CI in permissive mode; annotate the most-used and boundary modules first (public APIs, data models); use per-module strictness settings and tighten over time (e.g. `disallow_untyped_defs` for new code); add stubs or `types-*` packages for third-party libraries; use `# type: ignore[code]` sparingly with reasons; prefer precise, abstract parameter types (`Sequence`, `Mapping`, Protocols) and concrete return types.
+  keyPoints:
+    - Hints are enforced by static checkers/IDEs, not the interpreter
+    - Catch bugs early (None handling, wrong types), document APIs, make refactoring safer
+    - Runtime frameworks consume annotations (dataclasses, pydantic, FastAPI)
+    - Gradual typing; untyped code is Any, so adopt incrementally
+    - "Rollout: checker in CI, start at boundaries/core modules, tighten per-module, stubs for libraries"
+  explanation: |
+    A good answer is practical and incremental. Red flag: "type hints make Python faster" (CPython doesn't use them for optimisation; mypyc and Cython are separate tools).
+
+- id: py-typ-009
+  topic: python
+  subtopic: Annotations
+  difficulty: hard
+  type: short
+  tags: [annotations, forward-references, pep-563, pep-649]
+  prompt: How have the rules for when annotations are evaluated changed across Python 3 versions, and why does it matter for forward references and libraries that read annotations at runtime?
+  reference: |
+    Originally (PEP 3107/484), annotations were evaluated eagerly when the `def`/`class` executed and stored as objects in `__annotations__`. Referring to a class that wasn't defined yet (e.g. a method returning its own class) required string "forward references", and evaluation cost import time. PEP 563, `from __future__ import annotations` (3.7+), made all annotations strings that are never evaluated automatically. That fixed forward references but forced runtime consumers (dataclasses, pydantic, `typing.get_type_hints`) to `eval` strings in the right namespace, which breaks for names local to functions. PEP 563 was therefore never made default. PEP 649/749, the default in 3.14, makes annotations **lazily evaluated**: the compiler generates an `__annotate__` function that computes them on first access, so forward references just work and there is no eager cost. The new `annotationlib` module can fetch them as values, as `ForwardRef`s for undefined names, or as strings. Accessing `__annotations__` evaluates them and can raise `NameError` if a name is still undefined. `from __future__ import annotations` still works but is expected to be deprecated eventually.
+  keyPoints:
+    - "Pre-3.14 default: eager evaluation at def/class time; forward references need quotes"
+    - "PEP 563 (__future__ annotations): stringified annotations; runtime users must eval them"
+    - "PEP 649/749 in 3.14: lazy evaluation via __annotate__; forward refs work without quotes"
+    - annotationlib formats (VALUE, FORWARDREF, STRING); NameError only on access if unresolved
+    - Matters for runtime consumers like dataclasses, pydantic, get_type_hints
+  explanation: |
+    Reference: What's New in Python 3.14 ("PEP 649 & PEP 749: Deferred evaluation of annotations") and the `annotationlib` docs. This is a senior-level question, and the key is knowing that it changed in 3.14 and why PEP 563 didn't become the default.
+
+- id: py-typ-010
+  topic: python
+  subtopic: Generics and variance
+  difficulty: hard
+  type: short
+  tags: [paramspec, decorators, generics, typing]
+  prompt: How do you type-annotate a decorator so that the decorated function keeps its exact parameter types and return type for the type checker?
+  reference: |
+    Use a `ParamSpec` to capture the parameters and a type variable for the return type (PEP 612, 3.10+):
+    ```python
+    from collections.abc import Callable
+    import functools
+
+    def logged[**P, R](func: Callable[P, R]) -> Callable[P, R]:   # 3.12+ syntax
+        @functools.wraps(func)
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+            return func(*args, **kwargs)
+        return wrapper
+    ```
+    Before 3.12, declare `P = ParamSpec('P')` and `R = TypeVar('R')` at module level. `P.args` and `P.kwargs` tie the wrapper's `*args`/`**kwargs` to the original signature, so calls to the decorated function are checked exactly. To add or remove a parameter, use `Concatenate[Extra, P]`. Annotating with `Callable[..., Any]` or a plain `TypeVar` bound to `Callable` either loses the signature or can't express a wrapper with a different type. For async functions, the return type would be `Callable[P, Awaitable[R]]` / `Coroutine`.
+  keyPoints:
+    - ParamSpec captures the parameter list; a TypeVar captures the return type
+    - Callable[P, R] -> Callable[P, R]; wrapper uses *args P.args and **kwargs P.kwargs
+    - "PEP 695 syntax `def deco[**P, R](...)` in 3.12+, ParamSpec/TypeVar objects before"
+    - Concatenate for decorators that add or remove leading parameters
+    - Callable[..., Any] loses the signature; functools.wraps is still needed at runtime
+  explanation: |
+    References: PEP 612 and PEP 695. It separates candidates who have typed real library code from those who only annotate leaf functions.

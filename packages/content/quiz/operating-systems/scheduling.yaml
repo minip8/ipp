@@ -1,0 +1,376 @@
+- id: os-sched-001
+  topic: operating-systems
+  subtopic: Scheduling
+  type: single
+  difficulty: easy
+  tags: [scheduling, nice]
+  prompt: |
+    On Linux, what is the range of nice values for normal (SCHED_OTHER) tasks, and which direction gets
+    more CPU?
+  choices:
+    - id: a
+      text: −20 to 19; lower values get more CPU time when tasks compete
+    - id: b
+      text: −20 to 19; higher values get more CPU time when tasks compete
+    - id: c
+      text: 0 to 99; higher values get more CPU time
+    - id: d
+      text: 1 to 99; lower values get more CPU time
+  answer: a
+  explanation: |
+    Nice runs from −20 (least "nice" to others, highest weight) to 19 (lowest weight). Unprivileged users
+    can only raise their nice value; lowering it needs `CAP_SYS_NICE` (or an `RLIMIT_NICE` allowance).
+    Nice only matters when tasks compete for the same CPU — an idle machine runs a nice-19 task at full
+    speed.
+
+    1–99 is the range of *real-time* priorities for SCHED_FIFO/SCHED_RR, where higher means more
+    important — a common mix-up.
+
+- id: os-sched-002
+  topic: operating-systems
+  subtopic: Scheduling
+  type: single
+  difficulty: medium
+  tags: [scheduling, nice, cfs, eevdf, quantitative]
+  prompt: |
+    Two CPU-bound SCHED_OTHER tasks are pinned to the same CPU, one at nice 0 and one at nice 5. Linux
+    weights are 1024 for nice 0 and 335 for nice 5 (each nice step is roughly a factor of 1.25). About
+    what fraction of the CPU does the nice-0 task get?
+  choices:
+    - id: a
+      text: About 75%
+    - id: b
+      text: About 55%
+    - id: c
+      text: About 95%
+    - id: d
+      text: 100%; the nice-5 task only runs when the nice-0 task blocks
+  answer: a
+  explanation: |
+    The fair class shares CPU in proportion to weight: 1024 / (1024 + 335) = 1024 / 1359 ≈ 0.753, so
+    roughly 75% vs 25%. The weight table (`sched_prio_to_weight`) is designed so that one nice step
+    changes a task's share by about 10% relative to a competing nice-0 task, which compounds to ≈1.25× per
+    step (1.25^5 ≈ 3.05 ≈ 1024/335).
+
+    Nice is not strict priority — (d) describes real-time scheduling. 55% would be a linear "5% per
+    nice level" guess.
+  source:
+    name: Linux kernel sched_prio_to_weight table (kernel/sched/core.c)
+
+- id: os-sched-003
+  topic: operating-systems
+  subtopic: Real-time scheduling
+  type: single
+  difficulty: medium
+  tags: [scheduling, sched-fifo, sched-rr, real-time]
+  prompt: |
+    What is the difference between `SCHED_FIFO` and `SCHED_RR` on Linux?
+  choices:
+    - id: a
+      text: Both are fixed-priority real-time policies; a SCHED_RR task is moved to the back of its priority's queue when its time slice expires, while a SCHED_FIFO task runs until it blocks, yields or is preempted by a higher-priority task
+    - id: b
+      text: SCHED_FIFO tasks run in arrival order regardless of priority; SCHED_RR tasks are ordered by priority
+    - id: c
+      text: SCHED_RR is a fair-share policy like SCHED_OTHER but with larger time slices
+    - id: d
+      text: SCHED_FIFO can only be used by kernel threads
+  answer: a
+  explanation: |
+    Both use static priorities 1–99 and always preempt any SCHED_OTHER task. The only difference is
+    among tasks *at the same priority*: SCHED_FIFO has no time slice, so an equal-priority task waits
+    until the running one blocks or calls `sched_yield()`; SCHED_RR round-robins equal-priority tasks
+    with a quantum (`/proc/sys/kernel/sched_rr_timeslice_ms`, 100 ms by default). A higher-priority task
+    preempts in both.
+
+    "FIFO" refers to ordering within one priority level, not ignoring priorities. Neither is fair-share,
+    and both are available to user processes with `CAP_SYS_NICE` or a suitable `RLIMIT_RTPRIO`.
+  source:
+    name: sched(7) man page
+    url: https://man7.org/linux/man-pages/man7/sched.7.html
+
+- id: os-sched-004
+  topic: operating-systems
+  subtopic: Real-time scheduling
+  type: single
+  difficulty: hard
+  tags: [scheduling, sched-fifo, rt-throttling]
+  prompt: |
+    A buggy SCHED_FIFO priority-50 thread spins in an infinite loop on CPU 3 with default kernel
+    settings on a recent mainline kernel. What happens to ordinary SCHED_OTHER tasks that need CPU 3?
+  choices:
+    - id: a
+      text: They still get a small share — by default about 5% of each second — because the kernel reserves bandwidth for non-real-time tasks
+    - id: b
+      text: They never run again on CPU 3 until the FIFO thread blocks
+    - id: c
+      text: They get exactly half of the CPU, because the fair scheduler balances real-time and normal tasks
+    - id: d
+      text: The kernel kills the FIFO thread with SIGXCPU after one time slice
+  answer: a
+  explanation: |
+    By default Linux keeps real-time tasks from completely starving the rest of the system. Historically
+    this was **RT throttling**: `sched_rt_runtime_us` = 950000 out of `sched_rt_period_us` = 1000000,
+    i.e. RT tasks may use at most 95% of each second. Since 6.12 the same goal is met mainly by a
+    SCHED_DEADLINE "fair server" that guarantees fair-class tasks about 50 ms per second. Either way,
+    normal tasks crawl along with ~5%, which is often enough to log in and kill the runaway thread.
+
+    (b) is what happens if an admin sets `sched_rt_runtime_us` to −1 (and, on 6.12+, disables the fair
+    server) — sometimes done for latency-critical systems, at the risk of hard lockups. SIGXCPU is only
+    sent if `RLIMIT_RTTIME` is set.
+  source:
+    name: Linux kernel docs, Real-Time group scheduling (sched-rt-group)
+    url: https://www.kernel.org/doc/html/latest/scheduler/sched-rt-group.html
+
+- id: os-sched-005
+  topic: operating-systems
+  subtopic: Real-time scheduling
+  type: short
+  difficulty: medium
+  tags: [priority-inversion, mutex, real-time]
+  prompt: |
+    What is priority inversion, and how do operating systems mitigate it?
+  reference: |
+    Priority inversion happens when a high-priority task blocks on a lock held by a low-priority task,
+    and a medium-priority task (which doesn't need the lock) preempts the low-priority holder. The high
+    priority task is now effectively waiting on the medium one for an unbounded time. The famous example
+    is the Mars Pathfinder lander (1997), whose watchdog kept resetting the system until engineers
+    enabled priority inheritance on the offending VxWorks mutex. Mitigations: priority inheritance
+    (the lock holder temporarily runs at the highest priority of its waiters — Linux supports this with
+    `PTHREAD_PRIO_INHERIT` mutexes, backed by PI futexes / rt_mutex), priority ceiling (the holder runs
+    at a preset ceiling priority, `PTHREAD_PRIO_PROTECT`), or design changes: avoid sharing locks across
+    priority levels, keep critical sections short, use lock-free hand-off queues.
+  keyPoints:
+    - High-priority task blocked on a lock held by a low-priority task
+    - Medium-priority task preempts the holder, so the high-priority task waits indefinitely
+    - Priority inheritance - holder boosted to the waiter's priority (PTHREAD_PRIO_INHERIT, PI futexes)
+    - Priority ceiling protocol as an alternative
+    - Mars Pathfinder as the classic real-world case
+  explanation: |
+    The key insight interviewers look for is the *medium* task: a plain high/low inversion is bounded by
+    the critical section length; it is the unrelated medium task that makes it unbounded.
+  source:
+    name: Mars Pathfinder priority inversion incident (Glenn Reeves' account)
+
+- id: os-sched-006
+  topic: operating-systems
+  subtopic: Low-latency tuning
+  type: multiple
+  difficulty: hard
+  tags: [low-latency, isolcpus, nohz-full, irq-affinity, cpu-affinity]
+  prompt: |
+    You want a busy-polling market-data thread to run on a dedicated core with as few interruptions as
+    possible on Linux. Which of the following help? Select all that apply.
+  choices:
+    - id: a
+      text: Removing the core from the general scheduler (isolcpus= or a cpuset/cgroup partition) and pinning the thread to it with sched_setaffinity/taskset
+    - id: b
+      text: Booting with nohz_full= for that core so the periodic scheduler tick stops while a single task runs there
+    - id: c
+      text: Steering hardware interrupts away from the core via /proc/irq/*/smp_affinity (and configuring irqbalance to leave it alone)
+    - id: d
+      text: Offloading RCU callbacks from the core with rcu_nocbs=
+    - id: e
+      text: Calling sched_yield() in the polling loop so the kernel knows the thread is cooperative
+    - id: f
+      text: Running several polling threads on the isolated core so one is always ready when data arrives
+  answer: [a, b, c, d]
+  explanation: |
+    (a)–(d) are the standard recipe: keep other tasks off the core, stop the scheduler tick (nohz_full
+    leaves a residual ~1 Hz tick and needs exactly one runnable task on the CPU), move device IRQs
+    elsewhere, and move RCU callback processing off it. People typically also pin kernel worker threads
+    elsewhere, disable deep C-states and turbo variability, and `mlockall` the process.
+
+    `sched_yield()` invites a trip into the scheduler on every loop iteration and does nothing useful
+    when you are the only runnable task. Several spinning threads on one core defeat the purpose —
+    they time-slice against each other, and the one with the data may not be running.
+  source:
+    name: Linux kernel docs, NO_HZ - Reducing Scheduling-Clock Ticks
+    url: https://www.kernel.org/doc/html/latest/timers/no_hz.html
+
+- id: os-sched-007
+  topic: operating-systems
+  subtopic: Scheduling
+  type: short
+  difficulty: medium
+  tags: [load-average, linux, monitoring]
+  prompt: |
+    A 4-core Linux box shows a load average of 12. Does that mean the CPUs are overloaded? What does
+    the number actually measure?
+  reference: |
+    Not necessarily. Linux load average is an exponentially damped moving average (over roughly 1, 5 and
+    15 minutes) of the number of tasks that are runnable (running or waiting for a CPU) **plus** tasks
+    in uninterruptible sleep (state D, usually waiting for disk or NFS I/O or some kernel locks). Other
+    Unixes count only runnable tasks; Linux includes D state, so a high load can come from processes
+    stuck on slow storage while the CPUs are idle. To diagnose: check CPU utilisation and run-queue
+    length (`vmstat` `r` column, `mpstat`), count D-state tasks (`ps -eo state | grep D`), look at I/O
+    wait and disk latency (`iostat -x`), and use pressure-stall information (`/proc/pressure/cpu`,
+    `/io`, `/memory`) which directly measures time lost waiting for each resource.
+  keyPoints:
+    - Exponentially damped moving averages over 1, 5, 15 minutes
+    - Counts runnable tasks (running + waiting for CPU)
+    - On Linux also counts uninterruptible (D-state) tasks, e.g. waiting on disk/NFS
+    - So load > core count can be I/O, not CPU; confirm with vmstat/mpstat/iostat
+    - PSI (/proc/pressure) gives a more direct measure of contention
+  explanation: |
+    Load divided by core count is a rough CPU-saturation signal only if almost nothing is in D state.
+    The Linux decision to include D state dates from 1993 and was intended to reflect demand for system
+    resources in general, not just CPU.
+  source:
+    name: Brendan Gregg, "Linux Load Averages - Solving the Mystery"
+    url: https://www.brendangregg.com/blog/2017-08-08/linux-load-averages.html
+
+- id: os-sched-008
+  topic: operating-systems
+  subtopic: Scheduling
+  type: short
+  difficulty: hard
+  tags: [cfs, eevdf, scheduler, linux]
+  prompt: |
+    Explain at a high level how the Linux fair scheduler decides which normal task to run next — CFS's
+    virtual runtime, and what changed with EEVDF.
+  reference: |
+    CFS (2.6.23 onwards) gives every SCHED_OTHER task a virtual runtime: actual run time scaled
+    inversely by the task's weight (from its nice value). Runnable tasks sit in a red-black tree keyed by
+    vruntime, and the scheduler picks the leftmost — the task that has received the least weighted CPU
+    so far — so CPU time converges to proportional shares. Wakeup heuristics and tunables controlled
+    latency. In Linux 6.6 the pick logic was replaced by EEVDF (Earliest Eligible Virtual Deadline
+    First): each task has a "lag" (how much service it is owed versus its fair share); only tasks with
+    non-negative lag are eligible, and each gets a virtual deadline = eligible time + requested slice /
+    weight. The scheduler runs the eligible task with the earliest virtual deadline. This keeps the same
+    proportional fairness but gives a principled way to favour latency-sensitive tasks (shorter slices
+    → earlier deadlines) and removed many CFS heuristics; the slice is set by `base_slice_ns` and,
+    since 6.12, tasks can request a custom slice via `sched_setattr`.
+  keyPoints:
+    - Weighted virtual runtime - runtime scaled by weight derived from nice
+    - CFS picks the task with the smallest vruntime (red-black tree, leftmost)
+    - EEVDF replaced CFS's pick logic in Linux 6.6
+    - EEVDF uses lag/eligibility plus a virtual deadline based on requested slice and weight; picks earliest eligible deadline
+    - Same proportional fairness, but better latency control (shorter slice = earlier deadline) and fewer heuristics
+  explanation: |
+    Interviewers mostly want the vruntime idea (fairness by weighted CPU time). Knowing that EEVDF is the
+    current algorithm, and why (latency requirements expressed as slice length rather than heuristics),
+    shows up-to-date knowledge.
+  source:
+    name: LWN, "An EEVDF CPU scheduler for Linux"
+    url: https://lwn.net/Articles/925371/
+
+- id: os-sched-009
+  topic: operating-systems
+  subtopic: Real-time scheduling
+  type: single
+  difficulty: hard
+  tags: [sched-deadline, real-time]
+  prompt: |
+    A task is configured with `SCHED_DEADLINE` and parameters runtime = 2 ms, deadline = 5 ms,
+    period = 10 ms. What does the kernel promise?
+  choices:
+    - id: a
+      text: If admission control accepts it, the task gets up to 2 ms of CPU in every 10 ms period, delivered within 5 ms of the start of each period; if it tries to use more it is throttled until the next period
+    - id: b
+      text: The task runs every 5 ms for exactly 10 ms
+    - id: c
+      text: The task gets priority 2 for 5 ms, then priority 10
+    - id: d
+      text: The task is guaranteed 20% of every CPU in the system
+  answer: a
+  explanation: |
+    SCHED_DEADLINE implements Earliest Deadline First with a Constant Bandwidth Server. Runtime is the
+    budget, period is how often the budget is replenished, and the relative deadline is by when the
+    budget must be delivered. The kernel performs admission control (`sched_setattr` fails with EBUSY if
+    total utilisation would exceed the allowed bandwidth), and a task that overruns its budget is
+    throttled, protecting other tasks. Deadline tasks have higher precedence than SCHED_FIFO/RR.
+
+    Utilisation here is runtime/period = 20% of *one* CPU, not of every CPU. There are no numeric
+    priorities in this class.
+  source:
+    name: Linux kernel docs, Deadline Task Scheduling
+    url: https://www.kernel.org/doc/html/latest/scheduler/sched-deadline.html
+
+- id: os-sched-010
+  topic: operating-systems
+  subtopic: Low-latency tuning
+  type: short
+  difficulty: hard
+  tags: [low-latency, jitter, isolcpus, smi, tlb-shootdown]
+  prompt: |
+    A trading thread is pinned to an isolated core and busy-polls, yet you still see occasional 5–50 µs
+    stalls. What could be interrupting it, and how would you find out?
+  reference: |
+    Possible sources: the residual scheduler tick if nohz_full isn't active (or more than one task is
+    runnable); hardware interrupts still routed to the core; inter-processor interrupts — TLB shootdowns
+    when another thread of the same process unmaps or changes memory (munmap, madvise, mprotect, page
+    migration, THP compaction), or IPIs from kernel subsystems; kernel work bound to the CPU (kworkers,
+    RCU callbacks, vmstat updates); page faults (first touch, COW, NUMA balancing, swapped or reclaimed
+    pages — fix with mlockall and pre-faulting); System Management Interrupts invisible to the OS; CPU
+    frequency/C-state transitions and thermal throttling; hyperthread sibling contention; and the
+    thread's own syscalls or lock contention. To diagnose: watch `/proc/interrupts` deltas per CPU,
+    trace with `perf sched`, `perf trace`, ftrace/osnoise or `rtla osnoise/timerlat`, `hwlatdetect`
+    for SMIs/firmware, check SMI counters (MSR_SMI_COUNT) and page-fault counters (`perf stat -e
+    page-faults`), and timestamp loop iterations with rdtsc to correlate gaps.
+  keyPoints:
+    - Timer tick / scheduler activity if nohz_full is not effective
+    - Device IRQs and IPIs such as TLB shootdowns from other threads changing mappings
+    - Page faults (fix with mlockall, prefaulting, avoiding THP compaction, NUMA balancing)
+    - Firmware/hardware - SMIs, C-state/frequency changes, SMT sibling
+    - Tools - /proc/interrupts, perf, ftrace/osnoise/rtla, hwlatdetect, rdtsc gap measurement
+  explanation: |
+    A strong answer is structured (kernel, hardware, own code) and names measurement tools rather than
+    guessing. TLB shootdowns are a commonly missed one: a `free()` in another thread that returns memory
+    to the OS can interrupt every core running that process.
+
+- id: os-sched-011
+  topic: operating-systems
+  subtopic: Scheduling
+  type: single
+  difficulty: easy
+  tags: [cpu-affinity, taskset]
+  prompt: |
+    A process sets its CPU affinity mask to CPUs {2,3} with `sched_setaffinity()` and then forks a
+    child. What is the child's affinity?
+  choices:
+    - id: a
+      text: "{2,3} — the affinity mask is inherited across fork() and preserved across execve()"
+    - id: b
+      text: All CPUs — affinity is reset in the child
+    - id: c
+      text: Only the CPU the parent was running on at the moment of the fork
+    - id: d
+      text: "{2,3} for the child's first time slice, then all CPUs"
+  answer: a
+  explanation: |
+    The CPU affinity mask is inherited by children created with fork and is preserved across execve,
+    which is why `taskset -c 2,3 ./prog` works: taskset sets its own mask and then execs the program. The
+    child can of course change its own mask later. Affinity is a hard constraint (the task will not run
+    elsewhere), not a hint.
+  source:
+    name: sched_setaffinity(2) man page
+    url: https://man7.org/linux/man-pages/man2/sched_setaffinity.2.html
+
+- id: os-sched-012
+  topic: operating-systems
+  subtopic: Scheduling
+  type: single
+  difficulty: medium
+  tags: [preemption, scheduling, kernel]
+  prompt: |
+    What does it mean for a scheduler to be **preemptive**, and when can a running user-space thread be
+    preempted on Linux?
+  choices:
+    - id: a
+      text: The OS can take the CPU away without the task's cooperation; a user thread can be preempted on any timer tick or interrupt return when a higher-priority or more-deserving task is runnable
+    - id: b
+      text: A thread runs until it voluntarily makes a blocking system call or yields
+    - id: c
+      text: Threads are preempted only when they exceed a fixed 100 ms quantum
+    - id: d
+      text: Only kernel threads can be preempted; user threads run until they block
+  answer: a
+  explanation: |
+    In a preemptive system the kernel sets a "need reschedule" flag (from the timer tick or a wakeup of
+    a higher-priority/earlier-deadline task) and switches tasks on the next return to user mode or from
+    an interrupt — the running thread does not have to cooperate. (b) describes cooperative
+    multitasking (classic Mac OS, Windows 3.x). Time slices on Linux are not a fixed 100 ms; they depend
+    on the scheduling class and load.
+
+    A related distinction is *kernel* preemption: whether a task running kernel code can be preempted
+    (CONFIG_PREEMPT_NONE / VOLUNTARY / FULL, and PREEMPT_RT, which was merged into mainline in 6.12).

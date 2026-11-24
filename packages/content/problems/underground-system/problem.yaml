@@ -1,0 +1,29 @@
+slug: underground-system
+title: Underground Journey Times
+difficulty: medium
+tags: [design, hash-table, string]
+signature:
+  className: UndergroundSystem
+  kind: design
+  methods:
+    - name: checkIn
+      params:
+        - { name: id, type: int }
+        - { name: stationName, type: string }
+        - { name: t, type: int }
+      returns: void
+    - name: checkOut
+      params:
+        - { name: id, type: int }
+        - { name: stationName, type: string }
+        - { name: t, type: int }
+      returns: void
+    - name: getAverageTime
+      params:
+        - { name: startStation, type: string }
+        - { name: endStation, type: string }
+      returns: double
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Design Underground System (LeetCode 1396; reported at Bloomberg)
+  url: https://leetcode.com/problems/design-underground-system/

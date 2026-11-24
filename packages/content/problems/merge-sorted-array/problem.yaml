@@ -1,0 +1,19 @@
+slug: merge-sorted-array
+title: Merge Sorted Array
+difficulty: easy
+tags: [array, two-pointers, sorting]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: merge
+      params:
+        - { name: nums1, type: { array: int } }
+        - { name: m, type: int }
+        - { name: nums2, type: { array: int } }
+        - { name: n, type: int }
+      returns: { array: int }
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 88); a very common Meta / Microsoft warm-up
+  url: https://leetcode.com/problems/merge-sorted-array/

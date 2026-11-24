@@ -1,0 +1,17 @@
+slug: coin-change-ii
+title: Coin Change (Count the Ways)
+difficulty: medium
+tags: [dynamic-programming, knapsack]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: change
+      params:
+        - { name: amount, type: int }
+        - { name: coins, type: { array: int } }
+      returns: long
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 518)
+  url: https://leetcode.com/problems/coin-change-ii/

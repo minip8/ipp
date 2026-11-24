@@ -1,0 +1,169 @@
+- id: os-alloc-001
+  topic: operating-systems
+  subtopic: Memory allocators
+  type: single
+  difficulty: medium
+  prompt: |
+    On x86-64 Linux with glibc and default tuning, a program that has not called `free` on any large block yet calls `malloc(1 << 20)` (1 MiB). How does glibc most likely obtain that memory?
+  choices:
+    - id: a
+      text: "By extending the heap with brk/sbrk, because all malloc memory comes from the main heap"
+    - id: b
+      text: "With a dedicated anonymous mmap, because the request is above the mmap threshold (128 KiB by default)"
+    - id: c
+      text: "From a per-thread cache that was pre-filled at program start"
+    - id: d
+      text: "With a direct call into the kernel's slab allocator (kmalloc)"
+  answer: b
+  explanation: |
+    glibc serves requests at or above `M_MMAP_THRESHOLD` (default 128 KiB) with their own anonymous `mmap`. Freeing such a block `munmap`s it, so the memory goes straight back to the kernel.
+
+    The threshold is **dynamic**: when the program frees an mmapped chunk, glibc raises the threshold to that chunk's size (up to 32 MiB on 64-bit), so later requests of that size come from the heap instead. That is why the question says no large block has been freed yet.
+
+    - (a) Small requests come from the brk heap (or from mmapped arenas for other threads), but large ones do not.
+    - (c) glibc's tcache holds only small chunks (up to 1032 bytes by default), and it starts empty.
+    - (d) User space cannot call `kmalloc`. That is the kernel's own allocator.
+  tags: [malloc, glibc, mmap, brk]
+  source:
+    name: mallopt(3) man page
+    url: https://man7.org/linux/man-pages/man3/mallopt.3.html
+
+- id: os-alloc-002
+  topic: operating-systems
+  subtopic: Memory allocators
+  type: short
+  difficulty: medium
+  prompt: |
+    A long-running C++ service allocates lots of small objects during a burst, then frees nearly all of them. Its RSS hardly goes down afterwards. Why, and what could you do about it?
+  reference: |
+    Small allocations come from the allocator's heap or arenas, not from separate mappings. After a free the chunk goes onto the allocator's free lists so it can be reused, and is not unmapped. Memory can only go back to the kernel in large contiguous pieces: glibc shrinks the brk heap only when the free space at the top passes M_TRIM_THRESHOLD, and it can `madvise(MADV_DONTNEED)` whole free pages inside arenas. A few live objects spread across many pages pin all those pages (fragmentation), and every per-thread arena or cache keeps its own free memory. Fixes: call `malloc_trim(0)` (it also releases free pages in the middle of the heap), use fewer arenas (`MALLOC_ARENA_MAX`), switch to jemalloc or tcmalloc, which return memory in the background by purging/decay, or use pool/arena allocation so the objects from a burst sit together and can be freed together. Also note that RSS is not leaked memory: free pages are reused by the next burst.
+  keyPoints:
+    - free() puts the chunk back on allocator free lists for reuse; it does not unmap small chunks
+    - Only whole free pages or the top of the heap can be returned (trim threshold, madvise), and scattered live objects pin pages (fragmentation)
+    - Per-thread arenas or caches each hold on to free memory
+    - "Remedies: malloc_trim, MALLOC_ARENA_MAX, jemalloc/tcmalloc decay, or grouping lifetimes with pool/arena allocators"
+  explanation: |
+    The point to get across is that `free` returns memory to the *allocator*, not to the *OS*. A strong answer explains why fragmentation stops pages from being released, and that high RSS after a burst is often harmless because the memory is reused.
+  tags: [malloc, fragmentation, rss, glibc]
+
+- id: os-alloc-003
+  topic: operating-systems
+  subtopic: Memory allocators
+  type: single
+  difficulty: medium
+  prompt: |
+    Why do tcmalloc and jemalloc (and glibc's tcache) give each thread a small cache of free objects?
+  choices:
+    - id: a
+      text: "So that common small malloc/free calls need no lock and touch no shared cache lines"
+    - id: b
+      text: "So that each thread's memory is invisible to other threads, for security"
+    - id: c
+      text: "Because the kernel requires every thread to have its own heap"
+    - id: d
+      text: "To guarantee that memory freed by one thread can never be reused by another"
+  answer: a
+  explanation: |
+    A thread-local cache lets the fast path pop or push a free list with no atomic operations and no shared cache lines. That removes lock contention and cache-line bouncing in multithreaded programs. The cache is refilled from, and drained to, a central or per-arena structure in batches.
+
+    - (b) All threads share one address space, so nothing is hidden between threads.
+    - (c) The kernel knows nothing about heaps. It only provides brk and mmap.
+    - (d) Memory freed by one thread *can* be reused by another. A block freed by a different thread is usually sent back to its owning arena or central list.
+  tags: [tcmalloc, jemalloc, thread-cache, malloc]
+
+- id: os-alloc-004
+  topic: operating-systems
+  subtopic: Memory allocators
+  type: multiple
+  difficulty: hard
+  prompt: |
+    You are writing the hot path of a low-latency trading system in C++. Which of these are good reasons to replace general-purpose `malloc`/`new` on that path with preallocated pools or a bump (arena) allocator? Select all that apply.
+  choices:
+    - id: a
+      text: "A general-purpose allocator has a much worse worst case, for example when it has to call brk/mmap or take an arena lock"
+    - id: b
+      text: "Memory touched for the first time causes minor page faults; a pool you pre-fault at startup avoids them on the hot path"
+    - id: c
+      text: "Objects allocated next to each other from a pool or arena tend to sit together in cache"
+    - id: d
+      text: "Pool allocators make use-after-free bugs impossible"
+    - id: e
+      text: "A bump allocator frees everything at once by resetting one pointer, instead of making many free calls"
+  answer: [a, b, c, e]
+  explanation: |
+    In low-latency work the worst case matters more than the average. glibc malloc is fast on average, but it sometimes makes a system call, takes an arena lock, consolidates free chunks, or touches a new page and takes a page fault. Pools that are allocated and touched up front (often with `mlock`/`MAP_POPULATE`) remove those stalls (a, b). Objects from a pool or arena are packed closely, which helps the cache (c). An arena also frees everything with one pointer reset (e).
+
+    (d) is false. A pool reuses slots, so a dangling pointer just silently reads the next object to use that slot. That can make use-after-free *harder* to notice.
+  tags: [low-latency, pool-allocator, arena-allocator, page-faults]
+
+- id: os-alloc-005
+  topic: operating-systems
+  subtopic: Memory allocators
+  type: single
+  difficulty: easy
+  prompt: |
+    A heap has 10 MiB free in total, but `malloc(1 MiB)` cannot be served without asking the OS for more memory, because no single free region is 1 MiB long. What is this called?
+  choices:
+    - id: a
+      text: "Internal fragmentation"
+    - id: b
+      text: "External fragmentation"
+    - id: c
+      text: "Thrashing"
+    - id: d
+      text: "A memory leak"
+  answer: b
+  explanation: |
+    **External fragmentation**: there is enough free memory in total, but it is split into holes that are each too small for the request.
+
+    - (a) **Internal fragmentation** is memory wasted *inside* an allocated block, for example rounding a 33-byte request up to a 48-byte size class.
+    - (c) Thrashing is the system spending most of its time paging.
+    - (d) A leak is memory that is still allocated but can no longer be reached. Here the memory is free, just in the wrong shape.
+  tags: [fragmentation, malloc]
+
+- id: os-alloc-006
+  topic: operating-systems
+  subtopic: Memory allocators
+  type: short
+  difficulty: hard
+  prompt: |
+    Explain how glibc malloc uses multiple arenas in a multithreaded program, and why setting `MALLOC_ARENA_MAX` is a common fix for unexpectedly high memory use in services (for example JVMs or many-threaded C++ servers).
+  reference: |
+    glibc has a main arena (the brk heap) plus extra arenas made of mmapped heaps, 64 MiB each on 64-bit. When a thread finds its arena's mutex already held, glibc attaches it to another arena or creates a new one, so threads seldom fight over one lock. The default limit is 8 arenas per CPU core on 64-bit (2 per core on 32-bit). Each arena keeps its own free lists and keeps its own free memory, and memory freed into one arena cannot serve a request in another. A program with many threads can therefore end up with dozens of partly used arenas. RSS and especially virtual size (64 MiB reserved per heap) grow well beyond what is live. Setting `MALLOC_ARENA_MAX` to a small number such as 2 or 4 trades some lock contention for less memory overhead. Alternatives are jemalloc or tcmalloc.
+  keyPoints:
+    - Multiple arenas reduce lock contention; a thread that finds its arena locked moves to or creates another
+    - Default limit is 8 × number of cores on 64-bit
+    - Each arena holds its own free memory, which other arenas cannot reuse, so overhead grows with the number of arenas
+    - Non-main arenas reserve 64 MiB heaps by mmap, so virtual size grows large
+    - MALLOC_ARENA_MAX limits arenas, trading contention for footprint
+  explanation: |
+    This often comes up when debugging services whose memory use keeps creeping upwards. The figure of 8 arenas per core comes from `M_ARENA_TEST`/`M_ARENA_MAX` in mallopt(3).
+  tags: [glibc, malloc, arenas, memory-footprint]
+  source:
+    name: mallopt(3) man page (M_ARENA_MAX)
+    url: https://man7.org/linux/man-pages/man3/mallopt.3.html
+
+- id: os-alloc-007
+  topic: operating-systems
+  subtopic: Memory allocators
+  type: single
+  difficulty: easy
+  prompt: |
+    On x86-64 Linux with default settings, `main` declares a local array `char buf[64 * 1024 * 1024];` (64 MiB) and writes to it. What most likely happens?
+  choices:
+    - id: a
+      text: "It works, because local arrays are automatically placed on the heap when they are large"
+    - id: b
+      text: "The program crashes with a segmentation fault, because the main thread's stack is limited (ulimit -s, typically 8 MiB)"
+    - id: c
+      text: "The compiler refuses to compile it"
+    - id: d
+      text: "The kernel grows the stack without limit"
+  answer: b
+  explanation: |
+    Automatic variables live on the stack. The main thread's stack can grow only up to RLIMIT_STACK, commonly 8 MiB. Touching memory beyond that hits unmapped memory or the guard gap, and the process gets SIGSEGV. Threads created with pthreads get a fixed-size stack, by default also based on RLIMIT_STACK, often 8 MiB.
+
+    - (a) C and C++ never move automatic variables to the heap. Large buffers should use `std::vector`, `new`/`malloc`, or static storage.
+    - (c) The compiler compiles it fine (it may warn).
+    - (d) The stack does grow on demand, but only up to the limit.
+  tags: [stack, stack-overflow, rlimit]

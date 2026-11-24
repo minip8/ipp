@@ -1,0 +1,249 @@
+# Classic synchronisation problems and common interview exercises.
+
+- id: conc-classic-001
+  topic: concurrency
+  subtopic: Dining philosophers
+  difficulty: medium
+  type: single
+  prompt: |
+    Five dining philosophers each pick up the left fork, then the right fork, then eat. This can
+    deadlock. Which change provably prevents deadlock without a central coordinator?
+  choices:
+    - { id: a, text: "Have every philosopher wait a random time before picking up the left fork" }
+    - { id: b, text: "Number the forks and have every philosopher pick up the lower-numbered fork first (so one philosopher picks right-then-left)" }
+    - { id: c, text: "Make the fork locks recursive" }
+    - { id: d, text: "Have philosophers put the left fork down if the right one is busy and immediately retry" }
+  answer: b
+  explanation: |
+    Deadlock requires a circular wait in which each philosopher holds one fork and waits for the next.
+    Imposing a global order on resources (always take the lower-numbered fork first) makes a cycle
+    impossible: the philosopher between fork 4 and fork 0 takes fork 0 first, breaking the symmetry.
+    This is lock ordering, the same technique used for mutexes in real code.
+
+    Random delays (a) make deadlock unlikely but not impossible. Put-down-and-retry (d) avoids deadlock
+    but can livelock without randomised backoff. Recursive locks (c) are irrelevant since no one
+    relocks a fork it holds. Other correct solutions: a "waiter" semaphore admitting at most four
+    philosophers to the table, or taking both forks atomically.
+  tags: [dining-philosophers, deadlock, lock-ordering]
+  source: { name: "Dijkstra's dining philosophers problem (classic)" }
+
+- id: conc-classic-002
+  topic: concurrency
+  subtopic: Readers-writers
+  difficulty: hard
+  type: short
+  prompt: |
+    Implement a writer-preferring reader-writer lock using a mutex and condition variables (C++ or
+    pseudocode). Explain how it avoids writer starvation and what it costs.
+  reference: |
+    ```cpp
+    class RWLock {
+        std::mutex m;
+        std::condition_variable readers_cv, writers_cv;
+        int active_readers = 0, waiting_writers = 0;
+        bool writer_active = false;
+    public:
+        void lock_shared() {
+            std::unique_lock lk(m);
+            readers_cv.wait(lk, [&] { return !writer_active && waiting_writers == 0; });
+            ++active_readers;
+        }
+        void unlock_shared() {
+            std::unique_lock lk(m);
+            if (--active_readers == 0 && waiting_writers > 0) writers_cv.notify_one();
+        }
+        void lock() {
+            std::unique_lock lk(m);
+            ++waiting_writers;
+            writers_cv.wait(lk, [&] { return !writer_active && active_readers == 0; });
+            --waiting_writers;
+            writer_active = true;
+        }
+        void unlock() {
+            std::unique_lock lk(m);
+            writer_active = false;
+            if (waiting_writers > 0) writers_cv.notify_one();
+            else readers_cv.notify_all();
+        }
+    };
+    ```
+    New readers are held back whenever a writer is *waiting* (`waiting_writers > 0`), so a continuous
+    stream of readers cannot starve writers: the current readers drain, the writer runs. Cost: readers
+    can now starve under a continuous stream of writers (a fairer design alternates phases or uses a
+    ticket/FIFO order), and every acquire/release takes the internal mutex, so it is slower than a
+    plain mutex for short critical sections.
+  keyPoints:
+    - "State: active reader count, writer-active flag, waiting-writer count, all under one mutex"
+    - "Readers wait while a writer is active or waiting (writer preference)"
+    - "Writer waits until no readers and no writer are active"
+    - "Last reader out wakes a writer; writer release wakes the next writer or all readers"
+    - "Trade-off: readers may now starve; internal mutex adds overhead"
+  explanation: |
+    The classic second readers-writers problem. Look for the waiting-writer count gating new readers,
+    correct predicate waits, and the right notifications (notify_all for readers, one writer at a
+    time). Discussing the opposite starvation shows the candidate sees it as a policy choice.
+  tags: [readers-writers, rwlock, starvation, condition-variable]
+  source: { name: "Courtois, Heymans & Parnas, Concurrent Control with Readers and Writers (1971)" }
+
+- id: conc-classic-003
+  topic: concurrency
+  subtopic: Readers-writers
+  difficulty: easy
+  type: single
+  prompt: |
+    In the "first" readers-writers solution, readers may enter whenever no writer is active, even if a
+    writer is waiting. What is its main weakness?
+  choices:
+    - { id: a, text: "Readers can corrupt each other's view of the data" }
+    - { id: b, text: "Writers can starve if readers keep arriving so the reader count never drops to zero" }
+    - { id: c, text: "Two writers can be active at once" }
+    - { id: d, text: "It deadlocks whenever a reader and a writer arrive at the same time" }
+  answer: b
+  explanation: |
+    Reader preference maximises read concurrency but, with overlapping readers, the count may never
+    reach zero, so a waiting writer waits indefinitely. Readers do not modify data (a), writers are still
+    mutually exclusive (c), and there is no lock cycle (d). The "second" problem gives writers priority
+    (risking reader starvation); fair variants queue arrivals in order.
+  tags: [readers-writers, starvation]
+
+- id: conc-classic-004
+  topic: concurrency
+  subtopic: Producer-consumer
+  difficulty: medium
+  type: short
+  prompt: |
+    Two threads must print numbers 1 to 10 alternately: thread A prints odd numbers, thread B even
+    numbers, in order. Describe a correct solution and one common incorrect one.
+  reference: |
+    Correct (mutex + condition variable): shared `int next = 1` protected by a mutex. Thread A loops:
+    lock; `cv.wait(lk, [&]{ return next > 10 || next % 2 == 1; })`; if `next > 10` break; print `next`;
+    `++next`; unlock; `cv.notify_all()` (or `notify_one`, since only the other thread waits). Thread B
+    is the same with `next % 2 == 0`. The predicate encodes whose turn it is, so spurious wakeups and
+    notification timing do not matter, and the termination condition is in the predicate so neither
+    thread waits forever at the end.
+
+    Alternative: two binary semaphores, `a_turn` initialised to 1 and `b_turn` to 0; A does
+    `a_turn.acquire(); print; b_turn.release();` and B the mirror image.
+
+    Common incorrect solutions: (1) busy-waiting on a plain `int turn` without atomics (a data race, so
+    the compiler may hoist the read and spin forever); (2) using a condition variable without a
+    predicate (`cv.wait(lk)` then print), which breaks on spurious wakeups or when the notify happens
+    before the other thread waits (lost wakeup, hang); (3) forgetting termination so one thread waits
+    for a turn that never comes.
+  keyPoints:
+    - "Shared turn/counter protected by a mutex; wait with a predicate encoding whose turn it is"
+    - "Notify the other thread after advancing the counter"
+    - "Termination handled in the predicate so neither thread hangs at the end"
+    - "Semaphore ping-pong alternative (one starts at 1, other at 0)"
+    - "Identifies a broken variant: unsynchronised busy-wait flag, or wait without predicate (lost wakeup)"
+  explanation: |
+    A small exercise that exposes whether the candidate really understands condition variables. The
+    termination condition and the predicate are where most first attempts fail.
+  tags: [condition-variable, semaphore, ordering, interview-exercise]
+
+- id: conc-classic-005
+  topic: concurrency
+  subtopic: Dining philosophers
+  difficulty: medium
+  type: short
+  prompt: |
+    Describe three different solutions to the dining philosophers problem and the trade-offs between
+    them.
+  reference: |
+    1. **Resource ordering**: number the forks; always pick up the lower-numbered one first. Prevents
+       circular wait, so no deadlock, and needs no coordinator. Not necessarily fair; a philosopher can
+       starve under adversarial scheduling.
+    2. **Limit concurrency (the "waiter"/footman)**: a counting semaphore allowing at most N-1
+       philosophers to try to eat at once. By pigeonhole, at least one can always get both forks.
+       Simple; adds a central point of contention.
+    3. **Acquire both or none**: pick up both forks atomically, e.g. under a global mutex check both
+       are free (Dijkstra's state-based solution with per-philosopher condition variables: a
+       philosopher eats only when neither neighbour is eating), or `std::scoped_lock(left, right)` /
+       try-lock-and-back-off. Avoids hold-and-wait. The back-off variant needs randomisation to avoid
+       livelock; the state-based variant can starve a philosopher unless aging is added.
+    4. **Chandy–Misra**: forks are dirty/clean tokens passed by request messages; works for arbitrary
+       conflict graphs, is fair (no starvation), and is fully distributed, at the cost of complexity.
+
+    Mapping to real systems: lock ordering is how most production code avoids deadlock; admission
+    control (semaphores, bounded pools) is the waiter idea.
+  keyPoints:
+    - "Resource ordering breaks circular wait; no coordinator but not starvation-free"
+    - "A waiter / semaphore admitting at most N-1 philosophers guarantees progress"
+    - "Acquire both forks atomically or back off (breaks hold-and-wait); backoff needs randomness to avoid livelock"
+    - "Fairness/starvation considerations; Chandy-Misra for a fair distributed solution"
+    - "Relates the solutions to real-world lock ordering and admission control"
+  explanation: |
+    Interviewers use dining philosophers to check the Coffman conditions in practice: each solution
+    breaks a different condition. Mentioning starvation and livelock, not just deadlock, distinguishes
+    strong answers.
+  tags: [dining-philosophers, deadlock, starvation, livelock]
+
+- id: conc-classic-006
+  topic: concurrency
+  subtopic: Producer-consumer
+  difficulty: medium
+  type: short
+  prompt: |
+    In a market-data pipeline, one feed-handler thread produces updates faster than a strategy thread
+    can consume them during bursts. Discuss the options for handling a full queue and when each is
+    appropriate.
+  reference: |
+    Options when the bounded queue between producer and consumer is full:
+    1. **Block the producer** (backpressure): correct for pipelines where every message matters and
+       the upstream can slow down (batch processing, TCP-backed streams). Bad for a feed handler
+       reading UDP multicast, since blocking it means the kernel socket buffer overflows and packets
+       are dropped uncontrollably anyway.
+    2. **Drop newest / drop oldest** with a counter and an alert: acceptable when stale data is
+       worthless, but the consumer must know a gap occurred (sequence numbers) so it can resynchronise.
+    3. **Conflate**: keep only the latest state per key (e.g. latest top-of-book per instrument)
+       instead of every update; the consumer always sees the freshest data and the queue size is
+       bounded by the number of keys. Very common for market data consumers that only need current
+       prices. A seqlock or per-instrument slot with a "dirty" flag implements this.
+    4. **Grow the buffer** (unbounded queue): hides the problem and adds latency and memory risk;
+       usually wrong for low-latency systems.
+    5. **Speed up or shard the consumer**: partition instruments across several consumer threads.
+
+    The choice depends on whether every message is needed (order handling: never drop; use
+    backpressure or a persistent log) versus only the latest state (prices: conflate).
+  keyPoints:
+    - "Blocking the producer gives backpressure but can push loss upstream (e.g. UDP socket buffer drops)"
+    - "Dropping requires gap detection (sequence numbers) and recovery"
+    - "Conflation keeps the latest value per key; ideal when only current state matters"
+    - "Unbounded buffering just converts overload into latency and memory growth"
+    - "Shard/partition the consumer; the right choice depends on whether every message is needed"
+  explanation: |
+    A design-oriented producer-consumer question common in trading interviews. The key is recognising
+    that "block" is not free when the producer is fed by an uncontrolled source, and knowing
+    conflation as the standard market-data answer.
+  tags: [producer-consumer, backpressure, conflation, market-data, low-latency]
+
+- id: conc-classic-007
+  topic: concurrency
+  subtopic: Producer-consumer
+  difficulty: easy
+  type: short
+  prompt: |
+    Describe the producer-consumer (bounded buffer) problem: what must a correct solution guarantee?
+  reference: |
+    Producers create items and place them in a shared buffer of fixed capacity; consumers remove and
+    process them. A correct solution guarantees:
+    - **Mutual exclusion** on the buffer's internal state (no two threads corrupt indices/counts).
+    - **No overflow**: a producer does not insert into a full buffer; it waits (or fails/drops by policy).
+    - **No underflow**: a consumer does not remove from an empty buffer; it waits.
+    - **No lost or duplicated items**: every produced item is consumed exactly once.
+    - **Progress**: no deadlock (e.g. not sleeping while holding the lock others need) and no lost
+      wakeups; waiting threads are woken when the condition they wait on changes.
+    - Usually also: clean shutdown, and ideally no busy-waiting.
+
+    Standard implementations: a mutex plus two condition variables (not_full, not_empty), or two
+    counting semaphores (empty slots, full slots) plus a mutex; lock-free ring buffers for SPSC.
+  keyPoints:
+    - "Mutual exclusion on the shared buffer"
+    - "Producers wait when full; consumers wait when empty"
+    - "Each item consumed exactly once, none lost"
+    - "No deadlock or lost wakeups; no busy waiting"
+    - "Names a standard implementation (mutex + 2 condvars, or 2 semaphores + mutex)"
+  explanation: |
+    A basic definition question; the point is to enumerate the safety properties (exclusion, no
+    overflow/underflow, exactly-once) and the liveness ones (no deadlock, no lost wakeups).
+  tags: [producer-consumer, bounded-buffer]

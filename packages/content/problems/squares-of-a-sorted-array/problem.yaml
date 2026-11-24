@@ -1,0 +1,16 @@
+slug: squares-of-a-sorted-array
+title: Squares of a Sorted Array
+difficulty: easy
+tags: [array, two-pointers, sorting]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: sortedSquares
+      params:
+        - { name: nums, type: { array: int } }
+      returns: { array: int }
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 977); common phone-screen warm-up at Meta and Amazon
+  url: https://leetcode.com/problems/squares-of-a-sorted-array/

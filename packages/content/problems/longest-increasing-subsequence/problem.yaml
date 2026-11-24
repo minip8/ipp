@@ -1,0 +1,16 @@
+slug: longest-increasing-subsequence
+title: Longest Increasing Subsequence
+difficulty: medium
+tags: [dynamic-programming, binary-search]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: lengthOfLIS
+      params:
+        - { name: nums, type: { array: int } }
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 300)
+  url: https://leetcode.com/problems/longest-increasing-subsequence/

@@ -1,0 +1,19 @@
+# TLS termination. Certificates are issued automatically for {$SITE_HOST}
+# (the DNS record must point straight at this host: "DNS only" in Cloudflare).
+{$SITE_HOST} {
+	encode zstd gzip
+
+	# WebSockets go straight to the API; everything else, including /api/*, goes through the web app.
+	@realtime path /ws/* /collab /collab/*
+	handle @realtime {
+		reverse_proxy 172.28.0.4:4000
+	}
+	handle {
+		reverse_proxy 172.28.0.3:3000
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+}

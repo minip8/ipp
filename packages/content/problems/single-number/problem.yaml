@@ -1,0 +1,16 @@
+slug: single-number
+title: Single Number
+difficulty: easy
+tags: [array, bit-manipulation]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: singleNumber
+      params:
+        - { name: nums, type: { array: int } }
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 136; NeetCode 150 bit manipulation)
+  url: https://leetcode.com/problems/single-number/

@@ -1,0 +1,692 @@
+# Open interview questions spanning several areas (short answer).
+- id: net-concept-001
+  topic: networking
+  subtopic: Ethernet and switching
+  difficulty: easy
+  type: short
+  prompt: |
+    What is the difference between **MTU** and **MSS**? What are typical values on Ethernet, and how is
+    the MSS chosen for a TCP connection?
+  reference: |
+    The **MTU** (maximum transmission unit) is the largest layer-3 packet a link can carry in one frame:
+    1500 bytes on standard Ethernet, around 9000 with jumbo frames. The **MSS** (maximum segment size)
+    is the largest TCP *payload* one segment may carry: the MTU minus the IP and TCP headers. That's
+    1500 − 20 − 20 = 1460 for IPv4 and 1500 − 40 − 20 = 1440 for IPv6, smaller still when TCP options
+    such as timestamps are in use. Each side announces its MSS in the SYN, based on its outgoing
+    interface MTU, and the sender uses the smaller of the two, reduced further by Path MTU Discovery if
+    a link on the path has a smaller MTU. Routers can clamp the MSS on tunnels.
+  keyPoints:
+    - "MTU = largest IP packet per link frame (1500 on Ethernet)"
+    - "MSS = largest TCP payload per segment = MTU − IP header − TCP header"
+    - "Typical values 1460 (IPv4) / 1440 (IPv6); options reduce the effective payload"
+    - "MSS announced in SYN; PMTUD or MSS clamping can lower it"
+  explanation: |
+    Basic vocabulary that later questions build on.
+  tags: [mtu, mss, tcp, ethernet]
+
+- id: net-concept-002
+  topic: networking
+  subtopic: Sockets API and options
+  difficulty: easy
+  type: short
+  prompt: |
+    What are port numbers for? Explain well-known, registered and ephemeral ports, and who chooses the
+    client's source port.
+  reference: |
+    Ports (16-bit, in TCP and UDP headers) identify the application endpoint on a host, so the OS can
+    demultiplex incoming segments to the right socket. A TCP connection is identified by (src IP, src
+    port, dst IP, dst port). IANA ranges: **well-known / system** ports 0–1023 (HTTP 80, HTTPS 443, SSH
+    22, DNS 53; on Unix, binding below 1024 needs privilege), **registered / user** ports 1024–49151,
+    and **dynamic / ephemeral** ports 49152–65535. A client normally doesn't bind(): the kernel picks an
+    unused ephemeral port on connect(). Linux's default range is 32768–60999
+    (`net.ipv4.ip_local_port_range`). Servers bind to a fixed, known port so clients can find them.
+  keyPoints:
+    - "Ports identify the application endpoint for demultiplexing"
+    - "Connections identified by the 4-tuple"
+    - "Well-known 0–1023 (privileged on Unix), registered, dynamic/ephemeral"
+    - "Client source port is picked by the kernel from the ephemeral range (Linux 32768–60999)"
+  explanation: |
+    Warm-up; the follow-up is usually ephemeral-port exhaustion.
+  tags: [ports, sockets, tcp, udp]
+
+- id: net-concept-003
+  topic: networking
+  subtopic: IP addressing
+  difficulty: easy
+  type: short
+  prompt: |
+    What is a default gateway? How does a host decide whether to send a packet directly to the
+    destination or to the gateway?
+  reference: |
+    The default gateway is the router a host sends packets to when it has no more specific route for the
+    destination: its route for 0.0.0.0/0. To send a packet, the host does a longest-prefix-match lookup
+    in its routing table. If the destination is inside a directly connected subnet (destination AND
+    mask == own network), it's **on-link**: the host ARPs or NDPs for the destination's own MAC and
+    sends the frame directly. Otherwise it uses the matching route's next hop, usually the default
+    gateway, and ARPs for the **gateway's** MAC. The IP destination stays the final host. A wrong
+    subnet mask breaks this decision, so the host either tries to ARP for remote hosts or sends local
+    traffic via the router.
+  keyPoints:
+    - "Gateway = router used for destinations with no more specific route (0.0.0.0/0)"
+    - "On-link check: compare destination with own subnet (mask)"
+    - "On-link: ARP for the destination; off-link: ARP for the gateway, IP destination unchanged"
+    - "Misconfigured masks cause failures in this decision"
+  explanation: |
+    Pairs with net-layers-003.
+  tags: [routing, arp, addressing]
+
+- id: net-concept-004
+  topic: networking
+  subtopic: TLS
+  difficulty: easy
+  type: short
+  prompt: |
+    What security properties does HTTPS add over HTTP, and what does it **not** protect?
+  reference: |
+    TLS provides:
+    - **Confidentiality**: request and response contents, including URLs, headers and cookies, are
+      encrypted.
+    - **Integrity**: tampering is detected through AEAD tags.
+    - **Server authentication**: the certificate proves you're talking to the holder of the key for
+      that domain name, preventing man-in-the-middle attacks. Client authentication is optional (mTLS).
+
+    It doesn't hide metadata: IP addresses, ports, the domain name in SNI (unless ECH is used) and in
+    DNS (unless DoH/DoT is used), and traffic sizes and timing. It doesn't protect data on the endpoints
+    themselves (a compromised server, XSS, malware). It doesn't make the site trustworthy, only
+    authentic. And it doesn't protect anything beyond where TLS terminates, e.g. traffic behind a load
+    balancer.
+  keyPoints:
+    - "Confidentiality of contents (including path, headers, cookies)"
+    - "Integrity: tampering detected"
+    - "Server authentication via certificates (optional client auth)"
+    - "Not hidden: IPs, SNI/DNS names (without ECH/DoH), sizes and timing"
+    - "No protection at the endpoints or after TLS termination"
+  explanation: |
+    A good answer is clear about what remains visible.
+  tags: [tls, https, security]
+
+- id: net-concept-005
+  topic: networking
+  subtopic: Load balancing and proxies
+  difficulty: easy
+  type: short
+  prompt: |
+    What does a load balancer do? Name common balancing algorithms and when each fits.
+  reference: |
+    A load balancer spreads incoming connections or requests across a pool of backends behind one
+    address (a VIP), runs health checks to avoid sending to dead backends, and enables scaling and
+    zero-downtime deploys. It may also terminate TLS or do L7 routing.
+
+    Algorithms:
+    - **Round robin** (optionally weighted): simple, fine when requests are uniform.
+    - **Least connections / least outstanding requests**: better when request cost or connection
+      lifetime varies (long-lived connections, slow requests).
+    - **Random** or **power of two random choices**: near least-loaded with little coordination; good
+      for distributed balancers.
+    - **Hash-based** (source IP, header, or consistent hashing on a key): stickiness and cache affinity,
+      at the cost of uneven load with hot keys.
+    - **Latency-aware / EWMA**: picks backends by observed response time.
+  keyPoints:
+    - "Distributes load across backends behind a VIP, with health checks"
+    - "Round robin / weighted round robin for uniform work"
+    - "Least connections / least outstanding requests for variable cost or long-lived connections"
+    - "Hashing (incl. consistent hashing) for affinity / cache locality"
+    - "Power of two choices or latency-based as refinements"
+  explanation: |
+    Easy systems-design primer.
+  tags: [load-balancing]
+
+- id: net-concept-006
+  topic: networking
+  subtopic: TCP flow and congestion control
+  difficulty: easy
+  type: short
+  prompt: |
+    Explain the difference between **latency**, **bandwidth** and **throughput**, and give an example
+    where adding bandwidth doesn't make a transfer faster.
+  reference: |
+    **Latency** is the time for a bit or message to get from A to B: propagation, plus serialisation,
+    plus queueing and processing, often quoted as RTT. **Bandwidth** is a link's capacity in bits per
+    second. **Throughput** is the rate actually achieved end to end, limited by the bottleneck link and
+    by protocol effects: window/RTT, slow start, loss, application behaviour.
+
+    Examples where more bandwidth doesn't help:
+    - Small transfers and web pages, dominated by handshake RTTs and slow start. Going from 100 Mbit/s
+      to 1 Gbit/s barely changes page load time, but halving RTT does.
+    - A window-limited TCP flow (throughput ≤ window/RTT).
+    - Chatty request/response protocols doing many sequential round trips.
+
+    Reducing latency, or the number of round trips, is what helps in these cases.
+  keyPoints:
+    - "Latency = delay (propagation, serialisation, queueing, processing), often as RTT"
+    - "Bandwidth = capacity; throughput = achieved rate"
+    - "Throughput limited by bottleneck plus window/RTT, slow start, loss"
+    - "Example: small/chatty transfers dominated by RTTs, so more bandwidth doesn't help"
+  explanation: |
+    Grigorik's *High Performance Browser Networking* makes this point at length: latency, not bandwidth,
+    is the bottleneck for most web traffic.
+  tags: [latency, bandwidth, throughput]
+  source: { name: "High Performance Browser Networking (Grigorik), ch. 1", url: "https://hpbn.co/" }
+
+- id: net-concept-007
+  topic: networking
+  subtopic: Debugging tools
+  difficulty: easy
+  type: short
+  prompt: |
+    What can `ping` and `traceroute` tell you about a network problem, and what are their blind spots?
+  reference: |
+    `ping` checks reachability at the IP level and measures RTT and packet loss over time (jitter,
+    intermittent loss). `traceroute`/`mtr` show the sequence of routers (hops) and per-hop RTT, which
+    can reveal routing loops, unexpected paths and where loss or latency *starts*, provided it persists
+    to the destination.
+
+    Blind spots: ICMP is often filtered or rate-limited, so "no reply" doesn't mean down. Routers
+    generate ICMP on a slow path, so per-hop latency and loss can be misleading. ECMP can send each
+    probe along a different path (Paris-traceroute addresses this). The return path may differ from the
+    forward path. Neither tool tests the actual application port, TCP behaviour, DNS or TLS: a host can
+    answer ping while its service is down, or the reverse. Use `traceroute -T`, `nc`/`curl` or
+    `tcpdump` for those.
+  keyPoints:
+    - "ping: reachability, RTT, loss, jitter"
+    - "traceroute/mtr: hop path, where latency or loss begins"
+    - "ICMP filtering/rate-limiting makes missing replies or slow hops misleading"
+    - "Asymmetric paths and ECMP complicate interpretation"
+    - "Doesn't test the application port/TCP/TLS; use TCP-based probes, curl, tcpdump"
+  explanation: |
+    Checks practical judgement, not just tool trivia.
+  tags: [ping, traceroute, debugging]
+
+- id: net-concept-008
+  topic: networking
+  subtopic: Multicast
+  difficulty: easy
+  type: short
+  prompt: |
+    Define unicast, broadcast, multicast and anycast, with an example use of each.
+  reference: |
+    - **Unicast**: one sender to one specific receiver. Most traffic (HTTP, SSH).
+    - **Broadcast**: one to all hosts on the local network segment (IPv4 only, e.g. 255.255.255.255 or
+      the subnet broadcast address). Used by ARP requests and DHCP discovery. Doesn't cross routers.
+    - **Multicast**: one to a *group* of interested receivers that joined (224.0.0.0/4, ff00::/8). The
+      network replicates packets as needed. Used for market data feeds, IPTV, routing protocols (OSPF),
+      mDNS. IPv6 uses it instead of broadcast.
+    - **Anycast**: one to the *nearest* of several hosts sharing one address, chosen by routing. Used
+      for DNS root servers, public resolvers (1.1.1.1, 8.8.8.8) and CDN edges.
+  keyPoints:
+    - "Unicast: one-to-one"
+    - "Broadcast: one-to-all on the local segment (ARP, DHCP); none in IPv6"
+    - "Multicast: one-to-many subscribers who joined a group (market data, IPTV)"
+    - "Anycast: one-to-nearest of many sharing an address (DNS, CDNs)"
+  explanation: |
+    Warm-up for the multicast questions.
+  tags: [multicast, anycast, broadcast]
+
+- id: net-concept-009
+  topic: networking
+  subtopic: DNS
+  difficulty: easy
+  type: short
+  prompt: |
+    What is a DNS TTL, where is DNS data cached along the way, and what are the trade-offs of short and
+    long TTLs?
+  reference: |
+    The TTL (time to live, in seconds) on each resource record tells caches how long they may reuse it
+    before asking again. Caching happens in the browser, the OS stub (systemd-resolved, nscd, the macOS
+    mDNSResponder), sometimes the application or language runtime (the JVM caches DNS), the recursive
+    resolver (shared by many users), and also for negative answers (NXDOMAIN, per the SOA minimum,
+    RFC 2308).
+
+    **Long TTLs**: fewer queries, faster lookups (cache hits), resilience if the authoritative servers
+    are briefly down, but slow to change (migrations, failover). **Short TTLs**: changes take effect
+    quickly (DNS-based failover, traffic steering), at the cost of more query load, more lookups paying
+    full resolution latency, and more dependence on authoritative availability. Some caches clamp very
+    low or very high TTLs.
+  keyPoints:
+    - "TTL = how long a cache may reuse a record"
+    - "Caches: browser, OS stub, runtime (e.g. JVM), recursive resolver; negative caching"
+    - "Long TTL: fewer lookups, resilient, slow to change"
+    - "Short TTL: agile failover/steering, more load and latency, more dependence on authoritative servers"
+  explanation: |
+    Pairs with net-dns-006 (the TTL migration trap).
+  tags: [dns, ttl, caching]
+
+- id: net-concept-010
+  topic: networking
+  subtopic: IPv6
+  difficulty: medium
+  type: short
+  prompt: |
+    Besides the bigger address space, what are the main differences between IPv6 and IPv4 that matter
+    to engineers operating services?
+  reference: |
+    - **128-bit addresses**, so end-to-end addressing without NAT is possible. Subnets are normally
+      /64, and hosts often hold several addresses (link-local fe80::/10, global, temporary privacy
+      addresses).
+    - **Address configuration**: SLAAC from router advertisements, and/or DHCPv6.
+    - **No broadcast**: multicast is used instead. ARP is replaced by **Neighbor Discovery** over
+      ICMPv6, so ICMPv6 must not be blindly filtered.
+    - **Simpler fixed 40-byte header** with chained extension headers, and no header checksum.
+    - **No fragmentation by routers**: only the source fragments, PMTUD via Packet Too Big is
+      essential, and the minimum MTU is 1280.
+    - **Operational differences**: dual stack and Happy Eyeballs (clients prefer IPv6 and fall back),
+      AAAA records, separate firewall rules (ip6tables/nftables), logging and rate-limiting by /64
+      rather than per address, and NAT64/DNS64 for IPv6-only networks.
+  keyPoints:
+    - "128-bit addressing, /64 subnets, multiple addresses per interface, no need for NAT"
+    - "SLAAC/DHCPv6; Neighbor Discovery (ICMPv6) replaces ARP; no broadcast"
+    - "Fixed 40-byte header, extension headers, no checksum"
+    - "No router fragmentation; PMTUD via ICMPv6 essential; min MTU 1280"
+    - "Ops: dual stack/Happy Eyeballs, separate firewall rules, rate-limit per prefix"
+  explanation: |
+    Shows working knowledge beyond "longer addresses".
+  tags: [ipv6]
+
+- id: net-concept-011
+  topic: networking
+  subtopic: HTTP semantics
+  difficulty: medium
+  type: short
+  prompt: |
+    A client calls `POST /payments` and the connection drops before it gets a response. It doesn't
+    know whether the payment happened. How do you design the API so the client can retry safely?
+  reference: |
+    POST isn't idempotent, so a blind retry might charge twice. Use an **idempotency key**. The client
+    generates a unique key (a UUID) per logical operation and sends it in a header such as
+    `Idempotency-Key`, reusing the same key on every retry. The server stores the key with the request
+    fingerprint and the outcome, atomically with performing the operation (same transaction, or a
+    unique constraint). A retry with the same key returns the stored result instead of executing again.
+    A concurrent duplicate either waits or gets 409 while the first is in progress. A reused key with a
+    different body is rejected. Keys expire after a retention window.
+
+    Clients retry with exponential backoff and jitter, and only for failures where the outcome is
+    unknown or the error is transient (timeouts, connection resets, 5xx, 429), not for 4xx validation
+    errors. Alternatives: let the client create the resource ID and use PUT (`PUT /payments/{id}` is
+    naturally idempotent).
+  keyPoints:
+    - "POST isn't idempotent; retries can duplicate side effects"
+    - "Client-generated idempotency key, reused across retries"
+    - "Server stores key + result atomically with the operation; returns stored result on replay"
+    - "Handle concurrent duplicates and key/body mismatch; keys expire"
+    - "Retry with exponential backoff + jitter only on transient/unknown outcomes; or PUT with client-chosen ID"
+  explanation: |
+    Bridges networking failure semantics (lost responses) with API design.
+  tags: [http, idempotency, retries, api-design]
+
+- id: net-concept-012
+  topic: networking
+  subtopic: TCP retransmission
+  difficulty: medium
+  type: short
+  prompt: |
+    How does TCP detect that a segment was lost, and how does it recover? Cover both timer-based and
+    ACK-based detection.
+  reference: |
+    **Timer-based**: the sender keeps a retransmission timeout (RTO) computed from smoothed RTT and RTT
+    variance (RFC 6298). If the oldest unacknowledged segment isn't ACKed before the RTO fires, it's
+    retransmitted, the RTO doubles (exponential backoff), and cwnd collapses to 1 segment (slow start).
+    It's slow, at least 200 ms on Linux and 1 s per the RFC, so it's the last resort.
+
+    **ACK-based**: segments arriving after a gap make the receiver send **duplicate ACKs**. Three dup
+    ACKs trigger **fast retransmit** of the missing segment and **fast recovery**: halve cwnd, don't
+    restart slow start. **SACK** tells the sender exactly which blocks are missing, so several losses
+    per window are repaired in one RTT. Modern stacks use **RACK-TLP** (RFC 8985): time-based detection
+    ("a later-sent segment was ACKed and this one is now older than RTT plus a reordering window")
+    plus a Tail Loss Probe, so losses at the end of a transfer, where no dup ACKs come back, are found
+    without waiting for an RTO.
+  keyPoints:
+    - "RTO timer from SRTT/RTTVAR; on expiry retransmit, back off exponentially, cwnd to 1"
+    - "Duplicate ACKs (3) trigger fast retransmit and fast recovery (cwnd halved, no slow start)"
+    - "SACK identifies precisely which segments are missing"
+    - "Tail losses lack dup ACKs; TLP/RACK detect them faster than RTO"
+  explanation: |
+    Core TCP mechanics; strong answers mention tail loss, which dominates short-flow latency.
+  tags: [tcp, retransmission, sack, rack]
+
+- id: net-concept-013
+  topic: networking
+  subtopic: WebSockets
+  difficulty: medium
+  type: short
+  prompt: |
+    Compare WebSockets, Server-Sent Events (SSE) and long polling for pushing real-time updates to a
+    browser. When would you pick each?
+  reference: |
+    - **Long polling**: the client sends a request that the server holds open until there's data (or a
+      timeout), then the client immediately re-requests. It works everywhere over plain HTTP, but costs
+      a request per message batch, has added latency and header overhead, and is awkward for high
+      message rates. Use it as a fallback.
+    - **SSE** (`text/event-stream`, EventSource): one long-lived HTTP response streaming text events
+      **server to client** only. Automatic reconnection with Last-Event-ID, works with HTTP/2
+      multiplexing, proxies and auth. Good for notifications, feeds and dashboards when the client
+      rarely sends (it can use ordinary requests).
+    - **WebSockets**: a full-duplex, message-framed channel after an HTTP Upgrade. Low per-message
+      overhead, binary support, client to server too. Good for chat, collaborative editing, games and
+      trading UIs. Costs: a stateful connection per client (load balancing, scaling, sticky routing),
+      your own reconnection, heartbeats and backpressure logic, and some proxies or firewalls need
+      configuration.
+
+    (WebTransport over HTTP/3 is an emerging alternative.)
+  keyPoints:
+    - "Long polling: plain HTTP, universal fallback, per-message request overhead and latency"
+    - "SSE: one-way server->client over HTTP, auto-reconnect with Last-Event-ID, text only"
+    - "WebSockets: full-duplex, low overhead, binary; good for interactive bidirectional apps"
+    - "Operational trade-offs: long-lived stateful connections, LB/scaling, reconnection and heartbeats"
+  explanation: |
+    Common in product-engineering system-design rounds.
+  tags: [websockets, sse, http]
+
+- id: net-concept-014
+  topic: networking
+  subtopic: Routing
+  difficulty: medium
+  type: short
+  prompt: |
+    Routers and switches doing **ECMP** (equal-cost multipath) usually hash each packet's 5-tuple to
+    choose a path rather than spraying packets round-robin. Why? What's the downside, and how is it
+    mitigated?
+  reference: |
+    Hashing the 5-tuple (src/dst IP, src/dst port, protocol) keeps every packet of a flow on the same
+    path, so they arrive **in order**. Per-packet spraying across paths with different delays reorders
+    packets, which TCP misreads as loss: duplicate ACKs, spurious fast retransmits, cwnd cuts. Throughput
+    collapses.
+
+    Downside: load is balanced per *flow*, not per byte. A few large "elephant" flows can hash onto the
+    same link while others sit idle (hash collisions and polarisation, where every tier makes the same
+    choice). One flow can never use more than one path's bandwidth. Mitigations: per-hop hash seeds to
+    avoid polarisation; flowlet switching, which re-hashes a flow after an idle gap long enough that
+    reordering can't happen; congestion-aware load balancing (CONGA and similar); splitting big
+    transfers into several flows; MPTCP; or packet spraying in fabrics whose transports tolerate
+    reordering (as in some RDMA/AI fabrics).
+  keyPoints:
+    - "Flow hashing keeps packets of a flow in order on one path"
+    - "Per-packet spraying reorders; TCP treats reordering as loss (dup ACKs, spurious retransmit)"
+    - "Downside: imbalance from elephant-flow collisions; one flow limited to one path"
+    - "Mitigations: hash seeds against polarisation, flowlets, congestion-aware LB, multiple flows / MPTCP"
+  explanation: |
+    Data-centre networking question for infrastructure roles.
+  tags: [routing, ecmp, load-balancing, tcp]
+
+- id: net-concept-015
+  topic: networking
+  subtopic: TCP connection lifecycle
+  difficulty: hard
+  type: short
+  prompt: |
+    Machine B crashes and reboots while it had an established TCP connection with machine A. Nobody
+    sent a FIN or RST. What does A observe, and when? Distinguish A sending data from A only waiting to
+    read.
+  reference: |
+    After the reboot, B's kernel has no state for the connection, which is now **half-open**: A still
+    thinks it's ESTABLISHED.
+
+    - **A sends data**: the segment reaches B, which has no matching socket, and B answers with an
+      **RST**. A's connection is aborted, and its next send or recv fails with ECONNRESET (or EPIPE /
+      SIGPIPE on a later write). If B is still down, A gets no answer: it retransmits with exponential
+      backoff until the retry limit (Linux `tcp_retries2`, ~15 retries, roughly 15+ minutes, or
+      TCP_USER_TIMEOUT), then reports ETIMEDOUT.
+    - **A only reads** (idle, waiting for B): nothing is ever sent, so A never finds out. The recv
+      blocks forever unless TCP keepalive (2 hours by default on Linux) or an application heartbeat or
+      read timeout probes the peer, at which point the probe draws an RST or times out.
+
+    That's why long-lived connections need heartbeats or timeouts at the application level.
+  keyPoints:
+    - "Half-open connection: B has lost all state, A still ESTABLISHED"
+    - "If A sends, B replies RST and A gets ECONNRESET"
+    - "If B is unreachable, A retransmits until tcp_retries2 / TCP_USER_TIMEOUT, then ETIMEDOUT"
+    - "If A only waits to read, it never notices without keepalive/heartbeat/timeouts"
+  explanation: |
+    Tests a real understanding of TCP state. A dead peer is never detected passively.
+  tags: [tcp, half-open, keepalive, rst]
+
+- id: net-concept-016
+  topic: networking
+  subtopic: UDP
+  difficulty: hard
+  type: short
+  prompt: |
+    Design the reliability layer for a protocol that sends a stream of small messages over **UDP** from
+    one sender to many receivers, where latency matters more than bandwidth. What goes in the header,
+    and how do receivers detect and recover from loss without overwhelming the sender?
+  reference: |
+    Header: a session or stream ID, a monotonically increasing **sequence number** per stream (wide
+    enough not to wrap, e.g. 64-bit), a message count when batching several messages per datagram, a
+    timestamp, and a flags/version field. Keep each datagram under the path MTU, so it's never
+    fragmented.
+
+    Receivers track the next expected sequence number, deliver in order (or out of order if the
+    application allows), and detect gaps from jumps. Heartbeats carrying the latest sequence number
+    reveal tail loss and dead senders.
+
+    Recovery options:
+    - Redundancy that needs no round trip: duplicate A/B streams over separate paths, or forward error
+      correction.
+    - **NAK-based** retransmission rather than ACKs: with many receivers, ACKs cause implosion at the
+      sender. Receivers ask for missing ranges, after a random delay to suppress duplicate requests (as
+      in SRM/PGM), from a separate retransmission server, so the live sender isn't slowed.
+    - Periodic **snapshots** so a receiver that's far behind, or just joined, resyncs from state rather
+      than replaying everything.
+
+    Also needed: a retransmission buffer or window with bounded memory, sender-side rate limiting or
+    congestion control (RFC 8085), handling of sender restarts (session ID or epoch), and stale-data
+    signalling to the application.
+  keyPoints:
+    - "Sequence numbers per stream (plus session/epoch) to detect gaps and duplicates; MTU-sized datagrams"
+    - "Heartbeats to detect tail loss and dead senders"
+    - "Redundancy without round trips: A/B duplicate feeds or FEC"
+    - "NAK-based recovery (not per-receiver ACKs) via separate retransmit service; suppression/backoff"
+    - "Snapshots for late joiners or large gaps; bounded buffers and rate limiting"
+  explanation: |
+    This is essentially how exchange market-data feeds and reliable-multicast protocols are built.
+  tags: [udp, reliability, multicast, design, market-data]
+
+- id: net-concept-017
+  topic: networking
+  subtopic: TCP connection lifecycle
+  difficulty: hard
+  type: short
+  prompt: |
+    What is TCP Fast Open (RFC 7413), what latency does it save, and why has it seen limited deployment
+    on the public Internet?
+  reference: |
+    TFO lets a client send data in the **SYN** of a repeat connection. On the first connection the
+    server gives the client a TFO **cookie** (a MAC of the client IP under a server secret). Later, the
+    client sends SYN + cookie + request data. If the cookie checks out, the server hands the data to the
+    application at once and can reply before the handshake completes, saving **one RTT** for
+    request/response protocols.
+
+    Limits:
+    - **Replay**: a duplicated or replayed SYN can deliver its data twice, so only idempotent requests
+      are safe (the same issue as TLS 0-RTT).
+    - **Middleboxes**: some drop SYNs carrying data or unknown options, or strip the option, so clients
+      need fallback and blackhole detection. Linux disables TFO after repeated failures.
+    - **Privacy**: the cookie can be used to track clients across networks.
+    - It needs application changes (sendto with MSG_FASTOPEN, or TCP_FASTOPEN_CONNECT) and server
+      support.
+    - For HTTPS, TLS 1.3 and especially QUIC's 0-RTT and 1-RTT handshakes give comparable gains in a
+      more deployable way.
+
+    Browsers tried it and largely gave up. It's used more within controlled environments.
+  keyPoints:
+    - "Data carried in the SYN on repeat connections, authenticated by a server-issued cookie"
+    - "Saves one RTT for request/response"
+    - "SYN data can be replayed/duplicated, so only idempotent requests"
+    - "Middleboxes drop or strip it; fallback/blackhole detection needed"
+    - "Privacy/tracking concerns and QUIC/TLS 0-RTT alternatives limited adoption"
+  explanation: |
+    Good for checking whether someone reasons about deployability, not just protocol design.
+  tags: [tcp, tfo, latency]
+  source: { name: "RFC 7413", url: "https://www.rfc-editor.org/rfc/rfc7413" }
+
+- id: net-concept-018
+  topic: networking
+  subtopic: TCP flow and congestion control
+  difficulty: hard
+  type: short
+  prompt: |
+    At 10 Gbit/s, roughly how long does a TCP connection take to cycle through its entire 32-bit
+    sequence-number space? Why is that a correctness problem, and what mechanism fixes it?
+  reference: |
+    2³² bytes × 8 = 3.44 × 10¹⁰ bits. At 10¹⁰ bit/s that's about **3.4 seconds** (about 34 s at
+    1 Gbit/s). TCP assumes a segment can survive in the network for up to an MSL (nominally 2 minutes).
+    If sequence numbers wrap faster than old segments can die, a delayed duplicate from a previous
+    cycle could fall inside the current receive window and be accepted as new data, silently
+    corrupting the stream. The 16-bit IP ID field has the same problem for IPv4 fragment reassembly.
+
+    Fix: **PAWS** (Protection Against Wrapped Sequences, RFC 7323), using the TCP **Timestamps**
+    option. Each segment carries a monotonically increasing timestamp value. A segment whose timestamp
+    is older than the most recent one seen on the connection is rejected as an old duplicate, even if
+    its sequence number looks acceptable. Timestamps also give an RTT sample per ACK and allow
+    tcp_tw_reuse safely.
+  keyPoints:
+    - "Computation: 2^32 bytes × 8 / 10^10 bit/s ≈ 3.4 s"
+    - "Wrap faster than MSL means an old duplicate can be accepted as new data"
+    - "PAWS uses TCP timestamps to reject segments with stale timestamp values"
+    - "Timestamps also enable better RTT measurement (and tw_reuse safety)"
+  explanation: |
+    Quantitative plus conceptual: high bandwidth breaks one of TCP's original assumptions.
+  tags: [tcp, paws, timestamps, quantitative]
+  source: { name: "RFC 7323 §5", url: "https://www.rfc-editor.org/rfc/rfc7323" }
+
+- id: net-concept-019
+  topic: networking
+  subtopic: Kernel bypass and low latency
+  difficulty: hard
+  type: short
+  prompt: |
+    Trace a UDP packet from the moment it hits a Linux server's NIC until `recv()` returns it to the
+    application. Where does time (and jitter) go?
+  reference: |
+    1. **NIC**: the PHY/MAC receives the frame and checks the FCS. RSS/filters pick an RX queue, and the
+       NIC **DMAs** the packet into a pre-posted buffer in that queue's ring, then writes the descriptor
+       back.
+    2. **Interrupt**: the NIC raises an MSI-X interrupt for the queue, possibly **delayed by interrupt
+       coalescing**. The driver's IRQ handler does little except schedule **NAPI** and mask further
+       interrupts.
+    3. **Softirq (NET_RX)**: the NAPI poll loop, on the CPU that took the IRQ, pulls packets from the
+       ring within a budget, builds **sk_buffs**, may apply GRO, and refills the ring.
+    4. **Protocol stack**: `netif_receive_skb` -> any taps (tcpdump/AF_PACKET) -> IP receive (checks,
+       netfilter/iptables hooks, routing decision, rp_filter) -> UDP: socket lookup by address and
+       port, checksum, then the skb is queued on the socket's receive queue. If the buffer is full it's
+       dropped (UdpRcvbufErrors).
+    5. **Wakeup**: a waiting thread, blocked in recv or epoll_wait, is woken. The **scheduler** must run
+       it: possibly migrate it, possibly preempt something else, possibly wake a CPU from a deep idle
+       C-state.
+    6. **Syscall return**: recv copies the payload from the skb into the user buffer and returns.
+
+    Latency and jitter come from coalescing timers, softirq scheduling (ksoftirqd under load), cache
+    misses and cross-NUMA or cross-core hand-offs, netfilter rules, wakeup and scheduling latency, idle
+    C-states and frequency scaling, the copy itself, and other work on the same core. Remedies: busy
+    polling, pinning the IRQ and thread to the same isolated core or NUMA node, disabling deep C-states,
+    trimming netfilter, or kernel bypass to skip steps 2–6.
+  keyPoints:
+    - "NIC DMA into RX ring, chosen by RSS; interrupt (with coalescing)"
+    - "NAPI softirq poll builds sk_buffs, GRO, then IP/UDP layers including netfilter and socket lookup"
+    - "Enqueue on socket receive queue (drops if full), then wake the waiting thread"
+    - "Scheduler wakeup latency, then copy to user space on recv"
+    - "Names jitter sources (coalescing, ksoftirqd, C-states, NUMA/cache, contention) and remedies (busy poll, pinning, bypass)"
+  explanation: |
+    The "packet hits the NIC" walkthrough that HFT interviewers love.
+  tags: [linux, low-latency, nic, napi, kernel]
+
+- id: net-concept-020
+  topic: networking
+  subtopic: Sockets API and options
+  difficulty: hard
+  type: short
+  prompt: |
+    Explain the **thundering herd** problem for servers with many worker processes or threads waiting on
+    one listening socket, and the Linux mechanisms that address it.
+  reference: |
+    When many workers wait for the same event, one new connection can wake all of them. Only one
+    succeeds in accept(); the rest find nothing (EAGAIN) and go back to sleep. Wasted wakeups, context
+    switches and lock contention on the accept queue grow with the number of workers, and hurt tail
+    latency.
+
+    On Linux, blocking **accept()** on a shared socket already wakes only one waiter, because the kernel uses exclusive wait-queue wakeups for accept. The
+    herd shows up with **epoll**/select/poll, when every worker has the listening fd in its own epoll
+    set: all of them are notified. Mitigations:
+    - **EPOLLEXCLUSIVE** (Linux 4.5): wake only one (or a few) of the epoll instances waiting on the fd.
+    - **SO_REUSEPORT**: give each worker its own listening socket and accept queue. The kernel spreads
+      connections by hash, so there's no sharing at all, though a slow worker's queue can back up
+      (BPF steering helps).
+    - An accept mutex, as nginx historically used, or a single acceptor thread that hands connections
+      to workers.
+    - The same problem appears with condition variables (notify_all versus notify_one) and with clients
+      reconnecting simultaneously, which needs jittered backoff.
+  keyPoints:
+    - "Many waiters woken for one event, only one wins; wasted wakeups and contention"
+    - "Blocking accept wakes one on Linux; the herd appears with epoll/select on a shared listen fd"
+    - "EPOLLEXCLUSIVE"
+    - "SO_REUSEPORT per-worker listeners (or accept mutex / single acceptor)"
+  explanation: |
+    Systems-programming depth question; cites the specific kernel features.
+  tags: [epoll, so-reuseport, linux, scalability]
+
+- id: net-concept-021
+  topic: networking
+  subtopic: Sockets API and options
+  difficulty: hard
+  type: short
+  prompt: |
+    A service sends large files and responses over TCP and is CPU-bound on copying data. What zero-copy
+    or reduced-copy mechanisms does Linux offer, and what are their caveats?
+  reference: |
+    - **sendfile(2)**: the kernel sends straight from the page cache to the socket, with no copy into
+      user space and back. Ideal for static files. Not usable when the data must be transformed in user
+      space. With TLS it needs **kTLS**, which does the encryption in the kernel or offloads it to the
+      NIC.
+    - **splice/vmsplice/tee**: move data between pipes, files and sockets by page reference.
+    - **MSG_ZEROCOPY** (Linux 4.14+, SO_ZEROCOPY): send() pins the user pages instead of copying them.
+      The application must not reuse the buffer until a completion notification arrives on the socket
+      error queue. Because of page pinning and the extra notification work, it pays off only for large
+      writes (roughly ≥10 KB), and data may be copied anyway in some paths, e.g. loopback.
+    - **io_uring** zero-copy send, with registered buffers.
+    - Receive side: `TCP_ZEROCOPY_RECEIVE` (mmap of page-aligned payloads) needs aligned MTUs and header
+      split. Kernel bypass or RDMA avoid kernel copies altogether.
+
+    Also reduce *other* per-byte costs: GSO/TSO, so the NIC segments, and larger writes.
+  keyPoints:
+    - "sendfile: page cache to socket without user-space copy (kTLS for encrypted)"
+    - "splice/vmsplice move pages between pipes/sockets/files"
+    - "MSG_ZEROCOPY: pins pages; must wait for completion notification; only worth it for large sends"
+    - "io_uring zero-copy and receive-side options (TCP_ZEROCOPY_RECEIVE) are harder"
+    - "Offloads like TSO/GSO and kTLS reduce per-byte CPU"
+  explanation: |
+    Infra and performance-engineering depth.
+  tags: [linux, zero-copy, sendfile, performance]
+
+- id: net-concept-022
+  topic: networking
+  subtopic: Debugging tools
+  difficulty: hard
+  type: short
+  prompt: |
+    A networked service shows a mean latency of 2 ms but a p99 of 200 ms. What network-related causes
+    produce this kind of tail, and how would you confirm each?
+  reference: |
+    Bimodal tails with suspiciously round numbers usually point at timers:
+    - **TCP retransmissions**: a lost packet costs at least an RTO (200 ms minimum on Linux, 1 s for a
+      lost SYN or SYN-ACK). Confirm with `ss -ti` retrans counters, `nstat TcpRetransSegs`, tcpdump.
+    - **Nagle + delayed ACK** (~40 ms on Linux, 200 ms elsewhere): look for packet gaps of that size;
+      try TCP_NODELAY.
+    - **DNS timeouts** (5 s retries) or slow resolver paths in some requests.
+    - **Accept-queue or SYN-queue overflow** causing SYN retransmissions: ListenOverflows counter,
+      1 s/3 s steps.
+    - **Queueing**: a full receive window, a slow consumer, head-of-line blocking on a shared
+      connection, connection-pool exhaustion while waiting for a free connection.
+    - **Microbursts** causing switch or NIC drops (`ethtool -S`, switch counters).
+
+    Plus non-network causes the network gets blamed for: GC pauses, lock contention, CPU throttling.
+
+    Confirm by measuring latency histograms (not averages), tagging slow requests and correlating with
+    retransmissions and packet captures at the same timestamps.
+  keyPoints:
+    - "Retransmission timeouts (≥200 ms RTO; 1 s SYN) create large tail steps"
+    - "Nagle/delayed-ACK interaction (40/200 ms)"
+    - "Listen-queue overflow / SYN retries, DNS timeouts"
+    - "Queueing: slow consumers, HOL on shared connections, pool exhaustion, microburst drops"
+    - "Confirm with histograms + ss -ti / nstat / tcpdump correlation; rule out GC/locks"
+  explanation: |
+    A senior question about reasoning from latency signatures.
+  tags: [latency, tail-latency, debugging, tcp]

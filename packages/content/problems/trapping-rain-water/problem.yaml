@@ -1,0 +1,16 @@
+slug: trapping-rain-water
+title: Trapping Rain Water
+difficulty: hard
+tags: [array, two-pointers, stack, monotonic-stack, prefix-sum]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: trap
+      params:
+        - { name: height, type: { array: int } }
+      returns: long
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 42; NeetCode 150); among the most frequently asked hard questions at Google, Amazon and Goldman Sachs
+  url: https://leetcode.com/problems/trapping-rain-water/

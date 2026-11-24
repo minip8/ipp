@@ -1,0 +1,17 @@
+slug: three-sum
+title: 3Sum
+difficulty: medium
+tags: [array, two-pointers, sorting]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: threeSum
+      params:
+        - { name: nums, type: { array: int } }
+      returns: { list: { list: int } }
+      compare: unordered_deep
+limits: { timeMs: 2000, memoryMb: 256 }
+source:
+  name: Classic interview problem (Blind 75; LeetCode 15)
+  url: https://leetcode.com/problems/3sum/

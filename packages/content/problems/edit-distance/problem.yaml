@@ -1,0 +1,17 @@
+slug: edit-distance
+title: Edit Distance
+difficulty: medium
+tags: [dynamic-programming, string]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: minDistance
+      params:
+        - { name: word1, type: string }
+        - { name: word2, type: string }
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 72; Levenshtein distance)
+  url: https://leetcode.com/problems/edit-distance/

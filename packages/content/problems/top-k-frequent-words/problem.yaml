@@ -1,0 +1,17 @@
+slug: top-k-frequent-words
+title: Top K Frequent Words
+difficulty: medium
+tags: [heap, hash-table, sorting, string]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: topKFrequent
+      params:
+        - { name: words, type: { list: string } }
+        - { name: k, type: int }
+      returns: { list: string }
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 692)
+  url: https://leetcode.com/problems/top-k-frequent-words/

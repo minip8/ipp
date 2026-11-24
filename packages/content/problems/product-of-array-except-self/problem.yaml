@@ -1,0 +1,16 @@
+slug: product-of-array-except-self
+title: Product of Array Except Self
+difficulty: medium
+tags: [array, prefix-sum]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: productExceptSelf
+      params:
+        - { name: nums, type: { array: int } }
+      returns: { array: int }
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (Blind 75; LeetCode 238)
+  url: https://leetcode.com/problems/product-of-array-except-self/

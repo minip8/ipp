@@ -1,0 +1,16 @@
+slug: largest-rectangle-in-histogram
+title: Largest Rectangle in Histogram
+difficulty: hard
+tags: [array, stack, monotonic-stack]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: largestRectangleArea
+      params:
+        - { name: heights, type: { array: int } }
+      returns: long
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 84; NeetCode 150)
+  url: https://leetcode.com/problems/largest-rectangle-in-histogram/

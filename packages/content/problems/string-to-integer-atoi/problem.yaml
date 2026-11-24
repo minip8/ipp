@@ -1,0 +1,16 @@
+slug: string-to-integer-atoi
+title: String to Integer (atoi)
+difficulty: medium
+tags: [string, parsing]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: myAtoi
+      params:
+        - { name: s, type: string }
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 8); a favourite for testing edge-case discipline and overflow handling in C++
+  url: https://leetcode.com/problems/string-to-integer-atoi/

@@ -1,0 +1,564 @@
+- id: arch-cache-001
+  topic: computer-architecture
+  subtopic: Caches
+  type: single
+  difficulty: easy
+  prompt: |
+    A data cache is 32 KiB, 8-way set associative, with 64-byte lines. How many bits of the address are used as the **set index**?
+  choices:
+    - { id: a, text: "5" }
+    - { id: b, text: "6" }
+    - { id: c, text: "9" }
+    - { id: d, text: "12" }
+  answer: b
+  explanation: |
+    Number of lines = 32768 / 64 = 512. With 8 ways, sets = 512 / 8 = **64 = 2^6**, so 6 index bits.
+    The 6 bits below them are the byte offset within the 64-byte line (2^6 = 64).
+
+    - 9 is what you get if you forget associativity and treat it as direct-mapped (512 sets).
+    - 12 is index + offset together (6 + 6), which is the number of low address bits that select the set
+      *and* the byte — a useful number (it equals the 4 KiB page offset, see the VIPT question) but not the index width.
+  tags: [cache, address-bits, associativity]
+  source: { name: "Hennessy & Patterson, Computer Architecture: A Quantitative Approach, Appendix B" }
+
+- id: arch-cache-002
+  topic: computer-architecture
+  subtopic: Caches
+  type: single
+  difficulty: medium
+  prompt: |
+    A 1 MiB, 16-way set-associative cache with 64-byte lines is physically addressed, and physical addresses are 40 bits.
+    How is a physical address split into tag / index / offset?
+  choices:
+    - { id: a, text: "tag 24, index 10, offset 6" }
+    - { id: b, text: "tag 20, index 14, offset 6" }
+    - { id: c, text: "tag 28, index 6, offset 6" }
+    - { id: d, text: "tag 26, index 8, offset 6" }
+  answer: a
+  explanation: |
+    - Offset: 64-byte lines → log2(64) = **6** bits.
+    - Sets: 2^20 bytes / (2^6 bytes/line × 2^4 ways) = 2^10 sets → **10** index bits.
+    - Tag: 40 − 10 − 6 = **24** bits.
+
+    Choice (b) ignores the 16 ways (it computes 2^14 lines and uses that as the set count). The others mis-divide.
+    A quick sanity check: index + offset bits = log2(cache size / ways) = log2(64 KiB) = 16.
+  tags: [cache, address-bits, quantitative]
+
+- id: arch-cache-003
+  topic: computer-architecture
+  subtopic: Caches
+  type: single
+  difficulty: hard
+  prompt: |
+    Intel's L1 data cache went from 32 KiB 8-way (Skylake) to 48 KiB **12-way** (Sunny Cove / Ice Lake), keeping 64-byte lines.
+    Why did the designers raise associativity instead of keeping 8 ways and adding sets?
+  choices:
+    - { id: a, text: "The L1D is virtually indexed, physically tagged; keeping index + offset within the 12-bit 4 KiB page offset lets the set be selected in parallel with the TLB lookup without aliasing problems" }
+    - { id: b, text: "More ways always lower the hit latency because fewer tag comparisons are needed per access" }
+    - { id: c, text: "Higher associativity reduces compulsory misses, which dominate L1 miss rates" }
+    - { id: d, text: "Higher associativity is needed so that the L1 can be inclusive of the L2" }
+  answer: a
+  explanation: |
+    With 64 sets × 64-byte lines, index + offset = 6 + 6 = 12 bits, exactly the untranslated page offset of a 4 KiB page.
+    The cache can therefore pick the set using virtual-address bits while the TLB translates the upper bits in parallel, and
+    because those 12 bits are identical in the virtual and physical address, two virtual aliases of the same physical line
+    always land in the same set (no synonym problem). Growing the cache while keeping the VIPT trick means
+    capacity = 4 KiB × ways, hence 32 KiB → 8 ways and 48 KiB → 12 ways.
+
+    - (b) is backwards: more ways means *more* tag comparators and a wider way-select mux, which tends to cost latency/power.
+    - (c) compulsory misses are first-touch misses; no amount of associativity removes them (associativity reduces *conflict* misses).
+    - (d) L1 associativity has nothing to do with L2 inclusivity.
+  tags: [cache, vipt, tlb, associativity]
+
+- id: arch-cache-004
+  topic: computer-architecture
+  subtopic: Caches
+  type: single
+  difficulty: easy
+  prompt: |
+    `double a[4096][4096];` is stored row-major (C/C++). Which loop order makes the best use of the cache when summing all elements?
+    ```cpp
+    // A
+    for (int i = 0; i < 4096; ++i)
+      for (int j = 0; j < 4096; ++j) s += a[i][j];
+    // B
+    for (int j = 0; j < 4096; ++j)
+      for (int i = 0; i < 4096; ++i) s += a[i][j];
+    ```
+  choices:
+    - { id: a, text: "A: the inner loop walks consecutive addresses, so each 64-byte line serves 8 doubles and the prefetcher sees a sequential stream" }
+    - { id: b, text: "B: column order lets the hardware prefetcher fetch whole columns at once" }
+    - { id: c, text: "They are equivalent; the compiler always interchanges loops to the best order" }
+    - { id: d, text: "They are equivalent because the array fits in the L3 cache" }
+  answer: a
+  explanation: |
+    In row-major layout `a[i][j]` and `a[i][j+1]` are adjacent, so order A uses every byte of each fetched line (8 doubles per 64-byte line)
+    and produces a simple sequential stream. Order B jumps 4096 × 8 = 32 KiB between consecutive accesses: each access touches a new line
+    (and often a new 4 KiB page, stressing the TLB), and by the time the next column comes back around the line has usually been evicted.
+
+    - Compilers *can* interchange loops but it is not guaranteed (and for a floating-point reduction, reordering changes rounding, so it is usually not done without fast-math).
+    - The array is 4096² × 8 B = 128 MiB, far bigger than any L3.
+  tags: [cache, spatial-locality, loop-order]
+  source: { name: "Bryant & O'Hallaron, CS:APP, ch. 6 (locality)" }
+
+- id: arch-cache-005
+  topic: computer-architecture
+  subtopic: Caches
+  type: multiple
+  difficulty: medium
+  prompt: |
+    Using the "3 Cs" model of cache misses, which statements are correct? Select all that apply.
+  choices:
+    - { id: a, text: "A compulsory (cold) miss is the first access to a line; it would miss even in an infinitely large cache" }
+    - { id: b, text: "Capacity misses are those that would still occur in a fully associative cache of the same size" }
+    - { id: c, text: "Conflict misses are eliminated by making the cache fully associative (with the same capacity)" }
+    - { id: d, text: "Increasing associativity while keeping capacity fixed reduces capacity misses" }
+    - { id: e, text: "Prefetching can hide compulsory misses" }
+  answer: [a, b, c, e]
+  explanation: |
+    The 3C definitions are relative to idealised caches: compulsory = miss in an infinite cache; capacity = additional misses in a fully associative cache
+    of the same size; conflict = additional misses caused by limited associativity (they vanish in the fully associative case).
+
+    - (d) is wrong: associativity attacks *conflict* misses. Capacity misses are fixed by a bigger cache or a smaller working set (e.g. blocking).
+    - (e) is right: a prefetch brings the line in before the demand access, so the first demand access hits (the miss still happens, but off the critical path).
+  tags: [cache, miss-classification]
+  source: { name: "Hennessy & Patterson, Appendix B (the three Cs)" }
+
+- id: arch-cache-006
+  topic: computer-architecture
+  subtopic: Caches
+  type: single
+  difficulty: medium
+  prompt: |
+    L1 hit time is 4 cycles with a 5% miss rate. L2 hit time is 12 cycles with a **local** miss rate of 20%. Main memory costs 200 cycles.
+    What is the average memory access time (AMAT) seen by a load?
+  choices:
+    - { id: a, text: "6.6 cycles" }
+    - { id: b, text: "14.6 cycles" }
+    - { id: c, text: "4.6 cycles" }
+    - { id: d, text: "16 cycles" }
+  answer: a
+  explanation: |
+    AMAT = hit_L1 + miss_L1 × (hit_L2 + localmiss_L2 × mem)
+    = 4 + 0.05 × (12 + 0.20 × 200)
+    = 4 + 0.05 × 52
+    = 4 + 2.6 = **6.6 cycles**.
+
+    Common slips: forgetting that the L2 term is only paid on an L1 miss (gives 4 + 12 + 0.2×200×... style answers), or using the local L2 miss rate
+    as if it were global. The global L2 miss rate here is 0.05 × 0.2 = 1%, so 1% of loads pay the 200-cycle trip — and that 1% contributes 2 of the 6.6 cycles.
+  tags: [cache, amat, quantitative]
+  source: { name: "Hennessy & Patterson, Appendix B (AMAT)" }
+
+- id: arch-cache-007
+  topic: computer-architecture
+  subtopic: Caches
+  type: single
+  difficulty: easy
+  prompt: |
+    In a **write-back, write-allocate** cache, what happens when the CPU stores to an address whose line is not in the cache?
+  choices:
+    - { id: a, text: "The line is fetched into the cache, the store updates it there, and the line is marked dirty; memory is updated only when the line is evicted" }
+    - { id: b, text: "The store goes straight to memory and the cache is not touched" }
+    - { id: c, text: "The store is written to both the cache and memory immediately" }
+    - { id: d, text: "The store is dropped and retried after the line is evicted" }
+  answer: a
+  explanation: |
+    Write-allocate means a store miss brings the line in (on x86 this is a read-for-ownership, RFO); write-back means the modified line stays in
+    the cache with its dirty bit set and is written to the next level only on eviction. This is the normal policy for CPU data caches.
+
+    - (b) describes write-no-allocate (write-around).
+    - (c) describes write-through.
+    - The RFO is why a plain `memset` of a huge buffer reads memory it is about to overwrite; non-temporal stores avoid that.
+  tags: [cache, write-policy]
+
+- id: arch-cache-008
+  topic: computer-architecture
+  subtopic: Caches
+  type: short
+  difficulty: medium
+  prompt: |
+    Two threads each increment their own `long` counter in a loop. The counters are adjacent fields of one struct.
+    The program runs *slower* with two threads than with one. Explain what is happening, how you would confirm it, and how to fix it.
+  reference: |
+    This is false sharing. Both counters live in the same 64-byte cache line. Each increment needs the line in Modified/Exclusive state in the
+    writing core's cache, so the coherence protocol bounces the line back and forth between the two cores (each write invalidates the other core's copy).
+    Every increment becomes a cross-core cache-to-cache transfer costing tens to a hundred-plus cycles instead of an L1 hit.
+    Confirm with `perf c2c` (reports contended lines and HITM — loads hitting modified lines in another core) or by observing that padding fixes it.
+    Fix: give each counter its own line — `alignas(64)` (or `std::hardware_destructive_interference_size`) / padding, per-thread counters kept in
+    thread-local storage or registers and combined at the end.
+  keyPoints:
+    - Identifies false sharing — distinct variables sharing one cache line
+    - Explains coherence invalidation / line ping-pong between cores on each write
+    - Each write becomes an expensive cross-core transfer instead of an L1 hit
+    - A way to detect it (perf c2c / HITM events, or padding experiment)
+    - Fix by padding/aligning to 64 bytes (or 128 on some parts) or accumulating locally and combining
+  explanation: |
+    Note that the variables are not logically shared, so no data race exists and the results are correct — only performance suffers.
+    On Intel parts the L2 spatial prefetcher fetches lines in 128-byte-aligned pairs, which is why some code pads to 128 bytes.
+  tags: [cache, false-sharing, coherence, multithreading]
+  source: { name: "Linux perf-c2c man page", url: "https://man7.org/linux/man-pages/man1/perf-c2c.1.html" }
+
+- id: arch-cache-009
+  topic: computer-architecture
+  subtopic: Caches
+  type: single
+  difficulty: medium
+  prompt: |
+    On a CPU with a 32 KiB, 8-way, 64-byte-line L1D (64 sets), a loop repeatedly reads one `int` from each of 16 buffers.
+    Each buffer was allocated with a 4 KiB-aligned start address, and the loop reads offset 0 of every buffer. The 16 lines total only 1 KiB.
+    What is the most likely L1 behaviour?
+  choices:
+    - { id: a, text: "All 16 lines map to the same set, which holds only 8 lines, so the loop keeps missing (conflict misses)" }
+    - { id: b, text: "All 16 lines fit easily because they total 1 KiB of a 32 KiB cache" }
+    - { id: c, text: "Lines are spread across sets by a hash of the address, so this cannot happen on an L1" }
+    - { id: d, text: "Only compulsory misses occur, 16 in total" }
+  answer: a
+  explanation: |
+    The set index is address bits 6–11. Every address that is a multiple of 4096 has those bits equal to zero, so all 16 lines compete for set 0,
+    which has 8 ways. Cycling through 16 lines in LRU order through an 8-way set misses every time. These are **conflict** misses: a fully associative
+    32 KiB cache would hold them all.
+
+    - (b) is the capacity argument, which ignores how lines are mapped to sets.
+    - (c) Some large last-level caches do hash addresses to slices, but L1 caches index with plain address bits (they have to, to stay VIPT-friendly).
+    - Classic fixes: offset each buffer by a different multiple of 64 bytes, or avoid power-of-two strides (e.g. pad matrix rows).
+  tags: [cache, conflict-misses, associativity, power-of-two-stride]
+  source: { name: "Agner Fog, Optimizing software in C++, §9 (cache conflicts / critical stride)", url: "https://www.agner.org/optimize/" }
+
+- id: arch-cache-010
+  topic: computer-architecture
+  subtopic: Caches
+  type: single
+  difficulty: hard
+  prompt: |
+    A last-level cache is **inclusive** of the private L1/L2 caches. What is a known downside of inclusivity?
+  choices:
+    - { id: a, text: "Evicting a line from the LLC forces back-invalidation of that line from the private caches, even if a core is actively using it" }
+    - { id: b, text: "Coherence snoops must be broadcast to every core because the LLC cannot act as a snoop filter" }
+    - { id: c, text: "A line can be in the L1 without being in the LLC, which complicates coherence" }
+    - { id: d, text: "It increases the effective total capacity of the hierarchy" }
+  answer: a
+  explanation: |
+    Inclusion means every line in a private cache is also in the LLC. When the LLC victimises a line (it does not see L1 hits, so a hot line can look cold to it),
+    it must back-invalidate copies in the private caches, causing "inclusion victims". Inclusion also wastes capacity, because private-cache contents are duplicated.
+
+    - (b) is backwards: the main *advantage* of inclusion is that the LLC tags act as a snoop filter — if a line is not in the LLC, no core has it.
+    - (c) describes a non-inclusive/exclusive cache, not an inclusive one.
+    - (d) is the advantage of *exclusive* caches.
+    Intel client cores used an inclusive L3 for years; Skylake-SP and later server parts moved to a non-inclusive L3 with a separate snoop filter.
+  tags: [cache, inclusive, exclusive, coherence]
+
+- id: arch-cache-011
+  topic: computer-architecture
+  subtopic: Caches
+  type: multiple
+  difficulty: medium
+  prompt: |
+    Which access patterns are typically handled well by the hardware data prefetchers of a modern x86 core? Select all that apply.
+  choices:
+    - { id: a, text: "Sequential forward walk through a large array" }
+    - { id: b, text: "Constant-stride walk (e.g. every 3rd cache line) from a single load instruction" }
+    - { id: c, text: "Traversing a linked list whose nodes were allocated at random addresses" }
+    - { id: d, text: "Sequential backward walk through an array" }
+    - { id: e, text: "Lookups into a large hash table with random keys" }
+  answer: [a, b, d]
+  explanation: |
+    Hardware prefetchers detect regular patterns from past addresses: streamers recognise ascending and descending sequential streams, and
+    IP-based stride prefetchers track a constant stride per load instruction.
+
+    Pointer chasing (c) and random hash probes (e) have no predictable address pattern — the next address is not known until the current load returns —
+    so prefetchers cannot help; software prefetch (`__builtin_prefetch`) works only if you can compute the address ahead of time (e.g. batch the hash
+    computations for the next several keys). Note that Intel's streamers do not cross 4 KiB page boundaries, which is one reason huge pages and
+    sequential layouts help.
+  tags: [cache, prefetching]
+  source: { name: "Intel 64 and IA-32 Architectures Optimization Reference Manual (data prefetching)" }
+
+- id: arch-cache-012
+  topic: computer-architecture
+  subtopic: Caches
+  type: short
+  difficulty: hard
+  prompt: |
+    A naive triple-loop multiplication of two 4096×4096 double matrices runs far below the machine's peak FLOP rate.
+    Explain why, and how loop tiling (blocking) helps. How would you choose the tile size?
+  reference: |
+    In the naive i-j-k loop, one operand is walked down a column (stride of a full row, 32 KiB), so almost every access is a new cache line and
+    each element of B is reloaded from DRAM roughly N times. The kernel does 2 FLOPs per loaded element, so it is memory-bound: arithmetic
+    intensity is tiny compared with what the cores can compute.
+    Tiling splits the matrices into b×b blocks and multiplies block by block so the three active blocks stay resident in a cache level.
+    Each element brought into cache is then reused about b times, raising arithmetic intensity by ~b and cutting DRAM traffic from O(N³) to O(N³/b).
+    Pick b so roughly 3·b²·8 bytes fits in the target cache with headroom (e.g. for a 1 MiB L2, 3·b²·8 ≤ ~512 KiB gives b ≈ 128–150);
+    real libraries block for several levels (registers, L1, L2, L3) and tune empirically. Loop interchange to i-k-j also helps by making the
+    inner loop unit-stride.
+  keyPoints:
+    - Naive order has a column-stride access with poor spatial locality and little reuse, so it is memory-bound
+    - Blocking keeps sub-blocks resident so each loaded element is reused ~b times
+    - Traffic falls by roughly the tile size factor; arithmetic intensity rises
+    - Tile size chosen so the working set of the blocks (about 3·b²·element size) fits in the targeted cache
+    - Mentions multi-level blocking, loop interchange, or empirical tuning (as BLAS libraries do)
+  explanation: |
+    This is the classic example from CS:APP ch. 6 and the BLAS/GotoBLAS literature. A cache-oblivious alternative recursively splits the matrices
+    in halves so that at some recursion depth the blocks fit in every cache level without knowing the sizes.
+  tags: [cache, blocking, tiling, matrix-multiply, arithmetic-intensity]
+  source: { name: "CS:APP ch. 6.6 (matrix multiply and blocking)" }
+
+- id: arch-cache-013
+  topic: computer-architecture
+  subtopic: Caches
+  type: single
+  difficulty: medium
+  prompt: |
+    You iterate over 10 million `int`s stored in a `std::vector<int>` and, separately, the same values in a `std::list<int>` whose nodes were
+    allocated over time interleaved with other allocations. Why is the list traversal typically an order of magnitude slower?
+  choices:
+    - { id: a, text: "Each node's address is only known after the previous node's load completes, so misses are serialised and the prefetcher cannot predict them; nodes are also larger and scattered, wasting cache-line bandwidth" }
+    - { id: b, text: "std::list iterators perform bounds checks on every increment" }
+    - { id: c, text: "Linked lists are stored on disk-backed pages while vectors use RAM" }
+    - { id: d, text: "The list must be traversed with a virtual function call per node" }
+  answer: a
+  explanation: |
+    A vector traversal is a sequential stream: 16 ints per line, perfect prefetching, and many independent loads in flight. A list traversal is
+    pointer chasing: a data dependency chains the loads, so at most one miss is outstanding at a time (no memory-level parallelism), the addresses are
+    unpredictable to the hardware prefetcher, and each 4-byte payload drags in a ~24–32-byte node (value plus two pointers plus allocator overhead).
+    If a node misses to DRAM, each step costs on the order of 100 ns.
+
+    (b), (c) and (d) are simply false: list iterators do no bounds checks, both live in ordinary heap memory, and there is no virtual dispatch.
+  tags: [cache, pointer-chasing, memory-level-parallelism, data-structures]
+
+- id: arch-cache-014
+  topic: computer-architecture
+  subtopic: Caches
+  type: single
+  difficulty: hard
+  prompt: |
+    A 1024×1024 matrix of `double` (rows of 8 KiB) is transposed by reading columns. Performance improves noticeably when each row is padded to
+    1032 doubles (8256 bytes) instead of 1024. Assume a 32 KiB, 8-way L1D with 64-byte lines. What is the main reason?
+  choices:
+    - { id: a, text: "With an 8 KiB row stride every element of a column maps to the same L1 set, so only 8 rows' lines can be cached at once; the padded stride spreads them across sets" }
+    - { id: b, text: "Padding makes every row start on a 4 KiB page boundary, which reduces TLB misses" }
+    - { id: c, text: "Padding reduces the total memory footprint" }
+    - { id: d, text: "1032 is a multiple of the SIMD width while 1024 is not" }
+  answer: a
+  explanation: |
+    The set index uses address bits 6–11 (64 sets). A stride of 8192 bytes is a multiple of 4096, so `a[0][j]`, `a[1][j]`, `a[2][j]`, … all have the
+    same bits 6–11 and fall into one set with 8 ways. Walking down a column evicts lines after 8 rows, so when you come back for column `j+1` (which lives
+    in the same lines) they are gone — every access misses. With an 8256-byte stride, consecutive rows shift by 64 bytes = one set, so the column's
+    lines spread over all 64 sets and neighbouring columns reuse them.
+
+    - (b) is backwards: padding *breaks* page alignment of rows.
+    - (c) padding increases footprint slightly.
+    - (d) 1024 is already a multiple of every SIMD width.
+  tags: [cache, conflict-misses, padding, critical-stride]
+  source: { name: "Agner Fog, Optimizing software in C++ (cache conflicts in matrix transposition)", url: "https://www.agner.org/optimize/" }
+
+- id: arch-cache-015
+  topic: computer-architecture
+  subtopic: Caches
+  type: single
+  difficulty: easy
+  prompt: |
+    What is the cache line size on current mainstream x86-64 CPUs from Intel and AMD?
+  choices:
+    - { id: a, text: "32 bytes" }
+    - { id: b, text: "64 bytes" }
+    - { id: c, text: "128 bytes" }
+    - { id: d, text: "4096 bytes" }
+  answer: b
+  explanation: |
+    x86-64 cores from both vendors use 64-byte lines throughout the hierarchy. It is not universal across architectures: Apple's M-series cores use
+    128-byte lines, and some IBM POWER chips use 128 bytes too. 4096 bytes is the base page size, a different concept.
+    On Linux you can check with `getconf LEVEL1_DCACHE_LINESIZE` or `/sys/devices/system/cpu/cpu0/cache/index0/coherency_line_size`.
+  tags: [cache, cache-line]
+
+- id: arch-cache-016
+  topic: computer-architecture
+  subtopic: Caches
+  type: short
+  difficulty: medium
+  prompt: |
+    Why might a routine that writes a large output buffer it will not read again use non-temporal (streaming) stores such as `movntdq` / `_mm_stream_si128`?
+    What are the trade-offs?
+  reference: |
+    With a normal write-allocate cache each store miss triggers a read-for-ownership: the line is first read from memory, then overwritten, so writing
+    N bytes costs ~2N bytes of memory traffic, and the written data evicts useful data from the caches (cache pollution).
+    Non-temporal stores go through write-combining buffers and write full lines directly to memory without reading them first and without
+    allocating in the cache, roughly halving traffic and preserving cache contents.
+    Trade-offs: if the data is read again soon it now misses all the way to DRAM; they are weakly ordered so an `sfence` is needed before publishing the
+    buffer to another thread; partial-line writes are inefficient; and for buffers that fit in cache they are slower. Libraries such as glibc's
+    memcpy/memset switch to them only above a size threshold.
+  keyPoints:
+    - Normal stores to a missing line cause a read-for-ownership, so memory is read before being overwritten
+    - Streaming stores bypass the cache / avoid the RFO, saving bandwidth
+    - They avoid evicting useful data (cache pollution)
+    - Downside when data is reused soon (it will miss)
+    - Weakly ordered — need sfence before signalling other threads; best with full-line writes
+  explanation: |
+    This is why large `memset`/`memcpy` implementations have a "non-temporal threshold" (glibc tunes it relative to the LLC size).
+  tags: [cache, non-temporal-stores, write-allocate, bandwidth]
+  source: { name: "Ulrich Drepper, What Every Programmer Should Know About Memory, §6.1", url: "https://people.freebsd.org/~lstewart/articles/cpumemory.pdf" }
+
+- id: arch-cache-017
+  topic: computer-architecture
+  subtopic: Caches
+  type: single
+  difficulty: medium
+  prompt: |
+    A program sums a 1 MiB array of `int` once, sequentially, starting from a cold cache. Lines are 64 bytes. Ignoring prefetching, how many
+    L1 data-cache misses occur?
+  choices:
+    - { id: a, text: "16,384" }
+    - { id: b, text: "262,144" }
+    - { id: c, text: "4,096" }
+    - { id: d, text: "256" }
+  answer: a
+  explanation: |
+    1 MiB / 64 B per line = 2^20 / 2^6 = 2^14 = **16,384** lines, each missed once (compulsory misses); the other 15 ints in each line hit.
+    262,144 is the number of ints (one miss per element — what you would see with a 64-byte stride), 256 is the number of 4 KiB pages
+    (the number of TLB misses, roughly), and 4,096 would be correct only for 256-byte lines.
+    With hardware prefetching on, most of these become prefetch hits, but they still cost memory bandwidth.
+  tags: [cache, quantitative, compulsory-misses]
+
+- id: arch-cache-018
+  topic: computer-architecture
+  subtopic: Caches
+  type: single
+  difficulty: medium
+  prompt: |
+    Consider a direct-mapped and a fully associative cache of the same capacity and line size. Which statement is accurate?
+  choices:
+    - { id: a, text: "The direct-mapped cache has a faster, simpler hit path but suffers conflict misses; the fully associative one avoids conflict misses but must compare every tag, so it is only practical for small structures like TLBs" }
+    - { id: b, text: "The fully associative cache has fewer compulsory misses" }
+    - { id: c, text: "The direct-mapped cache has fewer capacity misses because it has more sets" }
+    - { id: d, text: "Fully associative caches cannot use LRU replacement" }
+  answer: a
+  explanation: |
+    In a direct-mapped cache each line can go in exactly one place, so lookup is one tag compare and no way-select mux — but two hot lines that share an index
+    evict each other. A fully associative cache can put a line anywhere, eliminating conflict misses, at the cost of comparing against every tag (CAM),
+    which is too slow and power-hungry for large caches but fine for tens of entries (L1 TLBs, fill buffers, victim caches).
+
+    - Compulsory misses (b) depend only on first touches and are the same for both.
+    - Capacity misses (c) depend on capacity, which is equal.
+    - (d) LRU (or a pseudo-LRU approximation) works for any associativity.
+  tags: [cache, associativity, direct-mapped]
+
+- id: arch-cache-019
+  topic: computer-architecture
+  subtopic: Caches
+  type: short
+  difficulty: hard
+  prompt: |
+    Walk me through what happens, at the hardware level, when a load on core 0 of a multicore x86 server misses in L1, L2 and L3,
+    and the line is currently held **modified** in core 5's private cache.
+  reference: |
+    The load gets an address from the AGU and the DTLB supplies the physical address (a TLB miss would start a page walk first). The L1D misses, so a
+    line-fill buffer (miss status holding register) is allocated so the core can keep executing independent instructions and track the outstanding miss.
+    The request goes to L2, misses, and is sent over the on-chip interconnect (ring/mesh) to the L3 slice that owns that address (selected by a hash).
+    The L3/snoop filter's directory information shows core 5 holds the line in M state, so a snoop is sent to core 5; core 5 supplies the data
+    cache-to-cache and downgrades its copy (to Shared, or Invalid if the requester asked for ownership), with the dirty data also written back to L3/memory
+    or tracked via an Owned/Forward state depending on the protocol. The data returns to core 0's L2 and L1, the fill buffer completes, the waiting load and any
+    dependent µops are woken, and the line is installed (possibly evicting a victim, which is written back if dirty). If nobody had it, the L3 miss would go
+    to the memory controller (or across the socket link to the other socket's home agent on NUMA) and DRAM would service it.
+  keyPoints:
+    - TLB translation to a physical address first (page walk on TLB miss)
+    - Miss tracked in a line fill buffer / MSHR; out-of-order execution continues with independent work
+    - Request goes through L2 to the L3 slice / home agent via the interconnect
+    - Snoop filter / directory finds the modified copy in core 5; cache-to-cache transfer and state downgrade (MESI/MESIF)
+    - Data returns, line installed in L2/L1 (victim eviction/writeback), dependent instructions wake up
+    - Mentions what changes if it misses everywhere (memory controller / remote socket)
+  explanation: |
+    Interviewers use this to probe depth: TLB, MSHRs, coherence and NUMA in one go. A strong answer also notes this "HITM" case is typically slower
+    than an L3 hit and is what `perf c2c` measures.
+  tags: [cache, coherence, mesi, cache-miss, memory-hierarchy]
+
+- id: arch-cache-020
+  topic: computer-architecture
+  subtopic: Caches
+  type: short
+  difficulty: medium
+  prompt: |
+    A colleague says: "Inserting in the middle of a `std::vector` is O(n) and a `std::list` is O(1), so for frequent middle inserts use a list."
+    Why do benchmarks often show the vector winning even for this workload?
+  reference: |
+    To insert in the middle of a list you must first *find* the position, which is an O(n) traversal of scattered nodes — pointer chasing with a likely
+    cache miss per node and no prefetching. The vector also does O(n) work to find the spot and shift elements, but its work is a contiguous, sequential
+    memmove that runs at memory/cache bandwidth with SIMD and prefetching, so its constant factor is tens of times smaller. Lists also cost an allocation
+    per node and more memory per element (two pointers + allocator header), which reduces cache density. Asymptotic complexity hides the memory-hierarchy
+    constant; the list only wins when you already hold an iterator to the position and the elements are large or expensive to move.
+  keyPoints:
+    - Finding the insertion point is O(n) for the list too, via cache-unfriendly pointer chasing
+    - Vector shifting is a contiguous memmove that streams at high bandwidth (prefetch, SIMD)
+    - List nodes cost per-node allocation and extra memory, so poorer cache density
+    - Constant factors from the memory hierarchy dominate big-O for realistic n
+    - List wins only when position is already known and elements are large/expensive to move
+  explanation: |
+    This is a well-known point from Bjarne Stroustrup's talks on vector vs list and from Chandler Carruth's CppCon talks on efficiency and data structures.
+  tags: [cache, data-structures, locality, vector-vs-list]
+  source: { name: "Bjarne Stroustrup, 'Why you should avoid linked lists' (GoingNative 2012 keynote)" }
+
+- id: arch-cache-021
+  topic: computer-architecture
+  subtopic: Caches
+  type: single
+  difficulty: medium
+  prompt: |
+    In C++17, what is `std::hardware_destructive_interference_size` intended for?
+  choices:
+    - { id: a, text: "The minimum offset between two objects to avoid false sharing — used with alignas to put independently written data on separate cache lines" }
+    - { id: b, text: "The maximum size of an object that fits in a single cache line so it can be read atomically" }
+    - { id: c, text: "The page size used by the allocator" }
+    - { id: d, text: "The SIMD register width in bytes" }
+  answer: a
+  explanation: |
+    `hardware_destructive_interference_size` is the recommended minimum separation to avoid false sharing; its sibling
+    `hardware_constructive_interference_size` is the maximum size of memory you want together on one line to benefit from true sharing (b is close to that idea).
+    Both are compile-time hints and typically 64 on x86-64. Caveat: GCC warns (`-Winterference-size`) when you use them in a header that defines an ABI,
+    because the value may differ with `-mtune`; many codebases just hard-code 64 (or 128 to also cover adjacent-line prefetch).
+  tags: [cache, false-sharing, cpp17]
+
+- id: arch-cache-022
+  topic: computer-architecture
+  subtopic: Caches
+  type: short
+  difficulty: easy
+  prompt: |
+    Explain temporal and spatial locality, give a code example of each, and say why caches move whole lines rather than single bytes.
+  reference: |
+    Temporal locality: data accessed recently is likely to be accessed again soon — e.g. a loop accumulator, a hot lookup table, or the top of the stack.
+    Spatial locality: data near recently accessed data is likely to be accessed soon — e.g. iterating through an array element by element, or reading
+    consecutive fields of a struct. Caches keep recently used data (exploiting temporal locality) and fetch a whole line, typically 64 bytes, on a miss
+    (exploiting spatial locality): DRAM and the interconnect are much more efficient at transferring a burst than many separate small requests, and
+    one tag per line keeps tag storage overhead low. The neighbouring bytes are then already present when the program touches them.
+  keyPoints:
+    - Temporal locality defined with an example (reuse of the same data)
+    - Spatial locality defined with an example (nearby addresses, sequential array walk)
+    - Lines amortise the fixed cost of a memory transfer (burst transfers)
+    - Lines reduce tag overhead and exploit spatial locality
+  explanation: |
+    Foundational material from CS:APP ch. 6; interviewers often follow up with the row-vs-column traversal question.
+  tags: [cache, locality]
+  source: { name: "CS:APP ch. 6.2 (locality)" }
+
+- id: arch-cache-023
+  topic: computer-architecture
+  subtopic: Caches
+  type: short
+  difficulty: medium
+  prompt: |
+    A hot path in a C++ service spends much of its time in cache misses on a large `std::unordered_map<uint64_t, Order>`.
+    How would you confirm that, and what design changes would reduce the misses?
+  reference: |
+    Confirm with `perf stat -e cycles,instructions,L1-dcache-load-misses,LLC-load-misses,dTLB-load-misses` (low IPC, high miss counts) and `perf record -e`
+    on a miss event or top-down "backend memory bound" to attribute the misses to the lookup. `std::unordered_map` is node-based with separate chaining: a lookup
+    reads the bucket array, then follows a pointer to a separately allocated node, often 2+ dependent cache misses plus a TLB miss for large tables.
+    Improvements: an open-addressing flat hash table (e.g. absl::flat_hash_map, robin-hood/Swiss tables) storing keys (or keys + small values) inline so a probe
+    usually touches one line; keep the hot fields small and move cold data out of the table (hot/cold split, store an index into a separate array);
+    pre-size to avoid rehash; use huge pages for TLB reach; and if lookups are known in advance, batch them and software-prefetch the buckets to overlap misses.
+    Sometimes a sorted vector or direct-indexed array (when keys are dense, e.g. instrument ids) is faster still.
+  keyPoints:
+    - Measure with perf counters (cache and TLB misses, IPC) and attribute to the lookup
+    - Node-based chaining causes dependent pointer-chasing misses
+    - Open addressing / flat tables with inline keys
+    - Shrink hot data — hot/cold split or indices
+    - Extra levers — huge pages, prefetching/batching, dense arrays
+  explanation: |
+    A typical low-latency interview follow-up to "what is a cache miss?".
+  tags: [cache, hash-table, data-structures, perf]

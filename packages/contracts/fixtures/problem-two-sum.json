@@ -1,0 +1,53 @@
+{
+  "slug": "two-sum",
+  "title": "Two Sum",
+  "difficulty": "easy",
+  "tags": ["array", "hash-table"],
+  "statement": "Given an array of integers `nums` and an integer `target`, return the indices of the two numbers that add up to `target`. Exactly one answer exists and an element may not be used twice. Return the indices in any order.",
+  "signature": {
+    "className": "Solution",
+    "kind": "function",
+    "ctorParams": [],
+    "methods": [
+      {
+        "name": "twoSum",
+        "params": [
+          { "name": "nums", "type": { "array": "int" } },
+          { "name": "target", "type": "int" }
+        ],
+        "returns": { "array": "int" },
+        "compare": "unordered"
+      }
+    ]
+  },
+  "limits": { "timeMs": 1000, "memoryMb": 256 },
+  "tests": [
+    {
+      "id": "s1",
+      "hidden": false,
+      "ctorArgs": [],
+      "calls": [{ "method": "twoSum", "args": [[2, 7, 11, 15], 9] }],
+      "expected": [[0, 1]]
+    },
+    {
+      "id": "s2",
+      "hidden": false,
+      "ctorArgs": [],
+      "calls": [{ "method": "twoSum", "args": [[3, 2, 4], 6] }],
+      "expected": [[1, 2]]
+    },
+    {
+      "id": "h1",
+      "hidden": true,
+      "ctorArgs": [],
+      "calls": [{ "method": "twoSum", "args": [[3, 3], 6] }],
+      "expected": [[0, 1]]
+    }
+  ],
+  "interviewerNotes": "Brute force is O(n^2). Expected: one pass with a hash map from value to index, O(n) time and space. Hints: (1) what do you need to know about earlier elements? (2) can a lookup structure answer that in O(1)? Follow-ups: sorted input (two pointers), duplicates, no solution.",
+  "referenceSolutions": {
+    "cpp": "#include <bits/stdc++.h>\nusing namespace std;\n\nclass Solution {\npublic:\n    vector<int> twoSum(vector<int>& nums, int target) {\n        unordered_map<int, int> seen;\n        for (int i = 0; i < (int)nums.size(); ++i) {\n            auto it = seen.find(target - nums[i]);\n            if (it != seen.end()) return {it->second, i};\n            seen[nums[i]] = i;\n        }\n        return {};\n    }\n};\n\nint main() {\n    Solution s;\n    vector<int> v{2, 7, 11, 15};\n    auto r = s.twoSum(v, 9);\n    cout << r[0] << ' ' << r[1] << '\\n';\n    return 0;\n}\n",
+    "python": "class Solution:\n    def twoSum(self, nums: list[int], target: int) -> list[int]:\n        seen = {}\n        for i, x in enumerate(nums):\n            if target - x in seen:\n                return [seen[target - x], i]\n            seen[x] = i\n        return []\n\n\nif __name__ == \"__main__\":\n    print(Solution().twoSum([2, 7, 11, 15], 9))\n",
+    "java": "import java.util.*;\n\nclass Solution {\n    public int[] twoSum(int[] nums, int target) {\n        Map<Integer, Integer> seen = new HashMap<>();\n        for (int i = 0; i < nums.length; i++) {\n            Integer j = seen.get(target - nums[i]);\n            if (j != null) return new int[] { j, i };\n            seen.put(nums[i], i);\n        }\n        return new int[0];\n    }\n}\n\npublic class Main {\n    public static void main(String[] args) {\n        System.out.println(Arrays.toString(new Solution().twoSum(new int[] { 2, 7, 11, 15 }, 9)));\n    }\n}\n"
+  }
+}

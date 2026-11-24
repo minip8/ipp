@@ -1,0 +1,222 @@
+# Numbers (int, float, bool, Decimal), strings, bytes and encodings.
+- id: py-num-001
+  topic: python
+  subtopic: Numbers
+  difficulty: medium
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [floats, rounding, floor-division, modulo]
+  prompt: What does this program print?
+  code: |
+    print(0.1 + 0.2 == 0.3, round(2.5), round(3.5), 7 // -2, -7 % 3)
+  answer: { kind: output, output: "False 2 4 -4 2" }
+  explanation: |
+    - `0.1 + 0.2` is `0.30000000000000004` in binary floating point, so it's not equal to `0.3`.
+    - `round()` uses **round-half-to-even** ("banker's rounding") in Python 3: `2.5` rounds to `2` and `3.5` to `4`.
+    - `//` is **floor** division (rounds toward negative infinity, not toward zero as in C), so `7 // -2` is `-4`.
+    - `%` takes the sign of the **divisor**, keeping `a == (a // b) * b + a % b`, so `-7 % 3` is `2` (C would give `-1`).
+
+- id: py-num-002
+  topic: python
+  subtopic: Numbers
+  difficulty: hard
+  type: output
+  language: python
+  standard: Python 3.7+
+  tags: [bool, hashing, dict-keys]
+  source: { name: "wtfpython (idea: hash brownies)", url: "https://github.com/satwikkansal/wtfpython", license: WTFPL }
+  prompt: What does this program print?
+  code: |
+    print(True + True, isinstance(True, int))
+    print({1: 'a', True: 'b', 1.0: 'c'})
+  answer:
+    kind: output
+    output: |
+      2 True
+      {1: 'c'}
+  explanation: |
+    `bool` is a subclass of `int`, with `True == 1` and `False == 0`, so `True + True` is `2`.
+
+    In the dict display, `1`, `True` and `1.0` are **equal and have equal hashes** (`hash(1) == hash(True) == hash(1.0) == 1`, as the data model requires for numeric types that compare equal). They are therefore the *same key*. When a key is assigned again, a dict **keeps the original key object** and replaces only the value, so the result has the first key, `1`, with the last value, `'c'`.
+
+- id: py-num-003
+  topic: python
+  subtopic: Strings and bytes
+  difficulty: medium
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [unicode, utf-8, bytes]
+  prompt: What does this program print?
+  code: |
+    s = 'café'
+    b = s.encode('utf-8')
+    print(len(s), len(b), b[3:4], b[3])
+  answer: { kind: output, output: "4 5 b'\\xc3' 195" }
+  explanation: |
+    A `str` is a sequence of Unicode **code points**: `'café'` has 4. Encoded as UTF-8, `é` (U+00E9) takes **two bytes**, `0xC3 0xA9`, so the `bytes` object has length 5.
+
+    Slicing `bytes` gives `bytes` (`b'\xc3'`), but **indexing** gives an `int` (`195 == 0xC3`), a Python 3 difference from `str`, where indexing gives a 1-character string.
+
+- id: py-num-004
+  topic: python
+  subtopic: Strings and bytes
+  difficulty: easy
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [strings, immutability]
+  prompt: What does this program print?
+  code: |
+    s = 'hello'
+    t = s.upper()
+    print(s, t)
+    s[0] = 'J'
+  answer: { kind: runtime_error }
+  explanation: |
+    It prints `hello HELLO`, then `s[0] = 'J'` raises **TypeError: 'str' object does not support item assignment**.
+
+    Strings are immutable. Methods like `upper()` and `replace()` return **new** strings and leave the original unchanged. To "modify" a string, build a new one: `'J' + s[1:]`, or for many edits use a list of characters with `''.join(...)`, or an `io.StringIO`.
+
+- id: py-num-005
+  topic: python
+  subtopic: Numbers
+  difficulty: easy
+  type: single
+  tags: [int, arbitrary-precision]
+  prompt: What does `2 ** 100` evaluate to in Python 3?
+  choices:
+    - { id: a, text: "The exact integer 1267650600228229401496703205376" }
+    - { id: b, text: "A wrapped-around 64-bit value" }
+    - { id: c, text: "`OverflowError`" }
+    - { id: d, text: "A float, approximately `1.2676506002282294e+30`" }
+  answer: a
+  explanation: |
+    Python `int`s have **arbitrary precision**: they grow to as many digits as memory allows and never overflow or wrap. (Python 2 had a separate `long` type; in Python 3 there is only `int`.) `OverflowError` comes from operations that convert to fixed-size C types, such as `float(10**400)` or `math.exp(1000)`, not from integer arithmetic. `2 ** 100` stays an `int`; only `2.0 ** 100` or `2 ** -1` produce floats.
+
+- id: py-num-006
+  topic: python
+  subtopic: Numbers
+  difficulty: medium
+  type: single
+  tags: [decimal, floats, money]
+  prompt: You need exact decimal arithmetic for currency. Which construction gives a `Decimal` exactly equal to one tenth?
+  choices:
+    - { id: a, text: "`Decimal(0.1)`" }
+    - { id: b, text: "`Decimal('0.1')`" }
+    - { id: c, text: "`Decimal(1 / 10)`" }
+    - { id: d, text: "`round(Decimal(0.1), 1)` is the only way" }
+  answer: b
+  explanation: |
+    `Decimal(0.1)` converts the **binary float** exactly, carrying its representation error: `0.1000000000000000055511151231257827021181583404541015625`. `1 / 10` is the same float. Constructing from a **string** (or from integers, e.g. `Decimal(1) / 10`) gives the exact decimal value. `round` returns a correctly rounded value, but it's a needless workaround, not the only way.
+
+    For money, also consider integer cents, or `fractions.Fraction` for exact rationals.
+
+- id: py-num-007
+  topic: python
+  subtopic: Strings and bytes
+  difficulty: medium
+  type: multiple
+  tags: [str, bytes, typeerror]
+  prompt: Which of these expressions raise `TypeError` in Python 3? Select all that apply.
+  choices:
+    - { id: a, text: "`b'a' + 'b'`" }
+    - { id: b, text: "`'ab' * 3`" }
+    - { id: c, text: "`'1' + 1`" }
+    - { id: d, text: "`b'abc'[0] + 1`" }
+    - { id: e, text: "`''.join([1, 2])`" }
+    - { id: f, text: "`'%s' % [1, 2]`" }
+  answer: [a, c, e]
+  explanation: |
+    - a: Python 3 never implicitly mixes `bytes` and `str`; you must `.encode()` or `.decode()` explicitly.
+    - b: sequence repetition gives `'ababab'`.
+    - c: no implicit conversion between `str` and `int`.
+    - d: indexing `bytes` gives an `int` (`97`), so the result is `98`.
+    - e: `str.join` requires every item to be a `str`, so use `''.join(map(str, ...))`.
+    - f: `%s` calls `str()` on any object, giving `'[1, 2]'`. (A *tuple* on the right would be treated as the argument list.)
+
+- id: py-num-008
+  topic: python
+  subtopic: Strings and bytes
+  difficulty: medium
+  type: single
+  tags: [strings, join, performance]
+  prompt: Why is `''.join(parts)` the recommended way to build a large string from many pieces, rather than `s += piece` in a loop?
+  choices:
+    - { id: a, text: "Strings are immutable, so each `+=` may copy everything built so far (quadratic in the worst case); `join` computes the total size once and copies each piece once (linear)" }
+    - { id: b, text: "`+=` on strings raises an error after about 1000 iterations" }
+    - { id: c, text: "`join` runs the concatenation in parallel threads" }
+    - { id: d, text: "`+=` produces a list rather than a string" }
+  answer: a
+  explanation: |
+    Each `s = s + piece` creates a new string and copies both operands. CPython has an opportunistic optimisation that resizes in place when the string has only one reference, which often hides the problem, but it is an implementation detail: it fails as soon as another reference exists and doesn't apply to PyPy. PEP 8 says not to rely on it. `str.join` makes one pass to measure and one to copy, so it is O(total length). Alternatives: collect pieces in a list, or use `io.StringIO`.
+
+- id: py-num-009
+  topic: python
+  subtopic: Strings and bytes
+  difficulty: easy
+  type: single
+  tags: [f-strings, debugging]
+  prompt: |
+    With `width = 7`, what does `print(f'{width=}, {width * 2 = }')` print (Python 3.8+)?
+  choices:
+    - { id: a, text: "`width=7, width * 2 = 14`" }
+    - { id: b, text: "`7, 14`" }
+    - { id: c, text: "`width=7, 14`" }
+    - { id: d, text: "`SyntaxError`" }
+  answer: a
+  explanation: |
+    The self-documenting `=` specifier in f-strings (3.8+) prints the expression text, the `=`, and then the value's `repr`. Whitespace around `=` is preserved in the output, so `{width * 2 = }` shows `width * 2 = 14`. It's handy for debug prints, and it can be combined with conversions and format specs, e.g. `{x=!s}` or `{price=:.2f}`.
+
+- id: py-num-010
+  topic: python
+  subtopic: Numbers
+  difficulty: hard
+  type: single
+  tags: [int, security, int-max-str-digits]
+  prompt: In CPython 3.11+ (and security releases of 3.7–3.10 from late 2022), what happens on `int('9' * 5000)` with default settings?
+  choices:
+    - { id: a, text: "It returns the 5000-digit integer, since ints have unlimited precision" }
+    - { id: b, text: "`ValueError`: it exceeds the default limit of 4300 digits for integer string conversion" }
+    - { id: c, text: "`OverflowError`" }
+    - { id: d, text: "`MemoryError`" }
+  answer: b
+  explanation: |
+    Converting between `str` and `int` in bases other than powers of two is quadratic in the number of digits, so untrusted input such as a huge JSON number could be used for denial of service (CVE-2020-10735). CPython now limits these conversions to **4300 digits** by default and raises `ValueError` beyond that. `str(huge_int)` is limited too. Arithmetic on large ints is unaffected, and so are hex, octal and binary conversions. The limit can be changed with `sys.set_int_max_str_digits()`, `-X int_max_str_digits` or `PYTHONINTMAXSTRDIGITS`.
+
+- id: py-num-011
+  topic: python
+  subtopic: Numbers
+  difficulty: medium
+  type: short
+  tags: [floats, ieee-754, isclose]
+  prompt: Why is `0.1 + 0.2 != 0.3` in Python, and how should code compare or accumulate floating-point values?
+  reference: |
+    Python's `float` is an IEEE 754 binary64 double. Most decimal fractions, including 0.1, 0.2 and 0.3, have no exact binary representation, so each literal is rounded to the nearest representable value, and the sum's rounding error differs from 0.3's. That's not a Python bug: any language using doubles gives the same result. Compare with a tolerance: `math.isclose(a, b, rel_tol=..., abs_tol=...)`, which needs `abs_tol` near zero. Avoid `==` on computed floats. Use `decimal.Decimal` (constructed from strings) for exact decimal and money arithmetic with controllable rounding, `fractions.Fraction` for exact rationals, and integers for things like cents. For summing many floats accurately, use `math.fsum`. `repr(float)` shows the shortest string that round-trips, which is why `0.1` displays as `0.1` even though it isn't exact.
+  keyPoints:
+    - Floats are IEEE 754 binary doubles; 0.1 etc. are not exactly representable
+    - Each operation rounds, so errors appear in comparisons; not Python-specific
+    - Use math.isclose (with abs_tol near zero) instead of ==
+    - Decimal (from strings) for money, Fraction for exact rationals, or integer units
+    - math.fsum for accurate summation; repr shows the shortest round-tripping value
+  explanation: |
+    Reference: Python tutorial, "Floating-Point Arithmetic: Issues and Limitations". Bonus: NaN breaks reflexivity (`nan != nan`), which matters for containers and sorting.
+
+- id: py-num-012
+  topic: python
+  subtopic: Strings and bytes
+  difficulty: medium
+  type: short
+  tags: [unicode, encoding, bytes]
+  prompt: Explain the difference between `str` and `bytes` in Python 3 and how you should handle text that comes from files or the network.
+  reference: |
+    `str` is a sequence of Unicode code points (text); `bytes` is an immutable sequence of integers 0–255 (binary data). Converting between them always requires an encoding: `text.encode('utf-8')` gives bytes and `data.decode('utf-8')` gives a str. Python 3 never mixes them implicitly (`b'a' + 'a'` is a `TypeError`). Best practice is the "Unicode sandwich": decode bytes to `str` as early as possible at the input boundary, work with `str` internally, and encode only at the output boundary. Always specify the encoding explicitly (`open(path, encoding='utf-8')`), since the default historically depended on the locale (PEP 686 makes UTF-8 mode the default in 3.15). Choose an error handler (`errors='strict'`/`'replace'`/`'surrogateescape'`) deliberately. `len()` of a str counts code points, not bytes or user-perceived characters. Open binary files with `'rb'` to get bytes.
+  keyPoints:
+    - "str = Unicode code points (text); bytes = raw octets"
+    - encode() goes str to bytes and decode() goes bytes to str, always with an encoding
+    - No implicit mixing in Python 3 (TypeError)
+    - Unicode sandwich; decode at input, encode at output
+    - Specify encoding explicitly on open(); be aware of locale defaults and error handlers
+  explanation: |
+    Reference: the "Unicode HOWTO" in the Python docs. Good candidates also know that one visible character may be several code points (combining accents, emoji sequences), so `len()` and slicing can split "characters".

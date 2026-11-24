@@ -1,0 +1,179 @@
+# The import system: sys.modules, binding semantics of from-imports, packages, circular and relative imports.
+- id: py-imp-001
+  topic: python
+  subtopic: Import system
+  difficulty: medium
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [imports, sys-modules]
+  prompt: What does this program print?
+  code: |
+    import sys
+    import types
+
+    m = types.ModuleType('config')
+    m.value = 1
+    sys.modules['config'] = m
+
+    import config
+    config.value = 2
+    import config as again
+    print(again.value, again is m)
+  answer: { kind: output, output: "2 True" }
+  explanation: |
+    The first thing `import config` does is look in **`sys.modules`**, the cache of already-imported modules. Only if the name is missing does it search `sys.path` with finders and loaders. Here the module object we placed there is returned, so every `import config` in the process gets the **same object**, and changes made through one name are visible through all of them.
+
+    That's why a module's top-level code runs only once per process, why modules work as singletons, and why test code can inject fakes by putting them in `sys.modules`.
+
+- id: py-imp-002
+  topic: python
+  subtopic: Import system
+  difficulty: medium
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [imports, from-import, binding, mocking]
+  prompt: What does this program print?
+  code: |
+    import sys
+    import types
+
+    m = types.ModuleType('settings')
+    m.DEBUG = False
+    sys.modules['settings'] = m
+
+    from settings import DEBUG
+    import settings
+    settings.DEBUG = True
+    print(DEBUG, settings.DEBUG)
+  answer: { kind: output, output: "False True" }
+  explanation: |
+    `from settings import DEBUG` creates a **new name in the importing namespace** bound to the object `settings.DEBUG` referred to *at import time*. It isn't an alias for the module attribute. Rebinding `settings.DEBUG` later changes the module's attribute, not our local copy of the binding.
+
+    This is the root of the classic `unittest.mock.patch` rule: "patch where an object is *looked up*, not where it is defined". If `app.py` did `from settings import DEBUG`, you must patch `app.DEBUG`.
+
+- id: py-imp-003
+  topic: python
+  subtopic: Modules
+  difficulty: easy
+  type: single
+  tags: [main, modules]
+  prompt: What is the purpose of `if __name__ == '__main__':` at the bottom of a module?
+  choices:
+    - { id: a, text: "Code under it runs when the file is executed as a script (or with `python -m`), but not when the module is imported" }
+    - { id: b, text: "It marks the function Python should call first, like `main()` in C" }
+    - { id: c, text: "It makes the module's names private to other importers" }
+    - { id: d, text: "It is required for the file to be importable" }
+  answer: a
+  explanation: |
+    Every module has a `__name__`. It is the module's import name normally, and `'__main__'` for the module Python was asked to run. The guard lets a file serve as both an importable module and a script without running the script part on import. It is **required** when using `multiprocessing` with the `spawn`/`forkserver` start methods, which re-import the main module in child processes and would otherwise start processes recursively.
+
+    Python has no special entry-point function. Code at module level simply runs top to bottom.
+
+- id: py-imp-004
+  topic: python
+  subtopic: Import system
+  difficulty: medium
+  type: single
+  tags: [circular-imports]
+  prompt: |
+    In package `app`, `app/a.py` starts with `from app.b import helper`, and `app/b.py` starts with `from app.a import CONFIG`, where `CONFIG` is defined further down in `a.py`. `python -c "import app.a"` fails. What happens, and why?
+  choices:
+    - { id: a, text: "`ImportError: cannot import name 'CONFIG' from partially initialized module 'app.a'`: `app.a` is already in `sys.modules`, but its code hasn't reached the line defining `CONFIG` yet" }
+    - { id: b, text: "`RecursionError`, because the two imports trigger each other forever" }
+    - { id: c, text: "`SyntaxError`, because circular imports are detected at compile time" }
+    - { id: d, text: "It succeeds; Python resolves module-level names lazily" }
+  answer: a
+  explanation: |
+    `import app.a` creates the module object, **registers it in `sys.modules` first**, then executes `a.py`. Its first line imports `app.b`, which runs `from app.a import CONFIG`. `app.a` is found in `sys.modules` (so there is no infinite recursion), but it is only partially executed and has no `CONFIG` attribute yet, so the `from` import raises `ImportError`. CPython adds the hint "(most likely due to a circular import)"; the exact wording varies by version and situation.
+
+    Fixes: move the shared definitions into a third module, import the module rather than the name (`from app import a` and use `a.CONFIG` at call time), or move the import inside the function that needs it.
+
+- id: py-imp-005
+  topic: python
+  subtopic: Packages
+  difficulty: medium
+  type: single
+  tags: [relative-imports, packages, python-m]
+  prompt: |
+    `mypkg/tools.py` contains `from . import utils`. Running `python mypkg/tools.py` fails with `ImportError: attempted relative import with no known parent package`. What is the right way to run it?
+  choices:
+    - { id: a, text: "`python -m mypkg.tools` from the directory that contains `mypkg`" }
+    - { id: b, text: "Add an empty `__main__.py` to the current directory" }
+    - { id: c, text: "Change it to `from .. import utils`" }
+    - { id: d, text: "Relative imports only work on Windows" }
+  answer: a
+  explanation: |
+    Relative imports are resolved against the module's `__package__`. Running a file by path executes it as the top-level `__main__` module with no parent package, so `.` means nothing. `python -m mypkg.tools` imports it **as part of the package** (with `__package__ == 'mypkg'`) and also puts the current directory on `sys.path`, so the relative import resolves. Installing the project (`pip install -e .`) and using an entry point is the robust long-term fix.
+
+- id: py-imp-006
+  topic: python
+  subtopic: Import system
+  difficulty: medium
+  type: short
+  tags: [import-system, finders, loaders]
+  prompt: Walk through what happens when Python executes `import foo.bar` for the first time.
+  reference: |
+    Python imports the parent package first (`foo`), then the submodule. For each name it first checks `sys.modules` and returns the cached module if present. Otherwise it asks each finder on `sys.meta_path` for a module spec. For top-level modules the path-based finder searches the directories in `sys.path`; for submodules it uses the parent package's `__path__`. Built-in and frozen modules are found by their own finders. The spec's loader creates the module object, sets attributes (`__name__`, `__file__`, `__spec__`, `__package__`, `__path__` for packages), **inserts it into `sys.modules` before executing it**, then executes the module code (for source files, compiled or read from cached `__pycache__/*.pyc`). After `foo.bar` loads, it is bound as attribute `bar` on `foo`. The statement binds the name `foo` (the top-level package) in the current namespace. If execution fails, the entry is removed from `sys.modules`. Later imports anywhere in the process get the cached object without re-executing.
+  keyPoints:
+    - Parent packages are imported first
+    - sys.modules cache is checked first; modules execute only once per process
+    - Finders on sys.meta_path locate a spec; sys.path (or the package's __path__) is searched
+    - The loader creates the module, registers it in sys.modules before executing its code (enabling circular imports), uses .pyc caching
+    - "`import foo.bar` binds the name foo; bar becomes an attribute of foo"
+  explanation: |
+    Reference: language reference chapter 5, "The import system". Registering the module before executing it explains both why circular imports don't recurse forever and why they can see half-initialized modules.
+
+- id: py-imp-007
+  topic: python
+  subtopic: Import system
+  difficulty: medium
+  type: short
+  tags: [circular-imports, design]
+  prompt: You hit a circular import between two modules in a growing codebase. What are your options for fixing it, and which do you prefer?
+  reference: |
+    First, understand that the cycle arises because module-level code in one module needs a name from the other before that module has finished executing. Options, roughly in order of preference: (1) restructure: move the shared pieces (types, constants, helpers) into a third, lower-level module that both import, which usually reflects a real layering problem; (2) depend on the module rather than the name: `import b` and access `b.thing` at call time rather than `from b import thing` at import time; (3) defer the import into the function that needs it (a local import), at a small per-call lookup cost; (4) for type hints only, guard the import with `if typing.TYPE_CHECKING:` and use string or deferred annotations (3.14 evaluates annotations lazily); (5) dependency injection, passing the collaborator in instead of importing it. Avoid hacks like importing at the bottom of a file.
+  keyPoints:
+    - "Cause: module-level code needs a name from a partially-initialized module"
+    - Best fix is restructuring and extracting shared code into a third module
+    - Import the module (not the name) and access attributes at call time
+    - Local imports inside functions
+    - TYPE_CHECKING guard for type-only imports; dependency injection
+  explanation: |
+    Interviewers look for candidates who treat the cycle as a design smell, not just a puzzle to work around.
+
+- id: py-imp-008
+  topic: python
+  subtopic: Import system
+  difficulty: hard
+  type: short
+  tags: [mocking, unittest-mock, imports]
+  prompt: |
+    `app/service.py` does `from app.clock import now` and calls `now()` inside `handle()`. A test does `mock.patch('app.clock.now', ...)` but `handle()` still calls the real `now`. Explain why, and give the fix.
+  reference: |
+    `from app.clock import now` binds a new name `now` in `app.service`'s namespace, pointing to the original function object at import time. `handle()` looks up `now` in `app.service`'s globals, not in `app.clock`. `mock.patch('app.clock.now')` replaces only the attribute on the `app.clock` module, so `app.service.now` still refers to the original. Fix: patch where the name is looked up, `mock.patch('app.service.now', ...)`. Alternatively, change the code to `from app import clock` and call `clock.now()`, so that patching `app.clock.now` works; or inject the clock as a dependency.
+  keyPoints:
+    - from-import copies the binding into the importing module's namespace
+    - Function globals are looked up in the module where the function is defined
+    - Patching app.clock.now does not change app.service.now
+    - "Fix: patch 'app.service.now' (where it's used)"
+    - "Alternative: import the module and call clock.now(), or inject the dependency"
+  explanation: |
+    The `unittest.mock` documentation has a section titled "Where to patch" describing exactly this. It's one of the most common real-world Python testing bugs.
+
+- id: py-imp-009
+  topic: python
+  subtopic: Import system
+  difficulty: hard
+  type: single
+  tags: [importlib, reload]
+  prompt: After editing `shapes.py`, you call `importlib.reload(shapes)` in a running session. Which statement is accurate?
+  choices:
+    - { id: a, text: "The module's code is re-executed in the same module object, so `shapes.Circle` refers to a new class; existing instances still belong to the old class, and names bound earlier with `from shapes import Circle` still refer to the old one" }
+    - { id: b, text: "Every object created from the module is updated to use the new code" }
+    - { id: c, text: "A brand-new module object replaces the old one in `sys.modules`, and the old one is deleted" }
+    - { id: d, text: "`reload` only re-reads the module's docstring and constants" }
+  answer: a
+  explanation: |
+    `importlib.reload` re-executes the module's source **in the existing module object's namespace**, rebinding its globals. Anything holding direct references to the old objects isn't touched: instances keep their old `__class__` (so `isinstance(old_obj, shapes.Circle)` becomes `False`), functions and classes imported by name elsewhere stay old, and names deleted from the new source remain in the namespace. That's why reload-based hot-patching is fragile, and why the docs list these caveats.

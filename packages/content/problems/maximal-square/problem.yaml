@@ -1,0 +1,16 @@
+slug: maximal-square
+title: Maximal Square
+difficulty: medium
+tags: [dynamic-programming, matrix]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: maximalSquare
+      params:
+        - { name: matrix, type: { array: string } }
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 221)
+  url: https://leetcode.com/problems/maximal-square/

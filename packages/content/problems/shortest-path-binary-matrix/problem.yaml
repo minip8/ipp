@@ -1,0 +1,16 @@
+slug: shortest-path-binary-matrix
+title: Shortest Path in Binary Matrix
+difficulty: medium
+tags: [graph, bfs, matrix]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: shortestPathBinaryMatrix
+      params:
+        - { name: grid, type: { array: { array: int } } }
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 1091)
+  url: https://leetcode.com/problems/shortest-path-in-binary-matrix/

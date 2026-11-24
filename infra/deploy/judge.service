@@ -1,0 +1,29 @@
+# /etc/systemd/system/ipp-judge.service on the judge VM.
+[Unit]
+Description=interview++ judge worker
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+User=ipp-judge
+Group=ipp-judge
+SupplementaryGroups=docker
+# REDIS_URL=redis://judge:<REDIS_JUDGE_PASSWORD>@<app private ip>:6379 ; mode 0600, root-owned.
+EnvironmentFile=/etc/ipp/judge.env
+Environment=NODE_ENV=production SANDBOX_RUNTIME=runsc LOG_FORMAT=json
+WorkingDirectory=/var/lib/ipp-judge
+ExecStartPre=/opt/ipp/judge check
+ExecStart=/opt/ipp/judge
+Restart=always
+RestartSec=2
+TimeoutStopSec=130
+KillSignal=SIGTERM
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/ipp-judge
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

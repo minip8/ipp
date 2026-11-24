@@ -1,0 +1,18 @@
+slug: word-search-ii
+title: Word Search II
+difficulty: hard
+tags: [backtracking, trie, matrix, dfs]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: findWords
+      params:
+        - { name: board, type: { array: string } }
+        - { name: words, type: { array: string } }
+      returns: { list: string }
+      compare: unordered
+limits: { timeMs: 2000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 212)
+  url: https://leetcode.com/problems/word-search-ii/

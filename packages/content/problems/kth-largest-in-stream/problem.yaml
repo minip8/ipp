@@ -1,0 +1,19 @@
+slug: kth-largest-in-stream
+title: Kth Largest Element in a Stream
+difficulty: easy
+tags: [design, heap]
+signature:
+  className: KthLargest
+  kind: design
+  ctorParams:
+    - { name: k, type: int }
+    - { name: nums, type: { array: int } }
+  methods:
+    - name: add
+      params:
+        - { name: val, type: int }
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Kth Largest Element in a Stream (LeetCode 703)
+  url: https://leetcode.com/problems/kth-largest-element-in-a-stream/

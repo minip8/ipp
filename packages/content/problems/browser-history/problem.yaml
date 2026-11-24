@@ -1,0 +1,26 @@
+slug: browser-history
+title: Browser History
+difficulty: easy
+tags: [design, array, stack]
+signature:
+  className: BrowserHistory
+  kind: design
+  ctorParams:
+    - { name: homepage, type: string }
+  methods:
+    - name: visit
+      params:
+        - { name: url, type: string }
+      returns: void
+    - name: back
+      params:
+        - { name: steps, type: int }
+      returns: string
+    - name: forward
+      params:
+        - { name: steps, type: int }
+      returns: string
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Design Browser History (LeetCode 1472)
+  url: https://leetcode.com/problems/design-browser-history/

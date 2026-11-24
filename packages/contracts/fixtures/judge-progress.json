@@ -1,0 +1,12 @@
+[
+  { "runId": "5f2b8a44-3a1e-4d0b-8a57-2f0f7a0c9b21", "event": { "type": "started" } },
+  { "runId": "5f2b8a44-3a1e-4d0b-8a57-2f0f7a0c9b21", "event": { "type": "compiling" } },
+  {
+    "runId": "5f2b8a44-3a1e-4d0b-8a57-2f0f7a0c9b21",
+    "event": { "type": "running", "done": 3, "total": 12 }
+  },
+  {
+    "runId": "5f2b8a44-3a1e-4d0b-8a57-2f0f7a0c9b21",
+    "event": { "type": "output", "stream": "stdout", "chunk": "hello world\n" }
+  }
+]

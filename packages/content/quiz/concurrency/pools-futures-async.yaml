@@ -1,0 +1,382 @@
+# Thread pools, work stealing, futures/promises, event loops, async I/O, coroutines.
+
+- id: conc-async-001
+  topic: concurrency
+  subtopic: Futures and async
+  difficulty: medium
+  type: single
+  prompt: |
+    `auto f = std::async(compute);` (no launch policy given). Which statement is guaranteed by the
+    standard?
+  choices:
+    - { id: a, text: "compute runs on a new thread immediately" }
+    - { id: b, text: "The default policy is std::launch::async | std::launch::deferred, so the implementation may run compute on another thread or defer it until f.get()/f.wait(); if f is never waited on, compute may never run" }
+    - { id: c, text: "compute runs on a thread pool shared by all std::async calls" }
+    - { id: d, text: "compute runs synchronously inside the std::async call" }
+  answer: b
+  explanation: |
+    With both bits set the choice is implementation-defined. In practice libstdc++ and libc++ choose
+    `async` when threads are available, but code must not rely on it: with deferred execution,
+    `wait_for` returns `future_status::deferred` (a loop waiting for `ready` would spin forever),
+    the task sees the `thread_local`s of whichever thread calls `get()`, and it may never run at all. Pass `std::launch::async` explicitly when
+    you need real concurrency. The standard does not mandate a pool (MSVC's implementation does use the
+    Windows thread pool, which is itself controversial for `thread_local` semantics).
+  tags: [std-async, launch-policy, future]
+  source: { name: "Scott Meyers, Effective Modern C++, Item 36 (idea)" }
+
+- id: conc-async-002
+  topic: concurrency
+  subtopic: Thread pools
+  difficulty: medium
+  type: short
+  prompt: |
+    Design a fixed-size thread pool in C++ that accepts arbitrary callables and returns futures. Cover
+    the queue, worker loop, result/exception propagation and shutdown.
+  reference: |
+    - **State**: `std::vector<std::thread> workers`, a task queue `std::deque<std::function<void()>>`
+      (or `std::move_only_function` in C++23, since packaged tasks are move-only), a mutex, a
+      condition variable, and a `stopping` flag.
+    - **submit(f, args…)**: wrap the call in a `std::packaged_task<R()>` (held by `shared_ptr` if the
+      queue needs copyable callables), take its future, push a lambda that invokes it under the lock,
+      `notify_one`, return the future. Reject submissions after shutdown.
+    - **Worker loop**: lock; `cv.wait(lk, [&]{ return stopping || !queue.empty(); })`; if stopping and
+      empty, exit; pop a task; unlock; run it outside the lock.
+    - **Exceptions**: `packaged_task` captures them into the future, so they surface at `get()` and do
+      not kill the worker (a raw `std::function` that throws would `std::terminate` the thread).
+    - **Shutdown** (destructor): set `stopping` under the lock, `notify_all`, join all workers. Decide
+      whether to drain remaining tasks (as above) or discard them.
+    - **Sizing**: about the number of cores for CPU-bound work.
+    - **Pitfalls**: tasks that block waiting on other tasks in the same pool can deadlock when all
+      workers are blocked (thread-starvation deadlock); a single shared queue becomes a contention
+      point at high task rates (work stealing addresses this).
+  keyPoints:
+    - "Shared task queue protected by a mutex + condition variable with a predicate wait"
+    - "Wrap tasks in packaged_task (or promise) to return futures and propagate exceptions"
+    - "Run tasks outside the lock"
+    - "Shutdown: set a stop flag under the lock, notify_all, join workers; define drain vs discard"
+    - "Mentions pitfalls: nested waiting deadlock, queue contention, pool sizing"
+  explanation: |
+    A frequent whiteboard exercise. Correct condition-variable usage and clean shutdown are where most
+    candidates slip. Bringing up the nested-wait deadlock and the single-queue bottleneck shows
+    experience beyond the textbook version.
+  tags: [thread-pool, packaged-task, condition-variable, design]
+  source: { name: "Anthony Williams, C++ Concurrency in Action, 2nd ed., ch. 9 (idea)" }
+
+- id: conc-async-003
+  topic: concurrency
+  subtopic: Thread pools
+  difficulty: medium
+  type: single
+  prompt: |
+    A service handles 2,000 requests/s. Each request spends 5 ms computing on the CPU and 45 ms blocked
+    on a downstream call, using one pool thread throughout. Roughly how many pool threads are needed
+    to sustain the load without queueing growing unboundedly, and how many CPU cores?
+  choices:
+    - { id: a, text: "About 10 threads and 10 cores" }
+    - { id: b, text: "About 100 threads and about 10 cores" }
+    - { id: c, text: "About 2,000 threads and 2,000 cores" }
+    - { id: d, text: "About 100 threads and about 100 cores" }
+  answer: b
+  explanation: |
+    Little's law: items in system = arrival rate × time in system. Each request occupies a thread for
+    50 ms, so threads busy on average = 2,000/s × 0.05 s = 100. CPU demand: 2,000/s × 0.005 s = 10
+    CPU-seconds per second, so about 10 cores fully used. This matches the common sizing rule
+    threads ≈ cores × (1 + wait/compute) = 10 × (1 + 45/5) = 100. In practice add headroom (utilisation
+    near 100% makes queueing delay explode), or use async I/O so blocked requests do not occupy threads
+    at all.
+  tags: [littles-law, thread-pool, sizing, capacity-planning]
+
+- id: conc-async-004
+  topic: concurrency
+  subtopic: Work stealing
+  difficulty: hard
+  type: short
+  prompt: |
+    How does a work-stealing scheduler work (as in Cilk, Intel TBB, Java's ForkJoinPool, Tokio, Go)?
+    Why does the owner use one end of its deque and thieves the other?
+  reference: |
+    Each worker has its own double-ended queue of tasks. When a task spawns subtasks, the worker pushes
+    them onto the **bottom** of its own deque and later pops from the bottom (LIFO). When a worker runs
+    out of work, it picks a victim (usually at random) and **steals** from the **top** of the victim's
+    deque (FIFO end).
+
+    Why: (1) **Low contention**: the owner works at one end without synchronising with other workers
+    in the common case; thieves contend only at the other end and only when idle. The Chase–Lev deque
+    makes owner push/pop nearly free (plain stores plus a fence, CAS only when racing for the last
+    element). (2) **Locality**: LIFO execution of the owner's own newest tasks keeps hot data in cache,
+    like a depth-first traversal. (3) **Load balance with large grains**: the oldest tasks at the top
+    tend to be the biggest (closer to the root of a divide-and-conquer tree), so one steal transfers a
+    lot of work and steals stay rare. Random victim selection gives provably good load balance.
+
+    Costs/pitfalls: no global ordering or fairness, the need for a stealing-safe deque, and spinning
+    idle workers (park after failed steal attempts).
+  keyPoints:
+    - "Per-worker deques instead of one shared queue"
+    - "Owner pushes and pops at the bottom (LIFO); thieves steal from the top (FIFO)"
+    - "Owner operations are mostly uncontended (Chase-Lev deque; CAS only for the last element)"
+    - "LIFO gives cache locality; stealing the oldest tasks transfers large chunks of work"
+    - "Idle workers steal from random victims, balancing load"
+  explanation: |
+    Work stealing is the standard answer to "a single shared task queue does not scale". Graders look
+    for the two-ended discipline and the reasons: contention, locality and steal granularity.
+  tags: [work-stealing, thread-pool, chase-lev, scheduling]
+  source: { name: "Chase & Lev, Dynamic Circular Work-Stealing Deque (SPAA 2005)" }
+
+- id: conc-async-005
+  topic: concurrency
+  subtopic: Thread pools
+  difficulty: hard
+  type: single
+  prompt: |
+    A fixed pool of 4 threads runs a recursive parallel quicksort: each task submits two subtasks to the
+    same pool and then blocks on `future.get()` for both. On large inputs the program hangs with all
+    CPUs idle. Why?
+  choices:
+    - { id: a, text: "std::future::get cannot be called from a pool thread" }
+    - { id: b, text: "Thread-starvation deadlock: all 4 workers are blocked waiting for subtasks that sit in the queue with no free worker to run them" }
+    - { id: c, text: "A data race in the partition step" }
+    - { id: d, text: "Stack overflow from recursion" }
+  answer: b
+  explanation: |
+    Each blocked parent occupies a worker. Once the outstanding parents number at least the pool size,
+    every worker is waiting on futures whose tasks are queued behind them, and nothing can run. Remedies:
+    have a waiting worker *run pending tasks* while it waits (a "helping" or work-stealing `wait`, as
+    in TBB and ForkJoinPool's `join`), run one half inline instead of submitting it, use continuations
+    instead of blocking waits, or use an unbounded/growing pool (which only hides the problem). A stack
+    overflow would crash, not hang idle.
+  tags: [thread-pool, deadlock, futures, starvation]
+
+- id: conc-async-006
+  topic: concurrency
+  subtopic: Event loops
+  difficulty: medium
+  type: single
+  prompt: |
+    What distinguishes the *reactor* pattern from the *proactor* pattern?
+  choices:
+    - { id: a, text: "A reactor is notified when a descriptor is ready (e.g. epoll says a socket is readable) and then performs the I/O itself; a proactor submits the operation and is notified when it has completed (e.g. io_uring, Windows IOCP)" }
+    - { id: b, text: "A reactor uses threads; a proactor uses processes" }
+    - { id: c, text: "A reactor is for UDP; a proactor is for TCP" }
+    - { id: d, text: "A proactor polls; a reactor is interrupt-driven" }
+  answer: a
+  explanation: |
+    Reactor = readiness notification: `select`/`poll`/`epoll`/`kqueue` report "you can now read without
+    blocking"; the application calls `read`/`recv` itself (libevent, libuv on Unix, Netty, asyncio's
+    selector loop). Proactor = completion notification: the application hands the kernel a buffer and
+    an operation, and is told when it has finished (Windows IOCP, Linux io_uring, POSIX AIO). Proactors
+    can save syscalls and copies and handle regular files well; Boost.Asio presents a proactor-style
+    API and emulates it with a reactor on epoll.
+  tags: [reactor, proactor, epoll, io-uring, iocp]
+
+- id: conc-async-007
+  topic: concurrency
+  subtopic: Event loops
+  difficulty: medium
+  type: short
+  prompt: |
+    Explain how a single-threaded event loop can serve 10,000 concurrent TCP connections, and what can
+    make it fall over.
+  reference: |
+    All sockets are non-blocking and registered with a readiness API (epoll on Linux, kqueue on BSD,
+    IOCP/io_uring in completion style). The loop repeatedly: (1) computes the time until the next timer,
+    (2) blocks in `epoll_wait` until some descriptors are ready or the timeout expires, (3) for each
+    ready descriptor runs its handler, which reads/writes as much as possible without blocking and
+    keeps per-connection state (buffers, a state machine, or a suspended coroutine), (4) runs expired
+    timers and queued callbacks. Idle connections cost only memory and a kernel registration, not a
+    thread, and epoll's cost scales with the number of *ready* descriptors, not total descriptors
+    (unlike select/poll).
+
+    Failure modes: any handler that blocks (a synchronous DNS lookup, disk I/O, a lock) or computes for
+    a long time stalls every connection, raising tail latency; one core is the throughput ceiling, so
+    production servers run one loop per core (SO_REUSEPORT or an acceptor distributing connections)
+    and offload CPU-heavy or blocking work to thread pools; unbounded buffering when a peer reads
+    slowly needs backpressure; with edge-triggered epoll a handler that does not drain to EAGAIN misses
+    events.
+  keyPoints:
+    - "Non-blocking sockets multiplexed with epoll/kqueue (readiness) or io_uring/IOCP (completion)"
+    - "Loop: wait for events with a timeout, dispatch handlers, run timers"
+    - "Per-connection state machines or coroutines instead of a thread per connection"
+    - "epoll cost scales with ready descriptors, unlike select/poll"
+    - "Blocking or CPU-heavy handlers stall everything; offload to pools and run one loop per core"
+    - "Need backpressure; edge-triggered mode requires draining to EAGAIN"
+  explanation: |
+    The C10k answer. Interviewers want the mechanism (non-blocking I/O plus a readiness API), why it is
+    cheap (no thread per connection, O(ready) wakeups), and the main hazard (blocking the loop).
+  tags: [event-loop, epoll, c10k, non-blocking-io]
+  source: { name: "Dan Kegel, The C10K problem", url: "http://www.kegel.com/c10k.html" }
+
+- id: conc-async-008
+  topic: concurrency
+  subtopic: Coroutines
+  difficulty: hard
+  type: single
+  prompt: |
+    Which statement about C++20 coroutines is correct?
+  choices:
+    - { id: a, text: "They are stackful: a coroutine can suspend from inside any ordinary function it calls" }
+    - { id: b, text: "They are stackless: suspension happens only at co_await/co_yield/co_return in the coroutine body itself, and the coroutine's state lives in a frame that is heap-allocated by default (the compiler may elide the allocation)" }
+    - { id: c, text: "The standard library in C++20 ships a ready-made task type and scheduler" }
+    - { id: d, text: "A coroutine always runs on a different thread from its caller" }
+  answer: b
+  explanation: |
+    C++20 coroutines are compiler-generated state machines. Locals that live across a suspension point
+    are stored in the coroutine frame, allocated via `operator new` unless the compiler can prove the
+    lifetime is nested and elide it (HALO). Only the coroutine function itself can suspend; a normal
+    function it calls cannot suspend "through" it, so callers must themselves be coroutines (function
+    colouring).
+
+    C++20 provided only the language machinery and low-level library hooks (`coroutine_handle`,
+    `suspend_always`, etc.); `std::generator` arrived in C++23, and task types and schedulers come from
+    libraries (cppcoro, folly, Asio) or the C++26 `std::execution` work. Coroutines run on whatever
+    thread resumes them, often the caller's.
+  tags: [coroutines, cpp20, stackless]
+
+- id: conc-async-009
+  topic: concurrency
+  subtopic: Futures and async
+  difficulty: medium
+  type: short
+  prompt: |
+    Compare callbacks, futures/promises, and async/await (coroutines) as ways to structure asynchronous
+    code. What problem does each solve and what pain remains?
+  reference: |
+    **Callbacks**: pass a function to be invoked on completion. Minimal and fast, but composition is
+    awkward: sequential steps nest ("callback hell"), error handling is duplicated per callback,
+    cancellation and timeouts are ad hoc, and control flow (loops, try/catch) cannot span callbacks.
+
+    **Futures/promises**: a value-or-error placeholder that decouples producer and consumer. Results
+    and exceptions propagate through one channel, and you can compose with combinators (`then`,
+    `when_all`, `when_any`) or wait. `std::future` lacks continuations, so in standard C++ you mostly
+    block on `get()`, which ties up a thread; richer libraries (folly futures, Java `CompletableFuture`,
+    JS Promises) chain.
+
+    **async/await**: the compiler turns sequential-looking code into a state machine, so loops,
+    try/catch and RAII work across suspension points while threads are not blocked. Remaining pain:
+    function colouring (async infects callers), lifetime bugs (references captured across suspension
+    points), harder debugging/stack traces, and the need for a runtime/executor and cancellation model
+    (structured concurrency, e.g. TaskGroup or C++ `std::execution`).
+  keyPoints:
+    - "Callbacks: cheap but nest badly; error handling and cancellation are ad hoc"
+    - "Futures/promises: a value-or-exception handle; composable via combinators; std::future lacks .then so get() blocks"
+    - "async/await: sequential-looking code compiled to state machines; loops and try/catch work across awaits"
+    - "Costs of async/await: function colouring, lifetime hazards across suspension, need for an executor"
+    - "Structured concurrency addresses cancellation and lifetime"
+  explanation: |
+    The point is that each step trades runtime simplicity for better composition. A strong answer
+    names specific pains (error propagation, cancellation, lifetimes) rather than just "callback hell".
+  tags: [futures, callbacks, async-await, coroutines]
+
+- id: conc-async-010
+  topic: concurrency
+  subtopic: Thread lifecycle
+  difficulty: easy
+  type: single
+  prompt: |
+    What does C++20 `std::jthread` add over `std::thread`?
+  choices:
+    - { id: a, text: "It runs on a thread pool" }
+    - { id: b, text: "Its destructor requests stop and then joins (instead of calling std::terminate), and it provides a std::stop_token for cooperative cancellation" }
+    - { id: c, text: "It can be forcibly killed with jthread::kill()" }
+    - { id: d, text: "It automatically catches exceptions thrown by the thread function" }
+  answer: b
+  explanation: |
+    `jthread` = "joining thread". Its destructor calls `request_stop()` then `join()`. If the callable
+    accepts a `std::stop_token` as its first parameter, the jthread passes one, and the thread can poll
+    `stop_requested()` or register a `std::stop_callback`; `std::condition_variable_any::wait` has
+    overloads that wake on a stop request. Cancellation is cooperative: there is no forced kill.
+    An exception escaping the thread function still calls `std::terminate`.
+  tags: [jthread, stop-token, cancellation, cpp20]
+
+- id: conc-async-011
+  topic: concurrency
+  subtopic: Event loops
+  difficulty: hard
+  type: short
+  prompt: |
+    What is io_uring and why is it interesting compared with epoll for high-performance servers?
+  reference: |
+    io_uring (Linux 5.1+) is an asynchronous, completion-based I/O interface built on two ring buffers
+    shared between user space and the kernel: the **submission queue** (SQ) where the application
+    places operation descriptors (read, write, accept, send, recv, fsync, timeouts, …) and the
+    **completion queue** (CQ) where the kernel posts results.
+
+    Advantages over epoll:
+    - **Fewer syscalls**: many operations can be submitted and reaped with one `io_uring_enter` call,
+      or none at all with SQ polling (a kernel thread polls the SQ), which reduces syscall and mitigation
+      (e.g. Spectre/Meltdown) overheads.
+    - **Completion model**: the kernel performs the I/O and tells you it is done, instead of only saying
+      "ready" and requiring a separate `read`/`write` syscall per descriptor.
+    - **Works for regular files** (epoll cannot make disk I/O asynchronous; buffered file reads are
+      always "ready").
+    - Extras: registered buffers and files to avoid per-op setup, multishot accept/recv, linked
+      operations, zero-copy send.
+
+    Costs: more complex API (liburing helps), buffer lifetime management (buffers belong to the kernel
+    until completion), and a history of security bugs that led some environments (e.g. some container
+    platforms and Android) to restrict or disable it.
+  keyPoints:
+    - "Submission and completion ring buffers shared between user space and kernel"
+    - "Completion-based (proactor) rather than readiness-based like epoll"
+    - "Batching and SQ polling reduce syscalls per operation"
+    - "Supports truly asynchronous regular-file I/O, which epoll cannot"
+    - "Trade-offs: API complexity, buffer lifetime rules, security restrictions in some environments"
+  explanation: |
+    Expect the two-ring structure, the readiness vs completion distinction, and syscall amortisation.
+    Mentioning file I/O and the security caveats shows practical awareness.
+  tags: [io-uring, epoll, async-io, linux]
+  source: { name: "Jens Axboe, Efficient IO with io_uring", url: "https://kernel.dk/io_uring.pdf" }
+
+- id: conc-async-012
+  topic: concurrency
+  subtopic: Futures and async
+  difficulty: medium
+  type: short
+  prompt: |
+    Several threads need the result of one expensive computation that a single producer thread
+    computes once. How do you hand the result to all of them with the C++ standard library, and why
+    is a plain `std::future` not enough?
+  reference: |
+    Use a `std::promise<T>` in the producer and convert its future to a `std::shared_future<T>`
+    (`promise.get_future().share()`). Give each consumer its own *copy* of the `shared_future`; each
+    calls `get()`, which blocks until the value is set and then returns a `const T&` to the shared
+    result, as many times as needed. The producer calls `set_value` (or `set_exception` on failure,
+    which every consumer will then see rethrown).
+
+    A plain `std::future` is move-only and single-shot: only one owner can wait, and `get()` moves the
+    value out and invalidates the future, so a second `get()` (or a second consumer) is undefined
+    behaviour. Also, consumers should each hold their own `shared_future` copy: concurrent calls on the
+    *same* `shared_future` object are fine for `get()`/`wait()` (const members) but not if anyone
+    assigns to it. The result type must be safe for concurrent reads.
+  keyPoints:
+    - "Use promise + shared_future (future.share())"
+    - "Each consumer holds its own shared_future copy and calls get(), which returns a const reference"
+    - "std::future is move-only and get() can be called only once"
+    - "Exceptions set via set_exception propagate to every consumer"
+    - "Readers share the result object, so it must tolerate concurrent const access"
+  explanation: |
+    This tests knowing the difference between unique and shared futures and what `get()` does to the
+    shared state. A latch or condition variable plus a shared variable is an acceptable alternative if
+    explained correctly.
+  tags: [shared-future, promise, broadcast]
+
+- id: conc-async-013
+  topic: concurrency
+  subtopic: Event loops
+  difficulty: easy
+  type: single
+  prompt: |
+    In an event-loop server (Node.js, Python asyncio, a single-threaded epoll loop), one request handler
+    runs a 200 ms CPU-bound computation without yielding. What happens to the other connections?
+  choices:
+    - { id: a, text: "Nothing; the event loop preempts the handler after a time slice" }
+    - { id: b, text: "All of them stall for those 200 ms because the loop thread cannot dispatch any other events until the handler returns" }
+    - { id: c, text: "The OS moves the other connections to another core automatically" }
+    - { id: d, text: "Only connections on the same port are affected" }
+  answer: b
+  explanation: |
+    Event loops are cooperative. The handler runs on the loop's only thread, and the loop only regains
+    control when the handler returns or awaits. Every other connection's events, timers and callbacks
+    wait, so p99 latency for all clients jumps by 200 ms. Offload CPU-heavy work to a worker pool
+    (`run_in_executor`/`asyncio.to_thread`, Node worker_threads, a separate thread pool) or break it
+    into chunks that yield.
+  tags: [event-loop, blocking, latency]

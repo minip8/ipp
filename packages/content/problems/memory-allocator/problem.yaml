@@ -1,0 +1,23 @@
+slug: memory-allocator
+title: Memory Allocator
+difficulty: medium
+tags: [design, array, simulation, ordered-map]
+signature:
+  className: Allocator
+  kind: design
+  ctorParams:
+    - { name: n, type: int }
+  methods:
+    - name: allocate
+      params:
+        - { name: size, type: int }
+        - { name: mID, type: int }
+      returns: int
+    - name: freeMemory
+      params:
+        - { name: mID, type: int }
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Design Memory Allocator (LeetCode 2502); a common systems / C++ interview theme
+  url: https://leetcode.com/problems/design-memory-allocator/

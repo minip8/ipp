@@ -1,0 +1,233 @@
+# Load balancing, proxies, CDNs, anycast.
+- id: net-lb-001
+  topic: networking
+  subtopic: Load balancing and proxies
+  difficulty: medium
+  type: single
+  prompt: |
+    You need to send `/api/*` to one backend pool and `/static/*` to another, both on the same HTTPS
+    hostname. What kind of load balancer do you need?
+  choices:
+    - { id: a, text: "A layer-4 (TCP) load balancer, which hashes the 4-tuple" }
+    - { id: b, text: "A layer-7 (HTTP) load balancer that terminates TLS so it can read the request path" }
+    - { id: c, text: "DNS round robin" }
+    - { id: d, text: "An L2 switch with port mirroring" }
+  answer: b
+  explanation: |
+    Routing on the URL path needs the load balancer to parse HTTP, and over HTTPS that means
+    **terminating TLS** (or re-encrypting). An L4 balancer sees only IPs, ports and at most SNI, so it
+    can route per connection, not per request. That also makes it a poor fit for HTTP/2 or gRPC, where
+    many requests share one long-lived connection. DNS only resolves the hostname, which is identical
+    for both paths.
+  tags: [load-balancing, l7, l4]
+
+- id: net-lb-002
+  topic: networking
+  subtopic: Load balancing and proxies
+  difficulty: hard
+  type: short
+  prompt: |
+    Why use **consistent hashing**, instead of `hash(key) mod N`, to choose a cache server or a sticky
+    backend? Describe how it works and the refinements used in practice.
+  reference: |
+    With `hash mod N`, changing N (adding or removing a server, or a failure) remaps almost every key:
+    roughly a fraction N/(N+1) of them move. Caches go cold all at once and sessions break.
+
+    Consistent hashing places servers and keys on a hash ring. A key belongs to the first server
+    clockwise from its hash. When a server joins or leaves, only the keys in its arc move, about 1/N of
+    the total, and every other mapping stays the same.
+
+    Refinements:
+    - **Virtual nodes**: each server appears at many points on the ring, which evens out the load and
+      lets you weight servers by capacity.
+    - **Rendezvous (HRW) hashing**: pick the server with the highest hash(key, server). Same minimal
+      disruption, no ring.
+    - **Jump consistent hash** for numbered shards.
+    - **Maglev hashing** (Google's L4 LB): a lookup table giving fast, nearly even distribution with
+      little disruption.
+    - **Bounded-load** consistent hashing caps hot servers.
+
+    Hot keys still need replication or splitting.
+  keyPoints:
+    - "mod-N remaps most keys when N changes (cold caches, broken affinity)"
+    - "Ring: key goes to next server clockwise; membership change moves only ~1/N of keys"
+    - "Virtual nodes for balance and weighting"
+    - "Alternatives: rendezvous/HRW, jump hash, Maglev; bounded loads for hot spots"
+  explanation: |
+    Standard in distributed-systems and load-balancer interviews.
+  tags: [load-balancing, consistent-hashing, caching]
+
+- id: net-lb-003
+  topic: networking
+  subtopic: Load balancing and proxies
+  difficulty: medium
+  type: single
+  prompt: |
+    In **Direct Server Return (DSR)** load balancing, what's distinctive about the traffic flow?
+  choices:
+    - { id: a, text: "The load balancer proxies both directions and terminates TCP" }
+    - { id: b, text: "Requests pass through the load balancer, but backends (which also hold the VIP, e.g. on loopback) reply straight to the client, so the large responses bypass the LB" }
+    - { id: c, text: "Clients connect directly to backends after a DNS lookup" }
+    - { id: d, text: "The load balancer sends an HTTP redirect to the chosen backend" }
+  answer: b
+  explanation: |
+    In DSR the LB forwards incoming packets to the chosen backend, at L2 by rewriting the MAC, or by
+    tunnelling, leaving the destination IP as the VIP. The backend has the VIP configured locally
+    (without answering ARP for it) and replies with the VIP as source, straight to the client.
+    Responses are often much larger than requests (video, downloads), so the LB carries only a fraction
+    of the bytes. Trade-offs: the LB can't see responses (no L7 features, no TCP termination), backends
+    need special configuration, and L2-mode DSR needs a shared L2 segment.
+  tags: [load-balancing, dsr, l4]
+
+- id: net-lb-004
+  topic: networking
+  subtopic: Load balancing and proxies
+  difficulty: medium
+  type: single
+  prompt: |
+    Behind a reverse proxy your application logs show every request coming from the proxy's IP. The
+    proxy sets `X-Forwarded-For`. How should the app work out the real client IP safely?
+  choices:
+    - { id: a, text: "Use the first (left-most) address in X-Forwarded-For" }
+    - { id: b, text: "Trust X-Forwarded-For only from your own proxies, and take the entry appended by the outermost proxy you control, i.e. the right-most address not belonging to a trusted proxy" }
+    - { id: c, text: "Use the TCP source address" }
+    - { id: d, text: "Ask the client to send its IP in a custom header" }
+  answer: b
+  explanation: |
+    Each proxy *appends* the address it received the connection from. A client can send its own
+    `X-Forwarded-For: 1.2.3.4`, and the left-most entries are whatever the client wanted. Walk the list
+    from the right, skipping your known proxies. The first address that isn't one of them is the client
+    address seen by your edge. The TCP source is the proxy (that's the problem being solved).
+    Alternatives: the standardised `Forwarded` header (RFC 7239), or the **PROXY protocol** for L4
+    proxies, which prepends the original addresses to the TCP stream.
+  tags: [proxy, http, security]
+
+- id: net-lb-005
+  topic: networking
+  subtopic: CDNs
+  difficulty: medium
+  type: short
+  prompt: |
+    How does a CDN make a site faster for a user far from the origin, even for responses that can't be
+    cached?
+  reference: |
+    - **Proximity**: users are steered (by anycast or DNS) to a nearby edge PoP, so the TCP and TLS
+      handshakes, slow-start ramp-up and retransmissions all happen over a short RTT. Handshakes alone
+      cost 2–3 RTTs, so this saves a lot even before caching.
+    - **Caching**: static and cacheable content (per Cache-Control, ETag, TTL, cache keys) is served
+      from the edge without going to the origin. Tiered caching or origin shielding cuts origin load
+      and keeps hit rates high.
+    - **Uncacheable/dynamic content**: the edge keeps **persistent, warm connections** to the origin
+      (no handshake, large cwnd) over optimised backbone routes. That's faster than a cold
+      long-distance connection from the user. Edges may also reuse TLS sessions and multiplex.
+    - **Protocol and content optimisation** at the edge: HTTP/2 and HTTP/3, TLS 1.3, compression
+      (Brotli), image resizing, edge compute.
+    - **Absorbing load and attacks**: DDoS protection and WAF at a large distributed edge.
+  keyPoints:
+    - "Edge close to the user: handshakes and slow start happen over a short RTT"
+    - "Caches static content per Cache-Control/TTL; origin shielding"
+    - "For dynamic content: warm persistent connections from edge to origin over good paths"
+    - "Request routing via anycast or DNS"
+    - "Modern protocol termination (HTTP/2/3, TLS 1.3), compression, DDoS absorption"
+  explanation: |
+    The point for dynamic content ("split TCP") is what separates good answers from "it caches stuff".
+  tags: [cdn, caching, latency]
+
+- id: net-lb-006
+  topic: networking
+  subtopic: CDNs
+  difficulty: medium
+  type: multiple
+  prompt: |
+    Which statements about **anycast** are true? Select all that apply.
+  choices:
+    - { id: a, text: "The same IP prefix is announced via BGP from many locations" }
+    - { id: b, text: "Each client's packets go to the location that is closest by BGP routing (not necessarily geographically or by latency)" }
+    - { id: c, text: "IP guarantees that every packet of a TCP connection reaches the same site" }
+    - { id: d, text: "It's widely used for DNS (including root servers) and CDN edges" }
+  answer: [a, b, d]
+  explanation: |
+    Anycast relies on ordinary routing. Several sites announce the same prefix, and each router picks
+    its best BGP path. That is "nearest" in BGP policy terms, which usually but not always tracks
+    latency (b). Nothing in IP pins a flow to one site (c). If routing changes mid-connection, packets
+    can arrive at a site that has no state for the connection, causing resets. In practice routes are
+    stable enough for short TCP connections, and operators add state sharing or connection-aware
+    designs. DNS (mostly UDP and short) is the classic use; CDNs use it for HTTP too (d).
+  tags: [anycast, bgp, cdn, dns]
+
+- id: net-lb-007
+  topic: networking
+  subtopic: Load balancing and proxies
+  difficulty: easy
+  type: single
+  prompt: |
+    What's the difference between a **forward proxy** and a **reverse proxy**?
+  choices:
+    - { id: a, text: "A forward proxy acts for clients (e.g. a corporate egress proxy); a reverse proxy sits in front of servers and acts for them (e.g. nginx in front of app servers)" }
+    - { id: b, text: "A forward proxy handles requests; a reverse proxy handles responses" }
+    - { id: c, text: "A reverse proxy is a forward proxy configured with NAT" }
+    - { id: d, text: "They're the same; the names refer to the direction of the TCP handshake" }
+  answer: a
+  explanation: |
+    A **forward proxy** is configured by or for clients and makes outbound requests on their behalf:
+    filtering, caching, anonymity, egress control. Servers see the proxy. A **reverse proxy** is
+    deployed by the service owner and receives requests addressed to the service, for load balancing,
+    TLS termination, caching, compression and protection. Clients usually don't know it's there. Both
+    handle full request/response exchanges.
+  tags: [proxy]
+
+- id: net-lb-008
+  topic: networking
+  subtopic: Load balancing and proxies
+  difficulty: medium
+  type: single
+  prompt: |
+    A chat service has 4 servers holding long-lived WebSocket connections behind a round-robin L4 load
+    balancer. You add 4 more servers. An hour later the old servers are still almost full and the new
+    ones are nearly idle. Why, and what helps?
+  choices:
+    - { id: a, text: "Round robin is broken for WebSockets; switch to DNS load balancing" }
+    - { id: b, text: "The balancer only spreads new connections; existing long-lived connections stay where they are. Use least-connections for new connections, and rebalance gradually by asking clients to reconnect (draining)" }
+    - { id: c, text: "The new servers need a larger TCP backlog" }
+    - { id: d, text: "The load balancer caches backend choices per client IP indefinitely" }
+  answer: b
+  explanation: |
+    Load balancers place **connections**, not load. With long-lived connections, existing clients stay
+    pinned to the old servers until they disconnect. Round robin also gives the new servers only their
+    share of *new* connections. Least-connections steers new arrivals to the emptier servers. To fix
+    the existing imbalance you must move connections deliberately: for example, old servers close a
+    fraction of connections with a reconnect hint, using jittered timing to avoid a thundering herd. The
+    same issue affects gRPC/HTTP/2 behind L4 balancers, and is a reason for L7 or client-side
+    balancing.
+  tags: [load-balancing, websockets, long-lived-connections]
+
+- id: net-lb-009
+  topic: networking
+  subtopic: Load balancing and proxies
+  difficulty: medium
+  type: short
+  prompt: |
+    How should a load balancer health-check backends, and how do you take a backend out of service
+    (for a deploy) without dropping in-flight requests?
+  reference: |
+    Health checks: the LB probes each backend periodically, at TCP connect level (L4) or with an HTTP
+    request to a dedicated endpoint (L7). Use thresholds: mark a backend down after N consecutive
+    failures and up after M successes, to avoid flapping. Prefer **readiness** endpoints that report
+    whether this instance can serve (warmed up, dependencies reachable) over liveness alone, but don't
+    make every backend fail together just because a shared dependency is down. Passive health checking
+    (outlier detection) also ejects backends based on real traffic errors.
+
+    Graceful removal (**connection draining**): stop sending *new* requests to the backend, by failing
+    its readiness check or deregistering it, while existing connections and in-flight requests finish,
+    up to a drain timeout. The backend stops accepting new work, finishes current requests, closes idle
+    keep-alive connections (HTTP/2 GOAWAY or `Connection: close`), then exits. Deregister before
+    stopping the process, not after.
+  keyPoints:
+    - "Active L4/L7 probes with failure and success thresholds to avoid flapping"
+    - "Readiness vs liveness; avoid cascading failure on shared dependencies"
+    - "Passive checks / outlier ejection from real traffic"
+    - "Draining: stop new requests first, let in-flight finish with a timeout"
+    - "Close keep-alive connections gracefully (GOAWAY / Connection: close) before exit"
+  explanation: |
+    Operational maturity question for infrastructure roles.
+  tags: [load-balancing, health-checks, deployment]

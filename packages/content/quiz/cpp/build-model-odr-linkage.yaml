@@ -1,0 +1,372 @@
+# The build model: preprocessor, translation units, linkage, ODR, inline, headers and modules.
+- id: cpp-build-001
+  topic: cpp
+  subtopic: Build model, ODR and linkage
+  difficulty: easy
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [preprocessor, macros]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    #define SQUARE(x) x * x
+
+    int main() {
+        std::cout << SQUARE(1 + 2) << ' ' << 36 / SQUARE(3) << '\n';
+    }
+  answer: { kind: output, output: "5 36" }
+  explanation: |
+    Macros are textual substitution before parsing. `SQUARE(1 + 2)` becomes `1 + 2 * 1 + 2` = 5, and
+    `36 / SQUARE(3)` becomes `36 / 3 * 3` = 36. Parenthesizing every parameter *and* the whole body,
+    `#define SQUARE(x) ((x) * (x))`, fixes precedence but still evaluates the argument twice. A
+    `constexpr` function has none of these problems.
+
+- id: cpp-build-002
+  topic: cpp
+  subtopic: Build model, ODR and linkage
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [preprocessor, macros, side-effects]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    #define MAX(a, b) ((a) > (b) ? (a) : (b))
+
+    int main() {
+        int i = 1, j = 0;
+        int m = MAX(i++, j);
+        std::cout << m << ' ' << i << '\n';
+    }
+  answer: { kind: output, output: "2 3" }
+  explanation: |
+    The expansion is `((i++) > (j) ? (i++) : (j))`. The condition reads 1 and increments `i` to 2; since
+    `1 > 0`, the second operand evaluates `i++` again: yields 2, `i` becomes 3. It's well-defined because
+    the first operand of `?:` is sequenced before the chosen branch ([expr.cond]), but it's surely not
+    what the caller meant. Prefer `std::max` or a function template.
+
+- id: cpp-build-003
+  topic: cpp
+  subtopic: Build model, ODR and linkage
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [odr-use, unevaluated-operands, linking]
+  prompt: |
+    The function `compute` is declared but never defined anywhere in the program. What does it print?
+  code: |
+    #include <iostream>
+    #include <type_traits>
+
+    int compute(int);
+
+    int main() {
+        std::cout << std::is_same_v<decltype(compute(1)), int>
+                  << sizeof(compute(2)) / sizeof(int) << '\n';
+    }
+  answer: { kind: output, output: "11" }
+  explanation: |
+    The operands of `decltype` and `sizeof` are *unevaluated operands* ([expr.context]): the call is never
+    executed, so `compute` isn't odr-used, and a definition is only required for functions that are
+    odr-used ([basic.def.odr]). The program compiles and links. The same principle makes `std::declval`
+    work (it's declared but never defined) and lets traits test expressions with `decltype`.
+
+- id: cpp-build-004
+  topic: cpp
+  subtopic: Build model, ODR and linkage
+  difficulty: medium
+  type: single
+  tags: [inline, odr]
+  prompt: |
+    In modern C++, what is the primary meaning of `inline` on a function (or, since C++17, a variable)
+    defined in a header?
+  choices:
+    - { id: a, text: "The entity may be defined in multiple translation units (identically), and the linker keeps one; it is only a weak hint for inlining." }
+    - { id: b, text: "The compiler must substitute the body at every call site." }
+    - { id: c, text: "The function gets internal linkage, so each translation unit has its own copy." }
+    - { id: d, text: "The function cannot have its address taken." }
+  answer: a
+  explanation: |
+    `inline` exempts the entity from the "exactly one definition in the program" rule: every TU that uses
+    it may contain a definition, provided all definitions are identical (token-for-token, with the same
+    meaning). The linker merges them (COMDAT/weak symbols). Inline functions still have external linkage
+    and one address. Whether calls are actually inlined is the optimizer's decision for any function.
+    Functions defined inside a class body, `constexpr` functions, and templates are implicitly inline (or
+    have equivalent ODR rules). C++17 inline variables let headers define globals and static data members.
+
+- id: cpp-build-005
+  topic: cpp
+  subtopic: Build model, ODR and linkage
+  difficulty: medium
+  type: single
+  tags: [odr-violation, undefined-behavior]
+  prompt: |
+    `a.cpp` contains `struct Config { int port; };` and `b.cpp` contains
+    `struct Config { int port; bool verbose; };` (e.g. built against two versions of a header). Both
+    files have non-inline functions taking `Config&` that call each other. What does the standard say?
+  choices:
+    - { id: a, text: "It is an ODR violation: the program is ill-formed, no diagnostic required, so it typically links and then misbehaves (reads or writes past the smaller object)." }
+    - { id: b, text: "The linker reports a duplicate symbol `Config`." }
+    - { id: c, text: "The compiler reports a redefinition error." }
+    - { id: d, text: "It's fine: each translation unit has its own `Config` type." }
+  answer: a
+  explanation: |
+    A class may be defined in several TUs, but all definitions must be identical ([basic.def.odr]).
+    Types don't produce linker symbols, and each TU is compiled alone, so nobody sees the conflict: "ill-formed, no
+    diagnostic required" means undefined behaviour in practice. Typical causes are mismatched header
+    versions, different `#define`s or compiler flags (e.g. `_GLIBCXX_DEBUG`, packing) across TUs, and
+    identically named helper classes in different .cpp files. (Put the latter in an unnamed namespace.)
+    LTO and `-Wodr` can catch some cases.
+
+- id: cpp-build-006
+  topic: cpp
+  subtopic: Build model, ODR and linkage
+  difficulty: hard
+  type: multiple
+  tags: [linkage, internal-linkage, const]
+  prompt: |
+    Which of these namespace-scope declarations (each in a header included by several .cpp files)
+    have **internal linkage** in C++17? Select all that apply.
+  choices:
+    - { id: a, text: "`const int kLimit = 10;`" }
+    - { id: b, text: "`constexpr double kPi = 3.14159;`" }
+    - { id: c, text: "`static int counter = 0;`" }
+    - { id: d, text: "`int total = 0;`" }
+    - { id: e, text: "`inline const int kMax = 99;`" }
+    - { id: f, text: "`namespace { void helper() {} }`" }
+  answer: [a, b, c, f]
+  explanation: |
+    [basic.link]: names at namespace scope have internal linkage if declared `static`, if they're
+    non-volatile, non-template, non-inline `const`-qualified variables not declared `extern` (so `const`
+    and `constexpr` globals each get a per-TU copy, which is why they can live in headers), or if they're
+    declared in an unnamed namespace.
+
+    - (d) has external linkage; defining it in a header included twice is a "multiple definition" link
+      error.
+    - (e) `inline` gives the const variable external linkage again, with one shared object across TUs:
+      the C++17 way to have a single constant with one address.
+    - (c) compiles, but each TU silently gets its own `counter`, often a bug.
+
+- id: cpp-build-007
+  topic: cpp
+  subtopic: Build model, ODR and linkage
+  difficulty: easy
+  type: single
+  tags: [extern-c, name-mangling]
+  prompt: What does wrapping declarations in `extern "C" { ... }` do?
+  choices:
+    - { id: a, text: "Gives the functions C language linkage: unmangled symbol names and the C calling convention, so they can be called from (or implemented in) C; such functions can't be overloaded." }
+    - { id: b, text: "Compiles the enclosed code with a C compiler." }
+    - { id: c, text: "Forbids C++ features such as classes and exceptions inside the function bodies." }
+    - { id: d, text: "Makes the functions `static`." }
+  answer: a
+  explanation: |
+    C++ mangles names to encode parameter types (that's how overloading links), but C doesn't. `extern "C"`
+    tells the compiler to use the C naming and calling convention for those declarations, so the symbol
+    `foo` matches a C object file or a `dlsym("foo")` lookup. Since the name no longer encodes the
+    parameters, two `extern "C"` functions with the same name are an error. The bodies are still C++.
+    Headers shared with C wrap declarations in `#ifdef __cplusplus extern "C" { #endif`. Exceptions must
+    not propagate across a C boundary.
+
+- id: cpp-build-008
+  topic: cpp
+  subtopic: Build model, ODR and linkage
+  difficulty: easy
+  type: single
+  tags: [templates, headers, linker-errors]
+  prompt: |
+    `stack.h` declares `template <class T> class Stack { void push(const T&); ... };` and `stack.cpp`
+    defines `template <class T> void Stack<T>::push(const T& v) { ... }`. `main.cpp` uses
+    `Stack<int>::push`. The build fails at link time with "undefined reference to Stack<int>::push".
+    Why?
+  choices:
+    - { id: a, text: "A template is only instantiated where its definition is visible; `main.cpp` sees only the declaration, and `stack.cpp` never instantiates `Stack<int>`. Put the definition in the header, or explicitly instantiate `template class Stack<int>;` in `stack.cpp`." }
+    - { id: b, text: "Templates can't have member functions defined outside the class." }
+    - { id: c, text: "The linker doesn't support templates; they must be marked `inline`." }
+    - { id: d, text: "`stack.cpp` must be compiled before `main.cpp`." }
+  answer: a
+  explanation: |
+    Each TU is compiled separately. To generate code for `Stack<int>::push`, the compiler needs the template
+    *definition* at the point of instantiation. `main.cpp` emits a call to an external symbol, and
+    `stack.cpp` contains only an uninstantiated template, so no TU produces the symbol. Hence templates
+    usually live entirely in headers. Explicit instantiation definitions (with `extern template`
+    declarations elsewhere) are the alternative for a fixed set of types, and also reduce compile times.
+
+- id: cpp-build-009
+  topic: cpp
+  subtopic: Build model, ODR and linkage
+  difficulty: easy
+  type: single
+  tags: [linker-errors, multiple-definition, inline-variables]
+  prompt: |
+    A header `metrics.h` (with include guards) contains `int request_count = 0;` at namespace scope and
+    is included from `a.cpp` and `b.cpp`. What happens, and what's the C++17 fix?
+  choices:
+    - { id: a, text: "Both object files define `request_count`, so the link fails with \"multiple definition\". Use `inline int request_count = 0;` (or `extern int request_count;` in the header plus one definition in a .cpp)." }
+    - { id: b, text: "Include guards prevent the second definition, so it works." }
+    - { id: c, text: "Each .cpp gets its own private copy, silently." }
+    - { id: d, text: "The compiler reports a redefinition error in `b.cpp`." }
+  answer: a
+  explanation: |
+    Include guards only prevent double inclusion *within one translation unit*. Each .cpp is compiled
+    separately, so both object files contain a definition of the external symbol `request_count`, and the
+    linker rejects it. C++17 `inline` variables allow the definition in the header with one shared object;
+    `extern` declaration plus a single definition is the classic fix. `static` would compile but give each
+    TU its own counter, which is option (c) and almost never what you want for a metric.
+
+- id: cpp-build-010
+  topic: cpp
+  subtopic: Build model, ODR and linkage
+  difficulty: medium
+  type: short
+  tags: [odr, linkage]
+  prompt: |
+    What is the One Definition Rule? Describe two ways a program can violate it without any compiler or
+    linker error, and how you'd guard against them.
+  reference: |
+    The ODR ([basic.def.odr]) says: within a TU, no entity may be defined more than once; across the
+    program, every non-inline function and variable that is odr-used must have exactly one definition;
+    and entities that may be defined in several TUs (classes, enums, inline functions and variables,
+    templates) must have identical definitions everywhere: the same tokens with the same meaning. Silent
+    violations: (1) two .cpp files each define a helper class or inline function with the same name but
+    different contents (e.g. `struct Node` in two files). The linker keeps one inline function's code or
+    mixes layouts, causing memory corruption; (2) a header compiled with different macros or flags in
+    different TUs (e.g. `NDEBUG` changing a class's members, `_GLIBCXX_DEBUG`, struct packing, `-march`
+    differences in inline functions), or linking libraries built against different versions of a header.
+    Since these are "ill-formed, no diagnostic required", the result is undefined behaviour that often
+    shows up as bizarre crashes. Guards: put file-local helpers in unnamed namespaces (internal linkage);
+    keep build flags consistent; don't let macros change class layouts; use LTO with `-Wodr`, ASan's ODR
+    violation detection, and gold/lld `--detect-odr-violations`; single-source headers and package
+    management.
+  explanation: |
+    Must cover "one definition per program for non-inline entities" plus "identical definitions for
+    inline/classes/templates", and that violations are usually not diagnosed.
+  keyPoints:
+    - Exactly one definition of each odr-used non-inline function or variable in the program
+    - Classes, inline functions and templates may appear in many TUs but must be identical
+    - "Silent violations: same-named helpers in different .cpp files; headers compiled with different macros or flags"
+    - Ill-formed, no diagnostic required, so UB at run time
+    - Unnamed namespaces for local helpers, consistent flags, LTO -Wodr / ASan ODR detection
+
+- id: cpp-build-011
+  topic: cpp
+  subtopic: Build model, ODR and linkage
+  difficulty: easy
+  type: short
+  tags: [linker-errors, compilation-model]
+  prompt: |
+    Explain the stages from `.cpp` file to executable. What typically causes "undefined reference to ..."
+    versus "multiple definition of ..." errors?
+  reference: |
+    The preprocessor expands `#include`s and macros into a translation unit; the compiler turns each TU
+    independently into an object file containing code plus a symbol table of definitions and unresolved
+    references; the linker combines object files and libraries, resolving each referenced symbol to exactly
+    one definition. "Undefined reference": a symbol is used but no linked object defines it. Causes: a
+    declared but never-defined function or static data member; forgetting to compile or link a .cpp or
+    library (or wrong library order with static libs); a template defined in a .cpp and never instantiated
+    there; a C function declared without `extern "C"` (mangled name mismatch); a missing virtual function
+    definition, often reported as an undefined vtable ("undefined reference to vtable for X"
+    when the key function isn't defined). "Multiple definition": two object files define the same external
+    symbol, e.g. a non-inline function or global variable defined in a header included by several .cpp
+    files, or the same source linked twice. Fixes: `inline`, `static` or unnamed namespaces, or moving the
+    definition into one .cpp.
+  explanation: |
+    Look for the separate-compilation model (each TU compiled independently) and concrete causes for each
+    error.
+  keyPoints:
+    - Preprocess, then compile each TU independently to an object file, then link and resolve symbols
+    - "Undefined reference: declared/used but never defined or not linked (missing .cpp/lib, template in .cpp, extern C mismatch)"
+    - Missing key virtual function definition gives undefined vtable errors
+    - "Multiple definition: non-inline definitions in headers included by several TUs"
+    - Fix with inline, internal linkage, or a single definition in one .cpp
+
+- id: cpp-build-012
+  topic: cpp
+  subtopic: Build model, ODR and linkage
+  difficulty: medium
+  type: short
+  tags: [modules, cpp20, headers]
+  prompt: |
+    What problems with `#include`-based headers do C++20 modules address, and what are the practical
+    caveats of adopting them today?
+  reference: |
+    Headers are textual inclusion: every TU re-parses the same (often huge) headers, so build time scales with
+    includes times TUs; macros and declarations leak in both directions, so include order matters and macros
+    can break code; there is no real encapsulation, since implementation details in headers are visible and
+    any change triggers recompilation of all dependents; and ODR problems arise when the same header is
+    compiled differently. Modules (`export module m;`, `import m;`) are compiled once into a binary module
+    interface that importers load; only exported names are visible, macros don't leak out of (or into)
+    named modules, import order doesn't matter, and the boundary is a real interface. `import std;` (C++23)
+    imports the whole standard library cheaply. Caveats: build systems must know module dependencies
+    before compiling (dependency scanning, so CMake 3.28+ with Ninja), compiler support and BMI formats
+    differ and aren't portable between compilers or even flags, header units and mixing with legacy
+    includes are fiddly, tooling (IDEs, static analysers) lags, and migrating large codebases is
+    incremental. Templates still need their definitions in the interface, but they're parsed once.
+  explanation: |
+    Key benefits are build throughput, isolation from macros and include order, and encapsulation; key
+    caveats are build-system dependency scanning and tooling maturity.
+  keyPoints:
+    - Textual inclusion re-parses headers in every TU (slow builds)
+    - Macros and include order leak and interfere; no encapsulation; ODR hazards
+    - Modules are compiled once into an interface, export only chosen names, and are macro-isolated
+    - import std (C++23); order-independent imports
+    - Caveats are build-system dependency scanning, non-portable BMIs, and immature tooling/migration
+
+- id: cpp-build-013
+  topic: cpp
+  subtopic: Build model, ODR and linkage
+  difficulty: medium
+  type: short
+  tags: [pimpl, compile-times, abi]
+  prompt: |
+    Explain the pimpl idiom. What problems does it solve, what does it cost, and what are some other
+    techniques for reducing C++ build times?
+  reference: |
+    Pimpl ("pointer to implementation"): the public class holds only `std::unique_ptr<Impl>` to a forward-declared
+    `struct Impl` defined in the .cpp file. The header no longer includes the implementation's
+    dependencies, so changes to private members or their headers don't force recompiling every client
+    (compilation firewall), and the class's size and layout stay fixed, giving a stable ABI for shared
+    libraries. Costs: an extra heap allocation per object, an indirection on every access (worse locality,
+    no inlining of private logic), and boilerplate: the destructor (and moves) must be declared in the
+    header and defined in the .cpp where `Impl` is complete, because `unique_ptr`'s deleter needs the
+    complete type. Const-correctness doesn't propagate through the pointer. Other build-time techniques:
+    forward declarations instead of includes, include-what-you-use, splitting heavy headers, precompiled
+    headers, `extern template` and explicit instantiation for common template arguments, reducing template
+    metaprogramming in headers, unity/jumbo builds, distributed builds and caching (ccache, sccache),
+    modules, and analysing builds (`-ftime-trace`, ClangBuildAnalyzer).
+  explanation: |
+    Look for the compilation firewall and ABI stability, the allocation and indirection costs, the
+    out-of-line destructor requirement, and some general build-time techniques. See GotW #100/#101
+    ("Compilation Firewalls").
+  keyPoints:
+    - Private members are moved into an Impl defined in the .cpp, held via unique_ptr
+    - Compilation firewall (fewer rebuilds) and stable ABI/layout
+    - Costs are heap allocation, indirection, and losing inlining
+    - Destructor and moves must be defined out of line where Impl is complete
+    - "Other techniques: forward declarations, PCH, extern template, unity builds, ccache, modules, -ftime-trace"
+
+- id: cpp-build-014
+  topic: cpp
+  subtopic: Build model, ODR and linkage
+  difficulty: easy
+  type: single
+  tags: [include-guards, pragma-once, headers]
+  prompt: What problem do include guards (or `#pragma once`) solve?
+  choices:
+    - { id: a, text: "They prevent the same header's contents from being processed twice within one translation unit, which would cause redefinition errors for classes, inline functions and so on." }
+    - { id: b, text: "They prevent the same global variable from being defined in two different .cpp files." }
+    - { id: c, text: "They make the compiler cache headers between translation units." }
+    - { id: d, text: "They stop a header from being included by more than one .cpp file." }
+  answer: a
+  explanation: |
+    A header included twice in one TU (directly or through other headers) would define its classes twice,
+    and that's a redefinition error. `#ifndef X_H / #define X_H / ... #endif` or the non-standard but
+    universally supported `#pragma once` skips the second inclusion. Guards don't help *across*
+    translation units (b, d): each .cpp is preprocessed separately, so non-inline definitions in headers
+    still cause "multiple definition" link errors. `#pragma once` can misbehave with the same file reachable
+    via different paths (symlinks, network mounts); macro guards need unique names.

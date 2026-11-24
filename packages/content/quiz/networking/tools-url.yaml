@@ -1,0 +1,240 @@
+# Debugging tools (traceroute, tcpdump, ss, dig, curl) and "what happens when you type a URL".
+- id: net-tools-001
+  topic: networking
+  subtopic: Debugging tools
+  difficulty: medium
+  type: single
+  prompt: |
+    How does classic Linux/Unix `traceroute` (default mode) discover the routers on a path?
+  choices:
+    - { id: a, text: "It sets the IP Record Route option and reads the list back" }
+    - { id: b, text: "It sends UDP probes to high ports (from 33434) with TTL 1, 2, 3…; each router that drops a probe at TTL 0 returns ICMP Time Exceeded, revealing itself, and the destination answers with ICMP Port Unreachable" }
+    - { id: c, text: "It queries each router's SNMP routing table" }
+    - { id: d, text: "It sends TCP SYNs with increasing window sizes" }
+  answer: b
+  explanation: |
+    traceroute uses the TTL: hop *n* is revealed by the ICMP **Time Exceeded** it sends when a TTL=*n*
+    probe expires there. It knows it has reached the destination when the unlikely high port produces
+    **Port Unreachable**. Windows `tracert` uses ICMP Echo instead, and `traceroute -T` / `tcptraceroute`
+    uses TCP SYNs to get through firewalls that drop UDP or ICMP. Each hop is probed three times by
+    default, giving three RTTs. Record Route holds only 9 addresses and is widely ignored.
+  tags: [traceroute, icmp, debugging]
+
+- id: net-tools-002
+  topic: networking
+  subtopic: Debugging tools
+  difficulty: medium
+  type: single
+  prompt: |
+    In a traceroute, hop 6 shows `* * *` but hops 7–12 respond normally with sensible RTTs and the
+    destination is reached. What's the most reasonable conclusion?
+  choices:
+    - { id: a, text: "Hop 6 drops all traffic, so the path is broken" }
+    - { id: b, text: "Hop 6 doesn't send (or rate-limits) ICMP Time Exceeded, or filters the probes addressed to it; traffic passing through it is fine" }
+    - { id: c, text: "Hop 6 is overloaded and adds a lot of latency" }
+    - { id: d, text: "The traceroute probes were blocked by the destination" }
+  answer: b
+  explanation: |
+    Later hops are reached *through* hop 6, so it clearly forwards traffic. Many routers deprioritise,
+    rate-limit or disable generating ICMP on their control plane, which is separate from the
+    forwarding plane. The same applies to a hop with a high RTT followed by hops with normal RTTs:
+    that's slow ICMP generation, not real path latency. Only loss or latency that **persists to the
+    final hop** indicates a real problem (the standard way to read mtr output).
+  tags: [traceroute, debugging, icmp]
+
+- id: net-tools-003
+  topic: networking
+  subtopic: Debugging tools
+  difficulty: hard
+  type: single
+  prompt: |
+    `ss -ltn` on Linux shows a listening socket with **Recv-Q 4097** and **Send-Q 4096**. What does
+    that mean?
+  choices:
+    - { id: a, text: "4097 bytes of data are waiting to be read" }
+    - { id: b, text: "The accept queue is full: 4096 is the listen backlog limit, and connections are waiting for the application to call accept(), so new handshakes are being dropped" }
+    - { id: c, text: "The send buffer is full" }
+    - { id: d, text: "The socket has 4097 established connections in total" }
+  answer: b
+  explanation: |
+    For **LISTEN** sockets ss repurposes the columns. Recv-Q is the current accept-queue length
+    (completed connections not yet accepted), and Send-Q is the backlog limit, i.e.
+    min(backlog, somaxconn). The queue can show one more than the limit because of how the kernel tests
+    for a full queue. A full queue means the application isn't calling accept() fast enough (a blocked
+    event loop, too few workers). The kernel then drops handshake ACKs/SYNs (`nstat -az TcpExtListenOverflows`).
+    For **established** sockets, Recv-Q and Send-Q are bytes not yet read by the application and bytes
+    not yet acknowledged by the peer.
+  tags: [ss, linux, debugging, backlog]
+
+- id: net-tools-004
+  topic: networking
+  subtopic: Debugging tools
+  difficulty: medium
+  type: single
+  prompt: |
+    Which `tcpdump` filter captures TCP packets that have the **SYN** flag set (including SYN-ACKs)?
+  choices:
+    - { id: a, text: "tcpdump 'tcp.flags.syn == 1'" }
+    - { id: b, text: "tcpdump 'tcp[tcpflags] & tcp-syn != 0'" }
+    - { id: c, text: "tcpdump 'tcp syn'" }
+    - { id: d, text: "tcpdump 'port syn'" }
+  answer: b
+  explanation: |
+    tcpdump uses **BPF/pcap-filter** syntax. `tcp[tcpflags]` reads the TCP flags byte, and `tcp-syn` is
+    a named bit mask (pcap-filter(7)). To capture only initial SYNs, excluding SYN-ACKs, use
+    `'tcp[tcpflags] & (tcp-syn|tcp-ack) == tcp-syn'`. Option a is **Wireshark display-filter** syntax,
+    a common mix-up. It works in Wireshark/tshark display filters, not in capture filters.
+  tags: [tcpdump, debugging, bpf]
+  source: { name: "pcap-filter(7)", url: "https://www.tcpdump.org/manpages/pcap-filter.7.html" }
+
+- id: net-tools-005
+  topic: networking
+  subtopic: Debugging tools
+  difficulty: medium
+  type: short
+  prompt: |
+    A user says "calls from service A to service B are slow sometimes". Describe how you'd use standard
+    network tools to find whether the time goes in DNS, connection setup, TLS, the server, or the
+    network.
+  reference: |
+    1. **Break down one request**: `curl -w` with timing variables (time_namelookup, time_connect,
+       time_appconnect, time_starttransfer, time_total) separates DNS, the TCP handshake, the TLS
+       handshake, time to first byte (server processing plus one RTT) and transfer time.
+    2. **DNS**: `dig` against the configured resolver. Look at query time and check whether failures
+       or timeouts cause retries (e.g. a 5 s resolver timeout, or search-domain expansion with ndots).
+    3. **Network path**: ping/mtr for baseline RTT, and loss that persists to the final hop.
+    4. **TCP health**: `ss -ti` on the connection shows rtt, cwnd, retransmits and pacing.
+       `nstat`/`netstat -s` show retransmission and listen-overflow counters. Check Recv-Q/Send-Q for
+       an application that isn't reading or a peer window that's full.
+    5. **Packet capture**: `tcpdump` on both ends and open in Wireshark. Look for SYN retransmissions
+       (1 s, 3 s gaps suggest drops or a full accept queue), retransmissions, zero windows, ~40/200 ms
+       Nagle/delayed-ACK gaps, or the server's response delay after the request.
+    6. Correlate with server-side metrics (CPU, GC pauses, queue depth) once the network is ruled in
+       or out.
+
+    The pattern of delays is often the diagnosis: exact 1 s or 3 s steps mean SYN retransmission, 5 s
+    means DNS timeout, 40 ms means delayed ACK.
+  keyPoints:
+    - "curl -w timing breakdown: DNS, connect, TLS, TTFB, total"
+    - "dig/resolver checks for DNS latency and timeouts"
+    - "ss -ti / nstat for RTT, cwnd, retransmissions, queue overflows"
+    - "tcpdump/Wireshark to see retransmits, zero windows, handshake gaps"
+    - "Recognises tell-tale delay signatures (1 s/3 s SYN retry, 5 s DNS, 40/200 ms delayed ACK)"
+  explanation: |
+    A practical troubleshooting question for SRE and infrastructure roles.
+  tags: [debugging, tcpdump, ss, curl, dig]
+
+- id: net-tools-006
+  topic: networking
+  subtopic: Debugging tools
+  difficulty: easy
+  type: single
+  prompt: |
+    What does `dig +trace example.com` do?
+  choices:
+    - { id: a, text: "Runs traceroute to the IP address of example.com" }
+    - { id: b, text: "Resolves the name iteratively itself, starting from the root servers and following referrals through the TLD to the authoritative servers, printing each step instead of asking the configured recursive resolver" }
+    - { id: c, text: "Shows the resolver's cache contents for example.com" }
+    - { id: d, text: "Enables DNSSEC validation" }
+  answer: b
+  explanation: |
+    `+trace` makes dig behave like a recursive resolver doing the iteration (root -> `.com` ->
+    authoritative) and print every referral. It's ideal for spotting delegation problems: wrong NS
+    records at the parent, lame delegations, glue mismatches. It bypasses resolver caches, so it shows
+    what the authoritative servers say *right now*. It sends no packets with TTL tricks; that's
+    traceroute. `+dnssec` asks for DNSSEC records.
+  tags: [dns, dig, debugging]
+
+- id: net-url-001
+  topic: networking
+  subtopic: What happens when you type a URL
+  difficulty: hard
+  type: short
+  prompt: |
+    "What happens when you type `https://www.example.com/` into a browser and press Enter?" Answer in
+    real depth, from the keypress to pixels, focusing on the networking.
+  reference: |
+    1. **URL parsing and policy**: the browser parses scheme, host and path. HSTS (including the preload
+       list) may force https. It checks its HTTP cache (Cache-Control) and service worker, and looks
+       for an existing connection to the origin it could reuse (HTTP/2 or HTTP/3 coalescing).
+    2. **DNS**: browser cache -> OS stub resolver (hosts file, local cache) -> recursive resolver over
+       UDP 53 (or DoH/DoT). The resolver iterates root -> `.com` -> authoritative, caching per TTL. The
+       browser may query A, AAAA and HTTPS/SVCB records in parallel; HTTPS records can advertise
+       HTTP/3 and ECH keys.
+    3. **Routing to the server**: the OS picks the source address and route. The default gateway's MAC
+       comes from ARP/NDP. Packets cross the home NAT (source address and port rewritten) and ISP
+       routers, likely reaching an anycast CDN edge. Happy Eyeballs races IPv6 against IPv4.
+    4. **Transport**: TCP three-way handshake (1 RTT). Or QUIC, if HTTP/3 is known from Alt-Svc or an
+       HTTPS record, combining transport and TLS in 1 RTT.
+    5. **TLS 1.3**: ClientHello with SNI, ALPN (h2) and key shares; ServerHello and an encrypted
+       certificate chain. The browser validates the chain, the name and CT. 1 RTT; resumption can use
+       0-RTT.
+    6. **HTTP**: a GET request with Host/:authority, cookies, Accept-Encoding and so on, multiplexed as
+       an h2 stream. The server or CDN edge answers from cache or fetches from the origin over warm
+       connections (load balancers, reverse proxies, application servers, databases). The response
+       (status, headers, compressed body) arrives; TCP slow start shapes how fast the first KBs flow.
+    7. **Rendering**: parse HTML, discover subresources (CSS, JS, images), which trigger more requests
+       on the same connection, preload scanning, CSSOM/DOM, JS execution, layout, paint, composite.
+
+    Rough cost with a cold cache: DNS (≥1 RTT to the resolver) + TCP 1 RTT + TLS 1 RTT + HTTP 1 RTT
+    before the first byte of HTML.
+  keyPoints:
+    - "DNS resolution chain with caching (browser, OS, recursive resolver, iterative walk)"
+    - "Local delivery: routing decision, ARP for the gateway, NAT on the way out"
+    - "TCP handshake (or QUIC) plus TLS 1.3 handshake with SNI/ALPN and certificate validation"
+    - "HTTP request/response over h2/h3, through CDN/LB/reverse proxy to the app"
+    - "Browser parsing and subresource fetching/rendering; mentions RTT costs or caching/HSTS"
+  explanation: |
+    Classic open-ended question. Grade on depth and correct ordering; extra credit for HSTS, Happy
+    Eyeballs, HTTPS DNS records, connection reuse and RTT accounting.
+  tags: [http, dns, tls, tcp, url]
+
+- id: net-url-002
+  topic: networking
+  subtopic: What happens when you type a URL
+  difficulty: medium
+  type: single
+  prompt: |
+    Ignoring DNS, how many network round trips pass before the client receives the **first byte of the
+    HTTP response** on a brand-new HTTPS connection using TCP + TLS 1.3 (no resumption, no TCP Fast
+    Open)? How about HTTP/3 over QUIC?
+  choices:
+    - { id: a, text: "TCP + TLS 1.3: 2 RTT; HTTP/3: 1 RTT" }
+    - { id: b, text: "TCP + TLS 1.3: 3 RTT; HTTP/3: 2 RTT" }
+    - { id: c, text: "TCP + TLS 1.3: 4 RTT; HTTP/3: 3 RTT" }
+    - { id: d, text: "Both 1 RTT" }
+  answer: b
+  explanation: |
+    TCP + TLS 1.3: TCP handshake (1) + TLS handshake (1); the request goes with the client's Finished
+    and the response arrives one RTT later (1) = **3 RTT**. With TLS 1.2 it's 4.
+
+    HTTP/3: QUIC's combined transport and crypto handshake (1), then the request and response (1) =
+    **2 RTT**. With 0-RTT resumption the request goes in the first flight, so 1 RTT.
+
+    At 100 ms RTT that's 300 ms versus 200 ms before the first byte, which is why handshake RTTs, CDN
+    proximity and connection reuse dominate web latency.
+  tags: [tls, quic, http3, latency, quantitative]
+
+- id: net-url-003
+  topic: networking
+  subtopic: HTTP semantics
+  difficulty: medium
+  type: single
+  prompt: |
+    A user types `example.com` (no scheme) into a browser that has never visited it, and the site is
+    not on the HSTS preload list. The site redirects http->https and sends
+    `Strict-Transport-Security: max-age=31536000`. What's the remaining weakness, and what fixes it?
+  choices:
+    - { id: a, text: "None; the redirect makes the first visit secure" }
+    - { id: b, text: "The very first request goes over plain HTTP, so an on-path attacker can intercept it before the redirect (SSL stripping); adding the domain to the browser HSTS preload list removes this first-visit gap" }
+    - { id: c, text: "HSTS only lasts for the TCP connection" }
+    - { id: d, text: "The certificate isn't checked on redirected requests" }
+  answer: b
+  explanation: |
+    HSTS (RFC 6797) only protects *after* the browser has seen the header over HTTPS. It then upgrades
+    all requests to https and blocks click-through on certificate errors for max-age seconds. The first
+    plain-HTTP request (and any after the policy expires) can be hijacked: an attacker can strip the
+    redirect and proxy the site over HTTP. **Preloading** (shipping the domain in the browser's built-in
+    list, which requires `includeSubDomains; preload`) closes that gap. Browsers increasingly try HTTPS
+    first by default as well.
+  tags: [http, hsts, tls, security]

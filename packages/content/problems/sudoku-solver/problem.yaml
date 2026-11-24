@@ -1,0 +1,16 @@
+slug: sudoku-solver
+title: Sudoku Solver
+difficulty: hard
+tags: [backtracking, bit-manipulation, matrix]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: solveSudoku
+      params:
+        - { name: board, type: { array: string } }
+      returns: { array: string }
+limits: { timeMs: 2000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 37)
+  url: https://leetcode.com/problems/sudoku-solver/

@@ -1,0 +1,41 @@
+slug: order-book
+title: Limit Order Book
+difficulty: hard
+tags: [design, heap, ordered-map, simulation, trading]
+signature:
+  className: OrderBook
+  kind: design
+  methods:
+    - name: addOrder
+      params:
+        - { name: id, type: int }
+        - { name: side, type: string }
+        - { name: price, type: int }
+        - { name: qty, type: int }
+      returns: int
+    - name: cancel
+      params:
+        - { name: id, type: int }
+      returns: bool
+    - name: modify
+      params:
+        - { name: id, type: int }
+        - { name: newQty, type: int }
+      returns: bool
+    - name: bestBid
+      params: []
+      returns: int
+    - name: bestAsk
+      params: []
+      returns: int
+    - name: volumeAt
+      params:
+        - { name: side, type: string }
+        - { name: price, type: int }
+      returns: int
+    - name: lastFills
+      params: []
+      returns: { list: { list: int } }
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Common trading-firm / low-latency C++ interview question (limit order matching engine)

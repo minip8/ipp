@@ -1,0 +1,16 @@
+slug: sort-colors
+title: Sort Colors (Dutch National Flag)
+difficulty: medium
+tags: [array, two-pointers, sorting]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: sortColors
+      params:
+        - { name: nums, type: { array: int } }
+      returns: { array: int }
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 75; Dijkstra's Dutch national flag problem)
+  url: https://leetcode.com/problems/sort-colors/

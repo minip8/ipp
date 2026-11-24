@@ -1,0 +1,16 @@
+slug: meeting-rooms
+title: Meeting Rooms
+difficulty: easy
+tags: [array, intervals, sorting]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: canAttendMeetings
+      params:
+        - { name: intervals, type: { array: { array: int } } }
+      returns: bool
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 252, premium; NeetCode 150 intervals)
+  url: https://leetcode.com/problems/meeting-rooms/

@@ -1,0 +1,16 @@
+slug: non-overlapping-intervals
+title: Non-overlapping Intervals
+difficulty: medium
+tags: [array, intervals, greedy, sorting]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: eraseOverlapIntervals
+      params:
+        - { name: intervals, type: { array: { array: int } } }
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (Blind 75; LeetCode 435); interval scheduling
+  url: https://leetcode.com/problems/non-overlapping-intervals/

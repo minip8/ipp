@@ -1,0 +1,16 @@
+slug: burst-balloons
+title: Burst Balloons
+difficulty: hard
+tags: [dynamic-programming, interval-dp]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: maxCoins
+      params:
+        - { name: nums, type: { array: int } }
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 312)
+  url: https://leetcode.com/problems/burst-balloons/

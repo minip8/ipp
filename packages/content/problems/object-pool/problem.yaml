@@ -1,0 +1,33 @@
+slug: object-pool
+title: Object Pool with Generational Handles
+difficulty: medium
+tags: [design, array, stack]
+signature:
+  className: ObjectPool
+  kind: design
+  ctorParams:
+    - { name: capacity, type: int }
+  methods:
+    - name: acquire
+      params:
+        - { name: value, type: int }
+      returns: long
+    - name: get
+      params:
+        - { name: handle, type: long }
+      returns: int
+    - name: set
+      params:
+        - { name: handle, type: long }
+        - { name: value, type: int }
+      returns: bool
+    - name: release
+      params:
+        - { name: handle, type: long }
+      returns: bool
+    - name: size
+      params: []
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Low-latency C++ interview theme (object pools / slot maps with generation counters to detect stale handles)

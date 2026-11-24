@@ -1,0 +1,297 @@
+# Memory: alignment, padding, new/delete, placement new, object creation, allocators.
+- id: cpp-memory-001
+  topic: cpp
+  subtopic: Memory, alignment and allocation
+  difficulty: easy
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [alignas, alignment, sizeof]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    struct alignas(64) PaddedCounter {
+        long value;
+    };
+
+    int main() {
+        std::cout << sizeof(PaddedCounter) << ' '
+                  << alignof(PaddedCounter) << ' '
+                  << sizeof(PaddedCounter[2]) << '\n';
+    }
+  answer: { kind: output, output: "64 64 128" }
+  explanation: |
+    `alignas(64)` raises the type's alignment requirement to 64. Since `sizeof` of a type must be a multiple
+    of its alignment (so that array elements stay aligned), the struct is padded from 8 to 64 bytes, and an
+    array of two occupies 128. This is the usual way to put independently written counters on separate
+    cache lines to avoid false sharing (C++17 offers `std::hardware_destructive_interference_size` as a
+    portable hint).
+
+- id: cpp-memory-002
+  topic: cpp
+  subtopic: Memory, alignment and allocation
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [placement-new, object-lifetime, destructors]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+    #include <new>
+
+    struct N {
+        char c;
+        explicit N(char c) : c(c) { std::cout << c; }
+        ~N() { std::cout << char(c - 'a' + 'A'); }
+    };
+
+    int main() {
+        alignas(N) unsigned char storage[sizeof(N)];
+        N* p = new (storage) N('a');
+        std::cout << '|';
+        p->~N();
+        std::cout << '|';
+    }
+  answer: { kind: output, output: "a|A|" }
+  explanation: |
+    Placement new constructs an object in existing, suitably aligned storage without allocating
+    ([expr.new]); it is how `std::vector`, `std::optional` and memory pools create objects in raw buffers.
+    The storage's lifetime isn't tied to the object, so the destructor is *not* called automatically: you
+    must call `p->~N()` (or `std::destroy_at(p)`) yourself, and must not `delete p`, because the memory wasn't
+    obtained from `new`. Forgetting the explicit destructor call leaks whatever the object owns.
+
+- id: cpp-memory-003
+  topic: cpp
+  subtopic: Memory, alignment and allocation
+  difficulty: medium
+  type: single
+  tags: [padding, struct-layout, alignment]
+  prompt: |
+    On x86-64 Linux (System V ABI: `double` is 8-byte aligned), what are `sizeof(A)` and `sizeof(B)`?
+
+    ```cpp
+    struct A { char c; double d; char e; };
+    struct B { double d; char c; char e; };
+    ```
+  choices:
+    - { id: a, text: "24 and 16" }
+    - { id: b, text: "10 and 10" }
+    - { id: c, text: "16 and 16" }
+    - { id: d, text: "24 and 24" }
+  answer: a
+  explanation: |
+    Members are laid out in declaration order (for members with the same access), each at an offset that's a
+    multiple of its alignment, and the total size is rounded up to the struct's alignment (8).
+    `A`: `c` at 0, 7 bytes of padding, `d` at 8, `e` at 16, then 7 bytes of tail padding → 24.
+    `B`: `d` at 0, `c` at 8, `e` at 9, then 6 bytes of padding → 16. Ordering members from largest to smallest
+    alignment minimizes padding. That matters for cache footprint when you store millions of them. The
+    compiler is not allowed to reorder members for you.
+
+- id: cpp-memory-004
+  topic: cpp
+  subtopic: Memory, alignment and allocation
+  difficulty: medium
+  type: single
+  tags: [malloc, object-lifetime, placement-new]
+  prompt: |
+    What is wrong with this code?
+
+    ```cpp
+    struct Order { std::string symbol; int qty; };
+    Order* o = static_cast<Order*>(std::malloc(sizeof(Order)));
+    o->symbol = "AAPL";
+    ```
+  choices:
+    - { id: a, text: "`malloc` only allocates bytes; no `Order` (and no `std::string`) object exists there, so assigning to `o->symbol` calls `std::string::operator=` on garbage: undefined behaviour." }
+    - { id: b, text: "Nothing, as long as `free(o)` is called later." }
+    - { id: c, text: "`malloc` memory is not suitably aligned for `std::string`." }
+    - { id: d, text: "It only leaks memory; the assignment itself is fine." }
+  answer: a
+  explanation: |
+    Objects with non-trivial constructors only come into existence when they're constructed. `malloc`
+    returns raw storage (C++20's implicit object creation only applies to *implicit-lifetime* types,
+    and a type with a `std::string` member isn't one). The string's internal pointer and size are garbage,
+    so `operator=` may free or write through a random pointer. Use `new Order{...}` or a smart pointer;
+    if you must use raw storage (e.g. a pool), construct with placement new or `std::construct_at` and
+    destroy with `std::destroy_at` before freeing. Alignment (c) is fine: `malloc` returns memory aligned
+    for any fundamental type.
+
+- id: cpp-memory-005
+  topic: cpp
+  subtopic: Memory, alignment and allocation
+  difficulty: medium
+  type: single
+  tags: [trivially-copyable, memcpy]
+  prompt: Which of these types may be copied with `std::memcpy` with well-defined results?
+  choices:
+    - { id: a, text: "`struct Tick { std::int64_t ts; double px; std::int32_t qty; };`" }
+    - { id: b, text: "`struct Named { std::string name; int id; };`" }
+    - { id: c, text: "`struct Shape { virtual double area() const; double w, h; };`" }
+    - { id: d, text: "`struct Owner { Owner(const Owner&); int* p; };`" }
+  answer: a
+  explanation: |
+    `memcpy` is only valid for **trivially copyable** types ([basic.types.general]): no user-provided
+    or non-trivial copy/move operations, no virtual functions or virtual bases, a trivial destructor, and
+    members that are trivially copyable too. `Tick` qualifies. `std::string` has non-trivial copy semantics
+    (b). A polymorphic class has a vptr and non-trivial copy constructor (c). A user-provided copy
+    constructor makes the type non-trivially copyable (d). Check with
+    `static_assert(std::is_trivially_copyable_v<T>)`. Market data parsers rely on this for zero-copy
+    message handling.
+
+- id: cpp-memory-006
+  topic: cpp
+  subtopic: Memory, alignment and allocation
+  difficulty: easy
+  type: single
+  tags: [stack, heap, allocation, performance]
+  prompt: Why is allocating a local object on the stack typically much cheaper than allocating it with `new`?
+  choices:
+    - { id: a, text: "Stack allocation just adjusts the stack pointer (often folded into the function prologue); heap allocation runs allocator code that searches free lists, may lock or touch new pages, and must later be freed." }
+    - { id: b, text: "Stack memory is faster RAM than heap memory." }
+    - { id: c, text: "Heap allocations are always zero-initialized by the OS on every call." }
+    - { id: d, text: "Objects on the stack are never constructed, so there's no constructor cost." }
+  answer: a
+  explanation: |
+    Stack and heap are the same kind of memory, and the difference is bookkeeping. A stack frame's size is
+    known at compile time, so "allocation" is a single subtraction from the stack pointer, deallocation is
+    free, and the memory is almost always hot in cache. `operator new` must find a suitable free block
+    (size classes, thread caches in tcmalloc or jemalloc), occasionally take locks or call the OS (`mmap` or
+    `brk`, page faults), and the memory may be cold. That's why low-latency code avoids `new` on hot
+    paths. Constructors run either way.
+
+- id: cpp-memory-007
+  topic: cpp
+  subtopic: Memory, alignment and allocation
+  difficulty: medium
+  type: short
+  tags: [new-expression, operator-new, exceptions]
+  prompt: |
+    Walk through what happens when `Widget* w = new Widget(args);` executes, and what happens if the
+    constructor throws. What does `delete w;` do?
+  reference: |
+    A new-expression does two separate things. First it calls an allocation function,
+    `operator new(sizeof(Widget))` (a class-specific overload if `Widget` declares one; the aligned overload
+    taking `std::align_val_t` for over-aligned types), which returns raw memory or throws `std::bad_alloc`
+    (after calling the new-handler in a loop). Then it constructs a `Widget` in that memory with `args`.
+    If the constructor throws, the matching deallocation function (`operator delete`) is called
+    automatically to free the memory, and the exception propagates, so there's no leak. `delete w;` first
+    calls the destructor (virtually, if the destructor is virtual) and then calls `operator delete` with the
+    pointer (and size, for sized deallocation). `new T[n]` similarly calls `operator new[]`, usually storing
+    the element count in a cookie for non-trivially-destructible types, constructs each element (destroying
+    already-constructed ones if one throws), and must be matched by `delete[]`. `operator new` can be
+    replaced globally or per class to plug in custom allocators.
+  explanation: |
+    Key distinction: new-expression ≠ operator new. Mention the automatic deallocation on constructor
+    failure, and the destructor-then-deallocate order for delete.
+  keyPoints:
+    - The new-expression calls operator new (allocation), then runs the constructor
+    - Allocation failure throws std::bad_alloc (after the new-handler)
+    - If the constructor throws, the matching operator delete frees the memory automatically
+    - delete runs the destructor (virtual if declared so), then operator delete
+    - new[] must pair with delete[] (array cookie, per-element construction); operator new is replaceable
+
+- id: cpp-memory-008
+  topic: cpp
+  subtopic: Memory, alignment and allocation
+  difficulty: hard
+  type: short
+  tags: [allocators, pmr, arena, low-latency]
+  prompt: |
+    In a latency-sensitive service, `std::vector`/`std::string`/`std::map` allocations on the hot path
+    show up in profiles as jitter. Describe allocation strategies you would use, including what
+    `std::pmr` provides.
+  reference: |
+    First avoid allocating: reserve capacity up front, reuse containers (`clear()` keeps capacity), prefer
+    contiguous containers, use fixed-capacity or inline containers (`std::array`, small-vector types,
+    SSO-sized strings, `std::string_view`), and preallocate object pools at startup. When allocation is
+    needed, use custom allocation strategies: an arena/monotonic (bump-pointer) allocator for objects with a
+    common lifetime, such as per-message or per-request; allocation is a pointer bump and everything is
+    freed at once. Pool or free-list allocators suit fixed-size objects like orders and nodes. Per-thread
+    allocators avoid lock contention. C++17 `std::pmr` (polymorphic memory resources) makes this easy
+    without changing container types per allocator: `std::pmr::vector<T>` takes a `std::pmr::memory_resource*`;
+    the standard provides `monotonic_buffer_resource` (bump allocation from a buffer, e.g. a stack array,
+    with no per-object deallocation), `unsynchronized_pool_resource`/`synchronized_pool_resource` (size-class
+    pools), and `null_memory_resource` (throws, to detect unexpected allocation). Allocators propagate to
+    nested pmr containers. The costs are a virtual call per allocation and a pointer per container. Also
+    pre-fault and lock memory (`mlock`, touching pages, huge pages) to avoid page faults, and consider a
+    faster general-purpose allocator (jemalloc, tcmalloc, mimalloc).
+  explanation: |
+    Strong answers start with "don't allocate" (reserve, reuse, pools), then arenas/pools, then pmr
+    specifics, and mention page faults. See Pablo Halpern and John Lakos's talks on pmr, and cppreference
+    `std::pmr::monotonic_buffer_resource`.
+  keyPoints:
+    - Avoid allocation first by reserving, reusing containers, and using fixed-capacity/inline storage and preallocated pools
+    - Arena/monotonic allocators for request-scoped data (bump pointer, bulk free)
+    - Pool/free-list allocators for fixed-size objects; per-thread to avoid contention
+    - std::pmr containers take a memory_resource* (monotonic_buffer_resource, pool resources, null_memory_resource)
+    - Pre-fault/lock memory and huge pages to avoid page faults; alternative malloc implementations
+
+- id: cpp-memory-009
+  topic: cpp
+  subtopic: Memory, alignment and allocation
+  difficulty: medium
+  type: short
+  tags: [alignment, over-aligned, simd]
+  prompt: |
+    What is alignment, why does it matter for performance and correctness, and how do you allocate
+    over-aligned memory (e.g. 64-byte aligned for AVX-512 or cache lines) in modern C++?
+  reference: |
+    Every type has an alignment requirement (`alignof(T)`): its objects must start at addresses that are a
+    multiple of that power of two. The compiler inserts padding inside structs to satisfy member alignment
+    and rounds `sizeof` up to a multiple of the alignment. Accessing a misaligned object through a typed
+    pointer is undefined behaviour in C++ (UBSan flags it); on x86 unaligned scalar loads usually work but
+    can straddle cache lines or pages and be slower, while aligned-only SIMD loads (`_mm256_load_ps`)
+    fault, and some architectures trap on any misaligned access. For performance, aligning hot data to
+    cache lines (64 bytes) avoids line splits and false sharing. Over-aligned allocation: declare the
+    type with `alignas(64)`. Since C++17, `new T` for an over-aligned type automatically calls
+    `operator new(size_t, std::align_val_t)`, and `std::allocator` and containers respect it. For raw
+    buffers use `std::aligned_alloc(alignment, size)` (size must be a multiple of the alignment; free with
+    `std::free`) or `::operator new(n, std::align_val_t{64})`. For stack buffers use
+    `alignas(64) std::byte buf[N];`. `std::assume_aligned` (C++20) tells the optimizer about alignment.
+  explanation: |
+    Mention the requirement itself, padding/sizeof, misaligned access being UB plus the performance
+    effects, and the C++17 aligned-new machinery.
+  keyPoints:
+    - alignof(T) is a power of two that object addresses must be a multiple of
+    - Padding inside structs; sizeof is a multiple of alignment
+    - Misaligned typed access is UB; it can be slow (line splits) or fault (aligned SIMD loads, strict architectures)
+    - alignas on types; C++17 aligned new via std::align_val_t; containers respect it
+    - std::aligned_alloc or operator new with align_val_t for raw buffers; alignas for stack buffers
+
+- id: cpp-memory-010
+  topic: cpp
+  subtopic: Memory, alignment and allocation
+  difficulty: hard
+  type: short
+  tags: [bad-alloc, overcommit, operator-new]
+  prompt: |
+    On a Linux machine with 16 GiB of RAM, of which other processes already use 10 GiB, a service does
+    `std::vector<char> buf(12ull << 30);` (12 GiB) inside a `try { ... } catch (const std::bad_alloc&)`.
+    Describe what will most likely happen, and why `std::bad_alloc` is not a reliable way to detect running
+    out of memory there.
+  reference: |
+    `operator new` throws `std::bad_alloc` when the allocator can't obtain memory, but on Linux the
+    allocator asks the kernel for address space via `mmap`, and Linux overcommits by default: with the
+    heuristic mode (`vm.overcommit_memory=0`) only requests that are obviously impossible (larger than
+    total RAM plus swap) are refused, so this 12 GiB request succeeds even though only about 6 GiB is free.
+    Pages are only backed by physical memory when first touched. The vector's value-initialization then
+    writes zeros to every byte, touching all the pages; physical memory runs out partway through and the
+    kernel's OOM killer terminates the process (or another process) with SIGKILL. A request larger than RAM
+    plus swap, or any over-limit request with strict accounting (`overcommit_memory=2`), would instead fail
+    up front and throw `bad_alloc`. No exception is thrown, no destructors run, and nothing can be caught.
+    So robust services don't rely on catching `bad_alloc`: they bound allocation sizes, validate sizes
+    from untrusted input, use `RLIMIT_AS` (or strict overcommit) so that over-limit requests fail in
+    `mmap` and surface as `bad_alloc`, put the service in a cgroup with a memory limit so that an OOM kill
+    is contained to it (a cgroup limit does not make allocation fail; it triggers the OOM killer inside the
+    cgroup), monitor RSS, and pre-allocate. Even when `bad_alloc` is thrown, handling it is
+    tricky because the handlers themselves might need memory.
+  explanation: |
+    The core insight is lazy page allocation and overcommit: the failure moves from `new` to the first
+    write, and becomes an OOM kill rather than an exception.
+  keyPoints:
+    - operator new throws bad_alloc only when the allocator/kernel refuses the request
+    - Linux overcommit lets large mmap requests succeed without physical backing (heuristic refuses only impossible sizes)
+    - Touching the pages (value-initialization zeroing) triggers the OOM killer, a SIGKILL with no exception or destructors
+    - Depends on overcommit settings; bound sizes, use RLIMIT_AS (bad_alloc) or cgroup limits (contained OOM kill), and pre-allocate

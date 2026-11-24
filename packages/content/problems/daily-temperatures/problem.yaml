@@ -1,0 +1,16 @@
+slug: daily-temperatures
+title: Daily Temperatures
+difficulty: medium
+tags: [array, stack, monotonic-stack]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: dailyTemperatures
+      params:
+        - { name: temperatures, type: { array: int } }
+      returns: { array: int }
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 739; NeetCode 150 stack) — the canonical "next greater element" question
+  url: https://leetcode.com/problems/daily-temperatures/

@@ -1,0 +1,174 @@
+# Memory management: references, del, reference counting, cyclic GC, weak references, sizes.
+- id: py-mem-001
+  topic: python
+  subtopic: Memory management
+  difficulty: easy
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [del, references]
+  prompt: What does this program print?
+  code: |
+    a = [1, 2]
+    b = a
+    del a
+    b.append(3)
+    print(b, 'a' in globals())
+  answer: { kind: output, output: "[1, 2, 3] False" }
+  explanation: |
+    `del a` **unbinds the name** `a`; it doesn't destroy the object. The list is still referenced by `b`, so it stays alive and can be used. An object is reclaimed only when nothing refers to it any more (in CPython, when its reference count drops to zero, or when the cycle collector finds it unreachable).
+
+- id: py-mem-002
+  topic: python
+  subtopic: Weak references
+  difficulty: medium
+  type: output
+  language: python
+  standard: CPython 3.x
+  tags: [weakref, refcounting]
+  prompt: What does this program print (on CPython)?
+  code: |
+    import weakref
+
+    class Node:
+        pass
+
+    n = Node()
+    r = weakref.ref(n)
+    print(r() is n)
+    del n
+    print(r())
+  answer:
+    kind: output
+    output: |
+      True
+      None
+  explanation: |
+    A weak reference doesn't keep its target alive. Calling it returns the object while it exists, and `None` once it has been collected. In CPython, `del n` drops the last strong reference, so the refcount reaches zero and the object is freed **immediately**, which is why the second call returns `None`.
+
+    The language only promises that the object *may* be collected once unreachable. Implementations with a tracing GC (e.g. PyPy) may keep it alive until a collection runs, so this exact output is CPython behaviour.
+
+- id: py-mem-003
+  topic: python
+  subtopic: Garbage collection
+  difficulty: medium
+  type: single
+  tags: [gc, reference-cycles, refcounting]
+  prompt: CPython frees most objects through reference counting. Why does it also need the `gc` module's cyclic garbage collector?
+  choices:
+    - { id: a, text: "Objects in a reference cycle (e.g. `a.other = b; b.other = a`) keep each other's counts above zero even when nothing else refers to them; the cycle collector finds and frees such unreachable groups" }
+    - { id: b, text: "Reference counting only works for immutable objects" }
+    - { id: c, text: "The cyclic GC compacts memory to reduce fragmentation" }
+    - { id: d, text: "Reference counts overflow for long-lived objects and must be reset periodically" }
+  answer: a
+  explanation: |
+    Reference counting reclaims objects as soon as their count reaches zero, but a cycle never reaches zero on its own. CPython's supplementary collector tracks container objects (lists, dicts, instances, ...) and periodically detects groups that are only reachable from each other. Since 3.4 (PEP 442) it can also collect cycles whose objects define `__del__`.
+
+    CPython's GC doesn't move or compact objects; object addresses are stable for their lifetime. `gc.disable()` turns off only the cycle collector; refcounting still frees acyclic garbage.
+
+- id: py-mem-004
+  topic: python
+  subtopic: Memory management
+  difficulty: medium
+  type: single
+  tags: [getsizeof, memory]
+  prompt: |
+    `sys.getsizeof(['a' * 1000, 'b' * 1000])` returns a number well under 200 on 64-bit CPython. Why so small?
+  choices:
+    - { id: a, text: "`getsizeof` reports only the list object itself (header plus pointer array), not the objects it refers to" }
+    - { id: b, text: "Strings are compressed in memory" }
+    - { id: c, text: "The strings haven't been allocated yet because of lazy evaluation" }
+    - { id: d, text: "`getsizeof` reports the size in kilobytes" }
+  answer: a
+  explanation: |
+    `sys.getsizeof` returns the shallow size of one object in bytes. For containers that is the object's own structure (here a header plus two 8-byte pointers, plus GC overhead), **not** the elements, which are separate objects possibly shared with other containers. To measure deep size you have to walk the references yourself (the docs link a recursive recipe) or use `tracemalloc` to measure allocations.
+
+- id: py-mem-005
+  topic: python
+  subtopic: Memory management
+  difficulty: medium
+  type: short
+  tags: [refcounting, gc, pymalloc, cpython]
+  prompt: Describe how CPython manages memory for Python objects.
+  reference: |
+    Every object has a reference count, incremented when a new reference is created (binding a name, storing in a container, passing an argument) and decremented when one goes away. When it reaches zero, the object is deallocated immediately (its `__del__` runs and it releases its references), which gives deterministic, prompt cleanup in CPython. Reference cycles can't be freed this way, so a supplementary cyclic garbage collector tracks container objects and periodically finds unreachable cycles. It is generational, with thresholds configurable through `gc.set_threshold`, can be triggered with `gc.collect()`, and its implementation details vary by version (3.14.0–3.14.4 shipped an incremental collector, which was reverted to the 3.13 generational design in 3.14.5 after reports of higher memory use). Small objects (≤ 512 bytes) are allocated by pymalloc, a specialised allocator using arenas and pools, which reduces malloc overhead and fragmentation; larger allocations go to the system allocator. Memory freed back to pymalloc is reused but not always returned to the OS. Since 3.12 some objects are immortal (PEP 683: `None`, small ints and other singletons have fixed refcounts). Free-threaded builds use biased/deferred reference counting and mimalloc.
+  keyPoints:
+    - Reference counting frees objects immediately when the count hits zero
+    - A cyclic, generational garbage collector reclaims reference cycles
+    - pymalloc arenas/pools handle small objects; large ones go to the system malloc
+    - Freed memory isn't necessarily returned to the OS
+    - "Version details: immortal objects (3.12), free-threaded build changes refcounting"
+  explanation: |
+    Reference: the "Memory Management" chapter of the C-API docs, and the `gc` module docs. Candidates who say "Python has a garbage collector like Java" without mentioning refcounting are missing the main mechanism.
+
+- id: py-mem-006
+  topic: python
+  subtopic: Memory management
+  difficulty: hard
+  type: short
+  tags: [memory-leaks, tracemalloc, debugging]
+  prompt: A long-running Python web service's memory grows steadily until it is OOM-killed. How would you investigate, and what are the usual causes?
+  reference: |
+    First confirm it's a real leak rather than allocator behaviour (memory reused but not returned to the OS) or legitimate cache growth: watch RSS over time under steady load. Then find where it comes from: `tracemalloc` snapshots taken some time apart and compared with `compare_to` to find the source lines whose allocations keep growing; `gc.get_objects()`/`objgraph` to count objects by type and show what refers to them (`gc.get_referrers`); memray or py-spy for production profiling; and check C extensions with native tools if Python-level allocations look flat. Common causes: unbounded module-level caches, dicts or lists (registries, memoisation without limits, `lru_cache(maxsize=None)`); `lru_cache` on methods keeping every `self` alive; event handlers or callbacks that are never unregistered; closures or tracebacks capturing large objects (storing exceptions keeps frames alive); thread-locals or tasks that never finish; leaks in C extensions. Fixes: bounded caches (`maxsize`, TTL), weak references (`WeakValueDictionary`, `WeakSet`, `weakref.finalize`), explicit cleanup and context managers, and, as a mitigation, worker recycling (e.g. gunicorn `max_requests`).
+  keyPoints:
+    - Distinguish true leaks from allocator retention or expected cache growth
+    - tracemalloc snapshot comparison to find growing allocation sites
+    - Object counts and referrers (gc module, objgraph); memray/py-spy for production
+    - "Typical causes: unbounded caches/globals, lru_cache on methods, unremoved callbacks, retained tracebacks/closures, C extensions"
+    - "Fixes: bounded caches, weakrefs, cleanup; worker recycling as mitigation"
+  explanation: |
+    This is an open, experience-based question. Grade on method (measure, then narrow down) and on knowing at least a few real-world causes.
+
+- id: py-mem-007
+  topic: python
+  subtopic: Weak references
+  difficulty: medium
+  type: short
+  tags: [weakref, caching, observers]
+  prompt: What is a weak reference, and when would you use one?
+  reference: |
+    A weak reference (`weakref.ref(obj)`) refers to an object without increasing its reference count, so it doesn't keep the object alive. Dereferencing it returns the object, or `None` once the object has been collected. Optional callbacks or `weakref.finalize` run on collection. Use cases: caches and registries that shouldn't extend object lifetimes (`WeakValueDictionary` for a cache of expensive objects keyed by id, `WeakKeyDictionary` to attach extra data to objects you don't own); observer/listener lists (`WeakSet`, `WeakMethod` for bound methods) so that subscribers aren't kept alive by the publisher; and breaking reference cycles such as parent pointers in trees. Limitations: not every type supports weak references (`int`, `str`, `tuple` and `list` instances don't; classes with `__slots__` need `'__weakref__'` in the slots), and the object may vanish at any time, so you must check the result.
+  keyPoints:
+    - Refers to an object without keeping it alive (no refcount increment)
+    - Dereference gives the object or None after collection; callbacks / finalize
+    - WeakValueDictionary / WeakKeyDictionary for caches and attaching metadata
+    - WeakSet / WeakMethod for observers; breaking parent-child cycles
+    - Not all objects are weak-referenceable (e.g. int, str, list; __slots__ needs __weakref__)
+  explanation: |
+    Reference: the `weakref` module docs. A plain `weakref.ref` to a bound method dies immediately, because bound methods are created on access; that's why `WeakMethod` exists.
+
+- id: py-mem-008
+  topic: python
+  subtopic: Memory management
+  difficulty: hard
+  type: single
+  tags: [immortal-objects, pep-683, refcounting]
+  prompt: What are "immortal objects" (PEP 683, CPython 3.12+)?
+  choices:
+    - { id: a, text: "Objects such as `None`, `True`, small ints and some other built-in singletons whose reference count is fixed at a special value, so increments and decrements don't change it and they are never deallocated" }
+    - { id: b, text: "Objects that the cyclic GC has moved to the oldest generation" }
+    - { id: c, text: "Any object that has been assigned to a module-level global" }
+    - { id: d, text: "Objects created with `sys.intern()`, which can never be garbage-collected in any build" }
+  answer: a
+  explanation: |
+    PEP 683 marks certain objects as immortal: their refcount is set to a reserved value, and `Py_INCREF`/`Py_DECREF` leave it alone. This avoids writes to shared objects, which is good for cache lines and copy-on-write after `fork`, and it is a prerequisite for a per-interpreter GIL and free threading. One visible effect is that `sys.getrefcount(None)` returns a huge constant.
+
+    Living in the oldest GC generation doesn't make an object immortal. Interned strings are immortalised in some cases (e.g. the free-threaded build in 3.14), but that's an implementation detail, not the definition.
+
+- id: py-mem-009
+  topic: python
+  subtopic: Garbage collection
+  difficulty: hard
+  type: short
+  tags: [del, finalizers, resources]
+  prompt: Why is it usually a bad idea to rely on `__del__` to release resources such as files, sockets or locks? What should you use instead?
+  reference: |
+    `__del__` runs when the object is about to be destroyed, and that moment isn't guaranteed. In CPython it's usually immediate when the refcount hits zero, but objects in reference cycles wait for the cyclic GC, other implementations (PyPy) use tracing GCs with no prompt finalization, and an object that is still referenced somewhere (a traceback, a cache, a global) never gets finalized. At interpreter shutdown, `__del__` may run when module globals have already been torn down, or not run at all. Exceptions raised in `__del__` are ignored (only printed via `sys.unraisablehook`). `__del__` can resurrect the object by storing `self` somewhere. Before 3.4, cycles containing objects with `__del__` were never collected at all (PEP 442 fixed this). Instead, release resources deterministically with context managers (`with`, `contextlib.closing`, `ExitStack`) or explicit `close()` methods called from `finally`. Use `weakref.finalize` as a safety net: it's more robust than `__del__`, runs at most once and can run at exit.
+  keyPoints:
+    - Timing of __del__ is not guaranteed (cycles wait for GC; other implementations; lingering references)
+    - Shutdown problems; may not run, or run with globals torn down
+    - Exceptions in __del__ are swallowed (unraisable hook); resurrection is possible
+    - Use context managers / explicit close in finally for deterministic release
+    - weakref.finalize as a safety net
+  explanation: |
+    Reference: data model docs for `object.__del__` (see the warnings there), PEP 442, and the `weakref.finalize` docs. CPython's own `ResourceWarning` for unclosed files shows that even the standard library treats finalization as a last resort.

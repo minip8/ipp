@@ -1,0 +1,667 @@
+- id: os-fs-001
+  topic: operating-systems
+  subtopic: File systems
+  type: single
+  difficulty: easy
+  prompt: |
+    In a Unix file system such as ext4, which of these is **not** stored in a file's inode?
+  choices:
+    - id: a
+      text: "The file's name"
+    - id: b
+      text: "The file's size"
+    - id: c
+      text: "The owner, group and permission bits"
+    - id: d
+      text: "The link count"
+  answer: a
+  explanation: |
+    Names are kept in **directory entries**, which map a name to an inode number. The inode holds metadata (type, mode, uid/gid, size, timestamps, link count) and the locations of the data blocks.
+
+    Because the name lives outside the inode, one inode can have several names (hard links), and `rename` within a file system just edits directory entries without touching the data.
+  tags: [inode, directory, ext4]
+
+- id: os-fs-002
+  topic: operating-systems
+  subtopic: File systems
+  type: multiple
+  difficulty: medium
+  prompt: |
+    Compare hard links and symbolic links on Linux. Which statements are true? Select all that apply.
+  choices:
+    - id: a
+      text: "A hard link is another directory entry pointing to the same inode, so it cannot cross file systems"
+    - id: b
+      text: "A symbolic link stores a path, and it is left dangling if its target is deleted"
+    - id: c
+      text: "Ordinary users cannot create hard links to directories"
+    - id: d
+      text: "Deleting the original name of a hard-linked file also makes the other hard link unreadable"
+    - id: e
+      text: "A symbolic link can point to a file on another file system"
+  answer: [a, b, c, e]
+  explanation: |
+    - (a) True. Inode numbers mean something only within one file system, so `link()` across file systems fails with `EXDEV`.
+    - (b) and (e) True. A symlink is a small file containing a path, resolved when it is used. It can point anywhere, including to a path that does not exist.
+    - (c) True. Linux refuses hard links to directories (`EPERM`), even for root, because they could create cycles in the directory tree. The `.` and `..` entries are the only exceptions, and the file system maintains them itself.
+    - (d) False. Every name is equally the file. Removing one name drops the link count, and the data stays until the count reaches 0 and no process has the file open.
+  tags: [hard-link, symlink, inode]
+
+- id: os-fs-003
+  topic: operating-systems
+  subtopic: File systems
+  type: output
+  difficulty: medium
+  language: cpp
+  standard: C++20
+  prompt: |
+    What does this program print on Linux? Assume every call succeeds.
+  code: |
+    #include <cstdio>
+    #include <cstdlib>
+    #include <fcntl.h>
+    #include <sys/stat.h>
+    #include <unistd.h>
+
+    int main() {
+        char path[] = "/tmp/ippXXXXXX";
+        int fd = mkstemp(path);
+        write(fd, "still here", 10);
+        unlink(path);
+
+        struct stat st;
+        fstat(fd, &st);
+        char buf[11] = {};
+        pread(fd, buf, 10, 0);
+        std::printf("links=%ld size=%ld data=%s exists=%d\n",
+                    (long)st.st_nlink, (long)st.st_size, buf, access(path, F_OK) == 0);
+    }
+  answer:
+    kind: output
+    output: links=0 size=10 data=still here exists=0
+  explanation: |
+    `unlink` removes the **name**. The inode's link count drops to 0, so the path no longer exists (`exists=0`). The inode and its data are freed only when the link count is 0 **and** no open file description refers to it. This process still holds `fd`, so `fstat` and `pread` keep working.
+
+    This is why deleting a huge log file that a daemon still has open does not free any disk space (`lsof +L1` lists such files), and it is the usual trick for anonymous temporary files (`O_TMPFILE` is the modern equivalent).
+  tags: [unlink, inode, file-descriptor, output]
+
+- id: os-fs-004
+  topic: operating-systems
+  subtopic: File systems
+  type: single
+  difficulty: medium
+  prompt: |
+    A program calls `write(fd, buf, 4096)` on an ordinary ext4 file opened without special flags, and `write` returns 4096. What does that guarantee?
+  choices:
+    - id: a
+      text: "The data is on the disk and will survive a power failure"
+    - id: b
+      text: "The data has been copied into the kernel (the page cache), so other processes reading the file will see it, but it may not be on stable storage yet"
+    - id: c
+      text: "The data has been sent to the disk's write cache"
+    - id: d
+      text: "Nothing at all until the file is closed"
+  answer: b
+  explanation: |
+    A buffered `write` copies data into the page cache and marks the pages dirty. Writeback threads flush them later, typically within about 30 seconds (`dirty_expire_centisecs`) or sooner under memory pressure. Reads by any process go through the same page cache, so they see the new data at once.
+
+    - (a) Durability needs `fsync`/`fdatasync`, `O_SYNC`/`O_DSYNC`, or `sync_file_range` plus a flush.
+    - (c) Not even that has happened. The device has not been involved yet.
+    - (d) `close` does **not** flush to disk either. On Linux, close gives no durability guarantee.
+  tags: [page-cache, durability, write, fsync]
+
+- id: os-fs-005
+  topic: operating-systems
+  subtopic: File systems
+  type: short
+  difficulty: hard
+  prompt: |
+    How do you update a configuration file on Linux so that, after a crash or power loss at any moment, readers see either the complete old version or the complete new version, never a mixture or an empty file?
+  reference: |
+    Write the new contents to a temporary file in the **same directory** (same file system). Then `fsync` the temporary file so its data and metadata are durable. Then `rename(tmp, target)`. rename atomically replaces the directory entry, so any process opening the path gets either the old inode or the new one. Finally `fsync` the **directory** so the rename itself survives a crash. Without the first fsync, a crash after the rename can leave the new name pointing at a file with no data, the classic zero-length-file problem from ext4 delayed allocation. ext4 with data=ordered has a heuristic that flushes on rename-over, but you should not depend on it. Keep the temporary file in the same directory, because rename across file systems fails with EXDEV.
+  keyPoints:
+    - Write to a temporary file on the same file system, not in place
+    - fsync the temporary file before renaming it
+    - rename() atomically replaces the target name
+    - fsync the parent directory to make the rename durable
+    - "Why: otherwise a crash can leave a truncated or zero-length file (delayed allocation)"
+  explanation: |
+    This write-fsync-rename-fsync(dir) sequence is the standard answer, and it is what databases and package managers do. Interviewers often ask follow-ups about why the directory fsync is needed and why the temporary file must be on the same file system.
+  tags: [rename, fsync, atomicity, crash-consistency]
+  source:
+    name: LWN, "ext4 and data loss" (2009)
+    url: https://lwn.net/Articles/322823/
+
+- id: os-fs-006
+  topic: operating-systems
+  subtopic: File systems
+  type: single
+  difficulty: medium
+  prompt: |
+    What is the difference between `fsync(fd)` and `fdatasync(fd)` on Linux?
+  choices:
+    - id: a
+      text: "fdatasync flushes data and only the metadata needed to read it back (such as file size), and may skip metadata like modification time"
+    - id: b
+      text: "fdatasync returns before the data is on disk, while fsync waits"
+    - id: c
+      text: "fsync flushes only metadata, while fdatasync flushes only data"
+    - id: d
+      text: "They are identical on Linux"
+  answer: a
+  explanation: |
+    Both block until the flush is complete. `fdatasync` skips metadata that is not needed to read the data back correctly. For example, it does not flush an mtime change alone, but it does flush a size change after an append. That can save a journal write per call, which matters for workloads like database logs that overwrite preallocated files.
+
+    - (b) Neither call returns early.
+    - (c) `fsync` flushes data **and** metadata.
+    - (d) They differ in which metadata they flush, although on some file systems the cost difference is small.
+  tags: [fsync, fdatasync, durability]
+
+- id: os-fs-007
+  topic: operating-systems
+  subtopic: File systems
+  type: multiple
+  difficulty: hard
+  prompt: |
+    Which statements about `O_DIRECT` on Linux are true? Select all that apply.
+  choices:
+    - id: a
+      text: "It bypasses the page cache, moving data by DMA between the user buffer and the device"
+    - id: b
+      text: "It usually requires the buffer address, file offset and length to be aligned, typically to the logical block size"
+    - id: c
+      text: "On its own it guarantees durability, so fsync is never needed"
+    - id: d
+      text: "Databases use it to manage their own buffer cache and avoid caching data twice"
+    - id: e
+      text: "Small, unaligned, random O_DIRECT reads are typically faster than buffered reads"
+  answer: [a, b, d]
+  explanation: |
+    - (a) True. O_DIRECT skips the page cache.
+    - (b) True. Alignment rules depend on the file system and device, typically 512 bytes or 4 KiB. Misaligned requests fail with `EINVAL`.
+    - (d) True. Databases such as InnoDB and Oracle do this so the same data is not cached twice.
+    - (c) False. O_DIRECT does not flush the device's volatile write cache, and file metadata changes (for example from appends or block allocation) still need `fsync`/`fdatasync`, or `O_DSYNC`.
+    - (e) False. Without the page cache every read goes to the device, with no readahead and no cache hits. Buffered I/O usually wins unless the application caches data itself.
+  tags: [o-direct, page-cache, databases]
+  source:
+    name: open(2) man page, NOTES on O_DIRECT
+    url: https://man7.org/linux/man-pages/man2/open.2.html
+
+- id: os-fs-008
+  topic: operating-systems
+  subtopic: File systems
+  type: short
+  difficulty: medium
+  prompt: |
+    What problem does file-system journaling solve, and what is the difference between ext4's `data=ordered` mode and `data=journal` mode?
+  reference: |
+    A single file operation, such as appending a block, changes several on-disk structures: the block bitmap, the inode, and perhaps a directory. A crash part-way through could leave them inconsistent, and without a journal you would need a full fsck scan to repair them. Journaling (write-ahead logging) first writes the intended changes to a journal and commits them. After a crash, recovery replays committed transactions and discards uncommitted ones, so the metadata is always consistent and recovery is fast. In `data=journal` mode, file data also goes through the journal, which gives the strongest guarantees but writes all data twice. In `data=ordered` mode, the ext4 default, only metadata is journaled, but data blocks are forced to disk before the metadata that refers to them is committed, so after a crash a file never points at stale or garbage blocks. `data=writeback` drops that ordering. Journaling keeps the file system consistent. It does not make application writes durable, and applications still need fsync.
+  keyPoints:
+    - Operations update several structures; a crash part-way through leaves inconsistency
+    - The journal is a write-ahead log, and recovery replays committed transactions without a full fsck
+    - data=journal logs data and metadata (data is written twice)
+    - data=ordered (the default) logs only metadata but writes data blocks before committing the metadata
+    - Journaling ensures file system consistency, not application-level durability
+  explanation: |
+    Good answers make clear that the default mode journals metadata only, and that consistency and durability are different things.
+  tags: [journaling, ext4, crash-consistency]
+
+- id: os-fs-009
+  topic: operating-systems
+  subtopic: File systems
+  type: single
+  difficulty: medium
+  prompt: |
+    A static file server sends files over TCP with a `read()` into a user buffer followed by a `write()` to the socket. Replacing this with `sendfile(sock, file_fd, ...)` mainly saves what?
+  choices:
+    - id: a
+      text: "Copying the data from the page cache into user space and back into the kernel, plus the extra system calls"
+    - id: b
+      text: "The disk read, because sendfile streams straight from the device to the NIC without using the page cache"
+    - id: c
+      text: "TCP segmentation, because sendfile sends the file as one packet"
+    - id: d
+      text: "Encryption, because sendfile skips TLS"
+  answer: a
+  explanation: |
+    With read and write, the data crosses the user/kernel boundary twice: page cache to user buffer, then user buffer to socket buffer. `sendfile` moves the data inside the kernel from the page cache to the socket. With a NIC that supports scatter-gather DMA and checksum offload, the socket buffer can refer to page-cache pages directly, with no CPU copy.
+
+    - (b) sendfile still reads through the page cache.
+    - (c) TCP still splits the data into MSS-sized segments, or the NIC does with TSO.
+    - (d) sendfile does nothing about TLS. With plain user-space TLS you cannot use it at all, which is one reason kernel TLS (kTLS) exists.
+  tags: [sendfile, zero-copy, page-cache]
+
+- id: os-fs-010
+  topic: operating-systems
+  subtopic: File systems
+  type: single
+  difficulty: easy
+  prompt: |
+    Running `free -h` on a Linux server shows very little "free" memory but a large "buff/cache" figure. What is the right conclusion?
+  choices:
+    - id: a
+      text: "The machine is out of memory and will soon invoke the OOM killer"
+    - id: b
+      text: "The kernel is using spare RAM for the page cache; clean cached pages can be dropped when applications need memory, so look at the available column instead"
+    - id: c
+      text: "There is a memory leak in the kernel"
+    - id: d
+      text: "Swap has been disabled"
+  answer: b
+  explanation: |
+    Linux uses spare memory to cache file data. Clean page-cache pages can be reclaimed cheaply on demand, so a large buff/cache is normal and useful. The `available` column (MemAvailable) estimates how much memory can be allocated without swapping, and that is the number to watch.
+
+    Dirty pages, tmpfs/shmem pages and locked pages are counted in the cache but cannot simply be dropped, so "cache" is not all reclaimable.
+  tags: [page-cache, free, memavailable]
+
+- id: os-fs-012
+  topic: operating-systems
+  subtopic: File systems
+  type: single
+  difficulty: hard
+  prompt: |
+    On Linux (kernel 4.13 and later), `fsync` returns `EIO` because writeback of some dirty pages failed. The application calls `fsync` again on the same fd and it returns 0. What should the application conclude?
+  choices:
+    - id: a
+      text: "The retry worked and the data is now safely on disk"
+    - id: b
+      text: "Nothing good: the failed pages may have been marked clean or dropped, so the data may be lost; the error was reported once and the data must be rewritten from the application's own copy"
+    - id: c
+      text: "The kernel has kept the dirty pages and will retry writeback until it succeeds"
+    - id: d
+      text: "EIO from fsync always means the fd was closed by another thread"
+  answer: b
+  explanation: |
+    After a writeback error Linux reports it **once** per open file description, tracked with `errseq_t`. The affected pages are usually not kept dirty for a retry. A later `fsync` that succeeds only means no *new* error has happened since. Applications such as PostgreSQL learned this the hard way in the 2018 "fsyncgate" episode, and PostgreSQL now treats an fsync failure as fatal (PANIC) and recovers from its WAL.
+
+    - (a) is the dangerous misconception.
+    - (c) describes what PostgreSQL had assumed, but it is not what happens.
+    - (d) A closed fd gives `EBADF`, not `EIO`.
+  tags: [fsync, error-handling, durability, postgres]
+  source:
+    name: LWN, "PostgreSQL's fsync() surprise"
+    url: https://lwn.net/Articles/752063/
+
+- id: os-io-001
+  topic: operating-systems
+  subtopic: File descriptors and I/O
+  type: output
+  difficulty: medium
+  language: cpp
+  standard: C++20
+  prompt: |
+    What does this program print on Linux? Assume every call succeeds.
+  code: |
+    #include <cstdio>
+    #include <cstdlib>
+    #include <fcntl.h>
+    #include <unistd.h>
+
+    int main() {
+        char path[] = "/tmp/ippXXXXXX";
+        int a = mkstemp(path);
+        write(a, "hello world", 11);
+        int b = dup(a);
+        int c = open(path, O_RDONLY);
+        unlink(path);
+
+        lseek(a, 0, SEEK_SET);
+        char x[6] = {}, y[7] = {}, z[6] = {};
+        read(a, x, 5);
+        read(b, y, 6);
+        read(c, z, 5);
+        std::printf("[%s][%s][%s]\n", x, y, z);
+    }
+  answer:
+    kind: output
+    output: "[hello][ world][hello]"
+  explanation: |
+    There are three layers: per-process **fd table** → **open file description** (holding the offset and status flags) → **inode**.
+
+    - `dup(a)` creates a new fd pointing at the *same* open file description, so `a` and `b` share one offset. Reading 5 bytes through `a` moves the shared offset to 5, and reading through `b` continues from there and gets `" world"`.
+    - A second `open` of the same path creates a *new* open file description with its own offset of 0, so `c` reads `"hello"` from the start.
+
+    `fork` behaves like `dup`: the child's fds share open file descriptions, and so offsets, with the parent's.
+  tags: [file-descriptor, dup, open-file-description, output]
+
+- id: os-io-002
+  topic: operating-systems
+  subtopic: File descriptors and I/O
+  type: output
+  difficulty: medium
+  language: cpp
+  standard: C++20
+  prompt: |
+    What does this program print on Linux? Assume every call succeeds.
+  code: |
+    #include <cstdio>
+    #include <cstdlib>
+    #include <fcntl.h>
+    #include <sys/wait.h>
+    #include <unistd.h>
+
+    int main() {
+        char path[] = "/tmp/ippXXXXXX";
+        int fd = mkstemp(path);
+        unlink(path);
+
+        if (fork() == 0) {
+            write(fd, "child ", 6);
+            _exit(0);
+        }
+        wait(nullptr);
+        write(fd, "parent", 6);
+
+        char buf[13] = {};
+        pread(fd, buf, 12, 0);
+        std::printf("%s\n", buf);
+    }
+  answer:
+    kind: output
+    output: child parent
+  explanation: |
+    After `fork`, the child's `fd` refers to the **same open file description** as the parent's, so they share one file offset. The child's write advances that shared offset to 6. The parent waits for the child, then writes at offset 6 instead of overwriting from 0. `pread` reads from an explicit offset and does not change the shared one, giving `child parent`.
+
+    If the parent had instead opened the file again by path, the second open file description would have its own offset of 0 and `parent` would have overwritten `child `. Shared offsets are why a shell's child processes can append to the same redirected output in order.
+  tags: [fork, file-descriptor, open-file-description, output]
+
+- id: os-io-003
+  topic: operating-systems
+  subtopic: File descriptors and I/O
+  type: single
+  difficulty: medium
+  prompt: |
+    A multithreaded server opens files and sockets in some threads while another thread does `fork()` + `exec()` of a helper program. Why should the server open its descriptors with `O_CLOEXEC` (or `SOCK_CLOEXEC`, `accept4(..., SOCK_CLOEXEC)`) instead of calling `fcntl(fd, F_SETFD, FD_CLOEXEC)` right after opening?
+  choices:
+    - id: a
+      text: "Because fcntl cannot set FD_CLOEXEC on sockets"
+    - id: b
+      text: "Because another thread can fork and exec between the open and the fcntl, leaking the fd into the child; setting the flag at open time is atomic"
+    - id: c
+      text: "Because O_CLOEXEC also closes the fd in the parent after fork"
+    - id: d
+      text: "Because FD_CLOEXEC set with fcntl is cleared by fork"
+  answer: b
+  explanation: |
+    Close-on-exec closes the fd when `execve` succeeds, so helper programs do not inherit listening sockets, files or pipes. A leaked write end of a pipe, for example, means the reader never sees EOF. With two calls there is a window between them in which another thread can fork and exec. Passing the flag to the call that creates the fd removes that race. This is why `O_CLOEXEC`, `pipe2`, `accept4`, `dup3`, `SOCK_CLOEXEC` and `EPOLL_CLOEXEC` exist.
+
+    - (a) fcntl works on any fd.
+    - (c) The flag affects exec, not fork, and it never touches the parent.
+    - (d) fork copies the close-on-exec flag into the child.
+  tags: [o-cloexec, fork, exec, race-condition]
+  source:
+    name: open(2) man page, O_CLOEXEC
+    url: https://man7.org/linux/man-pages/man2/open.2.html
+
+- id: os-io-004
+  topic: operating-systems
+  subtopic: File descriptors and I/O
+  type: single
+  difficulty: easy
+  prompt: |
+    A socket is in non-blocking mode (`O_NONBLOCK`) and has no data available. What does `read()` on it do?
+  choices:
+    - id: a
+      text: "Blocks until data arrives, because non-blocking only affects write"
+    - id: b
+      text: "Returns 0"
+    - id: c
+      text: "Returns -1 with errno set to EAGAIN (or EWOULDBLOCK)"
+    - id: d
+      text: "Returns -1 with errno set to EINTR"
+  answer: c
+  explanation: |
+    A non-blocking read with nothing to return fails at once with `EAGAIN`/`EWOULDBLOCK` (the same value on Linux). The program then waits for readiness with poll or epoll.
+
+    - (b) Returning 0 means **end of file**: the peer closed its write side in an orderly way. Confusing 0 with "no data yet" is a classic bug.
+    - (d) `EINTR` means a *blocking* call was interrupted by a signal handler.
+  tags: [non-blocking, eagain, sockets]
+
+- id: os-io-005
+  topic: operating-systems
+  subtopic: File descriptors and I/O
+  type: multiple
+  difficulty: medium
+  prompt: |
+    Why does `epoll` scale better than `select`/`poll` for a server with 50,000 mostly idle connections? Select all that apply.
+  choices:
+    - id: a
+      text: "With select/poll the whole interest set is passed into the kernel and scanned on every call, which is O(n) per call"
+    - id: b
+      text: "epoll registers interest once (epoll_ctl), and epoll_wait returns only the ready fds"
+    - id: c
+      text: "select is limited to fds below FD_SETSIZE (usually 1024)"
+    - id: d
+      text: "epoll makes the actual read and write calls zero-copy"
+    - id: e
+      text: "epoll works on regular files and reports when disk reads would not block"
+  answer: [a, b, c]
+  explanation: |
+    - (a), (b) True. select and poll are stateless, so every call copies and checks all n fds even if only 3 are ready. epoll keeps the interest list in the kernel and adds fds to a ready list from wake-up callbacks, so `epoll_wait` costs roughly O(number ready).
+    - (c) True. `fd_set` is a fixed-size bitmap, and fds at or above FD_SETSIZE are undefined behaviour with select.
+    - (d) False. epoll only reports readiness. Reads and writes copy data as usual.
+    - (e) False. Regular files are always "ready" (epoll_ctl actually refuses them with `EPERM`), and disk reads can still block. Truly asynchronous file I/O needs io_uring (or a thread pool).
+  tags: [epoll, select, poll, c10k]
+
+- id: os-io-006
+  topic: operating-systems
+  subtopic: File descriptors and I/O
+  type: short
+  difficulty: hard
+  prompt: |
+    Explain level-triggered versus edge-triggered mode in epoll. If you use `EPOLLET`, what rules must your read loop follow, and what bug do you get if you don't?
+  reference: |
+    In level-triggered mode (the default), `epoll_wait` reports an fd as ready every time it is called while the condition holds, for example while unread data remains in the socket buffer. It behaves like a faster poll. In edge-triggered mode, an event is reported only when the state *changes*, for example when new data arrives. With EPOLLET you must use non-blocking fds, and on each event you must keep reading (or accepting, or writing) until the call returns EAGAIN. If you read only part of the data and go back to epoll_wait, no new edge comes and that connection stalls forever, even though data is sitting in the buffer. Blocking fds are also dangerous, because the final read would block the event loop. Edge-triggered mode can save epoll_wait wake-ups. EPOLLONESHOT is a related flag that disarms the fd after one event, useful when several threads share one epoll instance. A fairness point: draining one busy fd completely can starve others, so some loops cap each read pass and requeue the fd themselves.
+  keyPoints:
+    - "Level-triggered: reported on every epoll_wait while data remains"
+    - "Edge-triggered: reported only on a state change, such as new data arriving"
+    - With EPOLLET use non-blocking fds and read/accept until EAGAIN
+    - "Bug: partial read and then no further notification, so the connection hangs"
+    - Mentions EPOLLONESHOT or fairness/starvation as a refinement
+  explanation: |
+    This is a standard question for event-loop and network-infrastructure roles. The hang caused by not draining the fd is what interviewers listen for.
+  tags: [epoll, edge-triggered, level-triggered, non-blocking]
+  source:
+    name: epoll(7) man page
+    url: https://man7.org/linux/man-pages/man7/epoll.7.html
+
+- id: os-io-007
+  topic: operating-systems
+  subtopic: File descriptors and I/O
+  type: short
+  difficulty: hard
+  prompt: |
+    What is io_uring, and how does it differ from the epoll model? Why might a high-performance storage or networking service adopt it?
+  reference: |
+    io_uring (Linux 5.1+) is an asynchronous I/O interface built on two ring buffers shared between user space and the kernel: a submission queue (SQ) and a completion queue (CQ). The application puts request entries (SQEs) for operations such as read, write, send, recv, accept, fsync or openat into the SQ, and gets results (CQEs) from the CQ. epoll is a *readiness* model: it says an fd is ready, then you make the syscall yourself. io_uring is a *completion* model: the kernel performs the operation and tells you when it is done. That also gives real asynchronous I/O for regular buffered files, which epoll cannot provide. Benefits: many operations are batched into one `io_uring_enter` call, fewer syscalls and copies, optional SQPOLL mode where a kernel thread polls the SQ so submission needs no syscall, registered (pre-mapped) buffers and files, linked operations, and polled I/O for NVMe. Downsides: a more complex programming model, kernel version differences, and a history of security bugs that has led some environments (for example certain container runtimes and Android) to disable it.
+  keyPoints:
+    - Shared submission and completion ring buffers between user space and the kernel
+    - Completion model (kernel does the I/O) versus epoll's readiness model
+    - Works for regular file I/O, unlike epoll
+    - Batching means fewer syscalls; SQPOLL can remove syscalls on submission; registered buffers and files
+    - Trade-offs such as complexity, kernel version and the security record
+  explanation: |
+    Strong answers make the readiness-versus-completion distinction and explain where the savings come from (batching, fewer syscalls and copies).
+  tags: [io-uring, async-io, epoll]
+  source:
+    name: Jens Axboe, "Efficient IO with io_uring"
+    url: https://kernel.dk/io_uring.pdf
+
+- id: os-io-008
+  topic: operating-systems
+  subtopic: File descriptors and I/O
+  type: single
+  difficulty: easy
+  prompt: |
+    A process's `open()` calls start failing with `EMFILE` ("Too many open files"). What is the most direct cause?
+  choices:
+    - id: a
+      text: "The disk is full"
+    - id: b
+      text: "The process has reached its per-process limit on file descriptors (RLIMIT_NOFILE, often a soft limit of 1024)"
+    - id: c
+      text: "The file is locked by another process"
+    - id: d
+      text: "The process lacks read permission on the file"
+  answer: b
+  explanation: |
+    `EMFILE` means the per-process open-fd limit (`ulimit -n`, RLIMIT_NOFILE) has been reached. It is often caused by an fd leak, or by a server whose connection count exceeds a default soft limit of 1024. The system-wide limit (`fs.file-max`) gives `ENFILE` instead.
+
+    - (a) A full disk gives `ENOSPC`, on writes.
+    - (c) Locks on Linux are advisory and do not make `open` fail.
+    - (d) Missing permission gives `EACCES`.
+  tags: [file-descriptor, rlimit, emfile, ulimit]
+
+- id: os-io-009
+  topic: operating-systems
+  subtopic: File descriptors and I/O
+  type: single
+  difficulty: medium
+  prompt: |
+    A thread is blocked in `read()` on a pipe. A signal arrives, and its handler was installed with `sigaction` **without** `SA_RESTART`. After the handler returns, what happens to the `read`?
+  choices:
+    - id: a
+      text: "The read resumes automatically and keeps waiting"
+    - id: b
+      text: "The read fails with -1 and errno EINTR, if no data had been transferred yet"
+    - id: c
+      text: "The process is killed"
+    - id: d
+      text: "The read returns 0, meaning end of file"
+  answer: b
+  explanation: |
+    A signal handler interrupts a slow blocking syscall. Without `SA_RESTART`, the call returns `EINTR` if it had transferred nothing yet; if some data was already read, it returns the partial count. With `SA_RESTART`, many syscalls (read and write on pipes, sockets and terminals among them) are restarted transparently. Some calls are never restarted, such as `epoll_wait`, `select` and `nanosleep`. Robust code retries on EINTR.
+
+    - (a) is what SA_RESTART gives, not the case here.
+    - (c) Only the default action of some signals kills the process. Here a handler is installed.
+    - (d) 0 means EOF, and confusing it with an interruption is a bug.
+  tags: [signals, eintr, sa-restart, syscalls]
+  source:
+    name: signal(7) man page, "Interruption of system calls and library functions by signal handlers"
+    url: https://man7.org/linux/man-pages/man7/signal.7.html
+
+- id: os-io-010
+  topic: operating-systems
+  subtopic: File descriptors and I/O
+  type: short
+  difficulty: medium
+  prompt: |
+    Compare thread-per-connection blocking I/O with a single-threaded (or one-thread-per-core) event loop using non-blocking sockets and epoll. When would you choose each?
+  reference: |
+    Thread-per-connection code is simple and sequential, with blocking reads and writes, and the kernel scheduler does the multiplexing. But each thread costs a stack (reserved virtual memory, plus resident pages that were touched) and a kernel task, and with thousands of connections context switches, scheduler overhead and cache pollution dominate. That was the C10K problem. An event loop holds thousands of connections in one thread: epoll tells it which fds are ready, and handlers run until they would block. That is very efficient for many mostly idle connections, with few context switches and good cache locality. But all code must be non-blocking, state must live in explicit state machines or coroutines, and one slow handler (CPU-heavy work, a blocking disk read, a page fault) stalls every connection. The common production design is N event loops (one per core) plus worker pools for blocking or CPU-heavy work. Choose threads for a small number of connections, blocking libraries, or simplicity. Choose event loops for high fan-in network servers. Low-latency systems often go further, with busy-polling and kernel bypass.
+  keyPoints:
+    - Thread-per-connection is simple, but memory, context switches and scheduling cost grow with connection count (C10K)
+    - An event loop multiplexes many fds with epoll in one thread and is efficient for many idle connections
+    - Event loops need everything non-blocking, and one slow handler blocks all connections
+    - "Common hybrid: one loop per core plus worker pools for blocking or CPU-bound work"
+  explanation: |
+    This is a design discussion. The grader wants the trade-offs stated, not one model declared better than the other.
+  tags: [c10k, event-loop, epoll, threads]
+  source:
+    name: Dan Kegel, "The C10K problem"
+    url: http://www.kegel.com/c10k.html
+
+- id: os-io-011
+  topic: operating-systems
+  subtopic: File descriptors and I/O
+  type: single
+  difficulty: medium
+  prompt: |
+    In `epoll`, what does registering an fd with `EPOLLEXCLUSIVE` (Linux 4.5+) help with?
+  choices:
+    - id: a
+      text: "It stops the same fd from being added to more than one epoll instance"
+    - id: b
+      text: "When several threads each wait on their own epoll instance containing the same listening socket, it avoids waking all of them for one incoming connection (the thundering herd)"
+    - id: c
+      text: "It gives the fd priority over other fds in epoll_wait results"
+    - id: d
+      text: "It makes the fd edge-triggered"
+  answer: b
+  explanation: |
+    Without it, one event on an fd that is shared by several epoll instances wakes every waiter, and all but one find nothing to do. `EPOLLEXCLUSIVE` wakes one or more, but not all, of those waiters. Another common fix for accept load balancing is `SO_REUSEPORT`, where each thread has its own listening socket and the kernel spreads connections across them.
+
+    - (a) The flag does not restrict which instances can contain the fd.
+    - (c) epoll has no priority between fds.
+    - (d) Edge-triggered mode is `EPOLLET`, a separate flag.
+  tags: [epoll, thundering-herd, so-reuseport]
+  source:
+    name: epoll_ctl(2) man page
+    url: https://man7.org/linux/man-pages/man2/epoll_ctl.2.html
+
+- id: os-io-012
+  topic: operating-systems
+  subtopic: File descriptors and I/O
+  type: multiple
+  difficulty: medium
+  prompt: |
+    After `fork()`, which of the following does the child share with the parent, as opposed to getting its own independent copy? Select all that apply.
+  choices:
+    - id: a
+      text: "The file offsets of fds that were open before the fork"
+    - id: b
+      text: "The heap (later writes by one are visible to the other)"
+    - id: c
+      text: "Memory mapped with mmap(MAP_SHARED)"
+    - id: d
+      text: "Memory mapped with mmap(MAP_PRIVATE | MAP_ANONYMOUS)"
+    - id: e
+      text: "Locks taken with fcntl (POSIX record locks)"
+  answer: [a, c]
+  explanation: |
+    - (a) Shared. The child's fds refer to the same open file descriptions, which hold the offset.
+    - (c) Shared. MAP_SHARED mappings stay shared, which is the classic way to set up shared memory between a parent and child.
+    - (b), (d) Not shared. Private memory, including the heap, is copied, lazily through copy-on-write, so a write by one is invisible to the other.
+    - (e) Not inherited. POSIX `fcntl` record locks belong to the process, and the child does not hold them. In contrast, `flock` locks belong to the open file description, so in effect they are shared.
+  tags: [fork, copy-on-write, file-descriptor, mmap]
+
+- id: os-io-013
+  topic: operating-systems
+  subtopic: File descriptors and I/O
+  type: single
+  difficulty: easy
+  prompt: |
+    A process has fds 0, 1 and 2 open, opens two files (getting 3 and 4), then closes fd 3 and calls `open()` again. Which fd number does the new `open` return on Linux?
+  choices:
+    - id: a
+      text: "5, because fd numbers always increase"
+    - id: b
+      text: "3, because POSIX requires the lowest-numbered unused descriptor"
+    - id: c
+      text: "An arbitrary unused number"
+    - id: d
+      text: "0"
+  answer: b
+  explanation: |
+    POSIX requires `open` (and `socket`, `pipe`, `dup` and others) to return the **lowest** fd not currently open, here 3. Old shells redirected output this way: `close(1); open("file", ...)` makes the file become stdout. `dup2(fd, 1)` does the same thing explicitly and atomically.
+
+    A consequence: after closing an fd, a new open in another thread may immediately reuse the number, so code holding the stale fd number would act on the wrong file. That is a classic use-after-close bug.
+
+    - (d) fd 0 is still open, so it cannot be reused.
+  tags: [file-descriptor, open, dup2]
+
+- id: os-fs-013
+  topic: operating-systems
+  subtopic: File systems
+  type: single
+  difficulty: easy
+  prompt: |
+    An application must be sure that a record it has written to a file will survive a sudden power loss before it acknowledges the client. Which call makes that guarantee?
+  choices:
+    - id: a
+      text: "fflush(fp)"
+    - id: b
+      text: "close(fd)"
+    - id: c
+      text: "fsync(fd) (or fdatasync), which returns only once the data has reached stable storage"
+    - id: d
+      text: "write(fd, ...) returning successfully"
+  answer: c
+  explanation: |
+    `fsync` blocks until the file's dirty data and metadata have been written to the device, and asks the device to flush its volatile cache. It is the standard durability point that databases use before acknowledging a commit.
+
+    - (a) `fflush` only moves data from the stdio user-space buffer into the kernel with `write`.
+    - (b), (d) `write` and `close` leave data in the page cache, so a crash can still lose it.
+
+    For a *new* file, the directory entry must also be made durable by fsyncing the directory.
+  tags: [fsync, durability, fflush]

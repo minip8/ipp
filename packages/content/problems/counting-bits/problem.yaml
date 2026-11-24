@@ -1,0 +1,16 @@
+slug: counting-bits
+title: Counting Bits
+difficulty: easy
+tags: [bit-manipulation, dynamic-programming]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: countBits
+      params:
+        - { name: n, type: int }
+      returns: { array: int }
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (Blind 75; LeetCode 338)
+  url: https://leetcode.com/problems/counting-bits/

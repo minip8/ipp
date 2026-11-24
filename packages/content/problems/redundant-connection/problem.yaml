@@ -1,0 +1,16 @@
+slug: redundant-connection
+title: Redundant Connection
+difficulty: medium
+tags: [graph, union-find, dfs]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: findRedundantConnection
+      params:
+        - { name: edges, type: { array: { array: int } } }
+      returns: { array: int }
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 684)
+  url: https://leetcode.com/problems/redundant-connection/

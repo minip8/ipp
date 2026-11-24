@@ -1,0 +1,18 @@
+{
+  "v": 1,
+  "runId": "5f2b8a44-3a1e-4d0b-8a57-2f0f7a0c9b21",
+  "language": "cpp",
+  "source": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    string name;\n    cin >> name;\n    cout << \"hello \" << name << '\\n';\n    return 0;\n}\n",
+  "mode": "file",
+  "stdin": "world\n",
+  "signature": null,
+  "tests": [],
+  "limits": {
+    "compileMs": 20000,
+    "runMs": 10000,
+    "totalMs": 60000,
+    "memoryMb": 256,
+    "outputBytes": 65536
+  },
+  "enqueuedAt": "2026-11-24T10:00:00.000Z"
+}

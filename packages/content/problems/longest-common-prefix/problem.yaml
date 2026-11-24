@@ -1,0 +1,16 @@
+slug: longest-common-prefix
+title: Longest Common Prefix
+difficulty: easy
+tags: [string]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: longestCommonPrefix
+      params:
+        - { name: words, type: { array: string } }
+      returns: string
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 14)
+  url: https://leetcode.com/problems/longest-common-prefix/

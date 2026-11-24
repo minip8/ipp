@@ -1,0 +1,16 @@
+slug: swim-in-rising-water
+title: Swim in Rising Water
+difficulty: hard
+tags: [graph, heap, dijkstra, binary-search, union-find, matrix]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: swimInWater
+      params:
+        - { name: grid, type: { array: { array: int } } }
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 778)
+  url: https://leetcode.com/problems/swim-in-rising-water/

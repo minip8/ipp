@@ -1,0 +1,16 @@
+slug: decode-string
+title: Decode String
+difficulty: medium
+tags: [string, stack, recursion, parsing]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: decodeString
+      params:
+        - { name: s, type: string }
+      returns: string
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 394); frequently reported at Google, Amazon and Bloomberg
+  url: https://leetcode.com/problems/decode-string/

@@ -1,0 +1,17 @@
+slug: two-sum
+title: Two Sum
+difficulty: easy
+tags: [array, hash-table]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: twoSum
+      params:
+        - { name: nums, type: { array: int } }
+        - { name: target, type: int }
+      returns: { array: int }
+      compare: unordered
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (widely published, e.g. LeetCode 1)

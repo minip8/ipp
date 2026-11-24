@@ -1,0 +1,307 @@
+# Compile-time evaluation: constexpr, consteval, constinit, if consteval.
+- id: cpp-constexpr-001
+  topic: cpp
+  subtopic: constexpr and compile-time evaluation
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++20
+  tags: [consteval, cpp20]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    consteval int square(int x) { return x * x; }
+
+    int main() {
+        constexpr int a = square(4);
+        int n = 3;
+        std::cout << a << square(n) << '\n';
+    }
+  answer: { kind: compile_error }
+  explanation: |
+    A `consteval` function is an *immediate function*: every call must produce a constant expression
+    ([expr.const]). `square(4)` is fine, but `square(n)` reads the non-constant local `n`, so the
+    program is ill-formed. With `constexpr` instead of `consteval`, `square(n)` would simply run at runtime
+    and the program would print `169`.
+
+- id: cpp-constexpr-002
+  topic: cpp
+  subtopic: constexpr and compile-time evaluation
+  difficulty: hard
+  type: output
+  language: cpp
+  standard: C++23
+  tags: [if-consteval, cpp23]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    constexpr int where() {
+        if consteval {
+            return 1;
+        } else {
+            return 2;
+        }
+    }
+
+    int main() {
+        constexpr int a = where();
+        int n = 0;
+        std::cout << a << where() + n << '\n';
+    }
+  answer: { kind: output, output: "12" }
+  explanation: |
+    `if consteval` (C++23) takes the first branch when the call is evaluated in a *manifestly
+    constant-evaluated* context ([stmt.if], [expr.const]). The initializer of a `constexpr` variable is
+    one, so `a == 1`. The call inside the `std::cout` expression is an ordinary runtime evaluation, so it
+    takes the `else` branch. This holds even if the optimizer folds the call to a constant, because the
+    result is defined by the language, not by the optimizer. It's the C++23 replacement for
+    `std::is_constant_evaluated()`, typically used to pick a constexpr-friendly algorithm at compile time
+    and an intrinsic-based one at run time.
+
+- id: cpp-constexpr-003
+  topic: cpp
+  subtopic: constexpr and compile-time evaluation
+  difficulty: hard
+  type: output
+  language: cpp
+  standard: C++20
+  tags: [constexpr-allocation, std-vector, cpp20]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+    #include <vector>
+
+    constexpr int count() {
+        std::vector<int> v{1, 2, 3};
+        v.push_back(4);
+        return static_cast<int>(v.size());
+    }
+
+    int main() {
+        constexpr int n = count();
+        constexpr std::vector<int> w{1, 2, 3};
+        std::cout << n << w.size() << '\n';
+    }
+  answer: { kind: compile_error }
+  explanation: |
+    C++20 allows dynamic allocation during constant evaluation, but only *transient* allocation: memory
+    allocated must be deallocated within the same evaluation ([expr.const]). `count()` is fine (the
+    vector is destroyed before the evaluation ends), so `n` would be `4`.
+
+    `constexpr std::vector<int> w{...}` would need its heap buffer to survive into run time, which isn't
+    allowed, so the program is ill-formed. Use `std::array`, or compute in a constexpr function and copy
+    into an array.
+
+- id: cpp-constexpr-004
+  topic: cpp
+  subtopic: constexpr and compile-time evaluation
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [constexpr, undefined-behavior, constant-evaluation]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    constexpr int at(int i) {
+        int a[3] = {10, 20, 30};
+        return a[i];
+    }
+
+    int main() {
+        constexpr int x = at(2);
+        constexpr int y = at(3);
+        std::cout << x + y << '\n';
+    }
+  answer: { kind: compile_error }
+  explanation: |
+    An expression whose evaluation would have undefined behaviour (here an out-of-bounds read) is *not a
+    core constant expression* ([expr.const]), and compilers must diagnose it when a constant expression is
+    required. Since `y` is `constexpr`, the program is ill-formed. At run time the same call would be silent UB.
+
+    This makes `constexpr` evaluation (and `static_assert`-based tests) a handy UB detector for pure code.
+    Note it only catches UB on the paths actually evaluated at compile time.
+
+- id: cpp-constexpr-005
+  topic: cpp
+  subtopic: constexpr and compile-time evaluation
+  difficulty: easy
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [constexpr, lambdas]
+  prompt: What does this program print?
+  code: |
+    #include <array>
+    #include <iostream>
+
+    constexpr int fact(int n) { return n <= 1 ? 1 : n * fact(n - 1); }
+
+    int main() {
+        constexpr auto sq = [](int x) { return x * x; };
+        std::array<int, sq(3)> a{};
+        static_assert(fact(5) == 120);
+        std::cout << a.size() << ' ' << fact(5) << '\n';
+    }
+  answer: { kind: output, output: "9 120" }
+  explanation: |
+    Since C++17, lambdas are implicitly `constexpr` when their body qualifies, so `sq(3)` can be used as
+    an array bound (a template argument). `fact` is a recursive `constexpr` function; it's usable both in
+    `static_assert` (at compile time) and in the ordinary runtime expression.
+
+- id: cpp-constexpr-006
+  topic: cpp
+  subtopic: constexpr and compile-time evaluation
+  difficulty: easy
+  type: single
+  tags: [constexpr]
+  prompt: |
+    `constexpr int sq(int x) { return x * x; }` is called as `sq(n)` where `n` is read from `std::cin`.
+    What happens?
+  choices:
+    - { id: a, text: "It compiles and `sq` is evaluated at run time like an ordinary function." }
+    - { id: b, text: "Compilation fails because `n` is not a constant expression." }
+    - { id: c, text: "The program has undefined behaviour." }
+    - { id: d, text: "The compiler evaluates `sq` for every possible `int` at compile time and looks the result up." }
+  answer: a
+  explanation: |
+    `constexpr` on a function means "may be evaluated at compile time if the arguments allow it", not
+    "must be". With a runtime argument it's an ordinary (implicitly inline) function call. If you
+    need a guarantee of compile-time evaluation, use `consteval` (C++20) for the function, or require it at
+    the call site, e.g. `constexpr int r = sq(4);`.
+
+- id: cpp-constexpr-007
+  topic: cpp
+  subtopic: constexpr and compile-time evaluation
+  difficulty: medium
+  type: single
+  tags: [constinit, cpp20, static-initialization]
+  prompt: |
+    Which declaration guarantees that a namespace-scope variable is initialized at compile time
+    (constant initialization) while still allowing it to be **modified** at run time?
+  choices:
+    - { id: a, text: "`constinit int counter = 0;`" }
+    - { id: b, text: "`constexpr int counter = 0;`" }
+    - { id: c, text: "`const int counter = 0;`" }
+    - { id: d, text: "`consteval int counter = 0;`" }
+  answer: a
+  explanation: |
+    `constinit` (C++20) asserts that the variable has static or thread storage duration and is
+    constant-initialized; if the initializer isn't a constant expression, compilation fails. It doesn't
+    make the variable const. It's the tool against the static initialization order fiasco for mutable
+    globals, and it also avoids the guard check on `thread_local` variables.
+
+    `constexpr` implies `const` (can't modify). Plain `const int` with a constant initializer happens to
+    be constant-initialized but is immutable, and with a non-constant initializer it would silently fall back
+    to dynamic initialization. `consteval` applies only to functions.
+
+- id: cpp-constexpr-008
+  topic: cpp
+  subtopic: constexpr and compile-time evaluation
+  difficulty: easy
+  type: single
+  tags: [constexpr]
+  prompt: |
+    Given `constexpr int sq(int x) { return x * x; }`, which use **guarantees** that `sq` is evaluated at
+    compile time?
+  choices:
+    - { id: a, text: "`constexpr int a = sq(3);`" }
+    - { id: b, text: "`int b = sq(3);` inside a function" }
+    - { id: c, text: "`return sq(3);` from a non-constexpr function" }
+    - { id: d, text: "`std::cout << sq(3);`" }
+  answer: a
+  explanation: |
+    Only contexts that *require* a constant expression guarantee compile-time evaluation: `constexpr`
+    variable initializers, array bounds, template arguments, `static_assert`, `case` labels, and so on.
+    In (b)–(d) the optimizer will almost certainly fold the call, but that is an optimization, not a
+    language guarantee, and it won't happen at `-O0`.
+
+- id: cpp-constexpr-009
+  topic: cpp
+  subtopic: constexpr and compile-time evaluation
+  difficulty: hard
+  type: single
+  tags: [is-constant-evaluated, if-constexpr, cpp20]
+  prompt: |
+    What is wrong with this C++20 code?
+
+    ```cpp
+    constexpr double fast_sqrt(double x) {
+        if constexpr (std::is_constant_evaluated()) {
+            return newton_sqrt(x);      // constexpr-friendly
+        } else {
+            return __builtin_sqrt(x);   // runtime intrinsic
+        }
+    }
+    ```
+  choices:
+    - { id: a, text: "The condition of `if constexpr` is itself always constant-evaluated, so `std::is_constant_evaluated()` is always `true` there and the runtime branch is never used." }
+    - { id: b, text: "`std::is_constant_evaluated()` cannot be called inside a constexpr function." }
+    - { id: c, text: "Nothing; this is the intended usage pattern." }
+    - { id: d, text: "It is always `false` there, so the compile-time path is never taken." }
+  answer: a
+  explanation: |
+    The condition of `if constexpr` is a manifestly constant-evaluated context, so
+    `std::is_constant_evaluated()` returns `true` there unconditionally. The function always takes the slow
+    path, even at run time. GCC and Clang warn ("always evaluates to true"). The correct spelling is a plain
+    `if (std::is_constant_evaluated())`, or in C++23 `if consteval { ... } else { ... }`, which was added
+    partly to remove this trap.
+
+- id: cpp-constexpr-010
+  topic: cpp
+  subtopic: constexpr and compile-time evaluation
+  difficulty: hard
+  type: multiple
+  tags: [constexpr, cpp20]
+  prompt: |
+    Which of the following are permitted to be **evaluated** inside a constexpr function during constant
+    evaluation in **C++20**? Select all that apply.
+  choices:
+    - { id: a, text: "A `try`/`catch` block, as long as no exception is actually thrown" }
+    - { id: b, text: "`new`/`delete`, provided the memory is freed before the evaluation ends" }
+    - { id: c, text: "A call to a virtual function" }
+    - { id: d, text: "A `reinterpret_cast` from `int*` to `char*`" }
+    - { id: e, text: "Definition of a `static` local variable" }
+  answer: [a, b, c]
+  explanation: |
+    C++20 relaxed constexpr considerably: `try` blocks are allowed (P1002; a `throw` expression may not be
+    evaluated), transient dynamic allocation is allowed (P0784, which is what makes `std::vector` and
+    `std::string` constexpr), and virtual calls are allowed (P1064).
+
+    `reinterpret_cast` is never permitted in a constant expression ([expr.const]), which is why
+    `std::bit_cast` exists. Static (and thread_local) variables couldn't appear in a constexpr function in
+    C++20; C++23 allows `static constexpr` locals (P2647) and permits other such declarations only if
+    they're never evaluated.
+
+- id: cpp-constexpr-011
+  topic: cpp
+  subtopic: constexpr and compile-time evaluation
+  difficulty: medium
+  type: short
+  tags: [constexpr, consteval, constinit]
+  prompt: |
+    Explain the difference between `const`, `constexpr`, `consteval` and `constinit`. Give a situation
+    where each is the right choice.
+  reference: |
+    `const` means the object can't be modified after initialization; the initializer may be a runtime value.
+    `constexpr` on a variable means const *and* initialized by a constant expression, so the value is usable at
+    compile time (array bounds, template arguments). On a function, it means the function *can* be evaluated at
+    compile time when given constant arguments, and otherwise runs at run time; use it for pure utilities and
+    lookup-table generation. `consteval` (C++20) marks an immediate function that *must* be evaluated at
+    compile time, so every call must be a constant expression; use it when a runtime call would be a bug,
+    e.g. compile-time format-string checking (`std::format` uses it) or hashing string literals for IDs.
+    `constinit` (C++20) applies to static/thread-local variables and guarantees constant (static)
+    initialization without making the variable const. Use it for mutable globals to avoid the static
+    initialization order fiasco and the guard checks on `thread_local` variables.
+  explanation: |
+    The common confusion is between "may" (constexpr function) and "must" (consteval), and between
+    `constexpr` (immutable) and `constinit` (mutable but initialized at compile time).
+  keyPoints:
+    - const = immutable after (possibly runtime) initialization
+    - constexpr variable = const plus compile-time value; constexpr function = may run at compile time
+    - consteval = must be evaluated at compile time (immediate function)
+    - constinit = guaranteed static initialization, variable stays mutable
+    - Concrete use case for each (lookup tables, format-string checking, mutable globals or thread_locals)

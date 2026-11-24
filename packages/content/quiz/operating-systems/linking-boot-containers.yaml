@@ -1,0 +1,581 @@
+- id: os-link-001
+  topic: operating-systems
+  subtopic: Linking and loading
+  type: single
+  difficulty: medium
+  prompt: |
+    In an ELF executable, what is the difference between **sections** and **segments**?
+  choices:
+    - id: a
+      text: "They are two names for the same thing"
+    - id: b
+      text: "Sections (.text, .data, .bss, .rodata, ...) describe the file for the linker and tools; segments (program headers such as PT_LOAD) tell the loader what to map into memory and with which permissions"
+    - id: c
+      text: "Segments exist only in object files and sections only in executables"
+    - id: d
+      text: "Sections are for 32-bit binaries and segments for 64-bit binaries"
+  answer: b
+  explanation: |
+    The ELF **section header table** describes the *linking view*: named sections that the linker merges and that tools such as debuggers inspect. The **program header table** describes the *execution view*: segments, usually several sections grouped together (for example .text and .rodata into a read-only executable PT_LOAD), which the kernel and the dynamic loader `mmap` with the given permissions. An executable can run with its section headers stripped, but not without program headers.
+
+    - (c) is backwards. Relocatable object files (.o) have sections and usually no program headers.
+    - (d) Both ELF32 and ELF64 have sections and segments.
+  tags: [elf, linking, loader]
+  source:
+    name: elf(5) man page
+    url: https://man7.org/linux/man-pages/man5/elf.5.html
+
+- id: os-link-002
+  topic: operating-systems
+  subtopic: Linking and loading
+  type: short
+  difficulty: hard
+  prompt: |
+    Walk me through what happens the first time a dynamically linked program on x86-64 Linux calls `printf` through the PLT with lazy binding.
+  reference: |
+    The compiler emits `call printf@plt`. The PLT stub jumps indirectly through printf's GOT entry. With lazy binding, that GOT entry initially points back into the PLT, at code that pushes a relocation index and jumps to PLT0. PLT0 pushes a pointer identifying the module (the link map) and jumps to the dynamic linker's resolver (`_dl_runtime_resolve`). The resolver looks up the symbol `printf` along the global symbol search order: the executable, then the libraries in load order, so earlier definitions such as LD_PRELOAD win. It writes the address it found into the GOT entry and jumps to printf. Later calls go PLT → GOT → printf directly, one indirect jump. Notes: `-z now`/`LD_BIND_NOW` resolves everything at startup instead, and full RELRO then makes the GOT read-only, which is a security hardening. Modern toolchains may use `-fno-plt`, calling through the GOT directly. The GOT is writable data at a fixed offset from the code, which is what keeps the code itself position-independent and shareable.
+  keyPoints:
+    - The call goes to a PLT stub, which jumps indirectly through a GOT entry
+    - Initially the GOT entry leads to the resolver (via PLT0) with a relocation index
+    - The dynamic linker (ld.so) looks the symbol up in the global search order and patches the GOT
+    - Later calls jump straight to the target through the patched GOT
+    - Mentions BIND_NOW/RELRO or -fno-plt as variations
+  explanation: |
+    This is a classic systems-interview walkthrough. The essential mechanism is the indirection through a writable table, patched on first use.
+  tags: [plt, got, dynamic-linking, elf]
+  source:
+    name: Ian Lance Taylor, "Linkers" blog series
+    url: https://www.airs.com/blog/archives/38
+
+- id: os-link-003
+  topic: operating-systems
+  subtopic: Linking and loading
+  type: multiple
+  difficulty: medium
+  prompt: |
+    Which of these are real advantages of **static** linking over dynamic linking? Select all that apply.
+  choices:
+    - id: a
+      text: "The binary does not depend on library versions installed on the target machine"
+    - id: b
+      text: "Faster startup, because no dynamic symbol resolution or relocation of shared libraries is needed"
+    - id: c
+      text: "Library security fixes reach the program without rebuilding it"
+    - id: d
+      text: "Calls into the library need no PLT/GOT indirection and can be optimised by link-time optimisation"
+    - id: e
+      text: "Several programs using the same library share one copy of its code in physical memory"
+  answer: [a, b, d]
+  explanation: |
+    - (a), (b), (d) True. Static linking gives a self-contained binary, cheaper startup and direct calls that LTO can optimise. Low-latency shops sometimes link statically for exactly these reasons.
+    - (c) False. This is a *dynamic* linking advantage: update libssl and every program gets the fix. A static binary must be rebuilt.
+    - (e) False. Also a dynamic linking advantage: shared libraries' read-only pages are mapped from the same page-cache pages by every process.
+
+    A caveat: fully static glibc programs have limitations (NSS and `dlopen`), which is one reason people link statically against musl.
+  tags: [static-linking, dynamic-linking, shared-libraries]
+
+- id: os-link-004
+  topic: operating-systems
+  subtopic: Linking and loading
+  type: single
+  difficulty: medium
+  prompt: |
+    You run `LD_PRELOAD=./libmymalloc.so ./server`, where `libmymalloc.so` defines `malloc` and `free`. Why do the server's calls to `malloc` reach your library instead of glibc's?
+  choices:
+    - id: a
+      text: "The kernel rewrites the server's code at exec time"
+    - id: b
+      text: "The dynamic linker loads preloaded libraries before the program's own dependencies, and symbol lookup takes the first definition in search order, so your malloc interposes on glibc's"
+    - id: c
+      text: "LD_PRELOAD recompiles the program"
+    - id: d
+      text: "It only works if the server was statically linked"
+  answer: b
+  explanation: |
+    ELF dynamic linking uses a global symbol scope: the executable first, then LD_PRELOAD libraries, then DT_NEEDED libraries in breadth-first order. The first definition found wins. This is **symbol interposition**, the mechanism behind tools such as jemalloc/tcmalloc preloading, faketime and many profilers. Inside the wrapper, `dlsym(RTLD_NEXT, "malloc")` finds the next definition, the real one.
+
+    - (d) is backwards. A statically linked binary has no dynamic linker, so LD_PRELOAD does nothing. For security, ld.so also ignores LD_PRELOAD paths for setuid programs, apart from restricted cases.
+  tags: [ld-preload, interposition, dynamic-linking]
+  source:
+    name: ld.so(8) man page
+    url: https://man7.org/linux/man-pages/man8/ld.so.8.html
+
+- id: os-link-005
+  topic: operating-systems
+  subtopic: Linking and loading
+  type: single
+  difficulty: medium
+  prompt: |
+    Why must code in a shared library normally be compiled with `-fPIC`?
+  choices:
+    - id: a
+      text: "So the library can be loaded at any address and its code pages shared between processes without being patched"
+    - id: b
+      text: "Because -fPIC enables optimisations that are not otherwise allowed"
+    - id: c
+      text: "Because shared libraries must be 32-bit"
+    - id: d
+      text: "So the library runs in kernel mode"
+  answer: a
+  explanation: |
+    A shared library is mapped at a different address in each process, especially with ASLR. Position-independent code reaches its own data and functions relative to the instruction pointer (RIP-relative addressing on x86-64) and reaches other modules' symbols through the GOT. Code that is not PIC would need load-time text relocations, which patch the code pages. Those pages then become private copies that cannot be shared, and they have to be writable for the patching, which is a security problem. On x86-64 the linker refuses most such relocations in shared objects.
+
+    - (b) is the opposite. PIC can cost a little performance, for example GOT indirection for symbols that may be interposed, which is one reason `-fvisibility=hidden` and `-fno-semantic-interposition` exist.
+  tags: [fpic, shared-libraries, aslr, got]
+
+- id: os-link-006
+  topic: operating-systems
+  subtopic: Linking and loading
+  type: short
+  difficulty: medium
+  prompt: |
+    What happens between running `./prog` in a shell and the first line of `main` executing, for a dynamically linked C++ program on Linux?
+  reference: |
+    The shell forks, and the child calls `execve("./prog", argv, envp)`. The kernel reads the ELF header and program headers, replaces the process's address space, and maps the PT_LOAD segments with their permissions. Because there is a PT_INTERP header, it also maps the dynamic linker (/lib64/ld-linux-x86-64.so.2). It sets up a new stack holding argc, argv, envp and the auxiliary vector (entry point, program header address, page size, random bytes for the stack canary and so on), and starts running at the *dynamic linker's* entry point. ld.so loads the DT_NEEDED libraries (libstdc++, libm, libc, ...), relocates everything, and resolves symbols (all of them now if BIND_NOW, otherwise lazily). It sets up TLS and runs each library's initialisers (.init_array). It then jumps to the program's entry point `_start`, which calls `__libc_start_main`. That runs the program's own constructors, including C++ static and global object constructors, and finally calls `main(argc, argv, envp)`. When main returns, exit() runs atexit handlers and static destructors.
+  keyPoints:
+    - fork, then execve; the kernel parses ELF headers and maps PT_LOAD segments
+    - PT_INTERP means the kernel maps and starts the dynamic linker; the stack holds argv, envp and the auxiliary vector
+    - ld.so loads DT_NEEDED libraries, applies relocations, resolves symbols, sets up TLS
+    - Library and program initialisers (.init_array, C++ static constructors) run before main
+    - _start → __libc_start_main → main
+  explanation: |
+    This is the loading counterpart to "what happens when you type a URL". Mentioning static initialisers running before main (and the static initialisation order problem) connects it to C++.
+  tags: [execve, elf, dynamic-linker, startup]
+  source:
+    name: "Bryant & O'Hallaron, CS:APP chapter 7 (Linking)"
+
+- id: os-boot-001
+  topic: operating-systems
+  subtopic: Booting
+  type: single
+  difficulty: easy
+  prompt: |
+    On a modern x86-64 PC running Linux, what is the usual order of the boot stages?
+  choices:
+    - id: a
+      text: "Kernel → firmware → bootloader → init"
+    - id: b
+      text: "Firmware (UEFI) → bootloader (e.g. GRUB or systemd-boot) → kernel (with initramfs) → init (PID 1, e.g. systemd)"
+    - id: c
+      text: "Bootloader → firmware → init → kernel"
+    - id: d
+      text: "Firmware → init → kernel → bootloader"
+  answer: b
+  explanation: |
+    The firmware (UEFI, or legacy BIOS) initialises the hardware and loads a boot loader from the EFI System Partition (or the MBR). The boot loader loads the kernel image and initramfs into memory and passes the kernel command line. The kernel decompresses itself, initialises memory management, the scheduler and drivers, mounts the initramfs, and runs its `/init`. That finds and mounts the real root file system, then hands over to the real init (PID 1), which starts the user-space services.
+  tags: [boot, uefi, grub, initramfs, systemd]
+
+- id: os-boot-002
+  topic: operating-systems
+  subtopic: Booting
+  type: single
+  difficulty: medium
+  prompt: |
+    What is the main purpose of the initramfs in a Linux boot?
+  choices:
+    - id: a
+      text: "It holds the kernel's source code"
+    - id: b
+      text: "It is a small early root file system containing the drivers and tools (storage, RAID/LVM, encryption) needed to find and mount the real root file system"
+    - id: c
+      text: "It is swap space used during boot"
+    - id: d
+      text: "It stores the firmware settings"
+  answer: b
+  explanation: |
+    Distribution kernels build most drivers as modules. To mount the root file system, the kernel may first need NVMe or RAID drivers, LVM tools, or a LUKS passphrase prompt. The initramfs is a cpio archive unpacked into RAM that contains those pieces. Its `/init` prepares the real root, then `switch_root`s into it and execs the real init.
+  tags: [boot, initramfs]
+
+- id: os-boot-003
+  topic: operating-systems
+  subtopic: Booting
+  type: short
+  difficulty: medium
+  prompt: |
+    Why is PID 1 special on Linux? What goes wrong if the program running as PID 1 inside a container is a plain application that was not written to be an init process?
+  reference: |
+    PID 1 is the first user-space process, started by the kernel, and is the ancestor of everything else. It has special duties and rules. Orphaned processes are re-parented to it (or to the nearest subreaper), so it must `wait()` for them, or exited children stay as **zombies** and fill the process table. The kernel also protects it: signals for which PID 1 has not installed a handler are ignored, so SIGTERM with the default action does not kill it. If PID 1 exits, the kernel panics on the host, and in a PID namespace the whole namespace is killed. In a container, an application running as PID 1 often does not reap adopted zombies, and it ignores the SIGTERM sent by `docker stop`, which then waits for its timeout and sends SIGKILL, so there is no graceful shutdown. Fixes: use a tiny init such as tini or dumb-init (`docker run --init`), or make the application install signal handlers and reap children.
+  keyPoints:
+    - PID 1 adopts orphans and must reap them, or zombies accumulate
+    - Signals without an installed handler are not delivered to PID 1 (default actions do not apply), so SIGTERM is ignored
+    - PID 1 exiting panics the host kernel, or kills the whole PID namespace
+    - In containers, docker stop's SIGTERM is ignored and SIGKILL follows after the timeout
+    - Use tini/dumb-init or --init, or handle signals and reap explicitly
+  explanation: |
+    A practical question that links boot, signals and containers.
+  tags: [pid-1, init, zombies, containers, signals]
+
+- id: os-ctr-001
+  topic: operating-systems
+  subtopic: Containers and virtualization
+  type: single
+  difficulty: easy
+  prompt: |
+    What is the fundamental difference between a Linux container and a virtual machine?
+  choices:
+    - id: a
+      text: "Containers run their own kernel; VMs share the host's kernel"
+    - id: b
+      text: "Containers are ordinary host processes that share the host kernel, isolated with namespaces and limited with cgroups; a VM runs its own guest kernel on virtualised hardware"
+    - id: c
+      text: "Containers can only run on Docker"
+    - id: d
+      text: "VMs cannot limit CPU or memory"
+  answer: b
+  explanation: |
+    A container is a group of processes on the host kernel. Namespaces give it its own view of PIDs, mounts, network, hostname, IPC and users, and cgroups limit its resources. Consequences: containers start fast and add little overhead, but there is one shared kernel. You cannot run a different kernel or OS, and a kernel bug can break isolation. That is why sandboxes such as gVisor and Firecracker microVMs exist.
+
+    - (a) is reversed.
+    - (c) Docker is one of many runtimes, alongside containerd, CRI-O, podman and others.
+  tags: [containers, namespaces, cgroups, virtual-machines]
+
+- id: os-ctr-002
+  topic: operating-systems
+  subtopic: Containers and virtualization
+  type: multiple
+  difficulty: easy
+  prompt: |
+    Which of these are Linux namespace types? Select all that apply.
+  choices:
+    - id: a
+      text: "PID"
+    - id: b
+      text: "Mount (mnt)"
+    - id: c
+      text: "Network (net)"
+    - id: d
+      text: "User"
+    - id: e
+      text: "Memory"
+    - id: f
+      text: "UTS (hostname)"
+  answer: [a, b, c, d, f]
+  explanation: |
+    Linux has these namespaces: mount, UTS, IPC, PID, network, user, cgroup and time. Namespaces control what a process can **see**.
+
+    There is no memory namespace (e). Limiting how much memory a group can **use** is the job of the cgroup memory controller. "Namespaces isolate, cgroups limit" is the line to remember.
+  tags: [namespaces, containers]
+  source:
+    name: namespaces(7) man page
+    url: https://man7.org/linux/man-pages/man7/namespaces.7.html
+
+- id: os-ctr-003
+  topic: operating-systems
+  subtopic: Containers and virtualization
+  type: single
+  difficulty: hard
+  prompt: |
+    A latency-sensitive service runs in a container with cgroup v2 `cpu.max` set to `200000 100000` (a limit of 2 CPUs). It has 8 busy threads on an 8-core host. Average CPU use is only about 1.2 CPUs, yet p99 latency shows spikes of about 70–80 ms. What is the most likely explanation?
+  choices:
+    - id: a
+      text: "The quota is spent early in each 100 ms period when all 8 threads run in parallel, so the cgroup is throttled until the period ends"
+    - id: b
+      text: "cpu.max limits the container to 2 specific cores, and the other threads wait for those cores"
+    - id: c
+      text: "The memory limit is causing swapping"
+    - id: d
+      text: "cpu.max lowers the threads' scheduling priority"
+  answer: a
+  explanation: |
+    `cpu.max` is "$MAX $PERIOD": the cgroup may use 200 ms of CPU time per 100 ms period, **summed across all CPUs**. Eight threads running in parallel use up 200 ms in about 25 ms of wall time, and then the whole cgroup is throttled for the remaining ~75 ms of the period. Requests that arrive during that time see the stall, even though the *average* use stays well under the limit. Check `nr_throttled`/`throttled_usec` in `cpu.stat`.
+
+    Fixes: raise the limit or remove it (use `cpu.weight`, the share-based control, instead), cut down the threads that are runnable at once, use cpusets to pin to dedicated cores, or try a shorter period.
+
+    - (b) cpu.max is a bandwidth limit and does not pin threads to cores. Pinning is done by `cpuset.cpus`.
+    - (d) cpu.max does not change priority. Relative share is `cpu.weight`.
+  tags: [cgroups, cpu-throttling, cfs-bandwidth, kubernetes, latency]
+  source:
+    name: Linux kernel docs, Control Group v2 (cpu.max) and CFS bandwidth control
+    url: https://docs.kernel.org/admin-guide/cgroup-v2.html
+
+- id: os-ctr-004
+  topic: operating-systems
+  subtopic: Containers and virtualization
+  type: short
+  difficulty: medium
+  prompt: |
+    A container with a cgroup v2 `memory.max` of 2 GiB keeps getting OOM-killed even though the host has plenty of free memory. Explain what is happening, what counts against the limit, and how `memory.high` differs from `memory.max`.
+  reference: |
+    cgroup memory limits are enforced per group, regardless of how much memory the host has free. When the group's charged memory reaches memory.max, the kernel first tries to reclaim memory *from that cgroup*: dropping clean page cache, writing back dirty pages, swapping if swap is allowed. If it cannot get below the limit, the cgroup OOM killer kills a process inside the group (visible in dmesg and in the oom_kill count in memory.events). The charge includes anonymous memory (heap, stacks) **and** page cache for files the group reads and writes, tmpfs/shm pages, and some kernel memory such as socket buffers and dentries/inodes. So a service can hit the limit through file I/O or /dev/shm use even if its heap is small. Also, the JVM or runtime may size itself from the host's memory rather than the cgroup's. memory.high is a soft throttle limit: going above it triggers heavy reclaim and slows the group down, but does not OOM-kill it. That gives a chance to react before memory.max, the hard limit, where the OOM killer acts.
+  keyPoints:
+    - The limit is per cgroup and does not depend on free host memory; reaching it triggers reclaim, then the cgroup's own OOM killer
+    - Page cache, tmpfs/shm and kernel memory count, not just heap
+    - Runtimes that size themselves from host memory overshoot the limit
+    - memory.high throttles and reclaims without killing; memory.max is the hard OOM limit
+    - Diagnose with memory.events, memory.stat and dmesg
+  explanation: |
+    This comes up often in infrastructure interviews. The non-obvious part is that page cache and shm count against the limit.
+  tags: [cgroups, oom, memory-limits, containers]
+  source:
+    name: Linux kernel docs, Control Group v2 (memory controller)
+    url: https://docs.kernel.org/admin-guide/cgroup-v2.html
+
+- id: os-ctr-005
+  topic: operating-systems
+  subtopic: Containers and virtualization
+  type: single
+  difficulty: medium
+  prompt: |
+    Inside a container, a process runs as uid 0 ("root"). With a **user namespace** configured, what does that mean on the host?
+  choices:
+    - id: a
+      text: "The process is full root on the host"
+    - id: b
+      text: "Uid 0 inside is mapped to an unprivileged uid on the host (for example 100000), so its root powers apply only to resources owned by that namespace"
+    - id: c
+      text: "The process cannot run at all, because uid 0 is reserved for the host"
+    - id: d
+      text: "The process becomes uid 0 on every other container too"
+  answer: b
+  explanation: |
+    User namespaces map ranges of uids and gids (`/proc/<pid>/uid_map`). The process has capabilities *within* its namespace, so it can mount in its own mount namespace or configure its own network namespace, but on the host it is an ordinary unprivileged uid. This is how rootless containers work. Without a user namespace, root in the container really *is* root on the host, restricted only by dropped capabilities, seccomp and LSMs, which is why container escapes are serious.
+  tags: [user-namespace, containers, security, rootless]
+
+- id: os-ctr-006
+  topic: operating-systems
+  subtopic: Containers and virtualization
+  type: short
+  difficulty: hard
+  prompt: |
+    If you had to build a minimal container runtime by hand with Linux primitives, what steps would it take?
+  reference: |
+    1. Create new namespaces with `clone()` or `unshare()` using CLONE_NEWPID, NEWNS (mount), NEWNET, NEWUTS, NEWIPC, NEWUSER (map uids through uid_map/gid_map) and NEWCGROUP. 2. Set up the root file system: unpack the image layers, usually stacked with overlayfs (read-only lower layers plus a writable upper layer). Make mounts private, then `pivot_root` into it (safer than chroot) and unmount the old root. Mount /proc for the new PID namespace, plus /dev, /sys and tmpfs as needed. 3. Create a cgroup, write limits (memory.max, cpu.max, pids.max), and move the process into it. 4. Networking: create a veth pair, move one end into the network namespace, and connect the other to a bridge with NAT/iptables. 5. Security hardening: drop capabilities, set no_new_privs, apply a seccomp filter, and add an AppArmor/SELinux profile. 6. Set the hostname, environment and working directory, and `execve` the entry point as PID 1 of the new namespace, ideally a small init that reaps zombies and forwards signals. This is roughly what runc does from an OCI bundle.
+  keyPoints:
+    - clone/unshare with namespace flags (pid, mnt, net, uts, ipc, user, cgroup)
+    - Root file system with overlayfs plus pivot_root, and mount /proc
+    - cgroup limits for memory, CPU and pids
+    - Network with a veth pair and bridge/NAT
+    - Hardening (capabilities, seccomp, no_new_privs, LSM), then exec the entry point as PID 1
+  explanation: |
+    A strong answer shows that a "container" is not a single kernel object but a combination of these features. Mentioning runc/OCI is a bonus.
+  tags: [containers, namespaces, cgroups, overlayfs, seccomp]
+
+- id: os-virt-001
+  topic: operating-systems
+  subtopic: Containers and virtualization
+  type: single
+  difficulty: easy
+  prompt: |
+    What distinguishes a Type 1 hypervisor from a Type 2 hypervisor?
+  choices:
+    - id: a
+      text: "Type 1 runs directly on the hardware (bare metal, e.g. Xen, ESXi, Hyper-V); Type 2 runs as an application on a host OS (e.g. VirtualBox, VMware Workstation)"
+    - id: b
+      text: "Type 1 supports only Linux guests"
+    - id: c
+      text: "Type 2 is always faster because it uses the host's drivers"
+    - id: d
+      text: "Type 1 uses containers and Type 2 uses VMs"
+  answer: a
+  explanation: |
+    That is the classic classification. KVM blurs it: it turns the Linux kernel itself into a hypervisor, with QEMU or another user-space VMM providing device emulation. It is usually counted as Type 1 because the hypervisor is part of the kernel running on bare metal. With hardware virtualization support, the line matters less for CPU performance than for how the trusted code base and the device model are built.
+  tags: [virtualization, hypervisor, kvm]
+
+- id: os-virt-002
+  topic: operating-systems
+  subtopic: Containers and virtualization
+  type: single
+  difficulty: hard
+  prompt: |
+    With hardware-assisted nested paging (Intel EPT / AMD NPT), what happens on a TLB miss inside a guest that uses 4-level page tables, with 4-level nested tables on the host?
+  choices:
+    - id: a
+      text: "The hypervisor handles every guest TLB miss in software"
+    - id: b
+      text: "The hardware walks both the guest and nested page tables (a 2D walk), which can take up to 24 memory references in the worst case instead of 4"
+    - id: c
+      text: "Nothing different: the guest page tables map straight to host physical addresses"
+    - id: d
+      text: "The guest takes a page fault on every TLB miss"
+  answer: b
+  explanation: |
+    The guest page tables translate guest virtual to guest physical addresses. The EPT/NPT tables translate guest physical to host physical addresses. Every guest page-table entry address is itself a guest physical address that has to be translated through the nested tables. With 4 levels each that gives (4+1)×(4+1) − 1 = 24 references in the worst case. Page-walk caches and **huge pages** (in the guest *and* on the host) cut this cost a lot, which is one reason VMs gain so much from huge pages.
+
+    - (a) describes the older software technique of **shadow page tables**, which nested paging replaced. That technique needed hypervisor work whenever the guest changed its page tables, not on every TLB miss.
+    - (d) TLB misses are handled by the hardware walker. They are not page faults.
+  tags: [virtualization, ept, nested-paging, tlb, huge-pages]
+
+- id: os-virt-003
+  topic: operating-systems
+  subtopic: Containers and virtualization
+  type: single
+  difficulty: easy
+  prompt: |
+    What is virtio?
+  choices:
+    - id: a
+      text: "An instruction-set extension for running VMs"
+    - id: b
+      text: "A paravirtualized device standard: the guest uses drivers that know they are virtualised and exchange requests with the host through shared-memory queues (virtqueues), avoiding slow emulation of real hardware"
+    - id: c
+      text: "A container image format"
+    - id: d
+      text: "A way to virtualise the CPU's TLB"
+  answer: b
+  explanation: |
+    Emulating a real NIC or disk controller register by register causes many costly VM exits. virtio defines devices designed for virtualization (virtio-net, virtio-blk, virtio-scsi and others). Requests are batched in rings in guest memory, and notifications are kept to a minimum. Even faster options are vhost (the data path handled in the host kernel), vhost-user/DPDK, and device passthrough with SR-IOV/VFIO, where the guest drives real hardware directly.
+
+    - (a) The instruction-set extensions are VT-x and AMD-V, which are hardware CPU virtualization, not paravirtualized I/O.
+  tags: [virtio, paravirtualization, virtualization, io]
+
+- id: os-virt-004
+  topic: operating-systems
+  subtopic: Containers and virtualization
+  type: short
+  difficulty: medium
+  prompt: |
+    What is a "VM exit" with hardware virtualization (Intel VT-x), and why do people tuning low-latency virtualised workloads care about them?
+  reference: |
+    With VT-x the guest runs natively in VMX non-root mode. Certain events cause a **VM exit**: control passes to the hypervisor (VMX root mode), which saves the guest state, handles the event, and resumes the guest with VM entry. Causes include configured privileged instructions (for example CPUID, which always exits; some MSR accesses; HLT), I/O port and emulated MMIO accesses, external interrupts (depending on configuration), EPT violations, and some timer operations. Each exit costs from hundreds of nanoseconds to microseconds, including the round trip and cache/TLB disruption, more if it goes out to user-space QEMU. Low-latency tuning tries to keep the exit rate low: posted interrupts and APIC virtualization, paravirtual or passthrough devices (virtio/vhost, SR-IOV), avoiding HLT exits with idle polling (halt_poll_ns) or by dedicating pinned vCPUs, huge pages to reduce EPT work, and avoiding instructions that trap. Measure with `perf kvm stat`.
+  keyPoints:
+    - The guest runs natively; some events trap to the hypervisor (VM exit), then VM entry resumes
+    - Causes include privileged instructions (CPUID, MSRs, HLT), I/O and MMIO, interrupts, EPT violations
+    - Each exit costs from hundreds of ns to microseconds, plus cache/TLB side effects
+    - Mitigations such as posted interrupts/APICv, virtio/SR-IOV, vCPU pinning and halt polling, huge pages
+  explanation: |
+    The key idea is that hardware virtualization is cheap *until* something exits, and the tuning work is reducing exits.
+  tags: [vt-x, vm-exit, virtualization, latency]
+
+- id: os-linux-001
+  topic: operating-systems
+  subtopic: Practical Linux
+  type: single
+  difficulty: medium
+  prompt: |
+    A 16-core Linux server shows a 1-minute load average of 40, but `top` reports CPUs about 70% idle. Which explanation fits best?
+  choices:
+    - id: a
+      text: "The load average is broken and should be ignored"
+    - id: b
+      text: "Linux's load average counts tasks in uninterruptible sleep (state D, usually waiting on disk or NFS I/O) as well as runnable tasks, so many tasks are stuck on I/O"
+    - id: c
+      text: "The load average is a percentage of CPU use"
+    - id: d
+      text: "40 processes are using 100% CPU each"
+  answer: b
+  explanation: |
+    Unlike most Unixes, Linux includes `TASK_UNINTERRUPTIBLE` tasks in the load average, so it measures demand for CPU **and** some kinds of I/O wait. A high load with idle CPUs points at blocked I/O (a slow disk, a hung NFS mount, lock waits in the kernel). Look at tasks in state D (`ps -eo state,pid,cmd | grep ^D`), iowait, and `/proc/pressure/io` (PSI).
+
+    - (c) Load is a count of tasks, averaged with exponential decay, not a percentage.
+    - (d) Sixteen cores cannot run 40 tasks at 100% each, and the CPUs are mostly idle anyway.
+  tags: [load-average, linux, iowait, troubleshooting]
+  source:
+    name: 'Brendan Gregg, "Linux Load Averages: Solving the Mystery"'
+    url: https://www.brendangregg.com/blog/2017-08-08/linux-load-averages.html
+
+- id: os-linux-002
+  topic: operating-systems
+  subtopic: Practical Linux
+  type: multiple
+  difficulty: easy
+  prompt: |
+    A process seems hung. Which tools or files give useful information about what it is doing? Select all that apply.
+  choices:
+    - id: a
+      text: "strace -p <pid>, to see which syscall it is blocked in or repeating"
+    - id: b
+      text: "/proc/<pid>/stack or /proc/<pid>/wchan, to see where it sleeps in the kernel"
+    - id: c
+      text: "gdb -p <pid> (or eu-stack/pstack), for user-space stack traces of every thread"
+    - id: d
+      text: "lsof -p <pid> or ls -l /proc/<pid>/fd, to see which files and sockets it has open"
+    - id: e
+      text: "chmod 777 on the binary"
+  answer: [a, b, c, d]
+  explanation: |
+    - (a) strace shows the syscall it is blocked in, for example `futex(...)` for lock waits, `read(` on a socket, or `epoll_wait`.
+    - (b) `/proc/<pid>/stack` (root only) and `wchan` show the kernel wait point.
+    - (c) gdb or pstack give the user-space stacks, often the quickest way to find the deadlocked lock.
+    - (d) lsof or `/proc/<pid>/fd` show what the fds refer to, for example which peer a blocked socket is connected to.
+    - (e) Changing permissions tells you nothing.
+
+    Add `perf top -p` for spinning processes and `cat /proc/<pid>/status` for state and memory.
+  tags: [strace, proc, gdb, lsof, debugging]
+
+- id: os-linux-003
+  topic: operating-systems
+  subtopic: Practical Linux
+  type: single
+  difficulty: medium
+  prompt: |
+    Why can running a production process under `strace` be risky for latency-sensitive services?
+  choices:
+    - id: a
+      text: "strace changes the program's binary on disk"
+    - id: b
+      text: "strace uses ptrace, which stops the traced thread at every syscall entry and exit and context-switches to the tracer, which can slow syscall-heavy code by an order of magnitude or more"
+    - id: c
+      text: "strace disables the page cache"
+    - id: d
+      text: "strace restarts the process"
+  answer: b
+  explanation: |
+    Each traced syscall causes two stops and switches to the strace process and back. Syscall-heavy services can slow down dramatically. Lower-overhead alternatives use in-kernel tracing: `perf trace`, bpftrace/BCC tools (e.g. `syscount`, `opensnoop`), or ftrace. `strace -c` still stops on every syscall, but it skips the formatting of each one.
+  tags: [strace, ptrace, ebpf, observability]
+  source:
+    name: Brendan Gregg, "strace Wow Much Syscall"
+    url: https://www.brendangregg.com/blog/2014-05-11/strace-wow-much-syscall.html
+
+- id: os-linux-005
+  topic: operating-systems
+  subtopic: Practical Linux
+  type: short
+  difficulty: medium
+  prompt: |
+    You suspect a production C++ service is leaking memory. Which Linux tools and data would you look at, and how would you tell a true leak from normal allocator or cache behaviour?
+  reference: |
+    First, the trend: RSS over time from `/proc/<pid>/status` (VmRSS, and RssAnon versus RssFile versus RssShmem) or from metrics. A true heap leak shows RssAnon growing without bound under steady load. RSS that grows then levels off is usually allocator caching or a warm working set. `/proc/<pid>/smaps` or `pmap -x` show which mappings are growing (heap, anonymous arenas, thread stacks, mmapped files). For the cgroup, look at memory.stat to tell anonymous memory from page cache. Next, find the allocation sites: heap profiling with jemalloc or tcmalloc profiles (jeprof/pprof), heaptrack, or eBPF tools such as BCC `memleak` against the live process. In a test environment, Valgrind massif/memcheck or ASan/LSan. Use `malloc_stats`/`malloc_info` to compare memory in use with memory the allocator holds free. If calling malloc_trim makes RSS fall, it was retained free memory, not a leak. Also count fds and threads (fds pinning resources, thread stacks), and remember that page cache is not process RSS.
+  keyPoints:
+    - Watch the RSS trend and break it down (RssAnon versus file and shmem) using /proc/<pid>/status and smaps or pmap
+    - "Unbounded growth under steady load suggests a leak; a plateau suggests caching or allocator retention"
+    - Heap profilers (jemalloc/tcmalloc profiling, heaptrack, BCC memleak) find allocation sites in production
+    - ASan/LSan or Valgrind in test environments
+    - Allocator statistics or malloc_trim separate held free memory from live memory; also count fds and threads
+  explanation: |
+    This tests practical debugging. Good answers separate "RSS is high" from "memory is leaking" and name tools that are safe to use in production.
+  tags: [memory-leak, proc, heap-profiling, debugging, rss]
+
+- id: os-link-007
+  topic: operating-systems
+  subtopic: Linking and loading
+  type: single
+  difficulty: easy
+  prompt: |
+    Building a C++ program fails with `undefined reference to 'parse_config(char const*)'`. At which stage does this error come from, and what is the usual cause?
+  choices:
+    - id: a
+      text: "The preprocessor, because a header is missing"
+    - id: b
+      text: "The compiler, because the function is not declared"
+    - id: c
+      text: "The linker: the function was declared (so the code compiled), but no object file or library supplied its definition, for example a missing .cpp file or -l flag, or a library listed in the wrong order"
+    - id: d
+      text: "The dynamic loader at runtime"
+  answer: c
+  explanation: |
+    Each translation unit compiles against declarations alone. The **linker** then has to match every referenced symbol with a definition. "undefined reference" is a link-time error. Common causes: forgetting to compile or link a source file, a missing `-lfoo`, putting `-lfoo` *before* the objects that use it (static archives are searched in command-line order), a C/C++ name-mangling mismatch (a missing `extern "C"`), or a declared but never defined function or static data member.
+
+    - (b) A missing *declaration* gives a compile error such as "was not declared in this scope".
+    - (d) A missing shared library at runtime gives a different error from the dynamic loader: "error while loading shared libraries", or "symbol lookup error".
+  tags: [linker, undefined-reference, build]
+
+- id: os-linux-006
+  topic: operating-systems
+  subtopic: Practical Linux
+  type: single
+  difficulty: easy
+  prompt: |
+    What is `/proc` on Linux?
+  choices:
+    - id: a
+      text: "A directory on disk where the kernel writes log files"
+    - id: b
+      text: "A virtual file system generated by the kernel on demand, exposing process information (/proc/<pid>/...) and kernel state and tunables (/proc/meminfo, /proc/sys/...)"
+    - id: c
+      text: "The directory containing executable programs"
+    - id: d
+      text: "A swap area"
+  answer: b
+  explanation: |
+    procfs uses no disk space. Reading a file such as `/proc/self/maps`, `/proc/<pid>/status` or `/proc/loadavg` runs kernel code that formats the current state. Writing to files under `/proc/sys` changes kernel parameters; `sysctl` is a wrapper around this. Tools such as `ps`, `top` and `free` mostly just read /proc. `/sys` (sysfs) is the device- and driver-oriented counterpart.
+  tags: [procfs, linux, sysctl]

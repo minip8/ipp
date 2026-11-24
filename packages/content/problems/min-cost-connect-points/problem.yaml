@@ -1,0 +1,16 @@
+slug: min-cost-connect-points
+title: Min Cost to Connect All Points
+difficulty: medium
+tags: [graph, minimum-spanning-tree, union-find, heap]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: minCostConnectPoints
+      params:
+        - { name: points, type: { array: { array: int } } }
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 1584)
+  url: https://leetcode.com/problems/min-cost-to-connect-all-points/

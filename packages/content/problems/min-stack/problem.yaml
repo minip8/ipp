@@ -1,0 +1,25 @@
+slug: min-stack
+title: Min Stack
+difficulty: easy
+tags: [design, stack]
+signature:
+  className: MinStack
+  kind: design
+  methods:
+    - name: push
+      params:
+        - { name: val, type: int }
+      returns: void
+    - name: pop
+      params: []
+      returns: void
+    - name: top
+      params: []
+      returns: int
+    - name: getMin
+      params: []
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic design interview question (LeetCode 155)
+  url: https://leetcode.com/problems/min-stack/

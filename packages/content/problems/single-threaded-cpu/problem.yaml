@@ -1,0 +1,16 @@
+slug: single-threaded-cpu
+title: Single-Threaded CPU
+difficulty: medium
+tags: [heap, sorting, simulation]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: getOrder
+      params:
+        - { name: tasks, type: { array: { array: int } } }
+      returns: { array: int }
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 1834)
+  url: https://leetcode.com/problems/single-threaded-cpu/

@@ -1,0 +1,285 @@
+# Functions: defaults, parameters and argument passing, *args/**kwargs, decorators.
+- id: py-fn-001
+  topic: python
+  subtopic: Default arguments
+  difficulty: easy
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [defaults, mutable-default]
+  prompt: What does this program print?
+  code: |
+    def append(x, acc=[]):
+        acc.append(x)
+        return acc
+
+    append(1)
+    print(append(2), append(3, []))
+  answer: { kind: output, output: "[1, 2] [3]" }
+  explanation: |
+    Default values are evaluated **once, when the `def` statement executes**, and stored on the function (`append.__defaults__`). Every call that omits `acc` gets the *same* list, so state accumulates across calls: `[1]`, then `[1, 2]`. Passing an explicit list bypasses the shared default.
+
+    The idiom is `acc=None` followed by `if acc is None: acc = []`.
+
+- id: py-fn-002
+  topic: python
+  subtopic: Default arguments
+  difficulty: easy
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [defaults]
+  prompt: What does this program print?
+  code: |
+    n = 1
+
+    def f(a=n):
+        return a
+
+    n = 2
+    print(f(), f(n))
+  answer: { kind: output, output: "1 2" }
+  explanation: |
+    The default expression `n` was evaluated when `def` ran, while `n` was `1`. Rebinding the global later doesn't change the stored default. The explicit argument `f(n)` is evaluated at call time, so it is `2`.
+
+- id: py-fn-003
+  topic: python
+  subtopic: Decorators
+  difficulty: medium
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [decorators, order]
+  prompt: What does this program print?
+  code: |
+    def tag(name):
+        def deco(f):
+            print('decorating with', name)
+            def wrapper():
+                return f'<{name}>{f()}</{name}>'
+            return wrapper
+        return deco
+
+    @tag('b')
+    @tag('i')
+    def hello():
+        return 'hi'
+
+    print(hello())
+  answer:
+    kind: output
+    output: |
+      decorating with i
+      decorating with b
+      <b><i>hi</i></b>
+  explanation: |
+    Stacked decorators apply **bottom-up**: the code means `hello = tag('b')(tag('i')(hello))`. The decorator *factories* `tag('b')` and `tag('i')` are evaluated top-down first, but nothing prints at that point; the prints happen inside `deco`, which is applied to `hello` by the `i` decorator first, then `b`. The decoration happens once, at definition time.
+
+    At call time the outermost wrapper (`b`) runs first and calls the `i` wrapper inside it, so the tags nest as `<b><i>…</i></b>`.
+
+- id: py-fn-004
+  topic: python
+  subtopic: Parameters
+  difficulty: medium
+  type: output
+  language: python
+  standard: Python 3.8+
+  tags: [positional-only, keyword-only, parameters]
+  prompt: What does this program print?
+  code: |
+    def f(a, /, b, *, c):
+        return a + b + c
+
+    print(f(1, 2, c=3))
+    print(f(1, b=2, c=3))
+    print(f(a=1, b=2, c=3))
+  answer: { kind: runtime_error }
+  explanation: |
+    It prints `6` twice, then the third call raises **TypeError** (`f() got some positional-only arguments passed as keyword arguments: 'a'`).
+
+    In a signature, parameters before `/` are **positional-only** (PEP 570, 3.8+), parameters after `*` are **keyword-only** (PEP 3102), and those in between can be passed either way. So `a` can't be passed by name, and `c` must be.
+
+- id: py-fn-005
+  topic: python
+  subtopic: Parameters
+  difficulty: easy
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [args, kwargs, unpacking]
+  prompt: What does this program print?
+  code: |
+    def f(*args, **kwargs):
+        print(args, kwargs)
+
+    f(*'ab', 3, **{'x': 1}, y=2)
+  answer: { kind: output, output: "('a', 'b', 3) {'x': 1, 'y': 2}" }
+  explanation: |
+    At a call site, `*iterable` unpacks into positional arguments (a string iterates over its characters) and `**mapping` into keyword arguments; both can be mixed with ordinary arguments. In the function, `*args` collects the extra positionals into a **tuple**, and `**kwargs` collects the extra keywords into a **dict** that preserves the order they were passed in (guaranteed since 3.6, PEP 468).
+
+- id: py-fn-006
+  topic: python
+  subtopic: Decorators
+  difficulty: easy
+  type: single
+  tags: [decorators, functools, wraps]
+  prompt: Why do decorators usually apply `@functools.wraps(func)` to the wrapper function they return?
+  choices:
+    - { id: a, text: "It copies metadata such as `__name__`, `__qualname__`, `__doc__` and `__module__` from `func`, updates `__dict__`, and sets `__wrapped__`, so the wrapper looks like the original to introspection and tools" }
+    - { id: b, text: "It is required for the wrapper to be able to call `func`" }
+    - { id: c, text: "It caches the results of `func`" }
+    - { id: d, text: "It makes the wrapper run faster by avoiding an extra stack frame" }
+  answer: a
+  explanation: |
+    Without `wraps`, the decorated function reports the wrapper's name and docstring, which confuses debugging, logging, `help()`, documentation tools and test frameworks. `functools.wraps` (a convenience for `update_wrapper`) copies `WRAPPER_ASSIGNMENTS`, merges `__dict__`, and sets `__wrapped__`, which `inspect.signature` and `inspect.unwrap` follow to report the original signature.
+
+    The wrapper can call `func` anyway through the closure; `wraps` does no caching (that's `lru_cache`/`cache`) and adds no speed.
+
+- id: py-fn-007
+  topic: python
+  subtopic: Parameters
+  difficulty: medium
+  type: multiple
+  tags: [parameters, call-syntax]
+  prompt: |
+    Given `def f(a, b=2, *args, c, **kwargs): ...`, which calls succeed (don't raise `TypeError`)? Select all that apply.
+  choices:
+    - { id: a, text: "`f(1, c=3)`" }
+    - { id: b, text: "`f(1, 2, 3, 4, c=5)`" }
+    - { id: c, text: "`f(c=3, a=1)`" }
+    - { id: d, text: "`f(1, 2)`" }
+    - { id: e, text: "`f(1, a=1, c=2)`" }
+    - { id: f, text: "`f(1, c=3, d=4)`" }
+  answer: [a, b, c, f]
+  explanation: |
+    `c` comes after `*args`, so it is **keyword-only and required** (no default). `a` and `b` can be passed positionally or by keyword.
+
+    - a: `a=1`, `b` defaults, `c=3`. OK.
+    - b: `a=1, b=2, args=(3, 4), c=5`. OK.
+    - c: keywords can come in any order. OK.
+    - d: missing the required keyword-only `c`, so `TypeError`.
+    - e: `a` is given positionally *and* by keyword: `TypeError: got multiple values for argument 'a'`.
+    - f: the unknown keyword `d` goes into `**kwargs`. OK.
+
+- id: py-fn-008
+  topic: python
+  subtopic: Functions
+  difficulty: easy
+  type: single
+  tags: [lambda]
+  prompt: Which statement about `lambda` in Python is true?
+  choices:
+    - { id: a, text: "Its body is a single expression, whose value is returned; it cannot contain statements such as assignments (other than `:=`) or `return`" }
+    - { id: b, text: "Lambdas cannot capture variables from the enclosing scope" }
+    - { id: c, text: "Lambdas are faster than equivalent `def` functions because they are inlined" }
+    - { id: d, text: "A lambda can take at most one argument" }
+  answer: a
+  explanation: |
+    `lambda params: expr` creates an ordinary function object whose body is one expression. It can take any parameters a `def` can (defaults, `*args`, keyword-only, ...), it closes over enclosing variables just like a nested `def` (late binding included), and it is no faster: the bytecode is the same, and nothing is inlined. The only difference is that its `__name__` is `'<lambda>'`, which makes tracebacks less helpful. PEP 8 discourages assigning a lambda to a name; use `def` there.
+
+- id: py-fn-009
+  topic: python
+  subtopic: Default arguments
+  difficulty: medium
+  type: single
+  tags: [defaults, sentinel]
+  prompt: |
+    A function needs an optional argument where `None` is itself a meaningful value the caller might pass. How do you detect "argument not supplied"?
+  choices:
+    - { id: a, text: "Use a module-level sentinel, e.g. `_MISSING = object()`, as the default and test `if arg is _MISSING`" }
+    - { id: b, text: "Use `arg=False` and test `if not arg`" }
+    - { id: c, text: "Check `if 'arg' in locals()`" }
+    - { id: d, text: "Use `arg=[]` and test `if arg == []`" }
+  answer: a
+  explanation: |
+    A fresh `object()` is unique, so no caller value can accidentally be identical to it, and testing with `is` is exact. The standard library does the same (e.g. `dataclasses.MISSING`).
+
+    `if not arg` misclassifies every falsy value (`0`, `''`, `None`, `[]`). A parameter is always in `locals()`, since the default fills it. `arg=[]` brings in the mutable-default problem and treats an explicitly passed empty list as "missing".
+
+- id: py-fn-010
+  topic: python
+  subtopic: Decorators
+  difficulty: medium
+  type: short
+  tags: [decorators, decorator-factory]
+  prompt: Write (or describe precisely) a decorator `retry(times)` that re-calls the decorated function up to `times` times if it raises. Why does it need three levels of functions?
+  reference: |
+    ```python
+    import functools
+
+    def retry(times):
+        def decorator(func):
+            @functools.wraps(func)
+            def wrapper(*args, **kwargs):
+                for attempt in range(times):
+                    try:
+                        return func(*args, **kwargs)
+                    except Exception:
+                        if attempt == times - 1:
+                            raise
+            return wrapper
+        return decorator
+    ```
+    `@retry(3)` first *calls* `retry(3)`, which must return the actual decorator; the decorator receives `func` and returns `wrapper`, the function that replaces `func` and runs on each call. So the levels are: arguments → decorator → wrapper. Each inner function closes over the outer variables (`times`, `func`). `*args, **kwargs` pass any signature through, `functools.wraps` preserves metadata, and the last exception is re-raised rather than swallowed.
+  keyPoints:
+    - "@retry(3) calls retry(3) first; it must return a decorator (a decorator factory)"
+    - The decorator takes func and returns a wrapper; the wrapper runs on each call
+    - Wrapper forwards *args and **kwargs and returns func's result
+    - Uses functools.wraps to keep __name__, __doc__ and __wrapped__
+    - Re-raises after the last attempt instead of silently returning None; catches a narrow exception type in real code
+  explanation: |
+    Common mistakes: forgetting to `return` the function's result, swallowing the final exception, catching `BaseException` (which would retry on `KeyboardInterrupt`), and losing the metadata without `wraps`. Strong candidates suggest making the exception types a parameter and adding back-off.
+
+- id: py-fn-011
+  topic: python
+  subtopic: Decorators
+  difficulty: hard
+  type: short
+  tags: [decorators, descriptors, methods]
+  prompt: |
+    A decorator implemented as a class works on plain functions but breaks on methods:
+
+    ```python
+    class CountCalls:
+        def __init__(self, func):
+            self.func = func
+            self.calls = 0
+        def __call__(self, *args, **kwargs):
+            self.calls += 1
+            return self.func(*args, **kwargs)
+
+    class Service:
+        @CountCalls
+        def ping(self):
+            return 'pong'
+
+    Service().ping()   # TypeError: missing 1 required positional argument: 'self'
+    ```
+    Why, and how do you fix it?
+  reference: |
+    Methods get `self` through the descriptor protocol: a plain function stored on a class is a non-data descriptor whose `__get__` returns a bound method. After decoration, `Service.ping` is a `CountCalls` instance, which has no `__get__`, so `Service().ping` returns the `CountCalls` object itself and calling it passes no `self` to `func`. Fixes: implement `__get__` on the decorator class to bind the instance (e.g. `return functools.partial(self.__call__, instance)` or `types.MethodType(self, instance)`, returning `self` when `instance is None`); or write the decorator as a function returning a closure, since functions are already descriptors. Also note that the counter would be shared across all instances, and that `functools.update_wrapper(self, func)` should be used to keep metadata.
+  keyPoints:
+    - Method binding comes from function.__get__ (functions are descriptors)
+    - An instance of a class with only __call__ has no __get__, so no self is bound
+    - "Fix: implement __get__ returning a bound callable (MethodType/partial), self when accessed on the class"
+    - "Alternative fix: use a function-based decorator returning a closure"
+    - Mention state is shared across instances and use functools.update_wrapper for metadata
+  explanation: |
+    This separates candidates who know *why* methods receive `self` from those who memorised it. Reference: Descriptor HowTo Guide, "Functions and methods".
+
+- id: py-fn-012
+  topic: python
+  subtopic: Default arguments
+  difficulty: easy
+  type: short
+  tags: [defaults, mutable-default]
+  prompt: Explain the "mutable default argument" pitfall and the standard way to avoid it. Is there ever a legitimate use of the behaviour?
+  reference: |
+    Default values are evaluated once, when the `def` statement runs, and stored in `func.__defaults__`. A mutable default (`[]`, `{}`, `set()`, an object) is shared by every call that doesn't pass the argument, so mutations persist between calls. Standard fix: default to `None` (or a sentinel) and create the object inside the function: `if items is None: items = []`. Deliberate use: a cheap per-function cache or memo (`def f(n, _cache={})`), though `functools.lru_cache`/`cache` is clearer. Linters (e.g. flake8-bugbear B006, Ruff) flag mutable defaults.
+  keyPoints:
+    - Defaults are evaluated once at function definition time and stored on the function object
+    - A mutable default is shared across calls, so mutations accumulate
+    - Fix with a None (or sentinel) default and create the object inside the function
+    - It can be used deliberately as a cache, but functools.cache is clearer
+  explanation: |
+    This is one of the most frequently asked Python interview questions. Good answers mention `__defaults__` and can explain the mechanism rather than just reciting the fix.

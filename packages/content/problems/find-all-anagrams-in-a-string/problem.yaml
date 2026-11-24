@@ -1,0 +1,17 @@
+slug: find-all-anagrams-in-a-string
+title: Find All Anagrams in a String
+difficulty: medium
+tags: [string, hash-table, sliding-window]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: findAnagrams
+      params:
+        - { name: s, type: string }
+        - { name: p, type: string }
+      returns: { list: int }
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 438; closely related to LeetCode 567 "Permutation in String")
+  url: https://leetcode.com/problems/find-all-anagrams-in-a-string/

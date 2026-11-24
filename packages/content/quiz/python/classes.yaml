@@ -1,0 +1,408 @@
+# Classes: attributes, inheritance, MRO, super, metaclasses, __init_subclass__, dataclasses, ABCs.
+- id: py-cls-001
+  topic: python
+  subtopic: MRO and super
+  difficulty: medium
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [mro, super, multiple-inheritance]
+  prompt: What does this program print?
+  code: |
+    class A:
+        def hi(self):
+            return 'A'
+
+    class B(A):
+        def hi(self):
+            return 'B' + super().hi()
+
+    class C(A):
+        def hi(self):
+            return 'C' + super().hi()
+
+    class D(B, C):
+        def hi(self):
+            return 'D' + super().hi()
+
+    print(D().hi(), [k.__name__ for k in D.__mro__])
+  answer: { kind: output, output: "DBCA ['D', 'B', 'C', 'A', 'object']" }
+  explanation: |
+    `super()` does **not** mean "my parent class". It means "the next class after the current one in the MRO of `type(self)`". For a `D` instance the C3 linearization is `D, B, C, A, object`, so `B.hi`'s `super().hi()` calls **`C.hi`**, even though `B` doesn't inherit from `C`. Every class in the diamond runs exactly once, and `A` runs last.
+
+    `DBA` (assuming `super()` is the static parent) is the common wrong answer. This cooperative behaviour is why every class in a multiple-inheritance hierarchy should call `super()`.
+
+- id: py-cls-002
+  topic: python
+  subtopic: MRO and super
+  difficulty: hard
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [mro, c3, multiple-inheritance]
+  prompt: What does this program print?
+  code: |
+    class X:
+        pass
+
+    class Y(X):
+        pass
+
+    class Z(X, Y):
+        pass
+
+    print(Z.__mro__)
+  answer: { kind: runtime_error }
+  explanation: |
+    Defining `Z` raises **TypeError: Cannot create a consistent method resolution order (MRO) for bases X, Y**.
+
+    C3 linearization must respect two constraints: each class precedes its bases (`Y` before `X`, since `Y(X)`), and the order of bases in a class statement is preserved (`Z(X, Y)` demands `X` before `Y`). Those contradict each other, so no linearization exists. Writing `class Z(Y, X)` (or just `class Z(Y)`) works.
+
+    Reference: "The Python 2.3 Method Resolution Order" (docs.python.org/3/howto/mro.html).
+
+- id: py-cls-003
+  topic: python
+  subtopic: Class and instance attributes
+  difficulty: easy
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [class-attributes, mutability]
+  prompt: What does this program print?
+  code: |
+    class Dog:
+        tricks = []
+        def add(self, trick):
+            self.tricks.append(trick)
+
+    a = Dog()
+    b = Dog()
+    a.add('sit')
+    print(b.tricks)
+  answer: { kind: output, output: "['sit']" }
+  explanation: |
+    `tricks` is a **class attribute**, a single list shared by every instance. `self.tricks` finds no instance attribute, falls back to the class, and `.append` mutates that shared list. The Python tutorial (section 9.3.5) uses this exact pitfall. Initialise per-instance state in `__init__`: `self.tricks = []`.
+
+- id: py-cls-004
+  topic: python
+  subtopic: Class and instance attributes
+  difficulty: medium
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [class-attributes, augmented-assignment]
+  prompt: What does this program print?
+  code: |
+    class C:
+        n = 0
+
+    a = C()
+    b = C()
+    a.n += 1
+    C.n = 10
+    print(a.n, b.n)
+  answer: { kind: output, output: "1 10" }
+  explanation: |
+    `a.n += 1` means `a.n = a.n + 1`. The read finds the class attribute `0`, but the **write creates an instance attribute** `a.n = 1` that from then on shadows the class attribute for `a`. (Ints are immutable, so nothing is mutated in place.)
+
+    `C.n = 10` changes the class attribute. `b` has no instance attribute, so it sees `10`; `a` still sees its own `1`.
+
+- id: py-cls-005
+  topic: python
+  subtopic: Dataclasses
+  difficulty: medium
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [dataclasses, mutable-default]
+  prompt: What does this program print?
+  code: |
+    from dataclasses import dataclass
+
+    print('start')
+
+    @dataclass
+    class Cart:
+        items: list = []
+
+    print(Cart().items)
+  answer: { kind: runtime_error }
+  explanation: |
+    It prints `start`, then raises **ValueError** when the class is decorated: `mutable default <class 'list'> for field items is not allowed: use default_factory`.
+
+    The generated `__init__` would use the same list object as the default for every instance (the mutable-default-argument trap). `dataclasses` refuses unhashable defaults such as `list`, `dict` and `set` (3.11+ checks hashability generally). Write `items: list = field(default_factory=list)`.
+
+- id: py-cls-006
+  topic: python
+  subtopic: Dataclasses
+  difficulty: medium
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [dataclasses, ordering]
+  prompt: What does this program print?
+  code: |
+    from dataclasses import dataclass, field
+
+    @dataclass(order=True)
+    class Version:
+        major: int
+        minor: int
+        label: str = field(compare=False)
+
+    print(Version(1, 2, 'b') < Version(1, 10, 'a'))
+    print(Version(1, 2, 'x') == Version(1, 2, 'y'))
+  answer:
+    kind: output
+    output: |
+      True
+      True
+  explanation: |
+    With `order=True`, dataclasses generate `__lt__` and the other comparisons by comparing the fields **as a tuple, in definition order**, so `(1, 2) < (1, 10)`, which compares ints numerically rather than as strings. `field(compare=False)` excludes `label` from both ordering and `__eq__`, so the two objects with different labels compare equal.
+
+- id: py-cls-007
+  topic: python
+  subtopic: Class creation
+  difficulty: medium
+  type: output
+  language: python
+  standard: Python 3.6+
+  tags: [init-subclass, registry]
+  prompt: What does this program print?
+  code: |
+    class Plugin:
+        registry = []
+        def __init_subclass__(cls, name=None, **kwargs):
+            super().__init_subclass__(**kwargs)
+            Plugin.registry.append(name or cls.__name__)
+
+    class A(Plugin):
+        pass
+
+    class B(A, name='bee'):
+        pass
+
+    print(Plugin.registry)
+  answer: { kind: output, output: "['A', 'bee']" }
+  explanation: |
+    `__init_subclass__` (PEP 487) is an implicit classmethod called on the parent whenever a **subclass** is created, including indirect subclasses like `B`. It isn't called for `Plugin` itself. Keyword arguments in the class statement (`name='bee'`) are passed to it.
+
+    It covers the most common metaclass use case (registering or validating subclasses) without a metaclass.
+
+- id: py-cls-008
+  topic: python
+  subtopic: Metaclasses
+  difficulty: medium
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [metaclasses]
+  prompt: What does this program print?
+  code: |
+    class Meta(type):
+        def __new__(mcls, name, bases, ns):
+            print('creating', name)
+            return super().__new__(mcls, name, bases, ns)
+
+    class Base(metaclass=Meta):
+        pass
+
+    class Child(Base):
+        pass
+
+    print(type(Child).__name__)
+  answer:
+    kind: output
+    output: |
+      creating Base
+      creating Child
+      Meta
+  explanation: |
+    A metaclass's `__new__` runs when a **class statement** executes, not when instances are created. The metaclass is **inherited**: `Child` has no explicit `metaclass=`, but Python uses the most derived metaclass of its bases, `Meta`, so creating `Child` prints too, and `type(Child)` is `Meta`.
+
+- id: py-cls-009
+  topic: python
+  subtopic: MRO and super
+  difficulty: medium
+  type: single
+  tags: [super, mro]
+  prompt: In a method of class `B`, what does `super().method()` call?
+  choices:
+    - { id: a, text: "`method` on `B`'s first listed base class" }
+    - { id: b, text: "`method` on the class that follows `B` in the MRO of `type(self)`" }
+    - { id: c, text: "`method` on every base class of `B`, in order" }
+    - { id: d, text: "`method` on `object`" }
+  answer: b
+  explanation: |
+    Zero-argument `super()` is equivalent to `super(B, self)`. The compiler provides `B` through the hidden `__class__` cell and `self` from the first argument. It searches `type(self).__mro__` **starting after `B`**. Since `type(self)` may be a subclass that mixes in other classes, the "next" class can be a sibling `B` knows nothing about. That's what makes cooperative multiple inheritance work, and why the base class can't be determined just by reading `B`'s definition.
+
+    It calls one method (the next one found), not all bases; chaining happens only if each method calls `super()` itself.
+
+- id: py-cls-010
+  topic: python
+  subtopic: Abstract base classes
+  difficulty: easy
+  type: single
+  tags: [abc, abstractmethod]
+  prompt: |
+    ```python
+    from abc import ABC, abstractmethod
+
+    class Shape(ABC):
+        @abstractmethod
+        def area(self): ...
+
+    class Square(Shape):
+        def __init__(self, s):
+            self.s = s
+    ```
+    What happens on `Square(2)`?
+  choices:
+    - { id: a, text: "It works; calling `.area()` later raises `NotImplementedError`" }
+    - { id: b, text: "It works; `.area()` returns `None`" }
+    - { id: c, text: "`TypeError`: can't instantiate abstract class `Square` without an implementation for abstract method `area`" }
+    - { id: d, text: "A `SyntaxError` when `Square` is defined" }
+  answer: c
+  explanation: |
+    `ABCMeta` records the abstract methods that remain unimplemented in `__abstractmethods__`, and `object.__new__` refuses to instantiate a class while that set is non-empty. `Square` doesn't override `area`, so it is still abstract, and instantiation raises **TypeError**. The class *definition* is fine; only instantiation is blocked.
+
+    The check happens at instantiation, not at call time, which is the main advantage over a base method that raises `NotImplementedError`.
+
+- id: py-cls-011
+  topic: python
+  subtopic: Class and instance attributes
+  difficulty: medium
+  type: single
+  tags: [name-mangling, private]
+  prompt: |
+    Inside `class Account:`, a method does `self.__balance = 0`. Under what name is the attribute actually stored?
+  choices:
+    - { id: a, text: "`__balance`, with access from outside the class blocked" }
+    - { id: b, text: "`_Account__balance`" }
+    - { id: c, text: "`_balance`" }
+    - { id: d, text: "`Account.__balance`, as a class attribute" }
+  answer: b
+  explanation: |
+    Identifiers of the form `__name` (at least two leading underscores, at most one trailing) used inside a class body are **name-mangled** at compile time to `_ClassName__name`. The aim is to avoid accidental clashes with attributes of subclasses, not privacy: `acct._Account__balance` is perfectly accessible.
+
+    Python has no access control. A single leading underscore is the convention for "internal", and it involves no mangling.
+
+- id: py-cls-012
+  topic: python
+  subtopic: Dataclasses
+  difficulty: medium
+  type: multiple
+  tags: [dataclasses, frozen, hash]
+  prompt: |
+    Given `@dataclass(frozen=True) class P: x: int; tags: list`, which statements are true? Select all that apply.
+  choices:
+    - { id: a, text: "`p.x = 5` raises `dataclasses.FrozenInstanceError`" }
+    - { id: b, text: "`P` gets a generated `__hash__` based on its fields" }
+    - { id: c, text: "`p.tags.append(1)` raises an error because the instance is frozen" }
+    - { id: d, text: "`hash(P(1, []))` raises `TypeError`" }
+    - { id: e, text: "Frozen dataclasses store their fields in a tuple, like `namedtuple`" }
+  answer: [a, b, d]
+  explanation: |
+    `frozen=True` generates `__setattr__`/`__delattr__` that raise `FrozenInstanceError` (a). With `eq=True` (the default) and `frozen=True`, a `__hash__` is generated that hashes the tuple of fields (b).
+
+    Freezing is **shallow**: the list inside can still be mutated (c is false). And because the generated hash hashes the fields, hashing an instance that holds a list raises `TypeError: unhashable type: 'list'` (d). The fields are still stored as normal instance attributes; there is no tuple storage (e).
+
+- id: py-cls-013
+  topic: python
+  subtopic: Metaclasses
+  difficulty: easy
+  type: single
+  tags: [type, metaclasses]
+  prompt: What is `type(type)` in Python 3?
+  choices:
+    - { id: a, text: "`object`" }
+    - { id: b, text: "`type`" }
+    - { id: c, text: "`metaclass`" }
+    - { id: d, text: "`NoneType`" }
+  answer: b
+  explanation: |
+    `type` is its own metaclass: it is an instance of itself. Classes are objects, and the class of a class is its metaclass, which is `type` by default. `object` is the root of the *inheritance* hierarchy (`type` is a subclass of `object`), while `type` is the root of the *instance-of* hierarchy. `type(name, bases, namespace)` is the dynamic form of a class statement.
+
+- id: py-cls-014
+  topic: python
+  subtopic: MRO and super
+  difficulty: hard
+  type: short
+  tags: [mro, c3, super, multiple-inheritance]
+  prompt: Explain the method resolution order (C3 linearization) and how to write classes that cooperate correctly under multiple inheritance using `super()`.
+  reference: |
+    Every class has an MRO (`Cls.__mro__`), the linear order in which attribute lookup searches the class and its ancestors. Python computes it with C3 linearization, which guarantees that a class comes before its bases, that the order of bases in each class statement is preserved (local precedence), and that the result is monotonic (consistent with the bases' own MROs). If no such order exists, class creation raises `TypeError`. `super()` follows the MRO of the instance's actual type, so in a diamond each class's method runs once. To cooperate: every class in the hierarchy calls `super().method(...)` (including the class just below `object`, or a root class that stops the chain), uses compatible signatures, usually by accepting `**kwargs`, taking what it needs and passing the rest on, and places mixins before the concrete base in the bases list.
+  keyPoints:
+    - The MRO is a linear order of classes searched for attributes; inspect with __mro__ / mro()
+    - "C3 guarantees: children before parents, base order preserved, monotonic; TypeError if impossible"
+    - super() goes to the next class in type(self)'s MRO, not necessarily the parent
+    - Every method in the chain must call super() for cooperation; diamonds run each class once
+    - Use **kwargs to pass through arguments; have a root class end the chain
+  explanation: |
+    Reference: Raymond Hettinger, "Python's super() considered super!", and the MRO howto in the docs. Red flags: calling `Base.__init__(self)` explicitly in a diamond (runs the shared base twice), or believing `super()` means "parent".
+
+- id: py-cls-015
+  topic: python
+  subtopic: Metaclasses
+  difficulty: hard
+  type: short
+  tags: [metaclasses, class-decorators, init-subclass]
+  prompt: What is a metaclass? Give a situation where you would actually use one, and say what you would try first.
+  reference: |
+    A metaclass is the class of a class: it controls how a class object is created (`__new__`/`__init__` run when the class statement executes, with the name, bases and namespace) and how the class behaves (e.g. `__call__` controls instance creation, `__getitem__`/`__iter__` on the class, `__instancecheck__`). `type` is the default. Real uses: ORMs and declarative frameworks collecting field declarations (Django models), enums (`EnumMeta` makes the class iterable and turns members into singletons), ABCs (`ABCMeta` tracking abstract methods and virtual subclasses), and a custom `__prepare__` for the class namespace. Before reaching for one, prefer simpler tools: a class decorator to post-process a single class, `__init_subclass__` to hook subclass creation (registration, validation), and `__set_name__` on descriptors to learn attribute names. Metaclasses are inherited and conflict when combining classes with different metaclasses.
+  keyPoints:
+    - A metaclass is the type of a class; type is the default; it runs when the class statement executes
+    - Can customise class creation (__new__, __init__, __prepare__) and class-level behaviour (__call__, __instancecheck__, ...)
+    - Real examples include ABCMeta, EnumMeta, ORM/declarative model classes
+    - Prefer class decorators, __init_subclass__ and __set_name__ for most needs
+    - Metaclasses are inherited, and mixing classes with unrelated metaclasses causes conflicts
+  explanation: |
+    The often-quoted rule (Tim Peters): "Metaclasses are deeper magic than 99% of users should ever worry about." Strong candidates know that PEP 487 (`__init_subclass__`, `__set_name__`) removed most reasons to write one.
+
+- id: py-cls-016
+  topic: python
+  subtopic: Dataclasses
+  difficulty: medium
+  type: short
+  tags: [dataclasses, namedtuple, design]
+  prompt: Compare a `@dataclass`, a `typing.NamedTuple` and a plain class for modelling a simple record such as a 2-D point. When would you choose each?
+  reference: |
+    `NamedTuple` creates a tuple subclass: immutable, hashable, lightweight, and supports indexing, unpacking and comparison as a tuple, which can also be a drawback, since `Point(1, 2) == (1, 2)` is true and fields are positional. Good for small immutable values and for returning several values from a function. `@dataclass` generates `__init__`, `__repr__` and `__eq__` (optionally ordering, `frozen` for immutability plus hash, `slots=True`, `kw_only`) on a normal class: mutable by default, supports defaults with `default_factory`, `__post_init__` validation, inheritance and methods, and doesn't pretend to be a tuple. A plain class is for objects with behaviour and invariants, where you want full control over construction, or when the generated methods would be wrong (e.g. identity-based equality for entities).
+  keyPoints:
+    - NamedTuple is an immutable tuple subclass; indexing/unpacking; equal to plain tuples; low overhead
+    - Dataclass generates __init__/__repr__/__eq__; mutable by default; frozen/order/slots options
+    - Dataclass supports default_factory, __post_init__, methods and normal inheritance
+    - Plain class when behaviour/invariants dominate or equality should be identity-based
+    - Neither validates types at runtime (that's pydantic/attrs validators)
+  explanation: |
+    Interviewers look for the trade-off, not a single answer. Mentioning that type annotations on dataclass fields aren't enforced at runtime is a good sign.
+
+- id: py-cls-017
+  topic: python
+  subtopic: Metaclasses
+  difficulty: hard
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [metaclasses, singleton, call]
+  prompt: What does this program print?
+  code: |
+    class Singleton(type):
+        _instances = {}
+        def __call__(cls, *args, **kwargs):
+            if cls not in cls._instances:
+                cls._instances[cls] = super().__call__(*args, **kwargs)
+            return cls._instances[cls]
+
+    class Config(metaclass=Singleton):
+        def __init__(self, value):
+            self.value = value
+
+    a = Config(1)
+    b = Config(2)
+    print(a is b, b.value)
+  answer: { kind: output, output: "True 1" }
+  explanation: |
+    `Config(...)` calls `type(Config).__call__`, which is the metaclass's `__call__`. The default `type.__call__` runs `__new__` then `__init__`. This override calls it (via `super().__call__`) only the first time, and afterwards returns the cached instance **without calling `__init__` again**. So `b` is the same object as `a`, and its `value` is still `1`; the argument `2` is silently ignored.
+
+    That silent ignoring is one argument against metaclass singletons. A module-level instance or a `functools.cache`d factory function is usually simpler.

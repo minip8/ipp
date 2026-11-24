@@ -1,0 +1,314 @@
+# C++17/20/23 vocabulary types and language features.
+- id: cpp-modern-001
+  topic: cpp
+  subtopic: C++17, C++20 and C++23 features
+  difficulty: easy
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [structured-bindings, cpp17]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+    #include <utility>
+
+    int main() {
+        std::pair<int, int> p{1, 2};
+        auto [a, b] = p;
+        a = 10;
+        auto& [c, d] = p;
+        d = 20;
+        std::cout << p.first << ' ' << p.second << '\n';
+    }
+  answer: { kind: output, output: "1 20" }
+  explanation: |
+    A structured binding declaration introduces a hidden variable initialized from the expression, and
+    the names refer to its members. With `auto`, the hidden variable is a *copy* of `p`, so `a = 10`
+    modifies the copy. With `auto&`, the hidden variable is a reference to `p`, so `d` names `p.second`.
+    The qualifiers apply to the hidden object, not to each name individually ([dcl.struct.bind]).
+
+- id: cpp-modern-002
+  topic: cpp
+  subtopic: C++17, C++20 and C++23 features
+  difficulty: hard
+  type: output
+  language: cpp
+  standard: C++20
+  tags: [std-variant, converting-constructor, cpp20]
+  prompt: What does this program print? (Note the standard.)
+  code: |
+    #include <iostream>
+    #include <string>
+    #include <variant>
+
+    int main() {
+        std::variant<bool, std::string> v = "hello";
+        std::cout << v.index() << '\n';
+    }
+  answer: { kind: output, output: "1" }
+  explanation: |
+    In the original C++17 specification, `variant`'s converting constructor chose the alternative via
+    ordinary overload resolution among imaginary functions `F(bool)` and `F(std::string)`. `const char*
+    → bool` is a standard conversion and beats the user-defined conversion to `std::string`, so the variant
+    held `true` (index 0), a notorious bug. P0608 (adopted for C++20) excludes narrowing conversions, and
+    P1957 (also C++20) made pointer → `bool` a narrowing conversion, so `F(bool)` is no longer viable and
+    `"hello"` selects `std::string` → index `1`. (P0608 originally excluded conversions to `bool` with a
+    special rule; P1957 replaced that rule with the narrowing check. Either way the result here is `1`.)
+    libstdc++ (GCC 10+) and libc++ (9+) implement this; older toolchains print `0`; to be explicit, write `std::string("hello")` or use `std::in_place_index<1>`.
+
+- id: cpp-modern-003
+  topic: cpp
+  subtopic: C++17, C++20 and C++23 features
+  difficulty: hard
+  type: output
+  language: cpp
+  standard: C++20
+  tags: [three-way-comparison, spaceship, cpp20]
+  prompt: What does this program print?
+  code: |
+    #include <compare>
+    #include <iostream>
+
+    struct Version {
+        int major, minor;
+        auto operator<=>(const Version& o) const {
+            if (auto c = major <=> o.major; c != 0) return c;
+            return minor <=> o.minor;
+        }
+    };
+
+    int main() {
+        Version a{1, 2}, b{1, 3};
+        std::cout << (a < b) << (a == b) << '\n';
+    }
+  answer: { kind: compile_error }
+  explanation: |
+    A user-written `operator<=>` lets the compiler rewrite `<`, `<=`, `>` and `>=` in terms of it
+    ([over.match.oper]), so `a < b` alone would compile. But `==` and `!=` are never rewritten to use `<=>`:
+    equality can often be decided more cheaply (e.g. compare sizes first), so C++20 keeps it separate. The
+    class has no `operator==`, so `a == b` is ill-formed.
+
+    Only a *defaulted* `operator<=>` (`auto operator<=>(const Version&) const = default;`) also implicitly
+    declares a defaulted `operator==` ([class.compare.default]). With a custom `<=>`, add
+    `bool operator==(const Version&) const = default;`.
+
+- id: cpp-modern-004
+  topic: cpp
+  subtopic: C++17, C++20 and C++23 features
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [std-optional, contextual-conversion]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+    #include <optional>
+
+    int main() {
+        std::optional<bool> cached_flag = false;
+        if (cached_flag)
+            std::cout << "engaged ";
+        if (*cached_flag)
+            std::cout << "true\n";
+        else
+            std::cout << "false\n";
+    }
+  answer: { kind: output, output: "engaged false" }
+  explanation: |
+    `std::optional`'s contextual conversion to `bool` tests whether it *has a value*, not what the value
+    is. An `optional<bool>` holding `false` is engaged, so the first `if` succeeds. Writing `if (flag)` when
+    you meant `if (*flag)` (or vice versa) is an easy bug with `optional<bool>`, `optional<int>` and
+    `optional` of pointers. Prefer the explicit `has_value()` and `value_or(false)` for such types.
+
+- id: cpp-modern-005
+  topic: cpp
+  subtopic: C++17, C++20 and C++23 features
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++23
+  tags: [deducing-this, lambdas, recursion, cpp23]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    int main() {
+        auto fib = [](this auto const& self, int n) -> long {
+            return n < 2 ? n : self(n - 1) + self(n - 2);
+        };
+        std::cout << fib(20) << '\n';
+    }
+  answer: { kind: output, output: "6765" }
+  explanation: |
+    C++23's *explicit object parameter* ("deducing this", P0847) lets a member function, including a
+    lambda's call operator, take the object it's called on as an ordinary first parameter. Inside the lambda,
+    `self` is the closure object, so the lambda can call itself recursively without `std::function` or a
+    Y-combinator. fib(20) = 6765. Deducing `this` also removes the need for duplicated const/non-const or
+    `&`/`&&` overloads, and can replace CRTP in many cases.
+
+- id: cpp-modern-006
+  topic: cpp
+  subtopic: C++17, C++20 and C++23 features
+  difficulty: medium
+  type: single
+  tags: [no-unique-address, empty-base-optimization, cpp20]
+  prompt: |
+    What does the C++20 attribute `[[no_unique_address]]` on a data member allow?
+  choices:
+    - { id: a, text: "If the member's type is empty (e.g. a stateless allocator, comparator or deleter), it may occupy no storage, so the enclosing object doesn't grow." }
+    - { id: b, text: "The member is allocated on the heap rather than inline." }
+    - { id: c, text: "Two objects of the class may share the same address." }
+    - { id: d, text: "The member is excluded from `operator==` and hashing." }
+  answer: a
+  explanation: |
+    Normally every member subobject needs a distinct address and non-zero size, so an empty member costs
+    at least one byte plus padding. `[[no_unique_address]]` lets the compiler overlap an empty member with
+    other members, achieving what library authors previously did via the empty base optimization (privately
+    inheriting from the policy type), but without inheritance's side effects. MSVC ignores the standard
+    spelling for ABI reasons and needs `[[msvc::no_unique_address]]`.
+
+- id: cpp-modern-007
+  topic: cpp
+  subtopic: C++17, C++20 and C++23 features
+  difficulty: hard
+  type: single
+  tags: [coroutines, cpp20]
+  prompt: |
+    In C++20, a coroutine `Task<int> fetch(std::string url)` is called. What happens *before* control
+    returns to the caller?
+  choices:
+    - { id: a, text: "A coroutine frame is allocated (unless the allocation is elided), the parameters are copied or moved into it, the promise is constructed, `get_return_object()` produces the `Task`, and `co_await promise.initial_suspend()` decides whether the body starts running immediately." }
+    - { id: b, text: "A new thread is started to run the body." }
+    - { id: c, text: "The body runs to completion and the result is stored in the `Task`." }
+    - { id: d, text: "Nothing: the call just records the arguments, and nothing is allocated until `co_await` is used on the `Task`." }
+  answer: a
+  explanation: |
+    C++20 coroutines are stackless: their state lives in a frame that is usually heap-allocated (the
+    compiler may elide this, "HALO", when the coroutine's lifetime is provably nested in the caller). The
+    sequence is: allocate the frame (via `promise_type::operator new` if provided), copy/move parameters into
+    it (so a by-reference parameter like `const std::string&` can dangle if the caller's argument dies before
+    resumption), construct the promise, call `get_return_object()`, then `co_await initial_suspend()`.
+    Lazy tasks return `suspend_always` there; eager ones `suspend_never`. Coroutines don't create threads;
+    scheduling is up to the library.
+
+- id: cpp-modern-008
+  topic: cpp
+  subtopic: C++17, C++20 and C++23 features
+  difficulty: easy
+  type: single
+  tags: [std-span, cpp20]
+  prompt: |
+    What is the main advantage of a parameter `std::span<const double> prices` over
+    `const std::vector<double>& prices`?
+  choices:
+    - { id: a, text: "It's a non-owning view (pointer + size) that accepts any contiguous sequence (vector, std::array, C array, part of a buffer) without copying, and it's cheap to pass by value." }
+    - { id: b, text: "It owns a copy of the data, so it can't dangle." }
+    - { id: c, text: "It automatically checks every index for out-of-range access in release builds." }
+    - { id: d, text: "It can view non-contiguous containers such as `std::list`." }
+  answer: a
+  explanation: |
+    `std::span<T>` (C++20) is to contiguous arrays what `string_view` is to strings: two words, no
+    ownership, no allocation. The function no longer forces callers to use a `std::vector`, and can be
+    passed a subrange (`std::span(v).subspan(10, 5)`). `std::span<T, N>` with a static extent is just a
+    pointer. Like `string_view` it can dangle if the underlying storage dies, and `operator[]` isn't
+    bounds-checked (C++26 adds `at()`).
+
+- id: cpp-modern-009
+  topic: cpp
+  subtopic: C++17, C++20 and C++23 features
+  difficulty: hard
+  type: short
+  tags: [std-variant, polymorphism, design]
+  prompt: |
+    Compare modelling a set of message types (e.g. `NewOrder`, `Cancel`, `Fill`) with `std::variant` +
+    `std::visit` versus a class hierarchy with virtual functions. When would you choose each?
+  reference: |
+    `std::variant<NewOrder, Cancel, Fill>` is a closed sum type: values are stored inline (size is the largest
+    alternative plus a discriminator), with no heap allocation, no pointers, value semantics (copyable,
+    comparable), contiguous in containers, and good cache behaviour. `std::visit` dispatches via a jump
+    table or switch and can inline the handlers, and the compiler checks that every alternative is handled
+    (an overload set must cover them all). Adding a new *operation* is easy (write another visitor), but
+    adding a new *type* means touching every visitor and recompiling, and all types must be known in one
+    place. A virtual hierarchy is an open set: new types can be added later, even in plugins or other
+    libraries, without changing existing code; adding operations requires changing the base class
+    (the expression problem). Costs: usually heap allocation and pointer indirection (`unique_ptr<Base>`),
+    a vptr per object, poor locality, and virtual calls that don't inline. Choose variant for a fixed,
+    known set of message or event types in performance-sensitive code (parsers, state machines, order
+    events); choose virtual dispatch for extensible interfaces, large or plugin-style hierarchies, or when
+    alternatives differ wildly in size (a variant is as large as its largest member).
+  explanation: |
+    Good answers frame it as closed versus open sets (the expression problem) and talk about memory layout,
+    allocation and inlining, plus the variant size caveat.
+  keyPoints:
+    - variant is a closed set stored inline, with no allocation and value semantics
+    - visit dispatches via a switch/jump table, can inline, and checks exhaustiveness at compile time
+    - Virtual hierarchies are open sets, extensible without recompiling (plugins)
+    - Virtual usually means heap allocation, indirection, a vptr, and no inlining
+    - "Trade-off: new operations are easy with variant, new types easy with inheritance; variant size = largest alternative"
+
+- id: cpp-modern-010
+  topic: cpp
+  subtopic: C++17, C++20 and C++23 features
+  difficulty: medium
+  type: short
+  tags: [error-handling, std-expected, std-optional, exceptions, cpp23]
+  prompt: |
+    A function parses a price from a string and can fail. Compare returning `std::optional<Price>`,
+    `std::expected<Price, ParseError>` (C++23), and throwing an exception. Which would you choose, and why?
+  reference: |
+    `std::optional<Price>` signals "a value or nothing", which is fine when the failure reason is obvious or
+    irrelevant, but it carries no error information. `std::expected<Price, ParseError>` holds either the
+    value or an error object, so the caller gets the reason; it's explicit in the signature, has no hidden
+    control flow, no allocation and predictable cost, and C++23 adds monadic operations (`and_then`,
+    `transform`, `or_else`) for chaining. Callers can still ignore it unless it's `[[nodiscard]]`. Exceptions
+    keep the happy path clean and propagate automatically through many layers, and constructors can only
+    report failure that way, but the throw path is slow and unpredictable, the failure mode is invisible in
+    the signature, and many low-latency codebases disable them. For parsing, where failure is an expected,
+    frequent outcome, `expected` (or `optional` if the reason doesn't matter) is the better fit; reserve
+    exceptions for truly exceptional conditions such as broken invariants, resource exhaustion, or errors
+    that must cross many layers where local handling makes no sense.
+  explanation: |
+    The key judgement is whether failure is expected (use a return value) or exceptional (use an exception),
+    plus the information content of optional versus expected.
+  keyPoints:
+    - optional carries no error reason; good when the reason is irrelevant
+    - expected carries value-or-error, is explicit and cheap, and has monadic chaining in C++23
+    - Exceptions give a clean happy path and automatic propagation but a costly, invisible failure path
+    - Expected or frequent failures (parsing) favour expected/optional; rare ones favour exceptions
+    - Mark result-returning functions [[nodiscard]]
+
+- id: cpp-modern-011
+  topic: cpp
+  subtopic: C++17, C++20 and C++23 features
+  difficulty: hard
+  type: short
+  tags: [coroutines, cpp20, async]
+  prompt: |
+    What problems do C++20 coroutines solve, and what costs or pitfalls should a team be aware of before
+    using them in a networking or trading codebase?
+  reference: |
+    Coroutines let a function suspend (`co_await`, `co_yield`) and later resume with its local state
+    preserved, so asynchronous code can be written as straight-line code instead of chains of callbacks or
+    hand-written state machines. Typical uses: async I/O (`co_await socket.read()`), generators, lazy
+    pipelines, and cooperative tasks on a single-threaded event loop. C++20 provides only the language
+    machinery (promise types, awaitables, `std::coroutine_handle`); you need a library (Asio, libunifex/
+    stdexec, folly, cppcoro), and C++23 adds `std::generator`. Costs and pitfalls: each coroutine call
+    usually heap-allocates its frame (elision, "HALO", is not guaranteed); use custom allocators via
+    `promise_type::operator new` or pooled frames on hot paths. Lifetime bugs: reference parameters and
+    captured `this` can dangle across suspension points (parameters are copied into the frame only if
+    passed by value), and lambdas that are coroutines must not capture by reference if they outlive the
+    caller. Resumption may happen on a different thread, so thread-local state and locks held across
+    `co_await` are dangerous. Debugging and stack traces are harder. Cancellation and exception propagation
+    must be designed into the task type. Frame sizes are opaque and can be large. Symmetric transfer is
+    needed to avoid stack overflow in long chains of synchronous resumption.
+  explanation: |
+    Strong answers mention: straight-line async code, library dependency, frame allocation and HALO,
+    dangling references across suspension, and thread hopping on resumption. See Lewis Baker's coroutine
+    theory articles.
+  keyPoints:
+    - Suspend and resume with preserved state, so async code is written sequentially (no callback chains)
+    - Language machinery only; needs a library (Asio, stdexec); std::generator in C++23
+    - Frame usually heap-allocated (HALO not guaranteed); custom allocation for hot paths
+    - Dangling references or this across suspension points; by-value parameters are copied into the frame
+    - Resumption may change threads; locks and thread_locals across co_await are dangerous; harder debugging and cancellation

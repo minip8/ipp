@@ -1,0 +1,523 @@
+- id: arch-simd-001
+  topic: computer-architecture
+  subtopic: SIMD
+  type: single
+  difficulty: easy
+  prompt: |
+    How many single-precision `float` lanes does one AVX2 (`ymm`) register hold, and how many does an AVX-512 (`zmm`) register hold?
+  choices:
+    - { id: a, text: "8 and 16" }
+    - { id: b, text: "4 and 8" }
+    - { id: c, text: "16 and 32" }
+    - { id: d, text: "8 and 32" }
+  answer: a
+  explanation: |
+    `ymm` registers are 256 bits = 8 × 32-bit floats (or 4 doubles); `zmm` registers are 512 bits = 16 floats (or 8 doubles). SSE `xmm` registers are
+    128 bits = 4 floats. The lane count, not the register count, sets the ideal speedup of a vectorised loop over scalar code.
+  tags: [simd, avx, avx512, sse]
+
+- id: arch-simd-002
+  topic: computer-architecture
+  subtopic: SIMD
+  type: multiple
+  difficulty: medium
+  prompt: |
+    With GCC or Clang at `-O3` (no `-ffast-math`), which of these typically **prevent** a simple loop from being auto-vectorised? Select all that apply.
+  choices:
+    - { id: a, text: "Summing `float` values into a single accumulator: `s += a[i]`" }
+    - { id: b, text: "A loop-carried dependence: `a[i] = a[i-1] * 2 + b[i]`" }
+    - { id: c, text: "A call to a function defined in another translation unit (and not inlined) inside the loop body" }
+    - { id: d, text: "The trip count `n` is only known at run time" }
+    - { id: e, text: "`void f(float* a, const float* b, int n) { for (...) a[i] += b[i]; }` where a and b might overlap" }
+  answer: [a, b, c]
+  explanation: |
+    - (a) Vectorising a float reduction means adding in a different order (8 partial sums, then combining). FP addition is not associative, so the compiler
+      may not do that without permission (`-ffast-math`, `-fassociative-math`, or `#pragma omp simd reduction(+:s)`). Integer sums *are* vectorised.
+    - (b) Each iteration needs the previous result — a true dependence the compiler cannot break.
+    - (c) An opaque call could do anything (have side effects, read memory), and there is no vector version of it.
+    - (d) Not a blocker: the compiler emits a vector main loop plus a scalar (or masked) remainder.
+    - (e) Not a hard blocker for a simple loop: GCC and Clang emit a run-time overlap check and a vectorised path (loop versioning). `__restrict` removes the
+      check and can enable vectorisation in more complex loops.
+
+    Verified by compiling with GCC 15 and Clang at `-O3 -march=x86-64-v3`: the float sum stays scalar `vaddss`, the element-wise add uses `vaddps ymm`.
+  tags: [simd, auto-vectorization, compiler, floating-point]
+
+- id: arch-simd-003
+  topic: computer-architecture
+  subtopic: SIMD
+  type: single
+  difficulty: medium
+  prompt: |
+    A team enables `-mavx512f` for a latency-sensitive server on Intel Skylake-SP. A small hot function now uses 512-bit instructions, but overall
+    throughput of the *rest* of the program drops. What is the most likely explanation?
+  choices:
+    - { id: a, text: "Heavy 512-bit instructions cause the core to drop to a lower frequency licence for a period, slowing all code on that core (and on some parts, its sibling hyperthread)" }
+    - { id: b, text: "AVX-512 instructions cannot be mixed with scalar instructions in the same program" }
+    - { id: c, text: "AVX-512 registers are saved on every function call, doubling call overhead" }
+    - { id: d, text: "512-bit loads always split across two cache lines" }
+  answer: a
+  explanation: |
+    On Skylake-SP/Cascade Lake, sustained use of 512-bit (and heavy 256-bit FP) instructions moves the core to a lower turbo frequency "licence" to stay
+    within power and current limits, and it stays there for a while after the vector code ends. If only a small fraction of runtime is vectorised, the
+    rest of the program runs at the lower clock and can be net slower. Newer designs (Ice Lake and later, and AMD Zen 4) have much smaller or no such penalties,
+    so the trade-off is micro-architecture specific — measure.
+
+    - (b) false; mixing is normal (the old SSE/AVX transition penalty concerns dirty upper halves of ymm registers with legacy SSE code, handled by `vzeroupper`).
+    - (c) vector registers are caller-saved in the SysV ABI; they are not saved on every call.
+    - (d) only misaligned 64-byte loads split lines.
+  tags: [simd, avx512, frequency-scaling, turbo]
+  source: { name: "Travis Downs, 'Gathering Intel on Intel AVX-512 Transitions'", url: "https://travisdowns.github.io/blog/2020/01/17/avxfreq1.html" }
+
+- id: arch-simd-004
+  topic: computer-architecture
+  subtopic: SIMD
+  type: short
+  difficulty: medium
+  prompt: |
+    You have `struct Particle { float x, y, z, mass; char name[16]; }` stored in a `std::vector<Particle>` and a hot loop that updates only `x` from `vx`.
+    Explain array-of-structs (AoS) vs struct-of-arrays (SoA) and which layout suits this loop and SIMD.
+  reference: |
+    AoS stores whole objects contiguously (x,y,z,mass,name, x,y,z,…); SoA stores each field in its own array (all x's, then all y's…).
+    The loop touches one field, so with AoS each 64-byte line delivers only a couple of useful `x` values (most of every line is wasted bandwidth and cache),
+    and SIMD needs gathers or shuffles because consecutive `x` values are 32 bytes apart. With SoA, the `x` array is contiguous: every byte loaded is used,
+    the prefetcher streams it, and the compiler can load 8 (AVX2) or 16 (AVX-512) `x` values with one unit-stride vector load. AoS is fine (or better) when code
+    typically uses all fields of one object together; a hybrid AoSoA (blocks of e.g. 8 objects stored SoA-style) balances both.
+  keyPoints:
+    - Defines AoS vs SoA layout
+    - Loop touching one field wastes cache/bandwidth with AoS
+    - SoA gives unit-stride contiguous loads that vectorise without gathers/shuffles
+    - AoS suits access to whole objects; mention of hot/cold splitting or AoSoA hybrid
+  explanation: |
+    This is the core idea of data-oriented design used in game engines and HFT feed handlers: lay out data for the access pattern, not the object model.
+  tags: [simd, data-layout, soa, aos, cache]
+
+- id: arch-simd-005
+  topic: computer-architecture
+  subtopic: SIMD
+  type: single
+  difficulty: easy
+  prompt: |
+    What happens if `_mm256_load_ps(p)` is called with a pointer `p` that is 16-byte but not 32-byte aligned?
+  choices:
+    - { id: a, text: "The aligned-load instruction (vmovaps) faults with a general-protection exception, typically killing the process" }
+    - { id: b, text: "It silently loads from the nearest lower 32-byte-aligned address" }
+    - { id: c, text: "It works but is slightly slower; alignment only matters for performance" }
+    - { id: d, text: "It loads only the first 4 floats" }
+  answer: a
+  explanation: |
+    The `load` intrinsics map to aligned moves (`vmovaps`), which require natural alignment for the vector size and raise #GP on misalignment (seen as SIGSEGV on
+    Linux). `_mm256_loadu_ps` (`vmovups`) accepts any alignment and on modern CPUs costs the same as an aligned load when the data happens to be aligned; a
+    misaligned access is slower mainly when it crosses a cache-line (or page) boundary. Note that compilers may fold an aligned load into another instruction's
+    memory operand (VEX-encoded ops don't require alignment), so the crash is not *guaranteed* in optimised builds — it is still undefined behaviour to rely on.
+    Answer (c) describes `loadu`, not `load`. (b) describes no x86 behaviour (it resembles some older ARM/PowerPC AltiVec semantics).
+  tags: [simd, alignment, intrinsics]
+
+- id: arch-simd-006
+  topic: computer-architecture
+  subtopic: SIMD
+  type: single
+  difficulty: hard
+  prompt: |
+    A loop `float s = 0; for (long i = 0; i < n; ++i) s += a[i];` sums 100,000,000 elements that are all `1.0f`.
+    Built with GCC `-O3 -march=x86-64-v3` it returns `16777216`; with `-O3 -march=x86-64-v3 -ffast-math` it returns `100000000`. Which explanation is right?
+  choices:
+    - { id: a, text: "With fast-math the compiler vectorises the reduction into several partial sums added in a different order; floating-point addition is not associative, so rounding differs" }
+    - { id: b, text: "fast-math uses lower-precision 16-bit floats" }
+    - { id: c, text: "Without fast-math, x86-64 uses the 80-bit x87 unit for float arithmetic" }
+    - { id: d, text: "One of the two builds has a compiler bug; IEEE 754 requires identical results" }
+  answer: a
+  explanation: |
+    `-ffast-math` (via `-fassociative-math`) allows reassociation, so `s += a[i]` becomes 8 (or more) independent lane sums combined at the end. The result is
+    often *more* accurate, but it is different. Here the scalar sum stalls at 2^24 = 16777216: at that magnitude adjacent floats are 2 apart, so
+    16777216 + 1 rounds back to 16777216 (round-half-to-even). With 8+ lane partial sums each lane stays below 2^24 and counts exactly. (Verified with GCC 15.)
+    IEEE 754 makes each operation correctly rounded; it does not make a sequence of operations order-independent, so (d) is wrong. x86-64 uses SSE for float math
+    by default, not x87 (c), and fast-math never changes the type width (b).
+  tags: [simd, floating-point, fast-math, reduction]
+
+- id: arch-simd-007
+  topic: computer-architecture
+  subtopic: SIMD
+  type: short
+  difficulty: medium
+  prompt: |
+    How do you find out whether the compiler vectorised a particular hot loop, and why it did not?
+  reference: |
+    Ask the compiler: GCC `-fopt-info-vec-optimized` / `-fopt-info-vec-missed` (or `-fopt-info-vec-all`), Clang `-Rpass=loop-vectorize`,
+    `-Rpass-missed=loop-vectorize` and `-Rpass-analysis=loop-vectorize`, which print the reason (unknown aliasing, non-associative reduction, call in
+    loop, unsupported control flow). Inspect the generated assembly (`-S`, `objdump -d`, Compiler Explorer, or `perf annotate` on the hot loop): packed
+    instructions on `xmm/ymm/zmm` such as `vaddps`, `vfmadd…ps` mean vectorised, scalar suffixes like `vaddss`/`addsd` mean not. Also make sure the target
+    ISA is enabled (`-march=…`), since the default x86-64 baseline is only SSE2. Hardware counters can confirm at run time (e.g. FP_ARITH_INST_RETIRED packed vs scalar on Intel).
+  keyPoints:
+    - Compiler optimisation reports (-fopt-info-vec / -Rpass family) including missed reasons
+    - Read the assembly and distinguish packed (ps/pd) from scalar (ss/sd) instructions and register widths
+    - Check -march / target ISA flags
+    - Optional — performance counters for packed vs scalar FP ops
+  explanation: |
+    Interviewers want evidence you verify rather than assume — "-O3 vectorises it" is not an answer.
+  tags: [simd, auto-vectorization, tooling]
+
+- id: arch-mo-001
+  topic: computer-architecture
+  subtopic: Cache coherence and memory ordering
+  type: single
+  difficulty: easy
+  prompt: |
+    Under the MESI protocol, a core holds a cache line in the **Exclusive** state and then writes to it. What happens?
+  choices:
+    - { id: a, text: "The line moves to Modified locally with no bus or interconnect transaction, because no other cache has a copy" }
+    - { id: b, text: "The core must broadcast an invalidation to all other caches first" }
+    - { id: c, text: "The write goes through to memory and the line stays Exclusive" }
+    - { id: d, text: "The line moves to Shared" }
+  answer: a
+  explanation: |
+    Exclusive means "clean and only I have it". Since no other cache can hold a copy, the core can write immediately and silently upgrade to Modified.
+    That is the purpose of the E state: it avoids an invalidation round-trip for the common read-then-write pattern on private data. Writing to a line in
+    **Shared** state is the case that needs an invalidation (or read-for-ownership) first (b).
+  tags: [coherence, mesi]
+
+- id: arch-mo-002
+  topic: computer-architecture
+  subtopic: Cache coherence and memory ordering
+  type: single
+  difficulty: medium
+  prompt: |
+    Initially `x = y = 0` in memory. On x86-64, two cores run (plain `mov` instructions, no fences):
+    ```
+    Core 0:  mov [x], 1      Core 1:  mov [y], 1
+             mov r1, [y]              mov r2, [x]
+    ```
+    Can the result be `r1 == 0 && r2 == 0`?
+  choices:
+    - { id: a, text: "Yes: each store can sit in its core's store buffer while the following load reads the old value from cache — x86 allows store→load reordering" }
+    - { id: b, text: "No: x86 is sequentially consistent" }
+    - { id: c, text: "No: cache coherence makes each store visible to the other core immediately" }
+    - { id: d, text: "Only if the two variables share a cache line" }
+  answer: a
+  explanation: |
+    This is the classic store-buffering (Dekker) litmus test. x86-TSO keeps most orderings, but a later load may complete before an earlier store to a
+    *different* address becomes globally visible, because stores wait in a FIFO store buffer. Both loads can then read 0 — and it really happens on hardware.
+    Coherence (c) is about a single location eventually agreeing; it says nothing about when a store leaves the store buffer relative to other loads.
+    To forbid the outcome, put `mfence` (or a locked instruction such as `xchg`) between the store and the load — which is what a `seq_cst` store compiles to.
+  tags: [memory-ordering, x86-tso, store-buffer, litmus-test]
+  source: { name: "Intel SDM Vol. 3A §9.2.3.4 (loads may be reordered with earlier stores to different locations); Sewell et al., x86-TSO" }
+
+- id: arch-mo-003
+  topic: computer-architecture
+  subtopic: Cache coherence and memory ordering
+  type: single
+  difficulty: medium
+  prompt: |
+    On x86-64 with current GCC or Clang, what does each of these compile to?
+    ```cpp
+    std::atomic<int> x;
+    x.store(1, std::memory_order_release);   // (1)
+    x.store(1);                              // (2) seq_cst
+    int v = x.load(std::memory_order_acquire); // (3)
+    ```
+  choices:
+    - { id: a, text: "(1) plain mov  (2) xchg  (3) plain mov" }
+    - { id: b, text: "(1) mov + sfence  (2) mov + mfence  (3) lfence + mov" }
+    - { id: c, text: "(1) lock mov  (2) lock mov  (3) lock mov" }
+    - { id: d, text: "(1) plain mov  (2) plain mov  (3) plain mov" }
+  answer: a
+  explanation: |
+    x86-TSO already gives release semantics to every store and acquire semantics to every load, so (1) and (3) need no extra instructions — only the compiler
+    must not reorder around them. A seq_cst store must also prevent later loads from passing it (store→load is the one reordering x86 allows), so it needs a
+    full barrier: compilers emit `xchg` (implicitly locked, a full barrier). Older GCC emitted `mov` followed by `mfence`, which is equivalent in effect.
+    `sfence`/`lfence` (b) are for weakly-ordered non-temporal stores and for speculation barriers, not for ordinary acquire/release. There is no `lock mov` (c).
+    Verified by compiling with GCC 15 and Clang at -O3.
+  tags: [memory-ordering, x86-tso, atomics, codegen]
+
+- id: arch-mo-004
+  topic: computer-architecture
+  subtopic: Cache coherence and memory ordering
+  type: multiple
+  difficulty: medium
+  prompt: |
+    Which statements about the x86-64 memory-ordering model (for ordinary write-back memory) are true? Select all that apply.
+  choices:
+    - { id: a, text: "Loads are not reordered with other loads" }
+    - { id: b, text: "Stores are not reordered with other stores" }
+    - { id: c, text: "Stores are not reordered with earlier loads" }
+    - { id: d, text: "Loads may be reordered with earlier stores to different locations" }
+    - { id: e, text: "Locked instructions (e.g. lock add, xchg) can be reordered with earlier loads and stores" }
+  answer: [a, b, c, d]
+  explanation: |
+    These are the rules of Intel SDM Vol. 3A §9.2.2 (x86-TSO): load→load, store→store and load→store order are preserved; the only reordering is a later load
+    passing an earlier store to a different address (via the store buffer). Locked instructions have a total order and act as full barriers — they are *not*
+    reordered with earlier or later loads and stores, so (e) is false. (Non-temporal stores and string operations have weaker rules, hence "ordinary memory".)
+  tags: [memory-ordering, x86-tso]
+  source: { name: "Intel 64 and IA-32 Architectures SDM Vol. 3A §9.2 Memory Ordering" }
+
+- id: arch-mo-005
+  topic: computer-architecture
+  subtopic: Cache coherence and memory ordering
+  type: short
+  difficulty: hard
+  prompt: |
+    What is a store buffer, why do CPUs have one, and how does it cause memory-reordering effects visible to other cores?
+  reference: |
+    A store buffer is a per-core queue holding stores that have executed (or retired) but not yet been written to the L1 cache. CPUs need it because a
+    store may miss in cache and need an RFO taking tens to hundreds of cycles; buffering lets the core keep executing instead of stalling, and lets
+    speculative stores be discarded on a mispredict before they become visible. The core's own later loads check the buffer (store-to-load forwarding),
+    so a single thread always sees its own stores in program order. Other cores, however, only see a store once it drains to L1 and becomes globally
+    visible. Meanwhile the core's later loads may already have read from the cache, so to other cores it looks as if the load executed before the store:
+    store→load reordering, as in the Dekker/store-buffering litmus test. On x86 the buffer drains in FIFO order, preserving store→store order (TSO);
+    weaker architectures can drain or commit out of order. A full fence (mfence/locked instruction, `dmb ish` on ARM) waits for the buffer to drain before later loads.
+  keyPoints:
+    - Per-core queue of pending stores not yet committed to cache
+    - Hides store-miss latency and supports speculation
+    - Store-to-load forwarding keeps single-thread semantics
+    - Other cores see the store late, producing store→load reordering
+    - Fences (mfence / locked ops / dmb) drain or order the buffer; x86 drains FIFO (TSO)
+  explanation: |
+    A common follow-up: "so why doesn't cache coherence prevent this?" — because the store has not reached the coherent cache yet.
+  tags: [memory-ordering, store-buffer, store-forwarding, fences]
+  source: { name: "Paul McKenney, 'Memory Barriers: a Hardware View for Software Hackers'", url: "http://www.rdrop.com/users/paulmck/scalability/paper/whymb.2010.07.23a.pdf" }
+
+- id: arch-mo-006
+  topic: computer-architecture
+  subtopic: Cache coherence and memory ordering
+  type: single
+  difficulty: medium
+  prompt: |
+    A producer writes `data = 42; ready = 1;` and a consumer runs `while (ready == 0) {} use(data);`, both as plain (non-atomic, relaxed-equivalent)
+    machine stores and loads with no barriers. The same machine code is correct on x86 but can fail on AArch64. Why?
+  choices:
+    - { id: a, text: "ARM's weakly ordered model lets the two stores become visible out of order and lets the consumer's loads be reordered, so the consumer can see ready == 1 but stale data; it needs release/acquire (stlr/ldar) or dmb barriers" }
+    - { id: b, text: "ARM caches are not coherent, so data may never become visible" }
+    - { id: c, text: "AArch64 does not have a store buffer" }
+    - { id: d, text: "ARM requires all shared variables to be on separate cache lines" }
+  answer: a
+  explanation: |
+    x86-TSO preserves store→store and load→load order, so message passing works in hardware (in C++ you still need atomics to stop the *compiler*
+    reordering). ARMv8 permits store→store and load→load reordering for independent accesses, so the flag can become visible before the data, or the
+    consumer can read `data` speculatively before seeing the flag. A store-release of `ready` (`stlr`) and load-acquire (`ldar`) — what C++
+    `memory_order_release`/`acquire` compile to — fix it. ARM caches *are* coherent (b); ARM cores do have store buffers (c).
+  tags: [memory-ordering, arm, weak-memory-model, acquire-release]
+
+- id: arch-mo-007
+  topic: computer-architecture
+  subtopic: Cache coherence and memory ordering
+  type: single
+  difficulty: medium
+  prompt: |
+    Sixteen threads on sixteen cores each do `counter.fetch_add(1, std::memory_order_relaxed)` on one shared `std::atomic<long>` in a tight loop.
+    Total throughput is *lower* than with one thread. What is the main cause?
+  choices:
+    - { id: a, text: "Each atomic RMW needs the cache line in exclusive/modified state, so the line migrates between cores on nearly every increment; each transfer costs a cross-core trip instead of an L1 hit" }
+    - { id: b, text: "memory_order_relaxed forces a full fence on every increment" }
+    - { id: c, text: "The kernel serialises atomic instructions with a global lock" }
+    - { id: d, text: "Atomic operations bypass the cache and always go to DRAM" }
+  answer: a
+  explanation: |
+    A `lock`-prefixed RMW is executed by taking ownership of the line and holding it for the operation (a "cache lock"). With 16 contending cores the line
+    ping-pongs: each increment waits for the line to arrive from another core, so the system does roughly one increment per cache-to-cache transfer, far worse
+    than one thread's back-to-back L1-resident increments. Fix by sharding: per-thread (padded) counters summed on read.
+
+    (b) relaxed imposes no ordering; on x86 the `lock` prefix happens to be a full barrier anyway, but the barrier is not the dominant cost under contention.
+    (c) the kernel is not involved. (d) atomics operate on cached lines; only split-lock (line-crossing) atomics fall back to a bus lock.
+  tags: [atomics, contention, coherence, cache-line-ping-pong]
+
+- id: arch-mo-008
+  topic: computer-architecture
+  subtopic: Multicore and SMT
+  type: multiple
+  difficulty: medium
+  prompt: |
+    Two hyperthreads (SMT siblings) run on the same physical Intel core. Which resources do they **share**? Select all that apply.
+  choices:
+    - { id: a, text: "Execution units / ports" }
+    - { id: b, text: "L1 data cache" }
+    - { id: c, text: "L2 cache" }
+    - { id: d, text: "Architectural register state (RIP, RSP, general-purpose registers)" }
+    - { id: e, text: "Branch predictor structures" }
+  answer: [a, b, c, e]
+  explanation: |
+    SMT duplicates only the *architectural* state (register file contents, instruction pointer, control registers) so the OS sees two logical CPUs;
+    almost everything else — execution ports, L1/L2 caches, TLBs, branch predictors, and (partitioned) ROB/load/store buffers — is shared or split
+    between them. That is why SMT typically gives a modest throughput gain (often ~10–30%) on mixed workloads, can slow a latency-critical thread whose
+    sibling is busy, and why low-latency systems often disable SMT or leave sibling CPUs idle. Sharing predictors and caches is also why SMT is a
+    side-channel concern.
+  tags: [smt, hyperthreading, multicore]
+
+- id: arch-mo-009
+  topic: computer-architecture
+  subtopic: Cache coherence and memory ordering
+  type: single
+  difficulty: hard
+  prompt: |
+    MOESI (used by AMD) adds an **Owned** state to MESI. What does it enable?
+  choices:
+    - { id: a, text: "A dirty line can be shared with other caches without first writing it back to memory; the Owner supplies the data and remains responsible for the eventual write-back" }
+    - { id: b, text: "A line can be written by two cores at once" }
+    - { id: c, text: "A core can own a line exclusively without having read it" }
+    - { id: d, text: "The memory controller can own lines for DMA" }
+  answer: a
+  explanation: |
+    In plain MESI, when another core reads a Modified line, the owner must write it back to memory (or the LLC) and both go to Shared. In MOESI the owner
+    moves to **O** (dirty, but others may hold Shared copies) and keeps forwarding the data cache-to-cache, saving memory write bandwidth. Intel's analogous
+    addition is MESIF's **Forward** state, which designates which clean sharer answers requests. Coherence protocols never allow two simultaneous writers (b).
+  tags: [coherence, moesi, mesif]
+
+- id: arch-mo-010
+  topic: computer-architecture
+  subtopic: Cache coherence and memory ordering
+  type: short
+  difficulty: hard
+  prompt: |
+    Why is a test-and-test-and-set spinlock (spin on a plain load, then attempt the atomic exchange) better than spinning directly on the atomic exchange,
+    and why put a `pause` instruction in the spin loop on x86?
+  reference: |
+    Every atomic exchange is an RMW that needs the line in exclusive state, so N waiters spinning on `xchg` continuously steal the line from each other and
+    from the lock holder, flooding the interconnect with invalidations and delaying the unlock. Spinning on a plain load lets every waiter keep a Shared copy
+    in its own cache and spin locally with no coherence traffic; only when the holder releases (invalidating the copies) do waiters see the change and attempt
+    one `xchg`. `pause` hints that this is a spin-wait: it reduces power, yields execution resources to the SMT sibling (which may be the lock holder), and avoids
+    the memory-order mis-speculation pipeline flush when the line finally changes on loop exit. Its latency changed sharply with Skylake (Intel's optimisation manual quotes
+    about 10 cycles on earlier cores and up to about 140 on Skylake; later cores differ again), so spin counts tuned in iterations behave differently across CPUs. Under heavy contention add backoff or use a
+    queue lock (MCS/ticket) or futex-based blocking.
+  keyPoints:
+    - Spinning on xchg generates constant RFO / invalidation traffic and line ping-pong
+    - Spinning on a load keeps a Shared local copy — no traffic until release
+    - pause frees resources for the SMT sibling and saves power
+    - pause avoids memory-order machine clear on loop exit
+    - Mentions backoff / queue locks / futex for heavy contention
+  explanation: |
+    Intel's optimisation manual discusses spin-wait loops and the change in PAUSE latency with Skylake.
+  tags: [spinlock, coherence, pause, atomics, smt]
+  source: { name: "Intel 64 and IA-32 Architectures Optimization Reference Manual (spin-wait loops and PAUSE)" }
+
+- id: arch-mo-011
+  topic: computer-architecture
+  subtopic: Cache coherence and memory ordering
+  type: single
+  difficulty: hard
+  prompt: |
+    "Our CPUs have coherent caches, so all threads see memory operations in the same order and we don't need fences." What is wrong with this claim?
+  choices:
+    - { id: a, text: "Coherence only guarantees a single total order of writes per individual memory location; ordering across different locations is the memory consistency model, which (because of store buffers, out-of-order execution, etc.) can still reorder" }
+    - { id: b, text: "Nothing is wrong; coherent caches imply sequential consistency" }
+    - { id: c, text: "Caches are coherent only within a socket, never across sockets" }
+    - { id: d, text: "Coherence applies only to instruction caches" }
+  answer: a
+  explanation: |
+    Coherence: all cores agree on the order of writes to *one* address and eventually see the latest one. Consistency: what orders are allowed between
+    accesses to *different* addresses. Store buffers and out-of-order/speculative loads sit outside the coherent caches, so even fully coherent machines
+    show reordering (store→load on x86, much more on ARM/POWER). Multi-socket x86 systems are coherent across sockets (c); data caches are coherent (d).
+  tags: [coherence, memory-consistency, memory-ordering]
+  source: { name: "Sorin, Hill & Wood, A Primer on Memory Consistency and Cache Coherence" }
+
+- id: arch-mo-012
+  topic: computer-architecture
+  subtopic: Cache coherence and memory ordering
+  type: single
+  difficulty: medium
+  prompt: |
+    On x86-64, `counter.fetch_add(1, std::memory_order_relaxed)` and `counter.fetch_add(1, std::memory_order_seq_cst)` compile to the same instruction.
+    Why?
+  choices:
+    - { id: a, text: "The only way to do an atomic RMW on x86 is a lock-prefixed instruction, and every lock-prefixed instruction is already a full memory barrier" }
+    - { id: b, text: "The compiler ignores memory_order arguments on all platforms" }
+    - { id: c, text: "x86 is sequentially consistent, so no instruction ever needs a barrier" }
+    - { id: d, text: "Relaxed atomics are compiled as non-atomic increments" }
+  answer: a
+  explanation: |
+    `lock add`/`lock xadd` gives atomicity and, as a side effect of the x86 architecture, full fence semantics. There is no cheaper "relaxed" atomic RMW, so
+    both orders produce the same code (verified: GCC/Clang emit `lock add` for the relaxed case). On ARM the orders differ (e.g. `ldadd` vs `ldaddal`).
+    (b) the compiler still respects the order for its own reordering decisions; (c) x86 is TSO, not SC — a seq_cst *store* needs `xchg`; (d) would be a data race.
+  tags: [atomics, x86-tso, lock-prefix, codegen]
+
+- id: arch-mo-013
+  topic: computer-architecture
+  subtopic: Cache coherence and memory ordering
+  type: short
+  difficulty: medium
+  prompt: |
+    Walk through the MESI states of one cache line when core A reads it, then core B reads it, then core A writes it, then core B reads it again.
+    Assume the line starts in no cache.
+  reference: |
+    1. A reads: miss, nobody else has it → loaded from memory/LLC; A = **Exclusive**.
+    2. B reads: B's request is snooped/looked up; A's clean copy downgrades to **Shared**, B gets it **Shared**.
+    3. A writes: A holds S, so it must gain ownership — it sends an invalidate (upgrade / RFO); B's copy → **Invalid**, A → **Modified**. The write completes
+       after the invalidation is acknowledged (or sits in A's store buffer meanwhile).
+    4. B reads: miss in B; the request finds A's Modified copy, A supplies the data (cache-to-cache) and writes it back (to LLC/memory), A → **Shared**, B → **Shared**
+       (in MOESI A would go to Owned and skip the write-back; in MESIF one sharer becomes Forward).
+  keyPoints:
+    - First reader gets Exclusive
+    - Second reader causes both to be Shared
+    - Write from Shared needs invalidation of other copies; writer becomes Modified, other Invalid
+    - Read of a Modified line from another core forces data transfer and write-back, both end Shared
+    - Optional — notes on MOESI Owned / MESIF Forward variants
+  explanation: |
+    Step 4 is the expensive "HITM" (hit-modified) case; repeated write/read alternation between cores is exactly what false sharing and contended locks generate.
+  tags: [coherence, mesi]
+
+- id: arch-mo-014
+  topic: computer-architecture
+  subtopic: Multicore and SMT
+  type: single
+  difficulty: easy
+  prompt: |
+    A single-threaded, latency-critical trading process is pinned to logical CPU 3. Why might an engineer also make sure nothing else runs on CPU 3's
+    hyperthread sibling?
+  choices:
+    - { id: a, text: "The sibling shares the physical core's execution units, caches and branch predictors, so its work steals resources and adds jitter to CPU 3" }
+    - { id: b, text: "Hyperthread siblings share a single instruction pointer, so only one can run at a time" }
+    - { id: c, text: "The sibling's interrupts are always delivered to CPU 3" }
+    - { id: d, text: "It is not necessary; hyperthreads are fully independent cores" }
+  answer: a
+  explanation: |
+    Logical siblings are two hardware contexts on one physical core; whatever the sibling runs competes for issue ports, L1/L2 capacity, TLB entries and
+    predictor state, making the critical thread slower and its latency less predictable. Each sibling has its own architectural state including the instruction
+    pointer (b), interrupts are routed per logical CPU (c). Find siblings with `lscpu -e` or `/sys/devices/system/cpu/cpu3/topology/thread_siblings_list`.
+  tags: [smt, hyperthreading, pinning, jitter]
+
+- id: arch-simd-008
+  topic: computer-architecture
+  subtopic: SIMD
+  type: short
+  difficulty: hard
+  prompt: |
+    How can a loop containing an `if`, such as `for (i…) if (a[i] > t) b[i] = a[i] * 2;`, be vectorised? What does it cost compared with the scalar branchy version?
+  reference: |
+    By if-conversion / predication: compute the condition for a whole vector of lanes at once (`vcmpps` producing a mask), compute the result for all lanes,
+    then merge with a blend (`vblendvps`) or use masked operations so only lanes where the condition holds are updated. Because `b[i]` must not be written where
+    the condition is false (another thread might own it, or the store could fault past the end), the store must be masked (AVX `vmaskmovps`, AVX-512 mask registers)
+    or the compiler must prove an unconditional read-modify-write of b is safe. Cost: both sides of the branch are executed for every lane, so work is wasted
+    when the condition is rarely true or one side is expensive; but there are no branch mispredictions, which makes it a big win for unpredictable,
+    data-dependent conditions where the scalar loop would mispredict ~50% of the time.
+  keyPoints:
+    - Compare produces a per-lane mask
+    - Blend/select or masked operations merge results (if-conversion)
+    - Stores must be masked or proven safe to execute unconditionally
+    - Both paths computed for all lanes — wasted work
+    - Eliminates branch mispredictions — best for unpredictable conditions
+  explanation: |
+    AVX-512's mask registers (k0–k7) make masked loads/stores and per-lane predication first-class, which is a big part of why it vectorises more loops than AVX2.
+  tags: [simd, predication, masking, branch-prediction]
+
+- id: arch-mo-015
+  topic: computer-architecture
+  subtopic: Cache coherence and memory ordering
+  type: short
+  difficulty: hard
+  prompt: |
+    You are writing a single-producer/single-consumer ring buffer between two pinned threads. From a cache-coherence point of view, how should the head and
+    tail indices be laid out and accessed to minimise cross-core traffic?
+  reference: |
+    Put the producer-written index (tail/write position) and the consumer-written index (head/read position) on separate cache lines (alignas(64), or 128 to
+    avoid adjacent-line prefetch pairing), and keep them away from the slot data, so each index's line is written by only one core — otherwise every update
+    invalidates the other core's copy (false sharing). Each side should also keep a local cached copy of the *other* side's index and re-read the shared one
+    only when its cached value says the buffer looks full (producer) or empty (consumer); this avoids pulling the other core's line on every operation.
+    Publish with release stores and read with acquire loads (plain movs on x86) — no locked RMW is needed with a single producer and consumer. Optionally
+    batch index updates. Slots themselves still migrate from producer to consumer, which is the unavoidable transfer.
+  keyPoints:
+    - Head and tail on separate cache lines; each written by only one thread
+    - Separate indices from data slots to avoid false sharing
+    - Cache the other side's index locally; reload only when full/empty
+    - Acquire/release ordering suffices — no atomic RMW needed for SPSC
+    - Optional batching of index publication
+  explanation: |
+    This is the design used in well-known low-latency queues (e.g. Rigtorp's SPSCQueue, the LMAX Disruptor's padded sequences).
+  tags: [coherence, false-sharing, spsc-queue, lock-free, low-latency]
+  source: { name: "Erik Rigtorp, SPSCQueue", url: "https://github.com/rigtorp/SPSCQueue" }

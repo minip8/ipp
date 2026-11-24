@@ -1,0 +1,16 @@
+slug: number-of-islands
+title: Number of Islands
+difficulty: medium
+tags: [graph, bfs, dfs, union-find, matrix]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: numIslands
+      params:
+        - { name: grid, type: { array: string } }
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 200; Blind 75)
+  url: https://leetcode.com/problems/number-of-islands/

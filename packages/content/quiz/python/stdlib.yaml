@@ -1,0 +1,256 @@
+# Standard-library tools and performance idioms: itertools, functools, collections, heapq, bisect, sorting.
+- id: py-std-001
+  topic: python
+  subtopic: itertools
+  difficulty: medium
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [itertools, groupby]
+  prompt: What does this program print?
+  code: |
+    from itertools import groupby
+
+    data = 'aabaa'
+    print([(k, len(list(g))) for k, g in groupby(data)])
+  answer: { kind: output, output: "[('a', 2), ('b', 1), ('a', 2)]" }
+  explanation: |
+    `itertools.groupby` groups **consecutive** runs of equal keys, like Unix `uniq`, not all equal items. The two runs of `'a'` become separate groups. To group all equal items, sort by the same key first (`groupby(sorted(data))`), or use a dict / `defaultdict(list)` / `Counter`.
+
+    Also note that each group `g` is a lazy iterator sharing the underlying iterator, so it must be consumed before advancing to the next key.
+
+- id: py-std-002
+  topic: python
+  subtopic: collections
+  difficulty: medium
+  type: output
+  language: python
+  standard: Python 3.7+
+  tags: [counter, collections]
+  prompt: What does this program print?
+  code: |
+    from collections import Counter
+
+    c = Counter('mississippi')
+    print(c.most_common(2), c['z'], 'z' in c)
+  answer: { kind: output, output: "[('i', 4), ('s', 4)] 0 False" }
+  explanation: |
+    `'mississippi'` has `i` ×4, `s` ×4, `p` ×2 and `m` ×1. `most_common` sorts by count, and ties keep the order in which elements were **first encountered** (documented since 3.7): `i` appears before `s`.
+
+    Looking up a missing key in a `Counter` returns `0` **without inserting it**, unlike `defaultdict`, which inserts on lookup. So `'z' in c` is still `False`.
+
+- id: py-std-003
+  topic: python
+  subtopic: heapq
+  difficulty: easy
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [heapq, priority-queue]
+  prompt: What does this program print?
+  code: |
+    import heapq
+
+    h = []
+    for x in [5, 1, 4, 2]:
+        heapq.heappush(h, x)
+    print(h[0], heapq.nsmallest(2, h), [heapq.heappop(h) for _ in range(len(h))])
+  answer: { kind: output, output: "1 [1, 2] [1, 2, 4, 5]" }
+  explanation: |
+    `heapq` maintains a **min-heap** inside an ordinary list: `h[0]` is always the smallest item, though the rest of the list is *not* sorted. `nsmallest(2, h)` reads without modifying the heap. Popping repeatedly yields the items in ascending order (heapsort). Arguments are evaluated left to right, so the pops happen last.
+
+    There is no max-heap API for general use. Push negated keys or `(-priority, item)` tuples. (3.14 added public `heapq.heappush_max` and friends.)
+
+- id: py-std-004
+  topic: python
+  subtopic: functools
+  difficulty: medium
+  type: output
+  language: python
+  standard: Python 3.8+
+  tags: [lru-cache, hashing, functools]
+  prompt: What does this program print?
+  code: |
+    from functools import lru_cache
+
+    @lru_cache
+    def total(xs):
+        return sum(xs)
+
+    print(total((1, 2)))
+    print(total([1, 2]))
+  answer: { kind: runtime_error }
+  explanation: |
+    It prints `3`, then the second call raises **TypeError: unhashable type: 'list'**.
+
+    `lru_cache` stores results in a dict keyed by the call's arguments, so every argument must be **hashable**. Tuples work; lists don't. Convert at the call site (`total(tuple(xs))`) or cache a helper that takes hashable arguments. (Since 3.8, `@lru_cache` can be used without parentheses; `functools.cache` (3.9+) is the unbounded version.)
+
+- id: py-std-005
+  topic: python
+  subtopic: bisect
+  difficulty: easy
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [bisect, binary-search]
+  prompt: What does this program print?
+  code: |
+    import bisect
+
+    a = [1, 2, 2, 2, 5]
+    print(bisect.bisect_left(a, 2), bisect.bisect_right(a, 2), bisect.bisect(a, 3))
+  answer: { kind: output, output: "1 4 4" }
+  explanation: |
+    For a sorted list, `bisect_left(a, x)` returns the first index where `x` could be inserted while keeping order, i.e. **before** any existing equal items (index 1). `bisect_right` (and its alias `bisect`) returns the position **after** existing equal items (index 4). For `3`, which isn't present, both give 4, the index of the first element greater than 3.
+
+    `bisect_right - bisect_left` counts occurrences in O(log n). Since 3.10 these functions also take a `key=` argument.
+
+- id: py-std-006
+  topic: python
+  subtopic: collections
+  difficulty: medium
+  type: multiple
+  tags: [defaultdict, collections]
+  prompt: |
+    Given `d = collections.defaultdict(list)`, which operations **add a new key** to `d`? Select all that apply.
+  choices:
+    - { id: a, text: "`d['x']`, a bare lookup of a missing key" }
+    - { id: b, text: "`d['y'].append(1)`" }
+    - { id: c, text: "`d.get('z')`" }
+    - { id: d, text: "`'w' in d`" }
+    - { id: e, text: "`d.setdefault('v', [])`" }
+  answer: [a, b, e]
+  explanation: |
+    `defaultdict` overrides `__missing__`, which `dict.__getitem__` calls for a missing key. It creates the default with the factory, **inserts it**, and returns it. So even a read like `d['x']` (for example in an `if` or a `print`) adds a key, a classic source of surprise growth. `get()` and `in` don't go through `__getitem__`, so they don't insert. `setdefault` inserts by design.
+
+- id: py-std-007
+  topic: python
+  subtopic: Sorting
+  difficulty: medium
+  type: single
+  tags: [sorting, stability, key-functions]
+  prompt: |
+    You have `employees` as `(name, dept, salary)` tuples. You want them sorted by department ascending, and within a department by salary **descending**. Which approach is correct?
+  choices:
+    - { id: a, text: "`employees.sort(key=lambda e: e[2], reverse=True)` then `employees.sort(key=lambda e: e[1])`" }
+    - { id: b, text: "`employees.sort(key=lambda e: e[1])` then `employees.sort(key=lambda e: e[2], reverse=True)`" }
+    - { id: c, text: "`employees.sort(key=lambda e: (e[1], e[2]), reverse=True)`" }
+    - { id: d, text: "It can't be done with `sort`; you need `functools.cmp_to_key`" }
+  answer: a
+  explanation: |
+    Python's sort (Timsort) is **stable**: items with equal keys keep their existing relative order, including with `reverse=True`. So you can sort by the *secondary* key first and then by the *primary* key, and the department sort preserves the salary order within each department. This "multiple passes" technique is in the official Sorting HOWTO.
+
+    Option b ends up sorted by salary only. Option c reverses the department order too. For numeric keys a single pass also works: `key=lambda e: (e[1], -e[2])`. `cmp_to_key` works but is unnecessary.
+
+- id: py-std-008
+  topic: python
+  subtopic: collections
+  difficulty: easy
+  type: single
+  tags: [deque, collections, sliding-window]
+  prompt: |
+    ```python
+    from collections import deque
+    d = deque(maxlen=3)
+    for i in range(5):
+        d.append(i)
+    ```
+    What does `d` contain?
+  choices:
+    - { id: a, text: "`deque([2, 3, 4], maxlen=3)`" }
+    - { id: b, text: "`deque([0, 1, 2], maxlen=3)`" }
+    - { id: c, text: "It raises `IndexError` on the fourth append" }
+    - { id: d, text: "`deque([0, 1, 2, 3, 4], maxlen=3)`" }
+  answer: a
+  explanation: |
+    A bounded `deque` discards items from the **opposite end** when it is full: appending on the right drops from the left. It's the idiomatic "keep the last N items" structure (tail of a log, sliding window), with O(1) appends. `appendleft` on a full deque would drop from the right instead.
+
+- id: py-std-009
+  topic: python
+  subtopic: functools
+  difficulty: medium
+  type: single
+  tags: [lru-cache, methods, memory-leaks]
+  prompt: Why do linters warn about decorating an instance method with `@functools.lru_cache`?
+  choices:
+    - { id: a, text: "The cache is stored on the function, which is shared by the whole class, and it holds strong references to every `self` it has seen, keeping instances alive (up to `maxsize`, or forever with `maxsize=None`)" }
+    - { id: b, text: "`lru_cache` cannot be applied to functions that take `self`" }
+    - { id: c, text: "The cache is cleared every time a new instance is created" }
+    - { id: d, text: "It makes the method a staticmethod" }
+  answer: a
+  explanation: |
+    `self` is part of the cache key, so each entry keeps its instance alive. The cache belongs to the function object, which is shared by the class, so instances that would otherwise be freed stay in memory, and with an unbounded cache they never leave. Alternatives: `functools.cached_property` for argument-less computations (stored per instance), a per-instance cache created in `__init__`, or caching a module-level function keyed by immutable data rather than by `self`. (flake8-bugbear B019 flags this.)
+
+- id: py-std-010
+  topic: python
+  subtopic: collections
+  difficulty: medium
+  type: short
+  tags: [lru-cache, ordereddict, design]
+  prompt: Implement (or describe precisely) an LRU cache class with O(1) `get` and `put` in Python. What standard-library pieces make it easy?
+  reference: |
+    ```python
+    from collections import OrderedDict
+
+    class LRUCache:
+        def __init__(self, capacity):
+            self.capacity = capacity
+            self.data = OrderedDict()
+
+        def get(self, key, default=None):
+            if key not in self.data:
+                return default
+            self.data.move_to_end(key)          # mark as most recently used
+            return self.data[key]
+
+        def put(self, key, value):
+            self.data[key] = value
+            self.data.move_to_end(key)
+            if len(self.data) > self.capacity:
+                self.data.popitem(last=False)   # evict least recently used
+    ```
+    `OrderedDict` is a hash map combined with a doubly linked list, so `move_to_end` and `popitem(last=False)` are O(1). A plain `dict` can also work (it keeps insertion order: delete and reinsert to refresh, `next(iter(d))` to find the oldest), but `OrderedDict` states the intent. To memoise a function, use `functools.lru_cache(maxsize=...)` instead. For thread safety, wrap operations in a lock.
+  keyPoints:
+    - Needs a hash map plus recency order, both with O(1) updates
+    - OrderedDict.move_to_end on access and popitem(last=False) for eviction
+    - Update on both get and put; evict when over capacity
+    - functools.lru_cache for memoising functions
+    - Mention thread safety or the plain-dict alternative
+  explanation: |
+    A classic coding-interview question in Python form. Without `OrderedDict`, candidates should be able to describe the dict plus doubly-linked-list structure.
+
+- id: py-std-011
+  topic: python
+  subtopic: heapq
+  difficulty: medium
+  type: short
+  tags: [heapq, counter, top-k, complexity]
+  prompt: Given a very large list of words, how would you return the *k* most frequent in Python, and what is the complexity?
+  reference: |
+    Count with `collections.Counter(words)`, which is O(n). Then take the top k: `counter.most_common(k)` uses `heapq.nlargest` internally when k is given, which is O(m log k) for m distinct words, better than sorting all m (O(m log m)) when k is much smaller than m. Explicitly: `heapq.nlargest(k, counter.items(), key=lambda kv: kv[1])`. Total is O(n + m log k) time and O(m) space for the counts. If ties need a deterministic order, include the word in the key (e.g. `key=lambda kv: (kv[1], ...)`, or `heapq.nsmallest(k, items, key=lambda kv: (-kv[1], kv[0]))`). For a stream too large for memory, consider approximate counting (Count-Min sketch / heavy hitters) or chunked counting merged with `Counter.update`.
+  keyPoints:
+    - Counter for O(n) counting
+    - most_common(k) / heapq.nlargest gives O(m log k) instead of a full sort
+    - Overall O(n + m log k) time, O(m) space
+    - Deterministic tie-breaking via the key
+    - Streaming or approximate approaches for huge data
+  explanation: |
+    Knowing that `most_common(k)` already uses a heap, and when `nlargest` beats `sorted`, shows practical command of the standard library. For k close to m, sorting is simpler and just as fast.
+
+- id: py-std-012
+  topic: python
+  subtopic: Performance
+  difficulty: medium
+  type: short
+  tags: [performance, profiling, idioms]
+  prompt: A pure-Python data-processing function is too slow. What steps and idioms would you use to speed it up?
+  reference: |
+    Measure first: profile with `cProfile`/`pstats` (or py-spy/scalene) to find the hot spots, and micro-benchmark candidates with `timeit`. Then, in rough order of payoff: fix the algorithm and data structures (sets/dicts for membership instead of lists, avoid quadratic loops, `deque` for queues, `bisect`/`heapq`); avoid repeated work (hoist invariants out of loops, cache with `functools.cache`/`lru_cache`); push loops into C-implemented built-ins (`sum`, `max`, `sorted` with key, `str.join`, comprehensions, `itertools`, `collections.Counter`); use local variables in hot loops (local lookups are cheaper than global/attribute lookups); use generators to cut memory. Then go beyond pure Python: vectorise with NumPy/pandas, compile with Cython/mypyc/Numba, or move to C/Rust extensions; parallelise CPU-bound work with processes (or a free-threaded build); and run on a newer CPython (3.11+ is much faster) or PyPy.
+  keyPoints:
+    - Profile first (cProfile, py-spy), and benchmark with timeit
+    - Algorithmic and data-structure fixes give the biggest wins
+    - Prefer built-ins, comprehensions, itertools and str.join (C-implemented loops)
+    - Caching / avoiding repeated work, local-variable lookups in hot loops
+    - NumPy vectorisation, Cython/Numba, multiprocessing, newer CPython/PyPy
+  explanation: |
+    Interviewers penalise jumping straight to "rewrite it in C" or micro-optimisations without profiling. The best answers start with measurement and complexity.

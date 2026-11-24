@@ -1,0 +1,412 @@
+# Names, binding and scope: LEGB, global/nonlocal, closures, late binding.
+- id: py-scope-001
+  topic: python
+  subtopic: Names and scope
+  difficulty: easy
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [scope, unboundlocalerror]
+  prompt: What does this program print?
+  code: |
+    x = 10
+
+    def f():
+        print(x)
+        x = 20
+
+    f()
+  answer: { kind: runtime_error }
+  explanation: |
+    It raises **UnboundLocalError** (`cannot access local variable 'x' where it is not associated with a value`).
+
+    Whether a name is local is decided when the function is *compiled*, not line by line at run time: because `f` assigns to `x` anywhere in its body, `x` is local throughout `f`. The `print(x)` therefore reads the local `x` before it has been bound. It does not fall back to the global `x = 10`.
+
+    Fixes: declare `global x` if you mean the global, or rename the local. See the language reference, "Execution model → Resolution of names".
+
+- id: py-scope-002
+  topic: python
+  subtopic: Closures and late binding
+  difficulty: medium
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [closures, late-binding, lambda]
+  prompt: What does this program print?
+  code: |
+    fs = [lambda: i for i in range(3)]
+    print([f() for f in fs])
+  answer: { kind: output, output: "[2, 2, 2]" }
+  explanation: |
+    Closures capture **variables, not values**. All three lambdas close over the same `i` (the comprehension's iteration variable), and they look it up when they are *called*. By then the loop has finished and `i` is `2`, so each returns `2`.
+
+    `[0, 1, 2]` is the common wrong answer. To capture the current value, bind it at definition time with a default argument (`lambda i=i: i`) or use `functools.partial`.
+
+- id: py-scope-003
+  topic: python
+  subtopic: Closures and late binding
+  difficulty: medium
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [closures, late-binding]
+  prompt: What does this program print?
+  code: |
+    def make():
+        fs = []
+        for i in range(3):
+            def f():
+                return i
+            fs.append(f)
+        i = 'done'
+        return fs
+
+    print([f() for f in make()])
+  answer: { kind: output, output: "['done', 'done', 'done']" }
+  explanation: |
+    Each `f` refers to the variable `i` in `make`'s scope (a shared cell), not to the value `i` had when `f` was defined. After the loop, `make` rebinds `i` to `'done'`, and that is what every closure sees when it is called later.
+
+    A `for` loop does not create a new scope in Python, so there is only one `i` for all three functions.
+
+- id: py-scope-004
+  topic: python
+  subtopic: Closures and late binding
+  difficulty: easy
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [closures, nonlocal]
+  prompt: What does this program print?
+  code: |
+    def counter():
+        n = 0
+        def inc():
+            nonlocal n
+            n += 1
+            return n
+        return inc
+
+    a = counter()
+    b = counter()
+    a()
+    a()
+    print(a(), b())
+  answer: { kind: output, output: "3 1" }
+  explanation: |
+    Each call to `counter()` creates a fresh local `n` and a fresh closure over it, so `a` and `b` have independent state. `nonlocal n` makes `n += 1` rebind the enclosing function's variable instead of creating a new local (without it the function would raise `UnboundLocalError`).
+
+    `a` has been called twice already, so the third call returns `3`; `b`'s first call returns `1`.
+
+- id: py-scope-005
+  topic: python
+  subtopic: Names and scope
+  difficulty: hard
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [scope, class-body, comprehensions]
+  prompt: What does this program print?
+  code: |
+    class C:
+        n = 3
+        a = [i for i in range(n)]
+        b = [n for i in range(3)]
+
+    print(C.a, C.b)
+  answer: { kind: runtime_error }
+  explanation: |
+    It raises **NameError** (`name 'n' is not defined`) while executing the line that defines `b`.
+
+    A class body's namespace is **not** an enclosing scope for the functions and comprehensions nested in it. The line defining `a` works only because the *outermost iterable* of a comprehension (`range(n)`) is evaluated in the class body itself. In `b`, the element expression `n` is evaluated inside the comprehension's own scope, which skips the class namespace and looks in globals, where there is no `n`.
+
+    This still holds in 3.12+ even though PEP 709 inlined comprehensions: the PEP explicitly preserves the class-scope rule. Reference: "Execution model → Resolution of names" ("The scope of names defined in a class block is limited to the class block; it does not extend to the code blocks of methods").
+
+- id: py-scope-006
+  topic: python
+  subtopic: Names and scope
+  difficulty: medium
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [scope, exceptions]
+  prompt: What does this program print?
+  code: |
+    e = 'outer'
+    try:
+        1 / 0
+    except ZeroDivisionError as e:
+        pass
+    print(e)
+  answer: { kind: runtime_error }
+  explanation: |
+    It raises **NameError**. The target of `except ... as e` is implicitly deleted when the except clause ends, as if the clause were followed by `del e`. Because the handler bound the *same* name `e` (module scope here), the original `'outer'` value was overwritten and then deleted.
+
+    The deletion exists because the exception holds a traceback, which references the frame, which references the exception: keeping it alive would create a reference cycle. Reference: "Compound statements → The try statement". Bind the exception to another name inside the handler if you need it later.
+
+- id: py-scope-007
+  topic: python
+  subtopic: Names and scope
+  difficulty: easy
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [scope, comprehensions]
+  prompt: What does this program print?
+  code: |
+    i = 'outer'
+    squares = [i * i for i in range(4)]
+    print(i, squares[-1])
+  answer: { kind: output, output: "outer 9" }
+  explanation: |
+    In Python 3 a comprehension's iteration variable is local to the comprehension, so it does not overwrite the module-level `i`. (In Python 2, list comprehensions leaked their loop variable; generator expressions never did.) PEP 709 in 3.12 inlined comprehensions for speed but kept this isolation.
+
+    A plain `for` loop, by contrast, *would* have rebound `i` to `3`.
+
+- id: py-scope-008
+  topic: python
+  subtopic: Names and scope
+  difficulty: medium
+  type: output
+  language: python
+  standard: Python 3.8+
+  tags: [walrus, comprehensions, any]
+  prompt: What does this program print?
+  code: |
+    values = [3, 8, 1, 9]
+    if any((big := v) > 5 for v in values):
+        print(big)
+  answer: { kind: output, output: "8" }
+  explanation: |
+    Two rules combine:
+
+    1. An assignment expression (`:=`) inside a comprehension or generator expression binds the name in the **containing** scope (PEP 572), so `big` is visible after the `any(...)` call.
+    2. `any()` short-circuits: it stops consuming the generator at the first true value. `3 > 5` is false, `8 > 5` is true, so the generator never reaches `9`.
+
+    So `big` holds the first value that satisfied the test, `8`. This is the idiom PEP 572 gives for "capture the witness" of `any()`.
+
+- id: py-scope-009
+  topic: python
+  subtopic: Names and scope
+  difficulty: medium
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [global, scope]
+  prompt: What does this program print?
+  code: |
+    x = 1
+
+    def f():
+        global x
+        x += 1
+
+    def g():
+        x = 100
+        def h():
+            global x
+            return x
+        return h()
+
+    f()
+    print(x, g())
+  answer: { kind: output, output: "2 2" }
+  explanation: |
+    `f` declares `x` global, so `x += 1` rebinds the module-level `x` to `2`.
+
+    In `g`, the local `x = 100` exists, but `h` declares `global x`, which sends the lookup straight to the module namespace and skips enclosing function scopes. So `h()` returns the global `2`, not `100`. If `h` had used `nonlocal x` instead, it would return `100`.
+
+- id: py-scope-010
+  topic: python
+  subtopic: Names and scope
+  difficulty: medium
+  type: multiple
+  tags: [scope]
+  prompt: |
+    In Python 3, which of these constructs introduce a **new scope** for names bound inside them? Select all that apply.
+  choices:
+    - { id: a, text: "A `def` function body" }
+    - { id: b, text: "A `class` body" }
+    - { id: c, text: "A list comprehension (for its iteration variable)" }
+    - { id: d, text: "The body of a `for` loop" }
+    - { id: e, text: "A `with` block" }
+    - { id: f, text: "A `lambda` expression" }
+    - { id: g, text: "An `if` block" }
+  answer: [a, b, c, f]
+  explanation: |
+    Python scopes are created by **modules, functions (including lambdas), class bodies, and comprehensions / generator expressions**. Blocks such as `for`, `while`, `if`, `with` and `try` do **not** create scopes: a variable assigned inside a `for` loop or `with` block is still visible after it, in the enclosing function or module.
+
+    Class bodies are a special kind of scope: their names don't act as an enclosing scope for nested functions (see "Execution model → Resolution of names").
+
+- id: py-scope-011
+  topic: python
+  subtopic: Names and scope
+  difficulty: medium
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [nonlocal, syntaxerror]
+  prompt: What does this program do?
+  code: |
+    x = 1
+
+    def f():
+        nonlocal x
+        x = 2
+
+    f()
+    print(x)
+  answer: { kind: compile_error }
+  explanation: |
+    It fails to compile: **SyntaxError: no binding for nonlocal 'x' found**.
+
+    `nonlocal` refers only to variables of an *enclosing function* scope, and it is resolved at compile time. Module globals don't count; `global x` is the statement for them. Because this is a compile-time error, nothing runs, not even code before `f`.
+
+- id: py-scope-012
+  topic: python
+  subtopic: Closures and late binding
+  difficulty: easy
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [closures]
+  prompt: What does this program print?
+  code: |
+    def outer():
+        x = 1
+        def inner():
+            return x
+        x = 2
+        return inner
+
+    print(outer()())
+  answer: { kind: output, output: "2" }
+  explanation: |
+    `inner` closes over the *variable* `x` of `outer` (a cell), not over the value `1`. The variable is rebound to `2` before `outer` returns, so `inner` sees `2` when it finally runs. The closure keeps the cell alive after `outer`'s frame is gone.
+
+- id: py-scope-013
+  topic: python
+  subtopic: Names and scope
+  difficulty: medium
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [locals, scope]
+  prompt: What does this program print?
+  code: |
+    def f():
+        x = 1
+        locals()['x'] = 2
+        print(x)
+
+    f()
+  answer: { kind: output, output: "1" }
+  explanation: |
+    Inside a function, `locals()` returns a **dictionary snapshot** of the local variables. Writing to that dict does not change the real local, which the compiler stores in a fast-locals array. So `x` stays `1`.
+
+    In 3.13+ (PEP 667) this is formally specified: in an optimized scope, each `locals()` call returns an independent snapshot. Earlier versions returned a shared dict that was refreshed on each call, but writes still never reached the variables. At module level, `locals()` *is* `globals()`, and writing to it does take effect.
+
+- id: py-scope-014
+  topic: python
+  subtopic: Closures and late binding
+  difficulty: medium
+  type: short
+  tags: [closures, late-binding]
+  prompt: |
+    A colleague writes this to register button callbacks, and every button ends up printing `4`:
+
+    ```python
+    handlers = []
+    for n in range(5):
+        handlers.append(lambda: print(n))
+    ```
+
+    Explain what is happening and give two ways to fix it.
+  reference: |
+    Python closures are late-binding: the lambda captures the variable `n` from the enclosing scope (one shared variable, since a `for` loop does not create a new scope) and looks it up when it is called. By then the loop is over and `n` is 4. Fixes: bind the current value at definition time with a default argument (`lambda n=n: print(n)`), use `functools.partial(print, n)`, or create the lambda in a factory function (`def make(n): return lambda: print(n)`) so each call gets its own scope.
+  keyPoints:
+    - Closures capture variables (names/cells), not values
+    - Lookup happens when the function is called, after the loop has finished, so all see the final value 4
+    - A for loop does not create a new scope, so every lambda shares the same n
+    - "Fix: default argument `lambda n=n: ...` evaluates n at definition time"
+    - "Fix: functools.partial, or a factory function that creates a new scope per value"
+  explanation: |
+    The trap is thinking the lambda "remembers" `n` as it was. A closure stores a reference to the enclosing variable (a cell), and Python looks names up when the function body runs. Strong answers also note that the default-argument fix changes the function's signature (a caller could pass `n`), which is why `partial` or a factory function is often preferred in public APIs.
+
+- id: py-scope-015
+  topic: python
+  subtopic: Names and scope
+  difficulty: hard
+  type: short
+  tags: [scope, compiler, unboundlocalerror]
+  prompt: |
+    How does Python decide whether a name used inside a function is local, enclosing, global or built-in? Use that to explain why this raises `UnboundLocalError` rather than printing `0`:
+
+    ```python
+    count = 0
+    def bump():
+        count += 1
+    bump()
+    ```
+  reference: |
+    Scope is decided statically when the function body is compiled. Any name that is bound anywhere in the function (assignment, augmented assignment, `for` target, `import`, `def`, `except ... as`, etc.) is local to the whole function unless declared `global` or `nonlocal`; names that are only read are looked up in enclosing function scopes, then the module globals, then builtins (LEGB). `count += 1` is a binding of `count`, so `count` is local throughout `bump`, and the read part of `+=` hits an unbound local, so it raises `UnboundLocalError` (a subclass of `NameError`). Fix with `global count` or by passing and returning the value.
+  keyPoints:
+    - Locality is determined at compile time for the whole function body, not per line
+    - Any binding (including augmented assignment) makes a name local unless declared global/nonlocal
+    - "Read-only names are resolved LEGB: local, enclosing functions, globals, builtins"
+    - "`count += 1` reads the local before it is bound, so UnboundLocalError (a NameError subclass)"
+    - "Fix: `global count` (or nonlocal in a nested function), or avoid mutating shared state"
+  explanation: |
+    The key insight is that the compiler, not the runtime, classifies names: CPython emits different bytecode for locals (`LOAD_FAST`), closure variables (`LOAD_DEREF`) and globals/builtins (`LOAD_GLOBAL`), so the choice cannot depend on which line has run. Reference: language reference, "Execution model → Naming and binding".
+
+- id: py-scope-016
+  topic: python
+  subtopic: Names and scope
+  difficulty: easy
+  type: single
+  tags: [global, nonlocal]
+  prompt: |
+    Inside a nested function you want `x += 1` to update the variable `x` of the **enclosing function** (not a module global). Which statement must you put in the nested function first?
+  choices:
+    - { id: a, text: "`global x`" }
+    - { id: b, text: "`nonlocal x`" }
+    - { id: c, text: "Nothing: assignment updates the nearest enclosing binding automatically" }
+    - { id: d, text: "`x = x`" }
+  answer: b
+  explanation: |
+    `nonlocal x` (PEP 3104) makes `x` refer to the nearest enclosing *function* scope's binding, so rebinding it updates that variable.
+
+    - `global x` would target the module namespace and skip the enclosing function.
+    - Without a declaration, any assignment makes `x` a new local of the nested function, so `x += 1` raises `UnboundLocalError`.
+    - `x = x` also makes `x` local, so the right-hand side reads an unbound local.
+
+    Note that *mutating* an enclosing object (`items.append(...)`) needs no declaration; only *rebinding* the name does.
+
+- id: py-scope-017
+  topic: python
+  subtopic: Names and scope
+  difficulty: hard
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [scope, builtins, shadowing]
+  prompt: What does this program print?
+  code: |
+    def total(items):
+        result = sum(items)
+        return result
+
+    print(total([1, 2, 3]))
+    sum = lambda xs: -1
+    print(total([1, 2, 3]))
+    del sum
+    print(total([1, 2, 3]))
+  answer:
+    kind: output
+    output: |
+      6
+      -1
+      6
+  explanation: |
+    `sum` inside `total` is not local, so it is looked up at **call time** through globals and then builtins (LEGB). The module-level assignment `sum = lambda ...` creates a global that shadows the builtin, so the second call uses it and returns `-1`. `del sum` removes the global, and the lookup falls through to `builtins.sum` again.
+
+    This is why shadowing builtins at module level (`list = ...`, `id = ...`) is a classic bug: it affects every function in the module that uses the name, not just code after the assignment in the same block.

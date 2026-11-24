@@ -1,0 +1,688 @@
+# Value categories, references, std::move / std::forward, copy elision.
+- id: cpp-move-001
+  topic: cpp
+  subtopic: Value categories and move semantics
+  difficulty: easy
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [move-semantics, std-move]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+    #include <string>
+    #include <utility>
+
+    int main() {
+        std::string a = "hello";
+        std::string&& r = std::move(a);
+        r += "!";
+        std::cout << a << '\n';
+    }
+  answer: { kind: output, output: "hello!" }
+  explanation: |
+    `std::move` does not move anything. It is just a `static_cast<std::string&&>(a)`: it produces an
+    xvalue that refers to the *same* object. Binding that to `std::string&& r` creates another name for `a`,
+    so `r += "!"` modifies `a`, and the program prints `hello!`.
+
+    A move only happens when that rvalue expression is used to *initialize or assign* another object,
+    which selects the move constructor or move assignment operator (e.g. `std::string b = std::move(a);`).
+    See cppreference: `std::move`.
+
+- id: cpp-move-002
+  topic: cpp
+  subtopic: Value categories and move semantics
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [value-categories, overload-resolution, references]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+    #include <utility>
+
+    void f(int&)        { std::cout << 'L'; }
+    void f(const int&)  { std::cout << 'C'; }
+    void f(int&&)       { std::cout << 'R'; }
+
+    int main() {
+        int i = 0;
+        const int ci = 0;
+        int&& rr = 1;
+        f(i);
+        f(ci);
+        f(2);
+        f(rr);
+        f(std::move(i));
+        f(std::move(ci));
+    }
+  answer: { kind: output, output: "LCRLRC" }
+  explanation: |
+    - `f(i)`: non-const lvalue, `int&` is the exact match → `L`.
+    - `f(ci)`: const lvalue; only `const int&` can bind → `C`.
+    - `f(2)`: prvalue; both `const int&` and `int&&` can bind, and [over.ics.rank] prefers binding an
+      rvalue to an rvalue reference → `R`.
+    - `f(rr)`: the tempting answer is `R`, but a *named* rvalue reference is an lvalue expression. Its
+      type is `int&&`, its value category is lvalue → `L`.
+    - `f(std::move(i))`: xvalue of type `int` → `R`.
+    - `f(std::move(ci))`: xvalue of type `const int`. `int&&` cannot bind to a const object and `int&`
+      cannot bind to an rvalue, so `const int&` wins → `C`. This is why `std::move` on a const object
+      silently copies.
+
+- id: cpp-move-003
+  topic: cpp
+  subtopic: Value categories and move semantics
+  difficulty: hard
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [perfect-forwarding, forwarding-references, templates]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+    #include <type_traits>
+    #include <utility>
+
+    template <class T>
+    void g(T&&) { std::cout << (std::is_lvalue_reference_v<T> ? "lv " : "rv "); }
+
+    template <class T>
+    void wrap(T&& x) {
+        g(x);
+        g(std::forward<T>(x));
+    }
+
+    int main() {
+        int i = 0;
+        wrap(i);
+        wrap(0);
+    }
+  answer: { kind: output, output: "lv lv lv rv" }
+  explanation: |
+    `T&&` on a deduced template parameter is a forwarding reference ([temp.deduct.call]): an lvalue
+    argument deduces `T = int&`, an rvalue deduces `T = int`.
+
+    - `wrap(i)`: `T = int&`. Inside, `x` is an lvalue, so `g(x)` deduces an lvalue reference → `lv`.
+      `std::forward<int&>(x)` returns `int&` → `lv`.
+    - `wrap(0)`: `T = int`. `g(x)` still prints `lv`, because `x` is a named variable, hence an lvalue,
+      even though its declared type is `int&&`. Only `std::forward<int>(x)` restores the rvalue-ness → `rv`.
+
+    This is why forwarding functions must use `std::forward<T>`: without it every argument is passed
+    on as an lvalue and moves turn into copies.
+
+- id: cpp-move-004
+  topic: cpp
+  subtopic: Value categories and move semantics
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [move-semantics, moved-from, std-string]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+    #include <string>
+    #include <utility>
+
+    int main() {
+        std::string a = "hi";
+        std::string b = std::move(a);
+        std::cout << b << ' ' << a.size() << '\n';
+    }
+  answer: { kind: unspecified }
+  explanation: |
+    `b` is certainly `hi`, but `a` is left in a "valid but unspecified state" ([lib.types.movedfrom]).
+    For short strings the implementation may just copy the characters (small-string optimisation) and
+    leave the source untouched, or clear it. libstdc++ and libc++ happen to leave it empty, so the
+    program prints `hi 0` in practice, but the standard does not promise that.
+
+    What you *may* do with a moved-from standard library object: destroy it, assign to it, and call
+    member functions without preconditions (`size()`, `clear()`, `empty()`). Do not rely on its value.
+    (By contrast, a moved-from `std::unique_ptr` is guaranteed to be null.)
+
+- id: cpp-move-005
+  topic: cpp
+  subtopic: Value categories and move semantics
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [copy-elision, cpp17]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    struct Pinned {
+        Pinned() = default;
+        Pinned(const Pinned&) = delete;
+        Pinned(Pinned&&) = delete;
+    };
+
+    Pinned make() { return Pinned{}; }
+
+    int main() {
+        Pinned p = make();
+        (void)p;
+        std::cout << "ok\n";
+    }
+  answer: { kind: output, output: "ok" }
+  explanation: |
+    Since C++17, initializing an object from a prvalue of the same type does not create a temporary and
+    then copy/move it; the prvalue *initializes the result object directly* ([class.copy.elision],
+    [dcl.init], "guaranteed copy elision"). `return Pinned{};` and `Pinned p = make();` never
+    need the copy or move constructor, so deleting them is fine and the program prints `ok`.
+
+    In C++14 this was an error: elision was allowed but optional, so the move constructor still had to
+    be accessible.
+
+- id: cpp-move-006
+  topic: cpp
+  subtopic: Value categories and move semantics
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [copy-elision, nrvo]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    struct Pinned {
+        Pinned() = default;
+        Pinned(const Pinned&) = delete;
+        Pinned(Pinned&&) = delete;
+    };
+
+    Pinned make() {
+        Pinned p;
+        return p;
+    }
+
+    int main() {
+        Pinned p = make();
+        (void)p;
+        std::cout << "ok\n";
+    }
+  answer: { kind: compile_error }
+  explanation: |
+    Guaranteed copy elision applies only to prvalues. Returning a *named* local is named return value
+    optimisation (NRVO), which is permitted but never required ([class.copy.elision]). Because the
+    compiler might not elide, `return p;` must still be able to move or copy `p`; both constructors are
+    deleted, so the program is ill-formed, even though every mainstream compiler would actually elide.
+
+    Compare with returning `Pinned{}` (a prvalue), which compiles since C++17.
+
+- id: cpp-move-007
+  topic: cpp
+  subtopic: Value categories and move semantics
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [copy-elision, implicit-move]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    struct S {
+        S() {}
+        S(const S&) { std::cout << "copy "; }
+        S(S&&) noexcept { std::cout << "move "; }
+    };
+
+    S pass(S s) { return s; }
+
+    int main() {
+        S a;
+        S b = pass(a);
+        (void)b;
+        std::cout << '\n';
+    }
+  answer: { kind: output, output: "copy move" }
+  explanation: |
+    - `pass(a)` copies the lvalue `a` into the parameter → `copy`.
+    - `return s;` cannot use NRVO: a function parameter is not eligible for elision
+      ([class.copy.elision] excludes parameters), because the caller allocated it. But returning a
+      local or parameter by name treats it as an rvalue first ("implicit move", [class.copy.elision]),
+      so the move constructor is used → `move`.
+    - `S b = pass(a);` initializes `b` from a prvalue, which is guaranteed elision; nothing printed.
+
+- id: cpp-move-008
+  topic: cpp
+  subtopic: Value categories and move semantics
+  difficulty: easy
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [move-semantics, const]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+    #include <utility>
+
+    struct S {
+        S() {}
+        S(const S&) { std::cout << "copy\n"; }
+        S(S&&) noexcept { std::cout << "move\n"; }
+    };
+
+    int main() {
+        const S a;
+        S b = std::move(a);
+        (void)b;
+    }
+  answer: { kind: output, output: "copy" }
+  explanation: |
+    `std::move(a)` yields an xvalue of type `const S`. The move constructor takes `S&&`, which cannot
+    bind to a const object, so overload resolution falls back to `S(const S&)`, which happily binds to
+    the const rvalue. The result is a silent copy.
+
+    This is a common performance bug: `std::move` on a `const` variable (or on a member inside a
+    `const` member function) compiles but never moves. clang-tidy's `performance-move-const-arg` flags it.
+
+- id: cpp-move-009
+  topic: cpp
+  subtopic: Value categories and move semantics
+  difficulty: hard
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [special-member-functions, rule-of-five, implicit-move]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+    #include <utility>
+
+    struct Tracer {
+        Tracer() {}
+        Tracer(const Tracer&) { std::cout << "copy "; }
+        Tracer(Tracer&&) noexcept { std::cout << "move "; }
+    };
+
+    struct A { Tracer t; };
+    struct B { Tracer t; ~B() {} };
+
+    int main() {
+        A a;
+        A a2 = std::move(a);
+        B b;
+        B b2 = std::move(b);
+        std::cout << '\n';
+    }
+  answer: { kind: output, output: "move copy" }
+  explanation: |
+    `A` declares no special members, so it gets an implicit move constructor that moves `t` → `move`.
+
+    `B` has a *user-declared destructor*. Per [class.copy.ctor] the move constructor is then not
+    implicitly declared at all (it is not deleted, it simply doesn't exist). The implicitly declared copy
+    constructor (deprecated in this situation, but still generated) is selected for the rvalue, and it
+    copies `t` → `copy`.
+
+    Adding an empty destructor "for debugging" can therefore silently turn every move of the class
+    into a copy. Either follow the rule of zero, or declare all five (`= default` the moves).
+
+- id: cpp-move-010
+  topic: cpp
+  subtopic: Value categories and move semantics
+  difficulty: hard
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [noexcept, std-vector, move-if-noexcept]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+    #include <vector>
+
+    struct MayThrow {
+        MayThrow() {}
+        MayThrow(const MayThrow&) { std::cout << 'c'; }
+        MayThrow(MayThrow&&) { std::cout << 'm'; }
+    };
+
+    struct NoThrow {
+        NoThrow() {}
+        NoThrow(const NoThrow&) { std::cout << 'c'; }
+        NoThrow(NoThrow&&) noexcept { std::cout << 'm'; }
+    };
+
+    int main() {
+        std::vector<MayThrow> a;
+        a.reserve(1);
+        a.emplace_back();
+        a.emplace_back();
+        std::cout << ' ';
+        std::vector<NoThrow> b;
+        b.reserve(1);
+        b.emplace_back();
+        b.emplace_back();
+        std::cout << '\n';
+    }
+  answer: { kind: output, output: "c m" }
+  explanation: |
+    The second `emplace_back` exceeds the capacity, so the vector reallocates and transfers the existing
+    element. `push_back`/`emplace_back` offer the strong exception guarantee: if anything throws, the
+    vector is unchanged. A move that throws halfway would have already gutted the old elements, so the
+    library uses `std::move_if_noexcept`: it moves only if the move constructor is `noexcept` (or the
+    type is not copyable), otherwise it copies.
+
+    `MayThrow`'s move constructor isn't `noexcept` → the old element is copied (`c`). `NoThrow` → moved
+    (`m`). The newly emplaced elements are default-constructed and print nothing.
+    Mark move constructors `noexcept` (or `= default` them, which deduces it).
+
+- id: cpp-move-011
+  topic: cpp
+  subtopic: Value categories and move semantics
+  difficulty: hard
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [decltype, value-categories]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+    #include <type_traits>
+    #include <utility>
+
+    int main() {
+        int i = 0;
+        int&& r = std::move(i);
+        std::cout << std::is_same_v<decltype(r), int&&>
+                  << std::is_same_v<decltype((r)), int&&>
+                  << std::is_same_v<decltype(std::move(i)), int&&>
+                  << std::is_same_v<decltype((i)), int&>
+                  << '\n';
+    }
+  answer: { kind: output, output: "1011" }
+  explanation: |
+    `decltype` has two modes ([dcl.type.decltype]):
+
+    - For an unparenthesized *id-expression* it gives the **declared type** of the entity:
+      `decltype(r)` is `int&&` → `1`.
+    - For any other expression it encodes the **value category**: lvalue → `T&`, xvalue → `T&&`,
+      prvalue → `T`. `(r)` is a parenthesized expression naming a variable, i.e. an lvalue, so
+      `decltype((r))` is `int&`, not `int&&` → `0`.
+    - `std::move(i)` is an xvalue → `int&&` → `1`.
+    - `(i)` is an lvalue → `int&` → `1`.
+
+    The extra parentheses matter in `decltype(auto)` return types: `return (x);` returns a reference.
+
+- id: cpp-move-012
+  topic: cpp
+  subtopic: Value categories and move semantics
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [copy-elision, pessimizing-move]
+  prompt: |
+    What does this program print? (Assume a mainstream compiler with default settings.)
+  code: |
+    #include <iostream>
+    #include <utility>
+
+    struct S {
+        S() {}
+        S(const S&) { std::cout << "copy "; }
+        S(S&&) noexcept { std::cout << "move "; }
+    };
+
+    S f() { S s; return s; }
+    S g() { S s; return std::move(s); }
+
+    int main() {
+        S a = f();
+        std::cout << "| ";
+        S b = g();
+        std::cout << '\n';
+    }
+  answer: { kind: unspecified }
+  explanation: |
+    `f()` returns a named local, which is NRVO: *permitted but not required* ([class.copy.elision]).
+    Whether `f` prints `move` is therefore up to the implementation, so strictly the output is unspecified.
+    In practice GCC and Clang always perform NRVO here (even at `-O0`) and print `| move`.
+
+    The real lesson is `g()`: `return std::move(s);` makes the operand an xvalue rather than a plain
+    name, which *disables* NRVO, so `g` always prints `move`. Without `std::move`, the best case is no
+    constructor call at all and the worst case is an implicit move anyway. This "pessimizing move" is
+    what `-Wpessimizing-move` warns about.
+
+- id: cpp-move-013
+  topic: cpp
+  subtopic: Value categories and move semantics
+  difficulty: easy
+  type: single
+  tags: [std-move]
+  prompt: What does `std::move(x)` actually do?
+  choices:
+    - { id: a, text: "It transfers the resources of `x` into a temporary and leaves `x` empty." }
+    - { id: b, text: "It casts `x` to an rvalue reference (an xvalue), which lets overload resolution pick move constructors/assignments; nothing is moved by the call itself." }
+    - { id: c, text: "It forces the move constructor to be used even if the type only has a copy constructor." }
+    - { id: d, text: "It ends the lifetime of `x`; using `x` afterwards is undefined behaviour." }
+  answer: b
+  explanation: |
+    `std::move` is `static_cast<std::remove_reference_t<T>&&>(t)`. It changes the *value category* of the
+    expression to xvalue. A move only happens if the result is then used to initialize or assign an object
+    whose type has a move constructor/assignment.
+
+    - (a) Nothing is transferred by the cast; `auto&& r = std::move(x);` leaves `x` untouched.
+    - (c) If there is no usable move constructor, the copy constructor (taking `const T&`) binds to the
+      rvalue and a copy happens.
+    - (d) `x` remains a live object. For standard types it is in a valid but unspecified state after
+      being moved from, and you may assign to it or destroy it.
+
+- id: cpp-move-014
+  topic: cpp
+  subtopic: Value categories and move semantics
+  difficulty: medium
+  type: single
+  tags: [value-categories]
+  prompt: |
+    Given `int i = 0;`, which of these expressions is an **lvalue**?
+  choices:
+    - { id: a, text: "`42`" }
+    - { id: b, text: "`\"hello\"`" }
+    - { id: c, text: "`i++`" }
+    - { id: d, text: "`std::string(\"x\")`" }
+  answer: b
+  explanation: |
+    A string literal is an lvalue of type `const char[6]`: it designates an array object with static
+    storage duration, and you can take its address (`&"hello"`). See [expr.prim.literal].
+
+    - `42` is a prvalue (other literals are prvalues).
+    - `i++` returns a copy of the old value: prvalue. (`++i` is an lvalue.)
+    - `std::string("x")` is a prvalue that materializes a temporary when needed.
+
+- id: cpp-move-015
+  topic: cpp
+  subtopic: Value categories and move semantics
+  difficulty: medium
+  type: multiple
+  tags: [value-categories]
+  prompt: |
+    Given these declarations, which expressions are **xvalues**? Select all that apply.
+
+    ```cpp
+    struct W { int m; };
+    W w;
+    W&& h();
+    W  v();
+    W&& rr = std::move(w);
+    ```
+  choices:
+    - { id: a, text: "`std::move(w)`" }
+    - { id: b, text: "`h()`" }
+    - { id: c, text: "`std::move(w).m`" }
+    - { id: d, text: "`v()`" }
+    - { id: e, text: "`rr`" }
+    - { id: f, text: "`static_cast<W&&>(w)`" }
+  answer: [a, b, c, f]
+  explanation: |
+    An xvalue is an expression that denotes an object whose resources can be reused ([basic.lval]):
+    a call to a function returning an rvalue reference (`std::move(w)`, `h()`), a cast to an rvalue
+    reference (`static_cast<W&&>(w)`), and a member access on an xvalue (`std::move(w).m`).
+
+    - `v()` returns by value, so it is a prvalue.
+    - `rr` has type `W&&` but, being a name, is an lvalue. "Has rvalue reference type" and "is an rvalue"
+      are different things.
+
+- id: cpp-move-016
+  topic: cpp
+  subtopic: Value categories and move semantics
+  difficulty: hard
+  type: multiple
+  tags: [forwarding-references, templates]
+  prompt: |
+    In which of these declarations is `x` a **forwarding reference** (a.k.a. universal reference)?
+    Select all that apply.
+
+    ```cpp
+    template <class T> void f1(T&& x);                       // (1)
+    template <class T> void f2(const T&& x);                 // (2)
+    template <class T> void f3(std::vector<T>&& x);          // (3)
+    template <class T> struct Box { void put(T&& x); };       // (4)
+    auto&& x = make();                                        // (5)
+    template <class T> struct Box2 {
+        template <class U> void put(U&& x);                   // (6)
+    };
+    ```
+  choices:
+    - { id: "1", text: "(1)" }
+    - { id: "2", text: "(2)" }
+    - { id: "3", text: "(3)" }
+    - { id: "4", text: "(4)" }
+    - { id: "5", text: "(5)" }
+    - { id: "6", text: "(6)" }
+  answer: ["1", "5", "6"]
+  explanation: |
+    A forwarding reference is exactly `T&&` where `T` is a template parameter of *that* function
+    template being deduced from the call, with no cv-qualifiers ([temp.deduct.call]), or `auto&&`.
+
+    - (2) `const T&&` is a plain rvalue reference to const.
+    - (3) `std::vector<T>&&` is an rvalue reference: the deduction is on `T` inside another type.
+    - (4) `T` is the *class* template's parameter, already fixed when `put` is called, so `T&&` is an
+      ordinary rvalue reference. (6) is the fix: make the member a template with its own parameter.
+    - (5) `auto&&` follows template deduction rules and binds to anything.
+
+- id: cpp-move-017
+  topic: cpp
+  subtopic: Value categories and move semantics
+  difficulty: medium
+  type: short
+  tags: [std-move, std-forward, perfect-forwarding]
+  prompt: |
+    Explain the difference between `std::move` and `std::forward`. When should each be used, and what
+    goes wrong if you use `std::move` on a forwarding reference?
+  reference: |
+    Both are casts that produce no code of their own. `std::move(x)` unconditionally casts to an rvalue
+    (xvalue), signalling "I no longer need this value", and is used on objects you own, e.g. moving a
+    by-value parameter into a member. `std::forward<T>(x)` is a *conditional* cast used only with
+    forwarding references (`T&&` with deduced `T`): if the original argument was an lvalue, `T` is
+    deduced as `U&` and forward returns an lvalue; if it was an rvalue, `T = U` and forward returns an
+    rvalue. It restores the caller's value category, which the named parameter lost (a named variable is
+    always an lvalue). Using `std::move` on a forwarding reference would move from the caller's lvalue
+    arguments behind their back, leaving their objects in a moved-from state. Using neither would copy rvalues.
+  explanation: |
+    Interviewers listen for "both are just casts" and for the reason forwarding exists at all: inside
+    the function the parameter has a name, so it is an lvalue. A common wrong answer is "forward is
+    for templates, move is for non-templates". The real distinction is unconditional versus conditional.
+    See cppreference `std::forward` and Scott Meyers, *Effective Modern C++*, Items 23–25.
+  keyPoints:
+    - std::move is an unconditional cast to rvalue (xvalue); it does not move by itself
+    - std::forward<T> is a conditional cast that preserves the original value category, used with forwarding references
+    - Named parameters (even of type T&&) are lvalues, which is why forwarding is needed at all
+    - std::move on a forwarding reference can steal from a caller's lvalue
+    - Forward/move each object at most once, typically at its last use
+
+- id: cpp-move-018
+  topic: cpp
+  subtopic: Value categories and move semantics
+  difficulty: medium
+  type: short
+  tags: [noexcept, std-vector, move-if-noexcept]
+  prompt: |
+    Why is it important for a move constructor to be `noexcept`? Give a concrete standard library
+    example where it changes behaviour.
+  reference: |
+    Standard containers give the strong exception guarantee for some operations, e.g.
+    `std::vector::push_back` and `reserve`: if an exception is thrown, the vector is unchanged. When a
+    vector reallocates it has to transfer existing elements to the new buffer. If it moved them and a move
+    threw halfway, some originals would already be gutted and the old state could not be restored. So
+    the vector uses `std::move_if_noexcept`: it moves only when the move constructor is `noexcept` (or
+    the type is move-only), otherwise it copies. A move constructor that isn't marked `noexcept` turns
+    every reallocation into an O(n) deep copy. Defaulted move constructors deduce `noexcept` from the
+    members; user-written ones must say it explicitly. `std::is_nothrow_move_constructible` lets you check.
+  explanation: |
+    The key insight is the strong exception guarantee: copying during reallocation keeps the originals
+    intact if something throws, while moving destroys them as it goes. Candidates who only say "noexcept
+    is faster" miss why. See cppreference `std::move_if_noexcept` and Core Guidelines C.66 ("Make move
+    operations noexcept").
+  keyPoints:
+    - vector reallocation (push_back, emplace_back, reserve, resize) must keep the strong exception guarantee
+    - It uses std::move_if_noexcept, copying elements if the move constructor might throw (and copy is available)
+    - So a non-noexcept move ctor silently turns reallocation into copies, a performance bug
+    - "= default moves deduce noexcept; hand-written ones must declare it (and must truly not throw)"
+    - Swap and move assignment should usually be noexcept too
+
+- id: cpp-move-019
+  topic: cpp
+  subtopic: Value categories and move semantics
+  difficulty: medium
+  type: short
+  tags: [copy-elision, rvo, nrvo, cpp17]
+  prompt: |
+    Explain RVO, NRVO and C++17 "guaranteed copy elision". What does each require of the type, and what
+    does a compiler do when NRVO isn't possible?
+  reference: |
+    Return value optimization constructs a function's returned object directly in the caller's storage
+    instead of creating a local and copying or moving it. For a prvalue (`return Widget(args);` or
+    `return Widget{...};`), C++17 makes this *mandatory* and not even an optimization: prvalues are
+    "unmaterialized" and initialize their final destination directly, so no copy or move constructor is
+    needed (it may even be deleted). The same applies to `Widget w = Widget();` and to passing prvalues by
+    value. Named RVO (`Widget w; ...; return w;`) is still optional: compilers do it when all return paths
+    return the same local object, but it requires an accessible copy or move constructor. When NRVO can't
+    apply (different locals returned on different paths, returning a parameter, returning a member or
+    global), returning a local or parameter by name is still treated as an rvalue first ("implicit move",
+    broadened in C++20 and C++23), so a move happens rather than a copy. Don't write
+    `return std::move(local);`: it prevents NRVO, and is at best equivalent.
+  explanation: |
+    The distinction to draw is mandatory elision for prvalues (C++17) versus permitted elision for named
+    objects, with implicit move as the fallback. See cppreference "Copy elision".
+  keyPoints:
+    - RVO constructs the return value directly in the caller's storage
+    - C++17 makes prvalue elision mandatory; copy/move constructors aren't required (can be deleted)
+    - NRVO for named locals is optional and still needs an accessible copy/move constructor
+    - When NRVO doesn't apply, returning a local or parameter by name is an implicit move
+    - "return std::move(local) inhibits NRVO (pessimizing move)"
+
+- id: cpp-move-020
+  topic: cpp
+  subtopic: Value categories and move semantics
+  difficulty: hard
+  type: short
+  tags: [perfect-forwarding, forwarding-references, templates]
+  prompt: |
+    Perfect forwarding with `template <class... Args> void emplace(Args&&... args)` and
+    `std::forward<Args>(args)...` is not actually perfect. Name some argument kinds for which forwarding
+    fails or behaves differently from calling the target directly.
+  reference: |
+    Forwarding needs template argument deduction to produce a type, so it fails where a direct call would
+    work: (1) braced initializer lists: `f({1, 2, 3})` can't deduce a type for `Args` (a direct call
+    could convert to `std::vector<int>`); (2) `0` or `NULL` as null pointers deduce `int` or `long`, so
+    the target receives an integer, not a pointer, so use `nullptr`; (3) names of overloaded functions or
+    function templates have no single type to deduce; (4) bit-fields can't bind to non-const references,
+    so forwarding a bit-field member fails; (5) static const/constexpr data members declared but not
+    defined (pre-C++17 non-inline) become odr-used when bound to a reference and cause link errors. Also,
+    forwarding constructors (`template <class T> Widget(T&&)`) hijack copy construction from non-const
+    lvalues, because `T&&` with `T = Widget&` is a better match than `const Widget&`; constrain them with
+    `requires` or `enable_if`. And forwarded arguments must not be used after being forwarded.
+  explanation: |
+    Based on Scott Meyers, *Effective Modern C++*, Item 30 ("Familiarize yourself with perfect forwarding
+    failure cases") and Item 26 (avoid overloading on universal references).
+  keyPoints:
+    - Braced initializer lists can't be deduced
+    - 0/NULL deduce integers, not pointers; use nullptr
+    - Overloaded function names or templates have no single type
+    - Bit-fields can't bind to references; odr-use of undefined static constants
+    - Forwarding constructors hijack copying of non-const lvalues; constrain them

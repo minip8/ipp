@@ -1,0 +1,131 @@
+# Production stack for the app host: TLS proxy, web, API, Postgres, Redis.
+# The judge does NOT run here; it runs on its own VM and reaches Redis over the private network.
+#
+#   cd infra/deploy && cp env.prod.example .env.prod   # fill it in
+#   docker compose --env-file .env.prod -f compose.prod.yml build
+#   docker compose --env-file .env.prod -f compose.prod.yml run --rm tools pnpm db:migrate
+#   docker compose --env-file .env.prod -f compose.prod.yml run --rm tools pnpm db:seed
+#   docker compose --env-file .env.prod -f compose.prod.yml up -d
+name: ipp-prod
+
+x-app-env: &app-env
+  NODE_ENV: production
+  DATABASE_URL: postgres://ipp:${POSTGRES_PASSWORD}@postgres:5432/ipp
+  REDIS_URL: redis://default:${REDIS_PASSWORD}@redis:6379
+  WEB_ORIGIN: https://${SITE_HOST}
+  API_ORIGIN: https://${SITE_HOST}
+  BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
+  # No Anthropic key: AI features run on users' own keys (encrypted in Redis).
+  AI_KEY_ENCRYPTION_SECRET: ${AI_KEY_ENCRYPTION_SECRET:-}
+  AI_KEY_TTL_HOURS: ${AI_KEY_TTL_HOURS:-24}
+  INTERVIEWER_MODEL: ${INTERVIEWER_MODEL:-claude-opus-5-5}
+  AI_DAILY_MESSAGE_LIMIT: ${AI_DAILY_MESSAGE_LIMIT:-300}
+  AI_DAILY_INPUT_TOKEN_LIMIT: ${AI_DAILY_INPUT_TOKEN_LIMIT:-5000000}
+  AI_DAILY_OUTPUT_TOKEN_LIMIT: ${AI_DAILY_OUTPUT_TOKEN_LIMIT:-500000}
+  GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+  GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+  GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+  GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+  # Caddy and the web container, by their fixed addresses below. Caddy replaces any
+  # client-supplied X-Forwarded-For, so the value the API sees is the real client address.
+  TRUSTED_PROXIES: 172.28.0.2,172.28.0.3
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports: ["80:80", "443:443", "443:443/udp"]
+    environment:
+      SITE_HOST: ${SITE_HOST}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      app: { ipv4_address: 172.28.0.2 }
+    depends_on: [web, api]
+
+  web:
+    build:
+      context: ../..
+      dockerfile: infra/deploy/Dockerfile
+      target: web
+      args:
+        API_INTERNAL_URL: http://172.28.0.4:4000
+        NEXT_PUBLIC_WS_URL: wss://${SITE_HOST}
+    restart: unless-stopped
+    networks:
+      app: { ipv4_address: 172.28.0.3 }
+    depends_on: [api]
+
+  api:
+    build:
+      context: ../..
+      dockerfile: infra/deploy/Dockerfile
+      target: api
+    image: ipp-api:prod
+    restart: unless-stopped
+    environment: *app-env
+    networks:
+      app: { ipv4_address: 172.28.0.4 }
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  # One-off commands (migrations, seeding) in the API image, without the API's fixed address.
+  tools:
+    image: ipp-api:prod
+    profiles: [tools]
+    environment: *app-env
+    networks: [app]
+    depends_on:
+      postgres: { condition: service_healthy }
+    command: ["pnpm", "db:migrate"]
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ipp
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ipp
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    networks: [app]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ipp"]
+      interval: 5s
+      retries: 20
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_JUDGE_PASSWORD: ${REDIS_JUDGE_PASSWORD}
+    # Two users: the API (everything) and the judge (only the judge:* streams and channel).
+    entrypoint: ["/bin/sh", "/redis-start.sh"]
+    volumes:
+      - ./redis-start.sh:/redis-start.sh:ro
+      - redisdata:/data
+    # Published only on the host's private address, for the judge VM. Never on a public interface.
+    ports:
+      [
+        "${REDIS_BIND_IP:?set REDIS_BIND_IP to the private address of this host}:${REDIS_PORT:-6379}:6379",
+      ]
+    networks: [app]
+    healthcheck:
+      test: ["CMD-SHELL", 'redis-cli --no-auth-warning -a "$$REDIS_PASSWORD" ping | grep -q PONG']
+      interval: 5s
+      retries: 20
+
+networks:
+  app:
+    ipam:
+      # Fixed addresses (.2 to .4) sit outside ip_range, which is used for everything else.
+      config: [{ subnet: 172.28.0.0/24, ip_range: 172.28.0.128/25 }]
+
+volumes:
+  pgdata:
+  redisdata:
+  caddy_data:
+  caddy_config:

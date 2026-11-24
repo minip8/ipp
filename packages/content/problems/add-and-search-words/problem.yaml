@@ -1,0 +1,21 @@
+slug: add-and-search-words
+title: Word Dictionary with Wildcards
+difficulty: medium
+tags: [design, trie, dfs, string]
+signature:
+  className: WordDictionary
+  kind: design
+  ctorParams: []
+  methods:
+    - name: addWord
+      params:
+        - { name: word, type: string }
+      returns: void
+    - name: search
+      params:
+        - { name: pattern, type: string }
+      returns: bool
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 211)
+  url: https://leetcode.com/problems/design-add-and-search-words-data-structure/

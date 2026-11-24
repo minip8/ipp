@@ -1,0 +1,814 @@
+# Templates: argument deduction, auto/decltype, specialization, SFINAE, concepts, variadics, CTAD.
+- id: cpp-templates-001
+  topic: cpp
+  subtopic: Templates, deduction, SFINAE and concepts
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [template-argument-deduction, const]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+    #include <type_traits>
+
+    template <class T> void byval(T)  { std::cout << std::is_const_v<T> << std::is_reference_v<T> << ' '; }
+    template <class T> void byref(T&) { std::cout << std::is_const_v<T> << ' '; }
+
+    int main() {
+        const int ci = 1;
+        const int& r = ci;
+        byval(ci);
+        byval(r);
+        byref(ci);
+        byref(r);
+        std::cout << '\n';
+    }
+  answer: { kind: output, output: "00 00 1 1" }
+  explanation: |
+    For a by-value parameter `T`, deduction strips references and then top-level cv-qualifiers from the
+    argument type ([temp.deduct.call]), because the function receives its own copy. Both calls
+    deduce `T = int`.
+
+    For `T&`, the reference is matched and constness is part of what is referred to, so it is kept:
+    `T = const int` for both `ci` and `r`. (Expressions never have reference type, so `r` behaves exactly
+    like `ci`.) `auto` follows the same rules: `auto x = ci;` is `int`, `auto& y = ci;` is `const int&`.
+
+- id: cpp-templates-002
+  topic: cpp
+  subtopic: Templates, deduction, SFINAE and concepts
+  difficulty: hard
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [function-templates, explicit-specialization, overload-resolution]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    template <class T> void f(T)       { std::cout << "primary T\n"; }
+    template <>        void f(int*)    { std::cout << "specialization\n"; }
+    template <class T> void f(T*)      { std::cout << "primary T*\n"; }
+
+    int main() {
+        int* p = nullptr;
+        f(p);
+    }
+  answer: { kind: output, output: "primary T*" }
+  explanation: |
+    Explicit specializations don't take part in overload resolution; only *primary* templates (and
+    non-templates) do. At the point of `template <> void f(int*)`, the only visible primary is
+    `f(T)`, so this is a specialization of `f(T)` with `T = int*`.
+
+    For `f(p)` the candidates are `f(T)` with `T = int*` and `f(T*)` with `T = int`. Both are exact, and
+    partial ordering picks the more specialized `f(T*)`. Its specialization is never considered, so it
+    prints `primary T*`. Swap the declaration order and the specialization attaches to `f(T*)` instead,
+    printing `specialization`.
+
+    Lesson (Herb Sutter, "Why Not Specialize Function Templates?"): overload function templates rather
+    than specializing them.
+  source: { name: "GotW #49 / Herb Sutter, Why Not Specialize Function Templates?", url: "http://www.gotw.ca/publications/mill17.htm" }
+
+- id: cpp-templates-003
+  topic: cpp
+  subtopic: Templates, deduction, SFINAE and concepts
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [sfinae, enable-if]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+    #include <type_traits>
+
+    template <class T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
+    void f(T) { std::cout << "integral "; }
+
+    template <class T, std::enable_if_t<!std::is_integral_v<T>, int> = 0>
+    void f(T) { std::cout << "other "; }
+
+    int main() {
+        f(1);
+        f(1.0);
+        f('c');
+        f(true);
+        std::cout << '\n';
+    }
+  answer: { kind: output, output: "integral other integral integral" }
+  explanation: |
+    `std::enable_if_t<false, int>` names a non-existent member type, so substituting `T` into that
+    overload's template parameter list fails and the candidate is silently dropped: Substitution
+    Failure Is Not An Error ([temp.deduct]). Exactly one overload survives for each call.
+    `char` and `bool` are integral types according to `std::is_integral`.
+
+    In C++20 the same is written `void f(std::integral auto)`, or with a `requires` clause.
+
+- id: cpp-templates-004
+  topic: cpp
+  subtopic: Templates, deduction, SFINAE and concepts
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++20
+  tags: [concepts, subsumption, cpp20]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+    #include <type_traits>
+
+    template <class T> concept Integral = std::is_integral_v<T>;
+    template <class T> concept SignedIntegral = Integral<T> && std::is_signed_v<T>;
+
+    void f(Integral auto)       { std::cout << "I"; }
+    void f(SignedIntegral auto) { std::cout << "S"; }
+
+    int main() {
+        f(1);
+        f(1u);
+        std::cout << '\n';
+    }
+  answer: { kind: output, output: "SI" }
+  explanation: |
+    For `f(1)` both overloads are viable. Because `SignedIntegral` is defined as `Integral<T> && ...`,
+    its normalized constraint contains `Integral<T>`, so it *subsumes* `Integral` ([temp.constr.order]):
+    the more constrained overload wins → `S`. For `1u` only `Integral` is satisfied → `I`.
+
+- id: cpp-templates-005
+  topic: cpp
+  subtopic: Templates, deduction, SFINAE and concepts
+  difficulty: hard
+  type: output
+  language: cpp
+  standard: C++20
+  tags: [concepts, subsumption, cpp20]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+    #include <type_traits>
+
+    template <class T> concept Integral = std::is_integral_v<T>;
+    template <class T> concept SignedIntegral = std::is_integral_v<T> && std::is_signed_v<T>;
+
+    void f(Integral auto)       { std::cout << "I"; }
+    void f(SignedIntegral auto) { std::cout << "S"; }
+
+    int main() {
+        f(1);
+        std::cout << '\n';
+    }
+  answer: { kind: compile_error }
+  explanation: |
+    This looks identical to using `Integral<T> && ...`, but subsumption is decided on *normalized atomic
+    constraints*, and two atomic constraints are identical only if they come from the **same expression
+    in the source** ([temp.constr.atomic]). `std::is_integral_v<T>` written in `Integral` and
+    `std::is_integral_v<T>` written again in `SignedIntegral` are different atomic constraints, so neither
+    concept subsumes the other. Both overloads are viable for `f(1)` and equally constrained → ambiguous.
+
+    Build concepts out of other *concepts* (as `std::signed_integral` is built from `std::integral`)
+    if you want subsumption to work.
+
+- id: cpp-templates-006
+  topic: cpp
+  subtopic: Templates, deduction, SFINAE and concepts
+  difficulty: easy
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [variadic-templates, fold-expressions]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    template <class... Ts>
+    auto sum(Ts... ts) { return (ts + ... + 0); }
+
+    template <class... Ts>
+    void print(const Ts&... ts) {
+        ((std::cout << ts << ','), ...);
+        std::cout << sizeof...(Ts) << '\n';
+    }
+
+    int main() {
+        std::cout << sum(1, 2, 3) << sum() << '|';
+        print(1, 'a', 2.5);
+    }
+  answer: { kind: output, output: "60|1,a,2.5,3" }
+  explanation: |
+    - `(ts + ... + 0)` is a *binary right fold*: `1 + (2 + (3 + 0)) = 6`. The init value makes the empty
+      pack legal: `sum()` returns `0`. (A unary `+` fold over an empty pack would be ill-formed.)
+    - `((std::cout << ts << ','), ...)` is a unary fold over the comma operator, which evaluates its
+      operands left to right, so the arguments are printed in order: `1,a,2.5,`.
+    - `sizeof...(Ts)` is the number of elements in the pack, `3`.
+
+- id: cpp-templates-007
+  topic: cpp
+  subtopic: Templates, deduction, SFINAE and concepts
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [fold-expressions, variadic-templates]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    template <class... T> int left(T... t)  { return (... - t); }
+    template <class... T> int right(T... t) { return (t - ...); }
+
+    int main() {
+        std::cout << left(1, 2, 3) << ' ' << right(1, 2, 3) << '\n';
+    }
+  answer: { kind: output, output: "-4 2" }
+  explanation: |
+    A *unary left fold* `(... op pack)` expands to `((1 - 2) - 3) = -4`. A *unary right fold*
+    `(pack op ...)` expands to `1 - (2 - 3) = 2` ([expr.prim.fold]). For associative operators like
+    `+` or `&&` the direction doesn't matter; for `-`, `/`, `<<` or assignment it does. Note also that
+    a unary fold over an empty pack is only allowed for `&&` (true), `||` (false) and `,` (void()).
+
+- id: cpp-templates-008
+  topic: cpp
+  subtopic: Templates, deduction, SFINAE and concepts
+  difficulty: hard
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [ctad, class-template-argument-deduction, std-vector]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+    #include <vector>
+
+    int main() {
+        std::vector v{1, 2, 3};
+        std::vector w{v};
+        std::vector x{v, v};
+        std::cout << w.size() << ' ' << x.size() << '\n';
+    }
+  answer: { kind: output, output: "3 2" }
+  explanation: |
+    Class template argument deduction (C++17): `v` is `std::vector<int>`.
+
+    For `std::vector w{v}` there's a special rule: when the braced list is a single element whose type is
+    a specialization of the template being deduced, the *copy deduction candidate* is preferred
+    ([over.match.class.deduct], [over.match.list]). So `w` is `std::vector<int>`, a copy of `v` with
+    size 3, not a `vector<vector<int>>`. With two elements the initializer-list guide is used and `x` is
+    `std::vector<std::vector<int>>` of size 2.
+
+    This inconsistency is a known CTAD wart; it's one reason style guides discourage CTAD with braces for
+    wrapper types.
+
+- id: cpp-templates-009
+  topic: cpp
+  subtopic: Templates, deduction, SFINAE and concepts
+  difficulty: easy
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [class-templates, static-members, inline-variables]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    template <class T>
+    struct Counter {
+        static inline int n = 0;
+        Counter() { ++n; }
+    };
+
+    int main() {
+        Counter<int> a, b;
+        Counter<double> c;
+        std::cout << Counter<int>::n << Counter<double>::n << '\n';
+    }
+  answer: { kind: output, output: "21" }
+  explanation: |
+    Every specialization of a class template is a distinct class with its own static data members, so
+    `Counter<int>::n` and `Counter<double>::n` are different variables. (C++17 `static inline` lets the
+    member be defined in-class without a separate out-of-class definition.)
+
+- id: cpp-templates-010
+  topic: cpp
+  subtopic: Templates, deduction, SFINAE and concepts
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [dependent-names, typename]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+    #include <vector>
+
+    template <class C>
+    void first(const C& c) {
+        C::const_iterator it = c.begin();
+        std::cout << *it << '\n';
+    }
+
+    int main() {
+        first(std::vector<int>{7, 8});
+    }
+  answer: { kind: compile_error }
+  explanation: |
+    `C::const_iterator` is a *dependent qualified name*. Until the template is instantiated, the compiler
+    can't know whether it names a type or a static member, and by default it assumes it is **not** a
+    type ([temp.res]). So the declaration parses as an expression and fails. Write
+    `typename C::const_iterator it = c.begin();` (or simply `auto it`).
+
+    C++20 (P0634) dropped the `typename` requirement in some contexts where only a type can appear
+    (e.g. alias declarations, trailing return types, casts, the declared type of namespace-scope and
+    class-member declarations, and parameters of member functions and lambdas), but not for a
+    block-scope declaration statement like this one.
+
+- id: cpp-templates-011
+  topic: cpp
+  subtopic: Templates, deduction, SFINAE and concepts
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [partial-specialization, type-traits]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    template <class T> struct is_ptr       { static constexpr bool value = false; };
+    template <class T> struct is_ptr<T*>   { static constexpr bool value = true; };
+
+    int main() {
+        std::cout << is_ptr<int>::value
+                  << is_ptr<int*>::value
+                  << is_ptr<const int*>::value
+                  << is_ptr<int* const>::value << '\n';
+    }
+  answer: { kind: output, output: "0110" }
+  explanation: |
+    The partial specialization matches types of the form `T*`. `const int*` is "pointer to const int",
+    so it matches with `T = const int`. But `int* const` is a *const-qualified* pointer type, and `T*`
+    doesn't match a cv-qualified type, so the primary template is used. That's why
+    `std::is_pointer` also specializes `T* const`, `T* volatile` and `T* const volatile` (or applies
+    `remove_cv` first).
+
+- id: cpp-templates-012
+  topic: cpp
+  subtopic: Templates, deduction, SFINAE and concepts
+  difficulty: easy
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [if-constexpr]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+    #include <type_traits>
+
+    template <class T>
+    auto value_of(T t) {
+        if constexpr (std::is_pointer_v<T>)
+            return *t;
+        else
+            return t;
+    }
+
+    int main() {
+        int x = 5;
+        std::cout << value_of(&x) + value_of(2) << '\n';
+    }
+  answer: { kind: output, output: "7" }
+  explanation: |
+    In a template, the branch of `if constexpr` not taken is a *discarded statement* and isn't
+    instantiated ([stmt.if]). So `value_of<int>` never instantiates `*t` (which would be ill-formed for
+    an `int`), and each instantiation has a single `return`, so return type deduction sees no conflict
+    (`int` in both cases). `5 + 2 = 7`. A regular `if` would fail to compile for `T = int`.
+
+- id: cpp-templates-013
+  topic: cpp
+  subtopic: Templates, deduction, SFINAE and concepts
+  difficulty: hard
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [if-constexpr, discarded-statement]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    int main() {
+        if constexpr (sizeof(int) == 0) {
+            this_function_does_not_exist();
+        }
+        std::cout << "done\n";
+    }
+  answer: { kind: compile_error }
+  explanation: |
+    `if constexpr` only skips *instantiation*, so it helps only inside templates, where the discarded
+    branch may depend on template parameters. Outside a template, the discarded statement is still fully
+    parsed and semantically checked ([stmt.if]): `this_function_does_not_exist` is an undeclared name,
+    and the program is ill-formed. `if constexpr` is not a replacement for `#if`.
+
+- id: cpp-templates-014
+  topic: cpp
+  subtopic: Templates, deduction, SFINAE and concepts
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [two-phase-lookup, dependent-base]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    template <class T>
+    struct Base {
+        void hello() { std::cout << "hello\n"; }
+    };
+
+    template <class T>
+    struct Derived : Base<T> {
+        void run() { hello(); }
+    };
+
+    int main() {
+        Derived<int> d;
+        d.run();
+    }
+  answer: { kind: compile_error }
+  explanation: |
+    `hello()` has no dependent arguments, so it is a non-dependent name, looked up when the template is
+    *defined*. Unqualified lookup doesn't search the dependent base class `Base<T>`, because a later
+    specialization of `Base` might not have `hello` ([temp.dep]). So no declaration is found and the
+    program is ill-formed (GCC accepts it only with `-fpermissive`). Fix with `this->hello()`,
+    `Base<T>::hello()` or `using Base<T>::hello;`.
+
+- id: cpp-templates-015
+  topic: cpp
+  subtopic: Templates, deduction, SFINAE and concepts
+  difficulty: easy
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [template-argument-deduction]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    template <class T>
+    T biggest(T a, T b) { return a < b ? b : a; }
+
+    int main() {
+        std::cout << biggest(1, 2.5) << '\n';
+    }
+  answer: { kind: compile_error }
+  explanation: |
+    `T` is deduced independently from each argument: `int` from `1` and `double` from `2.5`. The
+    deductions conflict, so deduction fails ([temp.deduct.call]); no implicit conversion is considered
+    during deduction. Fixes: `biggest<double>(1, 2.5)`, convert an argument, or use two template
+    parameters with `std::common_type_t`. (This is also why `std::max(1, 2.5)` doesn't compile.)
+
+- id: cpp-templates-016
+  topic: cpp
+  subtopic: Templates, deduction, SFINAE and concepts
+  difficulty: hard
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [decltype-auto, return-type-deduction]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+    #include <type_traits>
+
+    struct S {
+        int x = 1;
+        decltype(auto) a() { return x; }
+        decltype(auto) b() { return (x); }
+    };
+
+    int main() {
+        S s;
+        std::cout << std::is_reference_v<decltype(s.a())>
+                  << std::is_reference_v<decltype(s.b())>;
+        s.b() = 5;
+        std::cout << s.x << '\n';
+    }
+  answer: { kind: output, output: "015" }
+  explanation: |
+    `decltype(auto)` deduces using `decltype` rules. `return x;` is an unparenthesized member access, so
+    it yields the declared type `int` → returns by value. `return (x);` is a parenthesized lvalue
+    expression → `decltype((x))` is `int&` → returns a reference to the member, so `s.b() = 5` modifies
+    `s.x`. Those parentheses are invisible in code review; applied to a *local* variable they would
+    return a dangling reference.
+
+- id: cpp-templates-017
+  topic: cpp
+  subtopic: Templates, deduction, SFINAE and concepts
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [sfinae, detection-idiom, void-t]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+    #include <string>
+    #include <type_traits>
+    #include <utility>
+
+    template <class T, class = void>
+    struct has_size : std::false_type {};
+
+    template <class T>
+    struct has_size<T, std::void_t<decltype(std::declval<const T&>().size())>> : std::true_type {};
+
+    int main() {
+        std::cout << has_size<std::string>::value << has_size<int>::value << '\n';
+    }
+  answer: { kind: output, output: "10" }
+  explanation: |
+    The detection idiom: `has_size<T>` is really `has_size<T, void>`. The partial specialization matches
+    only if `std::void_t<decltype(...size())>` is a valid type (it is then `void`, which matches the default
+    argument). For `int`, `std::declval<const int&>().size()` is ill-formed in the immediate context, so the
+    specialization is discarded by SFINAE and the primary (`false_type`) is used.
+    In C++20 you'd write `requires (const T& t) { t.size(); }` instead.
+
+- id: cpp-templates-018
+  topic: cpp
+  subtopic: Templates, deduction, SFINAE and concepts
+  difficulty: easy
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [crtp, static-polymorphism]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    template <class Derived>
+    struct Shape {
+        double area() const { return static_cast<const Derived&>(*this).area_impl(); }
+    };
+
+    struct Square : Shape<Square> {
+        double side;
+        explicit Square(double s) : side(s) {}
+        double area_impl() const { return side * side; }
+    };
+
+    template <class D>
+    double twice(const Shape<D>& s) { return 2 * s.area(); }
+
+    int main() {
+        std::cout << twice(Square(3)) << '\n';
+    }
+  answer: { kind: output, output: "18" }
+  explanation: |
+    The Curiously Recurring Template Pattern: the base knows the derived type at compile time and
+    `static_cast`s itself to it, so `area()` dispatches to `Square::area_impl` with no vtable. The call can
+    be inlined. The cost is that there is no common runtime base type: `Shape<Square>` and
+    `Shape<Circle>` are unrelated, so you can't put them in one container without type erasure.
+
+- id: cpp-templates-019
+  topic: cpp
+  subtopic: Templates, deduction, SFINAE and concepts
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++20
+  tags: [requires-expression, if-constexpr, cpp20]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+    #include <string>
+    #include <vector>
+
+    template <class T>
+    void describe(const T& t) {
+        if constexpr (requires { t.size(); })
+            std::cout << "size=" << t.size() << ' ';
+        else
+            std::cout << "scalar ";
+    }
+
+    int main() {
+        describe(std::string("abc"));
+        describe(std::vector<int>{1, 2});
+        describe(42);
+        std::cout << '\n';
+    }
+  answer: { kind: output, output: "size=3 size=2 scalar" }
+  explanation: |
+    A `requires` expression is a `bool` constant expression that is true if its requirements are
+    well-formed ([expr.prim.req]). Inside a template, invalid expressions in it simply make it `false`
+    instead of causing an error, which replaces the `void_t` detection idiom. Combined with
+    `if constexpr`, the `t.size()` call in the true branch is never instantiated for `int`.
+
+- id: cpp-templates-020
+  topic: cpp
+  subtopic: Templates, deduction, SFINAE and concepts
+  difficulty: medium
+  type: single
+  tags: [function-templates, explicit-specialization]
+  prompt: |
+    You want `serialize(const T&)` to behave differently for `std::vector<U>` (any `U`). What is the
+    idiomatic way to do that for a **function** template?
+  choices:
+    - { id: a, text: "Add an overload `template <class U> void serialize(const std::vector<U>&);`" }
+    - { id: b, text: "Write a partial specialization `template <class U> void serialize<std::vector<U>>(const std::vector<U>&);`" }
+    - { id: c, text: "Write a full specialization `template <> void serialize(const std::vector<auto>&);`" }
+    - { id: d, text: "It's impossible; you must use a class template instead." }
+  answer: a
+  explanation: |
+    Function templates cannot be partially specialized ((b) is ill-formed), and full specializations
+    don't take part in overload resolution, so they behave surprisingly (see GotW #49). Overloading
+    achieves the same effect: partial ordering selects the more specialized `const std::vector<U>&` overload.
+    (d) is too strong: delegating to a class template with partial specializations is a valid alternative
+    when you need it, but it's not required. (c) is not valid syntax for a specialization.
+
+- id: cpp-templates-021
+  topic: cpp
+  subtopic: Templates, deduction, SFINAE and concepts
+  difficulty: hard
+  type: multiple
+  tags: [sfinae, immediate-context]
+  prompt: |
+    During overload resolution for a function template, which of the following cause the candidate to
+    be **silently removed** (substitution failure) rather than a hard compile error? Select all that apply.
+  choices:
+    - { id: a, text: "The return type is `typename T::value_type` and `T` has no `value_type`." }
+    - { id: b, text: "The return type is `decltype(std::declval<T>().foo())` and `T` has no `foo`." }
+    - { id: c, text: "A default template argument `std::enable_if_t<std::is_integral_v<T>>` is ill-formed for `T = double`." }
+    - { id: d, text: "The function body calls `t.foo()` and `T` has no `foo`." }
+    - { id: e, text: "Substitution instantiates a class template whose body contains a `static_assert` that fails for `T`." }
+  answer: [a, b, c]
+  explanation: |
+    SFINAE only covers invalid types and expressions in the **immediate context** of the function
+    type and its template parameters ([temp.deduct]): return type, parameter types, default template
+    arguments, and `decltype`/`noexcept` expressions in the signature, i.e. (a), (b), (c).
+
+    - (d) The body isn't part of the signature; it is instantiated only after the candidate has been
+      selected, and errors there are hard errors. (That's why `auto` return types, which need the body to
+      deduce, interact badly with SFINAE.)
+    - (e) Errors that occur while instantiating some *other* template as a side effect, such as a
+      `static_assert` inside a trait's class body, are outside the immediate context and are hard errors.
+
+- id: cpp-templates-022
+  topic: cpp
+  subtopic: Templates, deduction, SFINAE and concepts
+  difficulty: medium
+  type: short
+  tags: [sfinae, concepts, cpp20]
+  prompt: |
+    What is SFINAE, what is it typically used for, and how do C++20 concepts improve on it?
+  reference: |
+    SFINAE ("substitution failure is not an error"): when the compiler substitutes deduced template
+    arguments into a function template's signature and gets an invalid type or expression in the immediate
+    context, the template is just removed from the overload set instead of causing an error. It's used to
+    constrain templates (`std::enable_if`), to select implementations based on type properties, and for
+    detection traits (`void_t`, `decltype` in return types). Downsides: obscure syntax, constraints hidden in
+    default template arguments or return types, unreadable error messages ("no matching function" with
+    pages of candidates), and the difficulty of expressing "more specialized" orderings (mutually exclusive
+    conditions must be written by hand). Concepts (C++20) make constraints first-class: named predicates
+    (`template <std::integral T>`, `requires` clauses, `requires` expressions for ad-hoc checks), errors
+    that say which constraint wasn't satisfied, and overload ordering via subsumption, so a more
+    constrained overload automatically wins without writing negated conditions. They also constrain
+    non-template members of class templates and `auto` parameters.
+  explanation: |
+    Key points: the immediate-context rule, typical `enable_if` use, and the specific improvements of
+    concepts (readability, diagnostics, subsumption). See cppreference "SFINAE" and "Constraints and concepts".
+  keyPoints:
+    - Invalid substitution in the signature (immediate context) removes the candidate instead of erroring
+    - Used via enable_if, decltype return types, and void_t detection traits
+    - "SFINAE drawbacks: unreadable code and error messages; manual mutually-exclusive conditions"
+    - Concepts give named constraints, requires-clauses and requires-expressions
+    - Concepts give better diagnostics and ordering by subsumption (most constrained wins)
+
+- id: cpp-templates-023
+  topic: cpp
+  subtopic: Templates, deduction, SFINAE and concepts
+  difficulty: hard
+  type: short
+  tags: [crtp, virtual-functions, static-polymorphism, performance]
+  prompt: |
+    When would you choose static polymorphism (templates/CRTP/concepts) over virtual functions in a
+    latency-sensitive system, and what do you give up?
+  reference: |
+    Static polymorphism resolves the call at compile time: no vtable pointer load and indirect call, and
+    above all the callee can be *inlined*, enabling further optimization (constant propagation,
+    vectorization). It also avoids heap-allocating polymorphic objects and keeps objects contiguous
+    in memory. Choose it when the set of types is known at compile time and the call is in a hot
+    path (e.g. a strategy/policy for an order handler chosen per build or per template instantiation).
+    Costs: code bloat from one instantiation per type (instruction cache pressure), longer compile times,
+    implementation in headers, worse error messages, and no runtime heterogeneity. You can't keep a
+    `vector<Base*>` of different CRTP types or choose the type from config at runtime without a variant or
+    type erasure. Virtual dispatch is fine when the call isn't hot, the predictor handles it, or the
+    compiler can devirtualize (`final`, LTO). `std::variant` + `std::visit` is a middle ground for a closed set
+    of types.
+  explanation: |
+    Strong answers say the real cost of a virtual call is usually the lost inlining (and a possible
+    indirect-branch mispredict), not the pointer load, and mention variant as a closed-set alternative
+    and `final`/devirtualization.
+  keyPoints:
+    - Compile-time dispatch allows inlining; the virtual call's main cost is lost inlining and indirect branches
+    - Static polymorphism needs types known at compile time; no heterogeneous containers without type erasure
+    - "Costs: code bloat, compile time, header-only code, harder errors"
+    - Virtual is fine off the hot path; final/LTO can devirtualize
+    - std::variant/visit is an alternative for a closed set of types
+
+- id: cpp-templates-024
+  topic: cpp
+  subtopic: Templates, deduction, SFINAE and concepts
+  difficulty: hard
+  type: short
+  tags: [type-erasure, std-function, small-buffer-optimization]
+  prompt: |
+    What is type erasure? Explain how something like `std::function` or `std::any` is implemented, and the
+    role of the small buffer optimization.
+  reference: |
+    Type erasure gives a single concrete (non-template) type a value-semantic interface over arbitrary types
+    that satisfy some concept, without them sharing a base class. Classic implementation: an internal
+    abstract `Concept` base with virtual operations (call, clone, destroy, type) and a templated `Model<T>`
+    that holds a `T` and implements them by forwarding to it. The wrapper's templated constructor creates a
+    `Model<T>` and stores a pointer to it as `Concept*`, so the type `T` is "erased" behind the virtual
+    interface. Copying the wrapper calls `clone()`. Optimized implementations replace the vtable with a
+    hand-rolled table of function pointers, or a single "manager" function pointer, to save space. Small
+    buffer optimization: instead of always heap-allocating the `Model<T>`, the wrapper reserves a few words
+    of inline, aligned storage and constructs small callables (e.g. a lambda capturing a pointer or two)
+    there, falling back to the heap for larger ones or ones whose move constructor might throw. That avoids
+    an allocation for common cases at the cost of a bigger wrapper object (e.g. `std::function` is 32 bytes
+    on libstdc++). Other examples: `std::any`, `std::shared_ptr`'s deleter, `std::move_only_function`,
+    `std::pmr::memory_resource`. The costs are an indirect call that blocks inlining, possible allocation,
+    and lost type information (`any_cast` needs the exact type).
+  explanation: |
+    Look for the Concept/Model pattern (virtual or function-pointer table), the templated constructor, and
+    SBO trade-offs. See Sean Parent, "Inheritance Is The Base Class of Evil" (GoingNative 2013), and Klaus
+    Iglberger's type-erasure talks.
+  keyPoints:
+    - One non-template wrapper type with value semantics over unrelated types
+    - Internal Concept interface plus templated Model<T> created by a templated constructor
+    - Operations go through a vtable or function-pointer table (call, clone, destroy)
+    - Small buffer optimization stores small objects inline to avoid heap allocation
+    - Costs are indirect calls (no inlining), possible allocation, and larger wrapper size
+
+- id: cpp-templates-025
+  topic: cpp
+  subtopic: Templates, deduction, SFINAE and concepts
+  difficulty: hard
+  type: multiple
+  tags: [non-type-template-parameters, cpp20]
+  prompt: |
+    Which of these can be used as the type of a **non-type template parameter** in C++20
+    (`template <T V> struct X {};`)? Select all that apply.
+  choices:
+    - { id: a, text: "`int`" }
+    - { id: b, text: "`double`" }
+    - { id: c, text: "A literal class type with only public, non-mutable members of structural types, e.g. `struct Point { int x, y; };`" }
+    - { id: d, text: "`std::string`" }
+    - { id: e, text: "`const char*`" }
+    - { id: f, text: "An enumeration type" }
+  answer: [a, b, c, e, f]
+  explanation: |
+    C++20 (P1907) defines *structural types* as the allowed non-type template parameter types: integral
+    and enumeration types, pointers (including `const char*`; but the argument can't be a pointer to a
+    string literal), pointers to members, lvalue references, `std::nullptr_t`, floating-point types (new
+    in C++20), and literal class types whose bases and non-static members are all public, non-mutable and
+    structural (new in C++20). `std::string` has private members and isn't structural, so it can't be a
+    template parameter. The usual workaround for compile-time strings is a structural `fixed_string<N>`
+    class holding a `char` array.
+
+- id: cpp-templates-026
+  topic: cpp
+  subtopic: Templates, deduction, SFINAE and concepts
+  difficulty: medium
+  type: short
+  tags: [concepts, requires-expression, cpp20]
+  prompt: |
+    Write (in words or code) a C++20 concept `Sized` satisfied by types that have a `size()` member returning
+    something convertible to `std::size_t`, and show three ways to apply it to a function template. What do
+    you gain over an unconstrained template?
+  reference: |
+    ```cpp
+    template <class T>
+    concept Sized = requires(const T& t) {
+        { t.size() } -> std::convertible_to<std::size_t>;
+    };
+    ```
+    The requires-expression checks that `t.size()` is valid and that its type satisfies
+    `std::convertible_to<std::size_t>`. Ways to apply it: (1) as a type-constraint in the template
+    parameter list, `template <Sized T> void f(const T&);`; (2) with a requires-clause,
+    `template <class T> requires Sized<T> void f(const T&);` (which can also come after the declarator);
+    (3) abbreviated function template syntax, `void f(const Sized auto& x);`. Gains: violations are reported
+    at the call site with a message naming the unsatisfied requirement, instead of an error deep inside
+    the body; the constraint documents the interface; overloads can be selected by constraints (and more
+    constrained overloads win via subsumption, e.g. a `SizedRange` refining `Sized`); and constraints work
+    for non-template members of class templates too. Concepts are checked syntactically only. They don't
+    verify semantics such as `size()` being O(1).
+  explanation: |
+    Check that the concept syntax is right (requires-expression with a compound requirement) and that the
+    candidate knows all three application forms and the diagnostic and overloading benefits.
+  keyPoints:
+    - concept defined with a requires-expression and a compound requirement { t.size() } -> convertible_to<size_t>
+    - Apply as template <Sized T>, as a requires-clause, or as Sized auto parameters
+    - Clear errors at the call site naming the failed requirement
+    - Constraints participate in overload resolution and subsumption
+    - Concepts check syntax only, not semantics

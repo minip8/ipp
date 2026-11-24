@@ -1,0 +1,18 @@
+slug: combination-sum
+title: Combination Sum
+difficulty: medium
+tags: [backtracking, array]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: combinationSum
+      params:
+        - { name: candidates, type: { array: int } }
+        - { name: target, type: int }
+      returns: { list: { list: int } }
+      compare: unordered_deep
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 39)
+  url: https://leetcode.com/problems/combination-sum/

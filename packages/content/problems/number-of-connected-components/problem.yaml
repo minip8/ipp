@@ -1,0 +1,17 @@
+slug: number-of-connected-components
+title: Number of Connected Components
+difficulty: easy
+tags: [graph, union-find, dfs, bfs]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: countComponents
+      params:
+        - { name: n, type: int }
+        - { name: edges, type: { array: { array: int } } }
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 323)
+  url: https://leetcode.com/problems/number-of-connected-components-in-an-undirected-graph/

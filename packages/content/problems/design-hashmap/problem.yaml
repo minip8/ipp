@@ -1,0 +1,25 @@
+slug: design-hashmap
+title: Design a Hash Map
+difficulty: easy
+tags: [design, hash-table]
+signature:
+  className: MyHashMap
+  kind: design
+  methods:
+    - name: put
+      params:
+        - { name: key, type: int }
+        - { name: value, type: int }
+      returns: void
+    - name: get
+      params:
+        - { name: key, type: int }
+      returns: int
+    - name: remove
+      params:
+        - { name: key, type: int }
+      returns: void
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Design HashMap (LeetCode 706)
+  url: https://leetcode.com/problems/design-hashmap/

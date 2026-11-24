@@ -1,0 +1,18 @@
+slug: bus-routes
+title: Bus Routes
+difficulty: hard
+tags: [graph, bfs, hash-table]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: numBusesToDestination
+      params:
+        - { name: routes, type: { array: { array: int } } }
+        - { name: source, type: int }
+        - { name: target, type: int }
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 815)
+  url: https://leetcode.com/problems/bus-routes/

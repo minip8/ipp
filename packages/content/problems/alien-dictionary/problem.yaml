@@ -1,0 +1,16 @@
+slug: alien-dictionary
+title: Alien Dictionary
+difficulty: hard
+tags: [graph, topological-sort, heap, string]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: alienOrder
+      params:
+        - { name: words, type: { array: string } }
+      returns: string
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 269; Blind 75), with a deterministic tie-break added
+  url: https://leetcode.com/problems/alien-dictionary/

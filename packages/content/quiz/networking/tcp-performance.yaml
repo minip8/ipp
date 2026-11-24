@@ -1,0 +1,571 @@
+# TCP flow control, congestion control, retransmission, Nagle/delayed ACK, keepalive, HOL blocking.
+- id: net-tcpperf-001
+  topic: networking
+  subtopic: TCP flow and congestion control
+  difficulty: medium
+  type: single
+  prompt: |
+    A single TCP connection must fill a **1 Gbit/s** path with an **80 ms** round-trip time. Roughly
+    how much data must be in flight, unacknowledged, i.e. how large must the effective window be?
+  choices:
+    - { id: a, text: "About 64 KB" }
+    - { id: b, text: "About 1 MB" }
+    - { id: c, text: "About 10 MB" }
+    - { id: d, text: "About 80 MB" }
+  answer: c
+  explanation: |
+    Window needed = **bandwidth-delay product** = 1 × 10⁹ bit/s × 0.080 s = 8 × 10⁷ bits =
+    **10 × 10⁶ bytes ≈ 10 MB**.
+
+    So both the receive window (socket buffer, autotuned up to `tcp_rmem` max) and the congestion window
+    must reach about 10 MB. That needs window scaling, since the unscaled field tops out at 64 KB. With
+    64 KB you'd get only about 6.5 Mbit/s on this path. 80 MB comes from forgetting to divide bits by 8.
+  tags: [tcp, bdp, throughput, quantitative]
+
+- id: net-tcpperf-002
+  topic: networking
+  subtopic: TCP flow and congestion control
+  difficulty: medium
+  type: single
+  prompt: |
+    A legacy stack without window scaling advertises at most **65,535 bytes**. On a path with
+    **50 ms** RTT and plenty of bandwidth, what's the most throughput one connection can reach?
+  choices:
+    - { id: a, text: "About 1.3 Mbit/s" }
+    - { id: b, text: "About 10.5 Mbit/s" }
+    - { id: c, text: "About 105 Mbit/s" }
+    - { id: d, text: "Limited only by link bandwidth" }
+  answer: b
+  explanation: |
+    A window-limited sender can send at most one window per round trip:
+    throughput ≤ window / RTT = 65,535 B × 8 / 0.050 s ≈ **10.5 Mbit/s**.
+
+    That's why RFC 7323 window scaling matters on long-fat networks. Choice a forgets the ×8, choice c
+    misplaces a decimal, and choice d ignores the window limit altogether.
+  tags: [tcp, throughput, window, quantitative]
+
+- id: net-tcpperf-003
+  topic: networking
+  subtopic: TCP flow and congestion control
+  difficulty: medium
+  type: single
+  prompt: |
+    With the TCP window scale option (RFC 7323), what is the largest receive window a connection can
+    advertise?
+  choices:
+    - { id: a, text: "65,535 bytes" }
+    - { id: b, text: "About 16 MB (shift 8)" }
+    - { id: c, text: "About 1 GiB (65,535 × 2¹⁴)" }
+    - { id: d, text: "About 4 GiB (2³² bytes)" }
+  answer: c
+  explanation: |
+    The 16-bit window field is left-shifted by a scale factor agreed in the SYNs, and RFC 7323 caps the
+    shift at **14**. So the maximum is 65,535 × 2¹⁴ = 1,073,725,440 bytes ≈ **1 GiB**. The cap keeps the
+    window below half of the 2³² sequence space, so old and new data can't be confused. Scaling has to
+    be offered in **both** SYNs; a middlebox that strips it quietly limits you to 64 KB.
+  tags: [tcp, window-scaling]
+  source: { name: "RFC 7323 §2.3", url: "https://www.rfc-editor.org/rfc/rfc7323" }
+
+- id: net-tcpperf-004
+  topic: networking
+  subtopic: TCP flow and congestion control
+  difficulty: easy
+  type: single
+  prompt: |
+    What's the difference between TCP **flow control** and **congestion control**?
+  choices:
+    - { id: a, text: "They are two names for the same mechanism" }
+    - { id: b, text: "Flow control (the receiver's advertised window) protects the receiver's buffer; congestion control (the sender's cwnd) protects the network" }
+    - { id: c, text: "Flow control is done by routers; congestion control by end hosts" }
+    - { id: d, text: "Flow control applies to UDP and congestion control to TCP" }
+  answer: b
+  explanation: |
+    The sender may have at most **min(rwnd, cwnd)** bytes unacknowledged. **rwnd** is advertised by the
+    receiver in every segment's window field so a slow reader isn't overrun (flow control). **cwnd** is
+    the sender's own estimate of what the *network path* can take, adjusted by a congestion-control
+    algorithm in response to loss, delay or ECN marks. Routers only take part indirectly, by dropping or
+    ECN-marking packets. UDP has neither.
+  tags: [tcp, flow-control, congestion-control]
+
+- id: net-tcpperf-005
+  topic: networking
+  subtopic: TCP flow and congestion control
+  difficulty: medium
+  type: single
+  prompt: |
+    A new TCP connection starts in slow start with an initial congestion window of **10 segments**
+    (RFC 6928), MSS 1460 bytes. The receive window is large and there's no loss, and cwnd doubles each
+    round trip. How many round trips of data transfer (after the handshake) does a **200 KB** response
+    take?
+  choices:
+    - { id: a, text: "2" }
+    - { id: b, text: "3" }
+    - { id: c, text: "4" }
+    - { id: d, text: "14" }
+  answer: c
+  explanation: |
+    200,000 / 1460 ≈ 137 segments. With doubling windows the cumulative segments sent are:
+    round 1: 10 (total 10), round 2: 20 (30), round 3: 40 (70), round 4: 80 (**150 ≥ 137**).
+    So it takes **4** round trips.
+
+    That's why latency rather than bandwidth dominates small and medium transfers, and why a larger
+    initial window (IW10 instead of the older 2–4 segments) and connection reuse (keeping a warm cwnd)
+    matter. 14 rounds would mean 10 segments per RTT with no growth.
+  tags: [tcp, slow-start, quantitative]
+
+- id: net-tcpperf-006
+  topic: networking
+  subtopic: TCP retransmission
+  difficulty: easy
+  type: single
+  prompt: |
+    In standard TCP (RFC 5681), what normally triggers a **fast retransmit** of a segment before its
+    retransmission timer expires?
+  choices:
+    - { id: a, text: "Receiving one duplicate ACK" }
+    - { id: b, text: "Receiving three duplicate ACKs" }
+    - { id: c, text: "The receiver's window dropping to zero" }
+    - { id: d, text: "An ICMP Source Quench message" }
+  answer: b
+  explanation: |
+    When a segment is lost, each later segment that arrives makes the receiver re-send the same
+    cumulative ACK. The sender treats **three duplicate ACKs** as a sign of loss rather than mere
+    reordering, retransmits the missing segment straight away, and enters fast recovery. One duplicate
+    ACK may just be reordering. A zero window triggers persist probes. Source Quench is deprecated
+    (RFC 6633). Modern stacks also use SACK, RACK-TLP (RFC 8985) and other time-based loss detection.
+  tags: [tcp, retransmission, fast-retransmit]
+
+- id: net-tcpperf-007
+  topic: networking
+  subtopic: TCP flow and congestion control
+  difficulty: hard
+  type: multiple
+  prompt: |
+    Which statements about TCP congestion control are correct? Select all that apply.
+  choices:
+    - { id: a, text: "In Reno-style congestion avoidance, cwnd grows by about one MSS per RTT" }
+    - { id: b, text: "On a retransmission timeout, Reno sets cwnd back to one segment (the loss window) and re-enters slow start" }
+    - { id: c, text: "On loss detected by three duplicate ACKs, Reno/NewReno sets ssthresh to about half the data in flight instead of restarting from one segment" }
+    - { id: d, text: "CUBIC has been the default congestion control on Linux since the late 2.6 kernels" }
+    - { id: e, text: "BBR (v1) uses packet loss as its primary congestion signal" }
+  answer: [a, b, c, d]
+  explanation: |
+    - **a**: additive increase, roughly 1 MSS per RTT once cwnd ≥ ssthresh.
+    - **b**: an RTO is the strong signal (the ACK clock has stopped), so cwnd = 1 segment (RFC 5681).
+    - **c**: multiplicative decrease, ssthresh = max(FlightSize/2, 2·SMSS), then fast recovery.
+    - **d**: CUBIC replaced BIC as the Linux default in 2.6.19 (2006). Its window growth is a cubic
+      function of time since the last loss, so it doesn't depend on RTT.
+    - **e** is wrong: BBR builds a model of bottleneck bandwidth and minimum RTT and paces to it. It
+      doesn't treat loss as the main signal, which is why it holds up well on lossy links and can be
+      unfair to loss-based flows.
+  tags: [tcp, congestion-control, cubic, bbr]
+
+- id: net-tcpperf-008
+  topic: networking
+  subtopic: Nagle and delayed ACK
+  difficulty: hard
+  type: short
+  prompt: |
+    A request/response service writes each request with two `send()` calls (a 10-byte header, then a
+    200-byte body) and then waits for the reply. Latency is a steady ~40 ms on Linux, although the
+    network RTT is 0.2 ms. Explain why, and give fixes.
+  reference: |
+    This is the classic **Nagle + delayed ACK** interaction. Nagle's algorithm (RFC 896) won't send a
+    small segment while earlier data is still unacknowledged. The 10-byte header goes out immediately,
+    because nothing is in flight. The 200-byte body is held back until the header is ACKed. The
+    receiver uses **delayed ACKs**: it waits for more data or a timer before ACKing a lone small
+    segment. The minimum delayed-ACK timer on Linux is about 40 ms, and it's typically 200 ms on other
+    stacks. The receiver's application can't answer, because it hasn't got the full request. Each side
+    waits for the other until the delayed-ACK timer fires, so every request costs about 40 ms.
+
+    Fixes: build the message in one buffer, or use `writev`/`sendmsg` with an iovec, so it goes out in a
+    single send. Set **TCP_NODELAY** to disable Nagle (standard for latency-sensitive protocols and in
+    trading systems). Use TCP_CORK or MSG_MORE to batch explicitly, then uncork. Or use TCP_QUICKACK on
+    the receiver, which is only temporary on Linux and must be re-set. Coalescing writes is the most
+    robust fix even with TCP_NODELAY, since it also saves packets and syscalls.
+  keyPoints:
+    - "Nagle holds small segments while unacknowledged data is outstanding"
+    - "Receiver delays ACK of a small segment (~40 ms minimum on Linux, often 200 ms elsewhere)"
+    - "Write-write-read pattern causes the stall, one delayed-ACK timeout per request"
+    - "Fix: coalesce into one write (buffer or writev/sendmsg)"
+    - "Fix: TCP_NODELAY (or TCP_CORK/MSG_MORE batching, TCP_QUICKACK)"
+  explanation: |
+    Interviews for low-latency roles often ask exactly this.
+  tags: [tcp, nagle, delayed-ack, tcp-nodelay, latency]
+  source: { name: "RFC 896 (Nagle) and RFC 1122 §4.2.3.2 (delayed ACK)" }
+
+- id: net-tcpperf-009
+  topic: networking
+  subtopic: Nagle and delayed ACK
+  difficulty: medium
+  type: single
+  prompt: |
+    Which describes Nagle's algorithm as implemented by mainstream TCP stacks?
+  choices:
+    - { id: a, text: "Never send a segment smaller than the MSS" }
+    - { id: b, text: "If there's unacknowledged data in flight, buffer new small data until an ACK arrives or a full MSS has built up" }
+    - { id: c, text: "Delay every ACK by up to 200 ms to piggy-back it on response data" }
+    - { id: d, text: "Wait 200 ms before sending any segment so it can be filled" }
+  answer: b
+  explanation: |
+    Nagle (RFC 896, RFC 1122 §4.2.3.4) allows **at most one small, unacknowledged segment** in flight.
+    With nothing outstanding, small data goes out at once, so choices a and d are wrong. With
+    outstanding data, small writes are coalesced until the ACK returns or a full-sized segment can be
+    sent. Choice c describes **delayed ACK**, a receiver-side mechanism. The two interact badly in
+    write-write-read patterns.
+  tags: [tcp, nagle]
+
+- id: net-tcpperf-010
+  topic: networking
+  subtopic: TCP retransmission
+  difficulty: medium
+  type: single
+  prompt: |
+    What does **Karn's algorithm** say about measuring round-trip time in TCP?
+  choices:
+    - { id: a, text: "Take an RTT sample from every ACK, including ACKs for retransmitted segments" }
+    - { id: b, text: "Don't take RTT samples from segments that were retransmitted (because the ACK is ambiguous), and keep the backed-off RTO until a valid sample arrives" }
+    - { id: c, text: "Set RTO to exactly twice the latest RTT sample" }
+    - { id: d, text: "Measure RTT only during the handshake" }
+  answer: b
+  explanation: |
+    When a segment has been retransmitted, its ACK might belong to either the original or the
+    retransmission, so the sample is **ambiguous** and is thrown away. RFC 6298 combines this with
+    exponential backoff: each timeout doubles the RTO, and the doubled value stays until a new valid
+    sample. The TCP timestamps option (RFC 7323) removes the ambiguity, so stacks with timestamps can
+    sample safely.
+
+    RFC 6298's estimator is SRTT/RTTVAR smoothing with RTO = SRTT + max(G, 4·RTTVAR), a minimum of
+    1 s in the RFC (Linux uses 200 ms), and an initial RTO of 1 s.
+  tags: [tcp, rto, retransmission]
+  source: { name: "RFC 6298", url: "https://www.rfc-editor.org/rfc/rfc6298" }
+
+- id: net-tcpperf-011
+  topic: networking
+  subtopic: TCP keepalive
+  difficulty: medium
+  type: short
+  prompt: |
+    What is TCP keepalive? What are its default timings on Linux, and why do many systems use
+    application-level heartbeats instead or as well?
+  reference: |
+    Keepalive (RFC 1122 §4.2.3.6) is **off by default** and enabled per socket with SO_KEEPALIVE. After
+    the connection has been idle for `tcp_keepalive_time` (default **7200 s**, 2 hours), the kernel
+    sends probe segments (an ACK with an old sequence number). It sends up to `tcp_keepalive_probes`
+    (default **9**) probes every `tcp_keepalive_intvl` (default **75 s**). If none is answered, the
+    connection is reset and the application gets ETIMEDOUT. The timings can be overridden per socket
+    with TCP_KEEPIDLE, TCP_KEEPINTVL and TCP_KEEPCNT.
+
+    Uses: detect dead peers (a host crashed or a cable was pulled, so no FIN or RST will ever arrive),
+    and keep NAT, firewall or load-balancer idle timers from expiring.
+
+    Application heartbeats are preferred because the defaults are far too slow (over 2 hours) and
+    keepalive only proves the peer's **kernel** is alive, not that the application is responsive.
+    Heartbeats also travel through proxies that terminate TCP, and they let the protocol measure
+    latency or carry sequence state, as trading session protocols such as FIX do. Related option:
+    TCP_USER_TIMEOUT bounds how long transmitted data may remain unacknowledged.
+  keyPoints:
+    - "Off by default; enabled with SO_KEEPALIVE"
+    - "Linux defaults: 7200 s idle, 75 s interval, 9 probes; tunable per socket (TCP_KEEPIDLE/INTVL/CNT)"
+    - "Detects half-open connections where the peer vanished without FIN or RST"
+    - "Keeps NAT/firewall/LB state from timing out"
+    - "App heartbeats detect hung applications, have tighter timeouts and survive proxies"
+  explanation: |
+    Watch for the misconception that a TCP connection "notices" a dead peer by itself. With no traffic
+    it never will.
+  tags: [tcp, keepalive, linux]
+
+- id: net-tcpperf-012
+  topic: networking
+  subtopic: Head-of-line blocking
+  difficulty: medium
+  type: single
+  prompt: |
+    On a path with noticeable packet loss, why can HTTP/2 over a single TCP connection perform worse
+    than HTTP/1.1 over six parallel connections?
+  choices:
+    - { id: a, text: "HTTP/2 header compression fails when packets are lost" }
+    - { id: b, text: "One lost TCP segment stalls delivery of every stream on the connection until it's retransmitted, and the single connection's cwnd is cut for all streams" }
+    - { id: c, text: "HTTP/2 disables TCP retransmission" }
+    - { id: d, text: "HTTP/2 must re-handshake TLS after every loss" }
+  answer: b
+  explanation: |
+    TCP delivers one ordered byte stream. If one segment is lost, the kernel holds back all later bytes
+    already received, even those belonging to unrelated HTTP/2 streams, until the retransmission
+    arrives. This is **transport-level head-of-line blocking**. A loss also halves the one shared
+    congestion window, where six HTTP/1.1 connections would have lost only one sixth of their combined
+    window. HTTP/3 over QUIC fixes the first problem by making streams independent at the transport
+    layer.
+  tags: [tcp, hol-blocking, http2, http3]
+
+- id: net-tcpperf-013
+  topic: networking
+  subtopic: TCP flow and congestion control
+  difficulty: hard
+  type: single
+  prompt: |
+    The Mathis et al. model approximates loss-limited Reno throughput as
+    `rate ≈ (MSS / RTT) × (C / √p)` with C ≈ 1.22. Estimate the throughput of one connection with MSS
+    1460 bytes, RTT 100 ms and a loss rate p = 0.01% (10⁻⁴).
+  choices:
+    - { id: a, text: "About 1.4 Mbit/s" }
+    - { id: b, text: "About 14 Mbit/s" }
+    - { id: c, text: "About 140 Mbit/s" }
+    - { id: d, text: "About 117 kbit/s" }
+  answer: b
+  explanation: |
+    MSS/RTT = 1460 × 8 bits / 0.1 s = 116,800 bit/s. √p = √10⁻⁴ = 0.01, so C/√p = 1.22 / 0.01 = 122.
+    116,800 × 122 ≈ **14.2 Mbit/s**.
+
+    The lesson: for loss-based congestion control, throughput falls with RTT and with √loss, so even
+    0.01% loss caps a transcontinental Reno-style flow far below a 1 or 10 Gbit/s link rate. That's
+    one reason people use parallel streams, BBR, or many connections. 117 kbit/s is MSS/RTT without the
+    loss factor.
+  tags: [tcp, congestion-control, throughput, quantitative]
+  source: { name: "Mathis, Semke, Mahdavi, Ott 1997: The Macroscopic Behavior of the TCP Congestion Avoidance Algorithm" }
+
+- id: net-tcpperf-014
+  topic: networking
+  subtopic: TCP flow and congestion control
+  difficulty: medium
+  type: single
+  prompt: |
+    A receiving application stops reading, its socket buffer fills, and it advertises a **zero window**.
+    How does the sender find out when it may send again?
+  choices:
+    - { id: a, text: "It waits for the receiver to send a SYN" }
+    - { id: b, text: "It runs a persist timer and sends periodic zero-window probes, so a lost window update can't deadlock the connection" }
+    - { id: c, text: "It closes the connection after one RTO" }
+    - { id: d, text: "It keeps sending at full rate, and the receiver drops the excess" }
+  answer: b
+  explanation: |
+    The receiver will send a window update when space frees up, but that update is a pure ACK and is
+    not reliably delivered. If it were lost, both sides would wait forever. So the sender runs a
+    **persist timer** and sends **zero-window probes** with exponential backoff. As long as the probes
+    are answered the connection stays open indefinitely; a zero window is not an error. In captures it
+    shows up as "TCP ZeroWindow" and "ZeroWindowProbe": a sign that the *receiving application* is
+    slow, not the network.
+  tags: [tcp, flow-control, zero-window]
+
+- id: net-tcpperf-015
+  topic: networking
+  subtopic: TCP retransmission
+  difficulty: medium
+  type: multiple
+  prompt: |
+    Which statements about TCP Selective Acknowledgment (SACK, RFC 2018) are true?
+    Select all that apply.
+  choices:
+    - { id: a, text: "Both ends must signal SACK-permitted in their SYNs to use it" }
+    - { id: b, text: "It lets the receiver report non-contiguous blocks it holds beyond the cumulative ACK" }
+    - { id: c, text: "It replaces the cumulative ACK number, which is no longer sent" }
+    - { id: d, text: "It lets the sender retransmit only the missing segments when several are lost in one window" }
+  answer: [a, b, d]
+  explanation: |
+    SACK is negotiated in the handshake (a, both sides) and carried as a TCP option listing up to 3–4
+    received blocks (b). Without it, a sender that loses several segments in one window either recovers
+    one per RTT (NewReno) or re-sends data the receiver already holds; with it, the sender fills
+    exactly the holes (d). The cumulative ACK is still the authoritative acknowledgment (c is wrong).
+    SACK is advisory, and the receiver may discard ("renege on") SACKed data.
+  tags: [tcp, sack, retransmission]
+
+- id: net-tcpperf-016
+  topic: networking
+  subtopic: TCP flow and congestion control
+  difficulty: hard
+  type: short
+  prompt: |
+    A transfer tool gets 80 Mbit/s with one TCP connection across an ocean but 600 Mbit/s with 8
+    parallel connections over the same 1 Gbit/s path. Explain why parallel streams help, and why it
+    isn't free.
+  reference: |
+    One loss-based flow on a long-RTT path is limited by:
+    - its **window**. The receive buffer or autotuning cap may be below the bandwidth-delay product,
+      and each connection gets its own window, so N connections have N times the window in flight.
+    - its **congestion response**. Each loss halves (Reno) or cuts by 30% (CUBIC) that flow's cwnd,
+      which then grows back slowly on a long RTT (Mathis: rate ∝ MSS/(RTT·√p)). With N flows a single
+      loss cuts only one of them, so aggregate throughput roughly scales with N until the bottleneck
+      is full.
+    - slow start on every new connection.
+
+    The cost: the bundle takes N shares at a shared bottleneck, which is unfair to other users. Each
+    connection costs a handshake (and TLS), and memory and CPU. Data has to be split up and
+    reassembled. It can make queues and loss worse. Better fixes are to size buffers to the BDP
+    (tcp_rmem/tcp_wmem, autotuning), use BBR, cut loss, or use a protocol designed for long fat
+    pipes.
+  keyPoints:
+    - "Per-connection limits: window/buffer below BDP, so N connections give N windows"
+    - "Loss reduces only one flow's cwnd; aggregate recovers faster on long RTT"
+    - "Throughput of a loss-based flow falls with RTT and √loss (Mathis)"
+    - "Unfair to competing traffic; more handshakes, memory and reordering work"
+    - "Better fixes: buffer tuning to BDP, BBR, reduce loss"
+  explanation: |
+    Shows understanding of what limits a single flow rather than just "more is faster".
+  tags: [tcp, throughput, congestion-control]
+
+- id: net-tcpperf-017
+  topic: networking
+  subtopic: TCP flow and congestion control
+  difficulty: hard
+  type: single
+  prompt: |
+    With **ECN** (RFC 3168) negotiated on a TCP connection, what does a congested ECN-capable router
+    do, and how does the sender react?
+  choices:
+    - { id: a, text: "It drops the packet and sends an ICMP Source Quench" }
+    - { id: b, text: "It sets the CE (Congestion Experienced) codepoint in the IP header instead of dropping; the receiver echoes it with the TCP ECE flag, and the sender cuts cwnd as if a loss had occurred, then sets CWR" }
+    - { id: c, text: "It lowers the TCP receive window in transit" }
+    - { id: d, text: "It sends a TCP RST to the sender to make it back off" }
+  answer: b
+  explanation: |
+    ECN uses two bits in the IP header (ECT(0), ECT(1), CE). An AQM router marks **CE** instead of
+    dropping. The receiver reflects the mark with **ECE** in its ACKs until the sender confirms with
+    **CWR**. The sender reduces cwnd once per window, just as for a loss, but nothing has to be
+    retransmitted, so latency stays lower. Source Quench is deprecated. Routers don't touch TCP windows
+    or inject RSTs as congestion signals. (DCTCP and L4S use ECN marks in proportion to congestion
+    rather than as a binary signal.)
+  tags: [tcp, ecn, congestion-control]
+
+- id: net-tcpperf-018
+  topic: networking
+  subtopic: TCP flow and congestion control
+  difficulty: medium
+  type: short
+  prompt: |
+    What is **bufferbloat**? Why do loss-based congestion control algorithms cause it, and what
+    mitigates it?
+  reference: |
+    Bufferbloat is excessive latency from oversized FIFO buffers at a bottleneck (home routers, cable
+    modems, Wi-Fi, cellular). Loss-based algorithms (Reno, CUBIC) keep growing cwnd until a packet is
+    dropped. A large buffer drops nothing until it is completely full, so a bulk flow keeps it full
+    and every packet waits behind it, often hundreds of milliseconds. Interactive traffic (games, VoIP,
+    DNS, the ACKs of other flows) suffers even though throughput looks fine.
+
+    Mitigations: active queue management such as **CoDel / fq_codel** or PIE, which drop or ECN-mark
+    early based on how long packets wait in the queue, while fair queuing isolates flows; ECN, so
+    signals arrive without loss; delay- or model-based congestion control (BBR); and sizing buffers to
+    the bandwidth-delay product rather than "as big as possible". Fixing it at the bottleneck matters
+    most: shaping slightly below the uplink rate moves the queue into a device that can manage it.
+  keyPoints:
+    - "Large FIFO buffers at the bottleneck fill up, adding queueing delay"
+    - "Loss-based CC only backs off on drop, so it keeps the buffer full"
+    - "Latency-sensitive flows suffer while throughput looks fine"
+    - "AQM (CoDel/fq_codel, PIE) and fair queuing; ECN"
+    - "Delay/model-based CC (BBR) or right-sized buffers"
+  explanation: |
+    A good answer explains that the buffer being full is the *steady state* for loss-based CC, not an
+    accident.
+  tags: [tcp, bufferbloat, aqm, latency]
+
+- id: net-tcpperf-019
+  topic: networking
+  subtopic: TCP flow and congestion control
+  difficulty: hard
+  type: short
+  prompt: |
+    Compare **CUBIC** and **BBR** congestion control: what signal each uses, how each behaves on a lossy
+    long-RTT link and with deep buffers, and one known downside of each.
+  reference: |
+    **CUBIC** (RFC 9438; the Linux default) is loss-based. After a loss it cuts cwnd by a factor
+    (β = 0.7), then grows it as a cubic function of time since that loss: fast when far below the
+    previous maximum, flat near it, then probing beyond it. Growth is independent of RTT. It reacts to
+    random (non-congestion) loss by backing off, so throughput collapses on lossy links. In deep buffers
+    it fills the queue and causes bufferbloat.
+
+    **BBR** (Google; v1 2016, later v2/v3) is model-based. It estimates bottleneck bandwidth (maximum
+    delivery rate) and minimum RTT, then paces at roughly the bandwidth with an in-flight cap of a small
+    multiple of the BDP, cycling to probe for more bandwidth and periodically draining to re-measure
+    the minimum RTT. It largely ignores random loss and keeps queues short, so it does well on lossy
+    long-RTT paths. Downsides: BBRv1 could be unfair, taking too large or too small a share against
+    CUBIC depending on buffer size, and caused high loss in shallow buffers. Later versions add loss
+    and ECN signals to fix this. It also needs pacing (fq qdisc or internal pacing).
+  keyPoints:
+    - "CUBIC: loss-based, multiplicative decrease, cubic window growth in time since last loss"
+    - "CUBIC suffers on random loss and fills deep buffers (bufferbloat)"
+    - "BBR: estimates bottleneck bandwidth and min RTT, paces at that rate"
+    - "BBR tolerates random loss and keeps queues short"
+    - "BBR downside: fairness against loss-based flows / high loss in shallow buffers (v1); needs pacing"
+  explanation: |
+    Infra interviewers like candidates who know that the congestion control algorithm is a choice that
+    can be tuned per socket (`TCP_CONGESTION`) or per host.
+  tags: [tcp, congestion-control, bbr, cubic]
+
+- id: net-tcpperf-020
+  topic: networking
+  subtopic: TCP flow and congestion control
+  difficulty: easy
+  type: short
+  prompt: |
+    Explain TCP's sliding window. What do the sender and receiver each track, and what limits how much
+    data can be in flight?
+  reference: |
+    Each byte has a sequence number. The receiver acknowledges cumulatively (the ACK number is the next
+    byte it expects) and advertises a receive window, the free space in its buffer. The sender may have
+    bytes in the range [oldest unacknowledged, oldest unacknowledged + window) in flight. As ACKs
+    arrive the left edge slides right and more data can be sent. Unacknowledged data stays in the
+    sender's buffer for possible retransmission. The effective window is min(receive window, congestion
+    window), so in-flight data is limited by the receiver's buffer, by the congestion controller, and
+    in practice by the sender's socket buffer. Throughput ≈ window / RTT.
+  keyPoints:
+    - "Byte sequence numbers with cumulative ACKs (next expected byte)"
+    - "Receiver advertises a window = free buffer space"
+    - "Sender may have up to the window of unacknowledged bytes outstanding; window slides as ACKs arrive"
+    - "Effective limit is min(rwnd, cwnd); throughput ≈ window / RTT"
+  explanation: |
+    Foundation for the BDP and throughput questions.
+  tags: [tcp, flow-control, sliding-window]
+
+- id: net-tcpperf-021
+  topic: networking
+  subtopic: Nagle and delayed ACK
+  difficulty: easy
+  type: short
+  prompt: |
+    What does the `TCP_NODELAY` socket option do, and when should you set it?
+  reference: |
+    TCP_NODELAY disables Nagle's algorithm, so small writes go out at once even while earlier data is
+    unacknowledged. Set it for latency-sensitive request/response or streaming protocols that send small
+    messages: RPC, interactive protocols, games, order entry and market data over TCP, database
+    clients. These would otherwise hit Nagle/delayed-ACK stalls. The cost is that many tiny writes
+    become many tiny packets (header overhead, more packets per second). So the application should
+    batch messages itself into sensible writes rather than issue one syscall per small field. Many
+    frameworks (e.g. gRPC, many HTTP servers and Redis clients) set it by default.
+  keyPoints:
+    - "Disables Nagle; small segments are sent immediately"
+    - "Use for latency-sensitive small-message protocols"
+    - "Avoids the Nagle + delayed-ACK stall"
+    - "Downside: more small packets, so the app should coalesce its own writes"
+  explanation: |
+    The follow-up is usually the Nagle/delayed-ACK interaction (net-tcpperf-008).
+  tags: [tcp, tcp-nodelay, nagle, latency]
+
+- id: net-tcpperf-022
+  topic: networking
+  subtopic: Head-of-line blocking
+  difficulty: medium
+  type: short
+  prompt: |
+    Define head-of-line blocking and give examples of where it occurs at **different layers** of the
+    networking stack.
+  reference: |
+    Head-of-line blocking is when the item at the front of a FIFO can't make progress and so holds up
+    independent items queued behind it.
+    - **Switch input queues**: a frame waiting for a busy output port blocks frames behind it bound for
+      idle ports. Virtual output queues fix this.
+    - **TCP**: one lost segment stops in-order delivery of all later bytes until it's retransmitted,
+      even though they've arrived.
+    - **HTTP/1.1** (with or without pipelining): responses must come back in request order on a
+      connection, so one slow response blocks the rest. Browsers work around this with about six
+      connections per origin.
+    - **HTTP/2**: fixes application-level HOL with multiplexed streams, but still suffers TCP-level HOL.
+    - **HTTP/3/QUIC**: loss on one stream doesn't block others, though a single stream is still
+      ordered, and QPACK takes care to avoid header-compression HOL.
+  keyPoints:
+    - "Definition: front item blocked holds up unrelated items behind it"
+    - "TCP in-order delivery blocks on a single lost segment"
+    - "HTTP/1.1 response ordering per connection (and pipelining)"
+    - "HTTP/2 solves app-layer HOL but not TCP HOL; QUIC solves transport HOL per stream"
+    - "Optional: switch input-queue HOL and virtual output queues"
+  explanation: |
+    Ties several areas together; a good synthesis question.
+  tags: [hol-blocking, tcp, http2, http3, quic]

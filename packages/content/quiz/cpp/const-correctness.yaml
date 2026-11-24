@@ -1,0 +1,245 @@
+# const-correctness: const member functions, pointers to const, mutable, const_cast.
+- id: cpp-const-001
+  topic: cpp
+  subtopic: const-correctness
+  difficulty: easy
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [const-member-functions, overload-resolution]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    struct S {
+        void f()       { std::cout << "mutable "; }
+        void f() const { std::cout << "const "; }
+    };
+
+    int main() {
+        S s;
+        const S cs{};
+        s.f();
+        cs.f();
+        static_cast<const S&>(s).f();
+        std::cout << '\n';
+    }
+  answer: { kind: output, output: "mutable const const" }
+  explanation: |
+    A `const` qualifier on a member function applies to the implicit object parameter, so `f()` and
+    `f() const` overload on the constness of the object expression. A non-const object prefers the
+    non-const overload (no qualification conversion needed); a const object or a reference-to-const can only
+    call the const one. This is how containers give `begin()` returning `iterator` or `const_iterator`.
+
+- id: cpp-const-002
+  topic: cpp
+  subtopic: const-correctness
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [const-cast, undefined-behavior]
+  prompt: What does this program do?
+  code: |
+    #include <iostream>
+
+    int main() {
+        const int limit = 10;
+        int* p = const_cast<int*>(&limit);
+        *p = 20;
+        std::cout << limit << ' ' << *p << '\n';
+    }
+  answer: { kind: undefined }
+  explanation: |
+    `const_cast` can remove constness from a pointer, but modifying an object that was *defined* `const`
+    is undefined behaviour ([dcl.type.cv]). Compilers usually substitute the constant `10` for `limit`
+    and may place it in read-only memory, so typical results are `10 20` or a crash. Neither is guaranteed.
+
+    `const_cast` is only safe for writing when the object itself isn't const and you only had a
+    const *view* of it, e.g. to call a legacy API that isn't const-correct but doesn't actually modify.
+
+- id: cpp-const-003
+  topic: cpp
+  subtopic: const-correctness
+  difficulty: hard
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [references, temporaries, implicit-conversions]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    int main() {
+        int i = 1;
+        const long& r = i;
+        const int& s = i;
+        i = 2;
+        std::cout << r << s << '\n';
+    }
+  answer: { kind: output, output: "12" }
+  explanation: |
+    A `const long&` can't refer to an `int` object. Because the reference is to const, the
+    initializer is converted to a temporary `long` and the reference binds to that temporary, whose lifetime
+    is extended ([dcl.init.ref]). So `r` refers to a copy holding `1` and doesn't see the later change.
+    `s` has the same type as `i` and binds directly → `2`.
+
+    The same thing happens with `const std::string&` parameters given a `const char*`, and with
+    `const std::pair<std::string, int>&` loop variables over a `std::map` (whose elements are
+    `std::pair<const std::string, int>`): each iteration silently copies.
+
+- id: cpp-const-004
+  topic: cpp
+  subtopic: const-correctness
+  difficulty: easy
+  type: single
+  tags: [pointers, const]
+  prompt: |
+    Which declaration gives a pointer through which you **can modify** the pointed-to `int`, but which
+    itself **cannot be reseated** to point elsewhere?
+  choices:
+    - { id: a, text: "`int* const p = &x;`" }
+    - { id: b, text: "`const int* p = &x;`" }
+    - { id: c, text: "`int const* p = &x;`" }
+    - { id: d, text: "`const int* const p = &x;`" }
+  answer: a
+  explanation: |
+    Read declarations right to left: `int* const p` is "p is a const pointer to int", so `*p = 1` is
+    fine and `p = &y` isn't. `const int*` and `int const*` are the same type, "pointer to const int",
+    which can be reseated but can't write through. (d) is const in both ways. `const` applies to the
+    thing on its left, or to the right if nothing is on its left.
+
+- id: cpp-const-005
+  topic: cpp
+  subtopic: const-correctness
+  difficulty: medium
+  type: multiple
+  tags: [const-member-functions, mutable]
+  prompt: |
+    Inside a `const` member function of class `T` (called on an object that was **not** defined const),
+    which of the following can be modified without a cast? Select all that apply.
+  choices:
+    - { id: a, text: "A data member declared `mutable`" }
+    - { id: b, text: "The `int` pointed to by a member `int* p_`" }
+    - { id: c, text: "A `static` data member of `T`" }
+    - { id: d, text: "An ordinary `int count_` member" }
+    - { id: e, text: "Make the member pointer `p_` point to a different `int`" }
+  answer: [a, b, c]
+  explanation: |
+    In a const member function `this` is `const T*`, so non-static, non-mutable members are const
+    lvalues: `count_` and the pointer `p_` itself (it becomes `int* const`) can't be modified.
+
+    - `mutable` members are exempt (for caches, mutexes, statistics).
+    - Constness is *shallow*: `p_` is const, but what it points to isn't, so `*p_ = 1` compiles. Use
+      `std::experimental::propagate_const` or accessor discipline if you want deep constness.
+    - Static members aren't part of the object at all.
+
+- id: cpp-const-006
+  topic: cpp
+  subtopic: const-correctness
+  difficulty: easy
+  type: single
+  tags: [std-map, const]
+  prompt: |
+    Why does this fail to compile?
+
+    ```cpp
+    int lookup(const std::map<std::string, int>& m) {
+        return m["key"];
+    }
+    ```
+  choices:
+    - { id: a, text: "`operator[]` inserts a default-constructed value when the key is missing, so it is only available on non-const maps; use `find` or `at` instead." }
+    - { id: b, text: "`std::map` cannot be passed by const reference." }
+    - { id: c, text: "`operator[]` requires an `std::string` argument, not a string literal." }
+    - { id: d, text: "It compiles; `operator[]` returns 0 for missing keys on a const map." }
+  answer: a
+  explanation: |
+    `std::map::operator[]` (and `unordered_map`'s) is a non-const member because it may insert
+    `{key, T{}}`. On a const map you must use `at()` (throws `std::out_of_range` if absent), `find()`, or
+    C++20 `contains()`. This is also a common performance bug on non-const maps: `if (m[k] == 0)` inserts
+    every key it checks.
+
+- id: cpp-const-007
+  topic: cpp
+  subtopic: const-correctness
+  difficulty: medium
+  type: single
+  tags: [const, move-semantics, return-values]
+  prompt: |
+    Some older style guides recommended `const std::string make_name();` (returning a const value) to
+    prevent `make_name() = "x";`. What is the main problem with that in modern C++?
+  choices:
+    - { id: a, text: "A const rvalue can't bind to `std::string&&`, so `std::string s = ...; s = make_name();` copies instead of moving." }
+    - { id: b, text: "It is ill-formed to return a const-qualified class type." }
+    - { id: c, text: "The returned object is placed in read-only memory." }
+    - { id: d, text: "It prevents copy elision when initializing a variable, so `std::string s = make_name();` always copies." }
+  answer: a
+  explanation: |
+    Move constructors and move assignment take `T&&`, which doesn't bind to a `const T` rvalue, so
+    overload resolution picks the copy versions. Initialization `std::string s = make_name();` is still
+    fine thanks to guaranteed copy elision (the types match apart from cv), so (d) is wrong, but
+    *assignment* from the result, or passing it to a sink parameter, copies. Core Guidelines F.49:
+    "Don't return const T".
+
+- id: cpp-const-008
+  topic: cpp
+  subtopic: const-correctness
+  difficulty: hard
+  type: short
+  tags: [mutable, const, thread-safety]
+  prompt: |
+    Explain the difference between *bitwise* and *logical* constness. When is `mutable` appropriate, and
+    what does `const` imply about thread safety for types used with the standard library?
+  reference: |
+    Bitwise (physical) constness means no bits of the object change; logical constness means the
+    observable state doesn't change. C++ `const` member functions enforce a shallow bitwise rule on the
+    object's own members (pointees can still change). `mutable` exempts members that aren't part of the
+    logical state: memoization caches, lazily computed values, statistics counters, and the mutex that
+    protects them. The standard library assumes (via [res.on.data.races]) that calling const member
+    functions concurrently on the same object is safe, i.e. `const` means "safe to call concurrently
+    without external synchronization". So if a const member function modifies a `mutable` member, that
+    modification must be internally synchronized: guard it with a `mutable std::mutex` or use atomics. Herb
+    Sutter's "M&M rule": mutable and mutex (or atomic) go together. A const function that lazily fills an
+    unsynchronized cache creates a data race when the object is shared between threads.
+  explanation: |
+    Distinguish the two notions, give legitimate uses of mutable, and connect const to thread safety
+    (Herb Sutter, "You don't know const and mutable", C++ and Beyond 2012).
+  keyPoints:
+    - "Bitwise: no bits change; logical: observable state doesn't change"
+    - const member functions are shallow (pointees can change)
+    - mutable is for non-observable state such as caches, lazy values, counters and mutexes
+    - The standard library treats const operations as safe to call concurrently
+    - So mutable state touched in const functions must be synchronized (mutex or atomic)
+
+- id: cpp-const-009
+  topic: cpp
+  subtopic: const-correctness
+  difficulty: easy
+  type: short
+  tags: [const, api-design]
+  prompt: |
+    Why does const-correctness matter in a C++ codebase? Give concrete benefits beyond "it prevents
+    accidental modification".
+  reference: |
+    Beyond preventing accidental writes: (1) it documents intent in interfaces: a `const T&` parameter
+    or `const` member function tells callers the object won't be changed, which makes APIs easier to reason
+    about and review; (2) it's required for interoperability, since temporaries and const objects can only
+    bind to `const&` and only call const member functions, so missing `const` makes perfectly reasonable
+    calls fail to compile (and const-incorrectness spreads, because fixing one function requires fixing
+    those it calls); (3) it connects to thread safety: the standard library treats const operations as
+    safe to call concurrently, and the same convention lets you reason about shared read-only data;
+    (4) `const` locals make complex functions easier to read (fewer moving parts) and enable IIFE-style
+    initialization; (5) it enables overloads with different semantics or return types (`begin()` versus
+    `begin() const` returning `const_iterator`); (6) `constexpr` and const globals may be placed in
+    read-only memory and folded by the compiler. Caveats: `const` data members disable move assignment,
+    and returning by const value inhibits moves, so const isn't free everywhere.
+  explanation: |
+    Good answers go beyond the obvious and mention interface documentation, binding temporaries, thread
+    safety, and overloading, plus the caveats about const members and const return values.
+  keyPoints:
+    - Documents intent in interfaces (const& params, const member functions)
+    - Needed for temporaries and const objects to be usable; const-incorrectness propagates
+    - Connects to thread safety (const operations are safe to call concurrently by convention)
+    - Enables const/non-const overloads (const_iterator) and readable const locals
+    - "Caveats: const data members block move assignment; const return values block moves"

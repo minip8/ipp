@@ -1,0 +1,19 @@
+slug: find-median-from-data-stream
+title: Find Median from Data Stream
+difficulty: hard
+tags: [design, heap]
+signature:
+  className: MedianFinder
+  kind: design
+  methods:
+    - name: addNum
+      params:
+        - { name: num, type: int }
+      returns: void
+    - name: findMedian
+      params: []
+      returns: double
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic heap design question (LeetCode 295; Blind 75 / NeetCode 150)
+  url: https://leetcode.com/problems/find-median-from-data-stream/

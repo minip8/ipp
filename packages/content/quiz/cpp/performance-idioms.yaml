@@ -1,0 +1,325 @@
+# Performance idioms: cache behaviour, allocation, inlining, parameter passing, measurement.
+- id: cpp-perf-001
+  topic: cpp
+  subtopic: Performance idioms
+  difficulty: medium
+  type: single
+  tags: [false-sharing, cache-lines, atomics]
+  prompt: |
+    A producer thread increments `stats.produced` and a consumer thread on another core increments
+    `stats.consumed`, millions of times per second. Throughput is far below what each thread achieves
+    alone. What is the most likely cause, and the fix?
+
+    ```cpp
+    struct Stats {
+        std::atomic<long> produced{0};
+        std::atomic<long> consumed{0};
+    };
+    ```
+  choices:
+    - { id: a, text: "False sharing: both counters sit on the same 64-byte cache line, so each write invalidates the other core's copy. Give each counter its own line, e.g. `alignas(64)` (or `std::hardware_destructive_interference_size`)." }
+    - { id: b, text: "`std::atomic<long>` uses a mutex internally; switch to `volatile long`." }
+    - { id: c, text: "The counters should use `memory_order_seq_cst`." }
+    - { id: d, text: "Atomic increments are always slower than locking; use a `std::mutex`." }
+  answer: a
+  explanation: |
+    Cache coherence works per cache line. When two cores write different variables in the same line, the
+    line ping-pongs between their caches (each write needs exclusive ownership), costing tens to hundreds
+    of cycles per access even though the threads share no data logically. Padding/aligning each
+    hot, independently written variable to its own cache line removes the contention. (On some Intel CPUs
+    the adjacent-line prefetcher makes 128 bytes safer.) `std::atomic<long>` is lock-free on all
+    mainstream platforms; `volatile` would introduce a data race; stronger ordering only adds cost.
+
+- id: cpp-perf-002
+  topic: cpp
+  subtopic: Performance idioms
+  difficulty: hard
+  type: single
+  tags: [emplace-back, push-back, explicit]
+  prompt: Which statement about `emplace_back` versus `push_back` is correct?
+  choices:
+    - { id: a, text: "Emplacing an existing object (`v.emplace_back(obj)`) copies just like `push_back(obj)`; emplace only helps when passing constructor arguments, and because it calls constructors directly it can invoke `explicit` ones, e.g. `std::vector<std::vector<int>> v; v.emplace_back(1000000);` silently appends a million-element vector." }
+    - { id: b, text: "`emplace_back` is always faster than `push_back` and should be used everywhere." }
+    - { id: c, text: "`push_back` can't take rvalues, so it always copies." }
+    - { id: d, text: "`emplace_back` never reallocates the vector." }
+  answer: a
+  explanation: |
+    `emplace_back(args...)` forwards its arguments to `T`'s constructor in place, which saves a temporary
+    and a move when you would otherwise write `push_back(T(args...))`. With an argument that is already a
+    `T`, both call the copy (or move) constructor. Because emplacement is direct-initialization,
+    `explicit` constructors are allowed, so type mistakes that `push_back` would reject compile silently.
+    (Another classic: `std::vector<std::unique_ptr<T>> v; v.emplace_back(new T);` leaks if reallocation
+    throws.) `push_back` has an rvalue overload that moves. Both may reallocate. Rule of thumb: use
+    `push_back` for existing objects, `emplace_back` for constructing from arguments.
+
+- id: cpp-perf-003
+  topic: cpp
+  subtopic: Performance idioms
+  difficulty: easy
+  type: single
+  tags: [iostreams, std-endl, flushing]
+  prompt: |
+    A program writes 10 million lines with `out << line << std::endl;` to an `std::ofstream` and is
+    slow. What is the most likely culprit?
+  choices:
+    - { id: a, text: "`std::endl` writes a newline *and flushes* the stream, forcing a write system call per line; use `'\\n'` and let the buffer flush." }
+    - { id: b, text: "`std::endl` converts the newline to `\\r\\n`, doubling the output size." }
+    - { id: c, text: "`std::endl` allocates a new string per call." }
+    - { id: d, text: "`std::endl` synchronizes with C stdio." }
+  answer: a
+  explanation: |
+    `std::endl` is `os.put('\n'); os.flush();`. Flushing on every line defeats buffering and turns each
+    line into a syscall (and possibly a disk write). Use `'\n'` and flush explicitly when you really need
+    it (before a crash-prone section, for interactive prompts). For `std::cout` with heavy output,
+    `std::ios::sync_with_stdio(false)` and untying `std::cin` also help. Text-mode newline translation
+    (b) is a Windows concern unrelated to `endl` specifically.
+
+- id: cpp-perf-004
+  topic: cpp
+  subtopic: Performance idioms
+  difficulty: medium
+  type: single
+  tags: [data-oriented-design, soa, cache-locality]
+  prompt: |
+    A risk engine stores `std::vector<Position>` where `Position` has 20 fields (about 200 bytes), but the
+    hot loop only reads `quantity` and `price` of every position. Which change most improves the loop's
+    memory efficiency?
+  choices:
+    - { id: a, text: "Switch to a structure of arrays (separate contiguous `quantity` and `price` vectors), so the loop streams only the bytes it uses and can vectorize." }
+    - { id: b, text: "Store `std::vector<std::unique_ptr<Position>>` to make the vector smaller." }
+    - { id: c, text: "Switch to `std::list<Position>` to avoid reallocation." }
+    - { id: d, text: "Mark the loop variable `register`." }
+  answer: a
+  explanation: |
+    With an array of structures, each 64-byte cache line fetched contains mostly fields the loop
+    ignores, so the loop uses about 16 of every 200 bytes it pulls from memory. A structure of arrays (or
+    hot/cold splitting: moving rarely used fields into a separate struct) packs the hot fields densely: 8
+    quantities per cache line, prefetcher-friendly, and SIMD-friendly. (b) adds a pointer chase per element
+    and scatters objects; (c) is worse still; `register` is meaningless (removed in C++17).
+
+- id: cpp-perf-005
+  topic: cpp
+  subtopic: Performance idioms
+  difficulty: medium
+  type: single
+  tags: [branch-prediction, cpu]
+  prompt: |
+    A loop sums elements greater than 128 from a large array of random bytes. Sorting the array first
+    makes the *same loop* several times faster (excluding the sort). What is the usual explanation?
+  choices:
+    - { id: a, text: "Branch prediction: on sorted data the `if (x > 128)` branch is taken in long predictable runs; on random data it's mispredicted about half the time, and each misprediction flushes the pipeline." }
+    - { id: b, text: "Sorted data takes less memory." }
+    - { id: c, text: "The compiler skips the comparisons for sorted arrays." }
+    - { id: d, text: "Sorting moves the array into L1 cache permanently." }
+  answer: a
+  explanation: |
+    Modern CPUs speculate past branches; a misprediction costs around 15–20 cycles. Random data makes the
+    branch unpredictable. If the compiler turns the branch into a conditional move or vectorizes it
+    (common at `-O2`/`-O3`), the difference disappears, which is a good thing to mention in an interview.
+    Branchless code (`sum += (x > 128) * x`), `[[likely]]`/`[[unlikely]]` for skewed branches, and
+    profile-guided optimization are the related tools.
+  source: { name: "Stack Overflow: Why is processing a sorted array faster than processing an unsorted array?", url: "https://stackoverflow.com/questions/11227809" }
+
+- id: cpp-perf-006
+  topic: cpp
+  subtopic: Performance idioms
+  difficulty: medium
+  type: single
+  tags: [std-map, sorted-vector, cache-locality, flat-map]
+  prompt: |
+    For a lookup table built once at startup and then only read, why does a sorted `std::vector` searched
+    with `std::lower_bound` (or C++23 `std::flat_map`) usually beat `std::map`?
+  choices:
+    - { id: a, text: "Both are O(log n), but the vector is contiguous: the binary search touches few cache lines and no pointers, while `std::map` chases pointers between separately allocated tree nodes." }
+    - { id: b, text: "Binary search on a vector is O(1)." }
+    - { id: c, text: "`std::map` re-sorts itself on every lookup." }
+    - { id: d, text: "`std::map` lookups take a lock." }
+  answer: a
+  explanation: |
+    Asymptotic complexity is the same, but the constant factors differ a lot: a red-black tree node is a
+    separate allocation (with three pointers and a colour per element), each step down the tree is a
+    dependent load to a probably-cold node, and the tree uses several times the memory. A sorted vector
+    holds just the data, densely packed, and the last steps of the search land in the same cache lines.
+    The trade-off is O(n) insertion, which is irrelevant for a read-mostly table. `std::flat_map` (C++23)
+    packages this design.
+
+- id: cpp-perf-007
+  topic: cpp
+  subtopic: Performance idioms
+  difficulty: medium
+  type: multiple
+  tags: [inlining, devirtualization, lto, pgo]
+  prompt: |
+    Which of the following help the compiler inline or devirtualize a call in a hot loop? Select all that apply.
+  choices:
+    - { id: a, text: "Passing the callable as a template parameter (e.g. a lambda to `std::sort`) instead of a function pointer" }
+    - { id: b, text: "Marking a class or overrider `final`" }
+    - { id: c, text: "Link-time optimization (LTO), so calls across translation units can be inlined" }
+    - { id: d, text: "Wrapping the callable in a `std::function`" }
+    - { id: e, text: "Profile-guided optimization (PGO), which enables speculative devirtualization of hot indirect calls" }
+    - { id: f, text: "Calling through a function pointer stored in a global that is set at run time" }
+  answer: [a, b, c, e]
+  explanation: |
+    Inlining needs the compiler to know the exact callee and see its body. Template parameters encode the
+    callable's type; `final` proves there's no further override; LTO makes bodies from other TUs visible;
+    PGO lets the compiler insert "if target == likely_target, inline it, else call indirectly". A
+    `std::function` erases the type behind an indirect call, and a runtime-set function pointer is opaque,
+    so both usually block inlining.
+
+- id: cpp-perf-008
+  topic: cpp
+  subtopic: Performance idioms
+  difficulty: easy
+  type: single
+  tags: [parameter-passing, pass-by-value]
+  prompt: |
+    Why are small, trivially copyable types like `int`, `double`, `std::string_view` or a 16-byte
+    `struct Px { std::int64_t price; std::int64_t qty; }` usually passed **by value** rather than by
+    `const&`?
+  choices:
+    - { id: a, text: "They fit in registers, so passing by value avoids an indirection and lets the compiler assume the value can't change through aliasing; a reference forces the object into memory and passes its address." }
+    - { id: b, text: "Passing by `const&` copies the object twice." }
+    - { id: c, text: "References to trivially copyable types are undefined behaviour." }
+    - { id: d, text: "Passing by value is always faster regardless of size." }
+  answer: a
+  explanation: |
+    Under the x86-64 System V ABI, trivially copyable aggregates up to 16 bytes are passed in registers. A
+    `const&` parameter is a pointer: the caller must materialize the object in memory, the callee loads
+    through the pointer, and the optimizer must assume other writes might alias it. Core Guidelines F.16:
+    pass "cheap to copy" types (roughly ≤ 2–3 words) by value, and others by `const&`. (d) is wrong: large
+    or non-trivially-copyable types are expensive to copy.
+
+- id: cpp-perf-009
+  topic: cpp
+  subtopic: Performance idioms
+  difficulty: medium
+  type: short
+  tags: [sink-parameters, move-semantics, parameter-passing]
+  prompt: |
+    A constructor stores a string: `Order(std::string symbol) : symbol_(std::move(symbol)) {}`. Explain
+    why taking the parameter by value and moving is a reasonable default, how it compares with
+    `const std::string&` plus `std::string&&` overloads, and when it's not ideal.
+  reference: |
+    For a "sink" parameter that the function will store anyway, pass-by-value-then-move costs: for an lvalue
+    argument, one copy (into the parameter) plus one cheap move into the member; for an rvalue argument, two
+    cheap moves (or one move, with elision for prvalues). That's at most one move more than the optimal pair
+    of overloads (`const std::string&` → copy; `std::string&&` → move), with one function instead of two (or
+    2^N for N parameters), and no forwarding-reference template complexity. It's not ideal when (1) the
+    type is expensive to move (e.g. `std::array` of large data, types without move constructors), since
+    the extra move isn't cheap; (2) the function only conditionally stores the value, in which case pass
+    `const&` or `string_view` to avoid an unconditional copy; (3) assignment to an existing member could
+    reuse its capacity: `member = param` with a `const&` can reuse the existing buffer, while by-value always
+    allocates a fresh copy for lvalues (relevant for setters called in loops); (4) the function is a hot
+    path where that extra move is measurable.
+  explanation: |
+    Herb Sutter's "Back to the Basics! Essentials of Modern C++ Style" (CppCon 2014) discusses exactly the
+    setter capacity-reuse caveat; Core Guidelines F.18 covers "will-move-from" parameters.
+  keyPoints:
+    - By-value plus move costs one copy plus one move for lvalues, and moves only for rvalues
+    - Only one extra (cheap) move compared with the two-overload optimum, with far less code
+    - Bad for types that are expensive to move
+    - Bad when storage is conditional (prefer const& or string_view)
+    - Setters may lose capacity reuse that assigning from a const& allows
+
+- id: cpp-perf-010
+  topic: cpp
+  subtopic: Performance idioms
+  difficulty: medium
+  type: short
+  tags: [benchmarking, measurement]
+  prompt: |
+    A colleague's microbenchmark says a new function takes 0.3 ns per call. What are common pitfalls in
+    C++ microbenchmarks, and how do you write a trustworthy one?
+  reference: |
+    0.3 ns is about one cycle, which strongly suggests the optimizer removed the work: the result was unused
+    (dead-code elimination), the inputs were compile-time constants (constant folding), or the loop was
+    hoisted or vectorized away. Other pitfalls: measuring cold versus warm caches inconsistently, too few
+    iterations relative to timer resolution, timer overhead, CPU frequency scaling and turbo, other
+    processes and interrupts, unpinned threads migrating cores, page faults on first touch, data sets that
+    fit in cache when production's don't, branch predictors trained on repetitive input, measuring debug
+    builds, and reporting means while ignoring the distribution. Trustworthy approach: use a framework such
+    as Google Benchmark or nanobench that runs adaptive iteration counts, use `benchmark::DoNotOptimize` and
+    `ClobberMemory` (or equivalent) so results and inputs are opaque, generate realistic inputs at run time,
+    warm up, pin to an isolated core, disable or fix frequency scaling, repeat runs and report percentiles
+    and variance, compare against a baseline in the same run, and check the generated assembly (Compiler
+    Explorer) and hardware counters (`perf stat`). Finally, confirm with a macro benchmark or production
+    profile, since microbenchmarks can mislead.
+  explanation: |
+    The 0.3 ns figure is the hint: the main pitfall is the optimizer deleting the work. Then look for
+    environmental noise control, realistic data and cache states, and statistics. See Chandler Carruth,
+    "Tuning C++: Benchmarks, and CPUs, and Compilers! Oh My!" (CppCon 2015).
+  keyPoints:
+    - Implausibly fast results mean the optimizer removed or folded the work (use DoNotOptimize/ClobberMemory)
+    - Use realistic run-time inputs and data sizes; control cache warmth and branch-predictor training
+    - Control the environment (pinning, frequency scaling, isolation) and use enough iterations
+    - Report distributions/percentiles over repeated runs; compare against a baseline
+    - Inspect assembly and perf counters; validate with macro benchmarks or production profiles
+
+- id: cpp-perf-011
+  topic: cpp
+  subtopic: Performance idioms
+  difficulty: hard
+  type: short
+  tags: [tail-latency, low-latency, systems]
+  prompt: |
+    A C++ order-handling service has a good median latency but bad p99.9 spikes. What sources of tail
+    latency would you investigate, and what techniques address them?
+  reference: |
+    Sources: (1) memory allocation on the hot path (malloc slow paths, lock contention, `mmap`/page faults
+    when the heap grows); (2) page faults and TLB misses on first touch or after memory is reclaimed;
+    (3) lock contention and priority inversion, plus thread wakeup latency from condition variables or
+    futexes; (4) syscalls and I/O on the hot path: logging, `gettimeofday` in some setups, network calls;
+    (5) OS scheduling: preemption, migration between cores, interrupts and kernel threads on the same core,
+    SMT siblings; (6) cache and branch-predictor coldness after idle periods; (7) rare slow code paths such
+    as exceptions, rehashes, vector reallocation, and periodic housekeeping (timers, GC in a sidecar);
+    (8) CPU frequency changes and power-saving states. Techniques: preallocate and pool, reserve
+    containers, avoid allocation and exceptions in the hot path; pre-fault and `mlock` memory, use huge
+    pages; asynchronous logging via a lock-free queue to another thread; busy-poll instead of blocking;
+    pin threads to isolated cores (`isolcpus`, `nohz_full`, IRQ affinity), disable SMT and deep C-states,
+    fix CPU frequency; keep caches warm with dummy traffic; use kernel-bypass networking (DPDK, Onload).
+    Measure with high-resolution timestamps (TSC) at each stage, latency histograms (HdrHistogram), and
+    `perf`/eBPF to correlate spikes with faults, context switches and interrupts.
+  explanation: |
+    This is a standard question at HFT and market-making firms. Strong answers connect each spike source to
+    a mitigation and stress measurement (histograms, per-stage timestamps).
+  keyPoints:
+    - Hot-path allocation, page faults and TLB misses (preallocate, pre-fault, mlock, huge pages)
+    - Locks, blocking and wakeups (lock-free queues, busy polling, avoid priority inversion)
+    - Syscalls and I/O such as logging on the hot path (async logging thread)
+    - "OS noise: scheduling, interrupts, frequency scaling (pinning, isolcpus, IRQ affinity, fixed frequency)"
+    - Rare slow paths (rehash, realloc, exceptions, cold caches) plus measurement with histograms and per-stage timestamps
+
+- id: cpp-perf-012
+  topic: cpp
+  subtopic: Performance idioms
+  difficulty: hard
+  type: short
+  tags: [compiler-flags, optimization, fast-math, lto, pgo]
+  prompt: |
+    Discuss the build settings you'd consider for a performance-critical C++ binary: optimization level,
+    `-march`, LTO, PGO and `-ffast-math`. What are the risks of each?
+  reference: |
+    `-O2` is the usual safe baseline; `-O3` adds more aggressive inlining, loop unrolling and vectorization,
+    which may or may not help (code bloat and instruction-cache pressure), so measure. `-march=native` (or a
+    specific `-march=x86-64-v3`/`skylake`) enables newer instruction sets (AVX2, BMI, FMA), but the binary
+    then crashes with SIGILL on older CPUs, so target the deployment fleet explicitly. LTO (`-flto`, thin LTO)
+    enables cross-TU inlining and dead-code elimination, at the cost of longer link times and memory, and it
+    can expose latent ODR violations or UB. PGO (`-fprofile-generate`/`-fprofile-use`, or AutoFDO/BOLT)
+    optimizes code layout, branch weights, inlining and devirtualization using real profiles, often a
+    10–20% gain, but needs representative training workloads and a more complex build, and stale profiles
+    can mislead. `-ffast-math` lets the compiler treat floating point as real numbers: reassociation (which
+    enables vectorized reductions), assuming no NaN or Inf (so `std::isnan` checks may be optimized away),
+    ignoring signed zeros, flush-to-zero for denormals (it can even change MXCSR for the whole process via
+    crtfastmath.o). The results change, and NaN checks break, which is dangerous for pricing code; prefer
+    targeted flags (`-fno-math-errno`, `-fassociative-math` locally) or manual reassociation. Also consider
+    `-fno-plt`, `-fno-semantic-interposition`, frame pointers for profiling (`-fno-omit-frame-pointer`), and
+    keeping debug info for symbolized profiles.
+  explanation: |
+    A good answer treats every flag as a measured trade-off and knows the specific dangers: SIGILL from
+    `-march`, numeric and NaN changes from `-ffast-math`, and representative profiles for PGO.
+  keyPoints:
+    - -O2 baseline; -O3 can help or hurt (code size), so measure
+    - -march enables newer ISAs but the binary fails with SIGILL on older hosts; target the fleet
+    - LTO enables cross-TU inlining (link cost; can expose ODR/UB issues)
+    - PGO/AutoFDO/BOLT improve layout, branches and inlining but need representative profiles
+    - -ffast-math changes results, can remove NaN checks and flush denormals; prefer targeted flags

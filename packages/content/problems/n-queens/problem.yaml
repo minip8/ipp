@@ -1,0 +1,17 @@
+slug: n-queens
+title: N-Queens
+difficulty: hard
+tags: [backtracking]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: solveNQueens
+      params:
+        - { name: n, type: int }
+      returns: { list: { list: string } }
+      compare: unordered
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 51)
+  url: https://leetcode.com/problems/n-queens/

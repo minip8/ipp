@@ -1,0 +1,315 @@
+# Python: the GIL, free-threading, threading vs multiprocessing vs asyncio.
+
+- id: conc-py-001
+  topic: concurrency
+  subtopic: Python GIL
+  difficulty: easy
+  type: single
+  prompt: |
+    In standard (GIL-enabled) CPython, you split a pure-Python CPU-bound loop across 4 threads on a
+    4-core machine. What speedup should you expect?
+  choices:
+    - { id: a, text: "About 4x" }
+    - { id: b, text: "About 1x or slightly worse: the GIL lets only one thread execute Python bytecode at a time" }
+    - { id: c, text: "About 2x, because the GIL is released every other bytecode" }
+    - { id: d, text: "The program raises an error because threads cannot run CPU-bound code" }
+  answer: b
+  explanation: |
+    The global interpreter lock serialises execution of Python bytecode in a process. CPU-bound
+    pure-Python threads take turns, adding switching overhead, so the result is about the same as one
+    thread or worse. For CPU parallelism use `multiprocessing`/`ProcessPoolExecutor`, native code that
+    releases the GIL (NumPy, many C extensions), or the free-threaded build (3.13+). Threads still help
+    for I/O-bound work because blocking I/O releases the GIL.
+  tags: [gil, cpython, threading]
+
+- id: conc-py-002
+  topic: concurrency
+  subtopic: Python GIL
+  difficulty: medium
+  type: multiple
+  prompt: |
+    In GIL-enabled CPython, which of the following typically let another Python thread run (release the
+    GIL)? (Select all that apply.)
+  choices:
+    - { id: a, text: "A blocking socket recv() or file read()" }
+    - { id: b, text: "time.sleep(1)" }
+    - { id: c, text: "A large NumPy matrix multiplication" }
+    - { id: d, text: "A tight pure-Python loop summing integers, at every bytecode" }
+    - { id: e, text: "hashlib computing a digest over a large buffer" }
+  answer: [a, b, c, e]
+  explanation: |
+    C code that does not touch Python objects can release the GIL around long operations: blocking
+    system calls (a, b) do, NumPy's BLAS-backed operations do (c), and `hashlib` releases it for large
+    inputs (e, documented for data over 2047 bytes). That is why threads help for I/O and for some
+    native-library workloads.
+
+    A pure-Python loop (d) holds the GIL; the interpreter only *offers* to switch periodically (the
+    switch interval, 5 ms by default), not at every bytecode.
+  tags: [gil, threading, numpy, io-bound]
+  source: { name: "Python docs — hashlib (GIL release note)", url: "https://docs.python.org/3/library/hashlib.html" }
+
+- id: conc-py-003
+  topic: concurrency
+  subtopic: Python GIL
+  difficulty: medium
+  type: single
+  prompt: |
+    What does `sys.getswitchinterval()` return by default in CPython 3, and what does it control?
+  choices:
+    - { id: a, text: "100; the number of bytecodes between thread switches" }
+    - { id: b, text: "0.005; roughly how long (in seconds) a thread may hold the GIL before the interpreter asks it to release it so another waiting thread can run" }
+    - { id: c, text: "0.1; the OS scheduler's time slice for Python threads" }
+    - { id: d, text: "1; whether thread switching is enabled" }
+  answer: b
+  explanation: |
+    Since Python 3.2's new GIL, switching is time-based: a thread waiting for the GIL sets a "drop
+    request" after the switch interval (default 5 ms), and the running thread releases the GIL at its
+    next check point in the eval loop. The old "check every 100 ticks" (`sys.setcheckinterval`) is from
+    Python 2 and was removed. The actual OS scheduling is still done by the kernel; the interval only
+    governs GIL hand-off.
+  tags: [gil, switch-interval, cpython]
+  source: { name: "Python docs — sys.setswitchinterval", url: "https://docs.python.org/3/library/sys.html#sys.setswitchinterval" }
+
+- id: conc-py-004
+  topic: concurrency
+  subtopic: Python concurrency models
+  difficulty: medium
+  type: short
+  prompt: |
+    In Python, when would you choose `threading`, `multiprocessing`, or `asyncio`? Give a concrete
+    workload for each.
+  reference: |
+    - **asyncio**: many concurrent I/O-bound tasks with async-capable libraries, e.g. a web crawler or
+      API gateway handling thousands of sockets. Single thread, cooperative; very cheap per task;
+      everything must be non-blocking (or offloaded with `asyncio.to_thread`).
+    - **threading**: I/O-bound work using blocking libraries (database drivers, `requests`, boto3),
+      moderate concurrency (tens to hundreds), or calling native code that releases the GIL. Simple to
+      bolt on via `ThreadPoolExecutor`. No CPU parallelism for pure Python in the GIL build.
+    - **multiprocessing / ProcessPoolExecutor**: CPU-bound pure-Python work, e.g. parsing or image
+      processing in Python code across cores. Costs: process startup, memory, pickling of arguments and
+      results, no shared objects (use shared memory or queues).
+    - Plus: the free-threaded build (3.13+, PEP 703) allows CPU parallelism with threads if your
+      dependencies support it; native extensions (NumPy) parallelise internally.
+  keyPoints:
+    - "asyncio for large numbers of I/O-bound tasks with async libraries; single-threaded and cooperative"
+    - "threading for I/O-bound work with blocking libraries or GIL-releasing native code"
+    - "multiprocessing for CPU-bound pure Python; costs are startup, memory and pickling/IPC"
+    - "The GIL is the reason threads do not help CPU-bound pure Python"
+    - "Mentions free-threaded CPython or native extensions as additional options"
+  explanation: |
+    The answer hinges on I/O-bound vs CPU-bound and on whether libraries are blocking or async. Strong
+    answers mention pickling overhead for processes and the event-loop blocking hazard for asyncio.
+  tags: [asyncio, threading, multiprocessing, gil]
+
+- id: conc-py-005
+  topic: concurrency
+  subtopic: Python GIL
+  difficulty: medium
+  type: single
+  prompt: |
+    Which statement about free-threaded ("no-GIL") CPython is accurate as of Python 3.14?
+  choices:
+    - { id: a, text: "The GIL was removed from all CPython builds in 3.13" }
+    - { id: b, text: "PEP 703 added an optional free-threaded build in 3.13 (experimental); in 3.14 it became officially supported (PEP 779) but is still a separate build, not the default" }
+    - { id: c, text: "Free-threading requires rewriting code with a new threading module" }
+    - { id: d, text: "Free-threaded builds make all Python code automatically thread-safe" }
+  answer: b
+  explanation: |
+    The free-threaded build (configure `--disable-gil`, installed alongside the default, often as
+    `python3.13t`/`python3.14t`) runs threads in parallel. It shipped as experimental in 3.13 and moved
+    to "supported but optional" in 3.14 under PEP 779; the default build still has the GIL. Existing
+    `threading` code works unchanged. Thread-safety of your own code is *not* improved: races that the
+    GIL happened to hide (like `counter += 1`) show up more often. The runtime can re-enable the GIL
+    (`PYTHON_GIL=1`, `-X gil=1`), and does so automatically when importing a C extension not marked as
+    free-threading-safe.
+  tags: [free-threading, gil, pep-703, cpython]
+  source: { name: "Python docs — Python support for free threading", url: "https://docs.python.org/3/howto/free-threading-python.html" }
+
+- id: conc-py-006
+  topic: concurrency
+  subtopic: asyncio
+  difficulty: easy
+  type: single
+  prompt: |
+    Inside an `async def` handler, a developer calls `time.sleep(2)` (or a synchronous `requests.get`)
+    instead of an async equivalent. What is the effect?
+  choices:
+    - { id: a, text: "Only this coroutine waits; other tasks continue" }
+    - { id: b, text: "The entire event loop thread blocks for the duration, so every other task, timer and connection on that loop stalls" }
+    - { id: c, text: "asyncio raises RuntimeError: blocking call in coroutine" }
+    - { id: d, text: "asyncio automatically moves the call to a thread pool" }
+  answer: b
+  explanation: |
+    asyncio only switches tasks at `await` points that suspend. A synchronous blocking call never
+    returns control to the loop, so nothing else runs. asyncio's debug mode (`PYTHONASYNCIODEBUG=1` or
+    `asyncio.run(..., debug=True)`) logs callbacks that take longer than 100 ms, but nothing prevents
+    the call. Use `await asyncio.sleep(2)`, an async client library, or offload with
+    `await asyncio.to_thread(blocking_fn, ...)` (3.9+) / `loop.run_in_executor`.
+  tags: [asyncio, blocking, event-loop]
+
+- id: conc-py-007
+  topic: concurrency
+  subtopic: asyncio
+  difficulty: medium
+  type: single
+  prompt: |
+    Why do the Python docs tell you to keep a reference to the object returned by
+    `asyncio.create_task(coro())` (for "fire-and-forget" tasks too)?
+  choices:
+    - { id: a, text: "Otherwise the task never starts" }
+    - { id: b, text: "The event loop keeps only weak references to tasks, so a task with no other strong reference can be garbage-collected before it finishes" }
+    - { id: c, text: "So that exceptions are re-raised in the creating coroutine automatically" }
+    - { id: d, text: "Because create_task returns a coroutine that must be awaited" }
+  answer: b
+  explanation: |
+    The documentation for `create_task` says to save a reference to the result, because the event loop
+    only keeps weak references to tasks; a task not referenced elsewhere may disappear mid-execution.
+    The recommended pattern is to add tasks to a set and remove them in a done callback, or (better)
+    use `asyncio.TaskGroup`, which holds them and also propagates their errors. The task does start
+    without a reference (a), exceptions are *not* automatically re-raised (c; you get "Task exception
+    was never retrieved"), and the return value is a `Task`, not a coroutine.
+  tags: [asyncio, create-task, garbage-collection]
+  source: { name: "Python docs — asyncio.create_task", url: "https://docs.python.org/3/library/asyncio-task.html#asyncio.create_task" }
+
+- id: conc-py-008
+  topic: concurrency
+  subtopic: asyncio
+  difficulty: medium
+  type: short
+  prompt: |
+    How does task cancellation work in asyncio, and what rules should coroutine code follow to be
+    cancellation-safe?
+  reference: |
+    `task.cancel()` requests cancellation: the next time the task is resumed, a `CancelledError` is
+    raised inside the coroutine at the `await` where it is suspended. It propagates like any exception
+    up the coroutine's stack; if it escapes, the task ends in the cancelled state. Timeouts
+    (`asyncio.timeout`, `wait_for`) and `TaskGroup` are built on this mechanism.
+
+    Rules:
+    - Do not swallow `CancelledError`. If you catch it (or a broad `BaseException`) for cleanup,
+      re-raise it. (Since 3.8 it derives from `BaseException`, so `except Exception` does not catch it.)
+    - Put cleanup in `finally` / `async with` so resources are released on cancellation; cleanup that
+      awaits can itself be interrupted, so keep it short or shield it.
+    - Use `asyncio.shield()` only for operations that must complete even if the caller is cancelled,
+      understanding that the inner task keeps running.
+    - Prefer structured concurrency (`TaskGroup`, `asyncio.timeout`) so child tasks are cancelled and
+      awaited when the parent exits.
+    - Be aware that cancellation only takes effect at `await` points: a CPU-bound loop without awaits
+      cannot be cancelled.
+  keyPoints:
+    - "cancel() injects CancelledError at the task's current await point"
+    - "Do not swallow CancelledError; re-raise after cleanup (it is a BaseException since 3.8)"
+    - "Use finally / async context managers for cleanup"
+    - "shield() protects an inner operation from outer cancellation"
+    - "Cancellation is cooperative: only at await points; prefer TaskGroup / asyncio.timeout"
+  explanation: |
+    Cancellation-safety bugs (swallowed CancelledError, leaked resources) are a major source of asyncio
+    production issues. Graders look for "it's an exception at the await point" and "don't swallow it".
+  tags: [asyncio, cancellation, structured-concurrency]
+
+- id: conc-py-009
+  topic: concurrency
+  subtopic: asyncio
+  difficulty: medium
+  type: single
+  prompt: |
+    A background thread (not the event-loop thread) needs to schedule a coroutine on a running asyncio
+    loop and wait for its result. What is the correct API?
+  choices:
+    - { id: a, text: "loop.create_task(coro) from the background thread" }
+    - { id: b, text: "asyncio.run_coroutine_threadsafe(coro, loop), which returns a concurrent.futures.Future the thread can block on with .result()" }
+    - { id: c, text: "asyncio.run(coro) from the background thread, which joins the existing loop" }
+    - { id: d, text: "await coro inside the background thread's function" }
+  answer: b
+  explanation: |
+    Most asyncio objects, including the loop's scheduling methods and `asyncio.Lock`/`Queue`, are not
+    thread-safe. Only `loop.call_soon_threadsafe` and `asyncio.run_coroutine_threadsafe` may be called
+    from other threads. The latter wakes the loop, schedules the coroutine there, and returns a
+    `concurrent.futures.Future`. `asyncio.run` (c) would create a separate new loop in that thread, and
+    `await` is not valid in a regular function (d).
+  tags: [asyncio, threads, thread-safety]
+  source: { name: "Python docs — Concurrency and Multithreading in asyncio", url: "https://docs.python.org/3/library/asyncio-dev.html#concurrency-and-multithreading" }
+
+- id: conc-py-010
+  topic: concurrency
+  subtopic: Processes
+  difficulty: medium
+  type: single
+  prompt: |
+    What is the default `multiprocessing` start method on Linux in Python 3.14, and why was it changed?
+  choices:
+    - { id: a, text: "fork, as it has always been" }
+    - { id: b, text: "forkserver (changed from fork in 3.14), because forking a process that has other threads can copy locks in a held state and deadlock or crash the child" }
+    - { id: c, text: "spawn, because fork is not available on Linux" }
+    - { id: d, text: "thread, which runs workers as threads" }
+  answer: b
+  explanation: |
+    Python 3.14 changed the POSIX default from `fork` to `forkserver`. `fork` copies the whole process,
+    including locks held by other threads, which then stay locked forever in the child; since many
+    libraries start background threads, this caused hard-to-debug deadlocks. `forkserver` forks
+    workers from a clean, single-threaded server process. macOS has used `spawn` by default since 3.8,
+    and Windows always used `spawn`. Consequence: worker functions and arguments must be picklable and
+    importable, and the `if __name__ == "__main__":` guard matters.
+  tags: [multiprocessing, fork, forkserver, start-method]
+  source: { name: "Python docs — multiprocessing contexts and start methods", url: "https://docs.python.org/3/library/multiprocessing.html#contexts-and-start-methods" }
+
+- id: conc-py-011
+  topic: concurrency
+  subtopic: Python GIL
+  difficulty: hard
+  type: short
+  prompt: |
+    "The GIL makes my Python code thread-safe, so I don't need locks." Explain precisely what the GIL
+    does and does not guarantee, with an example of a bug it does not prevent.
+  reference: |
+    The GIL guarantees that only one thread executes Python bytecode at a time in a (GIL-enabled)
+    CPython process, which keeps the interpreter's own data structures (reference counts, object
+    internals) consistent. Individual operations implemented as a single C call on a built-in type,
+    such as `list.append` or `dict[key] = value`, are therefore effectively atomic in CPython. That is
+    an implementation property, not a language guarantee, and it does not hold for objects with Python
+    `__eq__`/`__hash__`/`__setitem__` code.
+
+    It does not make *sequences* of operations atomic: the interpreter can switch threads between any
+    two bytecodes. Bugs it does not prevent:
+    - `counter += 1` (load, add, store) losing updates.
+    - Check-then-act: `if key not in cache: cache[key] = compute()` running `compute` twice or
+      overwriting.
+    - Iterating over a dict while another thread modifies it (`RuntimeError: dictionary changed size`).
+    - Invariants spanning several objects (moving money between two accounts).
+
+    And with the free-threaded build there is no GIL at all (built-in types use internal per-object
+    locks to stay memory-safe, but your compound operations are as racy as ever). Use
+    `threading.Lock`, `queue.Queue`, or higher-level designs.
+  keyPoints:
+    - "GIL: one thread executes bytecode at a time; protects interpreter internals"
+    - "Single built-in operations (list.append, dict set) are effectively atomic in CPython, as an implementation detail"
+    - "Threads can switch between bytecodes, so compound operations are not atomic"
+    - "Example: counter += 1 lost updates, or check-then-act on a dict"
+    - "Free-threaded builds remove the GIL; use explicit locks or queues for invariants"
+  explanation: |
+    A very common misconception. The key distinction is interpreter-level safety (no crashes, no
+    corrupted objects) versus application-level atomicity (your invariants), which the GIL never
+    provided.
+  tags: [gil, thread-safety, race-condition]
+
+- id: conc-py-012
+  topic: concurrency
+  subtopic: Python threading
+  difficulty: easy
+  type: single
+  prompt: |
+    For a producer-consumer pipeline between Python threads, why is `queue.Queue` usually preferred
+    over a `collections.deque`?
+  choices:
+    - { id: a, text: "deque is not safe to use from multiple threads at all" }
+    - { id: b, text: "queue.Queue provides blocking get/put with optional timeouts and a maximum size (backpressure), plus task_done()/join(); deque's append/popleft are thread-safe but non-blocking, so consumers would have to poll" }
+    - { id: c, text: "queue.Queue is lock-free and therefore faster" }
+    - { id: d, text: "deque cannot hold arbitrary objects" }
+  answer: b
+  explanation: |
+    The `collections` docs state that deques support thread-safe, memory-efficient appends and pops
+    from either end, so (a) is wrong. What deque lacks is *coordination*: no blocking when empty, no
+    bounded capacity to slow producers, no completion tracking. `queue.Queue` wraps a deque with a lock
+    and condition variables to provide exactly that, which is why it is not lock-free or faster (c).
+  tags: [queue, deque, producer-consumer, threading]
+  source: { name: "Python docs — queue module", url: "https://docs.python.org/3/library/queue.html" }

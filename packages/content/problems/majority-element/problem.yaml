@@ -1,0 +1,16 @@
+slug: majority-element
+title: Majority Element
+difficulty: easy
+tags: [array, hash-table, counting]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: majorityElement
+      params:
+        - { name: nums, type: { array: int } }
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 169; Boyer-Moore majority vote)
+  url: https://leetcode.com/problems/majority-element/

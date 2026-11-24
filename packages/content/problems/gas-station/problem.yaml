@@ -1,0 +1,17 @@
+slug: gas-station
+title: Gas Station
+difficulty: medium
+tags: [array, greedy]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: canCompleteCircuit
+      params:
+        - { name: gas, type: { array: int } }
+        - { name: cost, type: { array: int } }
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 134; NeetCode 150 greedy)
+  url: https://leetcode.com/problems/gas-station/

@@ -1,0 +1,18 @@
+slug: k-closest-points
+title: K Closest Points to Origin
+difficulty: medium
+tags: [heap, quickselect, sorting, geometry]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: kClosest
+      params:
+        - { name: points, type: { array: { array: int } } }
+        - { name: k, type: int }
+      returns: { array: { array: int } }
+      compare: unordered
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 973)
+  url: https://leetcode.com/problems/k-closest-points-to-origin/

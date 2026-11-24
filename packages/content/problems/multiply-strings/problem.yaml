@@ -1,0 +1,17 @@
+slug: multiply-strings
+title: Multiply Strings
+difficulty: medium
+tags: [string, math, simulation]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: multiply
+      params:
+        - { name: num1, type: string }
+        - { name: num2, type: string }
+      returns: string
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 43); big-number arithmetic
+  url: https://leetcode.com/problems/multiply-strings/

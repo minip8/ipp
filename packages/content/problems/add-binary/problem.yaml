@@ -1,0 +1,17 @@
+slug: add-binary
+title: Add Binary
+difficulty: easy
+tags: [string, math, simulation]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: addBinary
+      params:
+        - { name: a, type: string }
+        - { name: b, type: string }
+      returns: string
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 67); frequently reported at Meta
+  url: https://leetcode.com/problems/add-binary/

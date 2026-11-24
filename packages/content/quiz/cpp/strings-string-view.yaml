@@ -1,0 +1,255 @@
+# std::string, string literals and std::string_view.
+- id: cpp-strings-001
+  topic: cpp
+  subtopic: Strings and string_view
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [string-view, dangling, undefined-behavior]
+  prompt: What does this program do?
+  code: |
+    #include <iostream>
+    #include <string>
+    #include <string_view>
+
+    std::string make_message() {
+        return "a message long enough to live on the heap, not in the SSO buffer";
+    }
+
+    int main() {
+        std::string_view sv = make_message();
+        std::cout << sv << '\n';
+    }
+  answer: { kind: undefined }
+  explanation: |
+    `std::string_view` is a non-owning pointer plus length. `make_message()` returns a temporary
+    `std::string`; the view is constructed from it (via `std::string::operator string_view`), and the
+    temporary is destroyed at the end of the declaration. A `string_view` is not a reference, so there's no
+    lifetime extension. Printing reads freed memory: undefined behaviour
+    (AddressSanitizer: heap-use-after-free). Clang warns with `-Wdangling-gsl`.
+    Keep the string alive in a `std::string` variable and view *that*.
+
+- id: cpp-strings-002
+  topic: cpp
+  subtopic: Strings and string_view
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [std-string, npos, implicit-conversions]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+    #include <string>
+
+    int main() {
+        std::string s = "abc";
+        if (s.find('a'))
+            std::cout << "found ";
+        else
+            std::cout << "missing ";
+        s = 66;
+        std::cout << s << '\n';
+    }
+  answer: { kind: output, output: "missing B" }
+  explanation: |
+    - `find` returns the *position*, here `0`, which converts to `false`. "Not found" is
+      `std::string::npos` (the maximum `size_t`), which is truthy. Test `s.find('a') != std::string::npos`,
+      or use C++23 `s.contains('a')`.
+    - `std::string` has `operator=(char)`, and `int → char` is an implicit conversion, so `s = 66` makes
+      `s` the one-character string `"B"` (ASCII 66). No compiler error, no number formatting. Use
+      `std::to_string(66)` for that.
+
+- id: cpp-strings-003
+  topic: cpp
+  subtopic: Strings and string_view
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [string-literals, embedded-null, std-string]
+  prompt: What does this program print?
+  code: |
+    #include <cstring>
+    #include <iostream>
+    #include <string>
+
+    using namespace std::string_literals;
+
+    int main() {
+        std::cout << sizeof("ab\0cd") << ' '
+                  << std::strlen("ab\0cd") << ' '
+                  << std::string("ab\0cd").size() << ' '
+                  << "ab\0cd"s.size() << '\n';
+    }
+  answer: { kind: output, output: "6 2 2 5" }
+  explanation: |
+    - `"ab\0cd"` is a `const char[6]`: five characters plus the implicit terminator, and `sizeof` of an
+      array is its size in bytes → `6`.
+    - `strlen` stops at the first `'\0'` → `2`.
+    - `std::string(const char*)` also treats the argument as NUL-terminated → size `2`.
+    - The `operator""s` literal receives the array *and its length*, so it keeps the embedded null → `5`.
+      (Likewise `std::string(ptr, len)` or `std::string_view` literals with `sv`.)
+
+- id: cpp-strings-004
+  topic: cpp
+  subtopic: Strings and string_view
+  difficulty: easy
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [string-literals, pointer-arithmetic, std-string]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+    #include <string>
+
+    int main() {
+        std::string s = "con" + std::string("cat");
+        std::cout << "hello" + 1 << ' ' << s << '\n';
+    }
+  answer: { kind: output, output: "ello concat" }
+  explanation: |
+    A string literal is an array of `const char` that decays to a pointer, so `"hello" + 1` is pointer
+    arithmetic: a pointer to `'e'`, printed as `ello`. To concatenate, at least one operand of `+` must be
+    a `std::string`: `"con" + std::string("cat")` calls `operator+(const char*, const std::string&)`.
+    `"con" + "cat"` would not compile (you can't add two pointers).
+
+- id: cpp-strings-005
+  topic: cpp
+  subtopic: Strings and string_view
+  difficulty: medium
+  type: single
+  tags: [string-view, null-termination, c-apis]
+  prompt: |
+    A team replaces `void open_log(const std::string& path)` with `void open_log(std::string_view path)`.
+    Internally the function calls `::open(path.data(), O_RDONLY)`. What's the bug?
+  choices:
+    - { id: a, text: "`string_view` need not be NUL-terminated (e.g. a view of a substring), so `data()` may run past the intended end; the C API needs a terminated string, e.g. `std::string(path).c_str()`." }
+    - { id: b, text: "`string_view` must be passed by const reference, not by value." }
+    - { id: c, text: "`string_view::data()` returns `nullptr` for every non-literal string." }
+    - { id: d, text: "There is no bug; `string_view::data()` is always NUL-terminated." }
+  answer: a
+  explanation: |
+    A `string_view` is just pointer and length. A view of `"config.yaml.bak"` trimmed to `config.yaml`
+    still points into the original buffer, so the C function would read `config.yaml.bak`. Or, for a
+    view into arbitrary memory, there may be no terminator at all. Any API expecting a C string needs a
+    terminated copy (or a `std::string` parameter). Passing `string_view` *by value* is in fact recommended:
+    it's two words and fits in registers.
+
+- id: cpp-strings-006
+  topic: cpp
+  subtopic: Strings and string_view
+  difficulty: medium
+  type: single
+  tags: [sso, std-string, performance]
+  prompt: |
+    What is the small string optimization (SSO) in `std::string`, as implemented by libstdc++, libc++
+    and MSVC?
+  choices:
+    - { id: a, text: "Short strings (about 15–22 chars, depending on the library) are stored inside the `std::string` object itself, so creating them doesn't allocate; moving such a string copies the characters." }
+    - { id: b, text: "Strings share a reference-counted buffer and copy it only on write." }
+    - { id: c, text: "Identical short strings are interned in a global table." }
+    - { id: d, text: "The compiler stores short strings in registers instead of memory." }
+  answer: a
+  explanation: |
+    `sizeof(std::string)` is 32 bytes on libstdc++ and 24 on libc++, and part of that is reused as an
+    inline buffer for short strings (15 chars on libstdc++, 22 on libc++). Consequences: no heap
+    allocation for short strings (a big win for keys and identifiers); a "move" of a short string is a
+    copy of a few bytes; and a moved-from short string may keep its contents. Copy-on-write (b) was used
+    by pre-C++11 libstdc++ but is effectively forbidden since C++11, because `operator[]` and iterators must
+    not invalidate other strings and must be fast in multithreaded code.
+
+- id: cpp-strings-007
+  topic: cpp
+  subtopic: Strings and string_view
+  difficulty: hard
+  type: multiple
+  tags: [string-view, dangling]
+  prompt: |
+    Which of these leave `sv` (a `std::string_view`) **dangling** immediately after the statement?
+    Select all that apply.
+
+    ```cpp
+    std::string get_name();
+    const std::string& name_ref();   // returns a reference to a long-lived member
+    std::string s = "persistent";
+    ```
+  choices:
+    - { id: a, text: "`std::string_view sv = get_name();`" }
+    - { id: b, text: "`std::string_view sv = s + \"!\";`" }
+    - { id: c, text: "`std::string_view sv = \"literal\";`" }
+    - { id: d, text: "`std::string_view sv = name_ref();`" }
+    - { id: e, text: "`std::string_view sv = s;`" }
+    - { id: f, text: "`auto sv = std::string_view(s).substr(2);`" }
+  answer: [a, b]
+  explanation: |
+    A view dangles when the characters it refers to are owned by a temporary. (a) `get_name()` and
+    (b) `s + "!"` both produce a temporary `std::string` destroyed at the end of the statement.
+
+    - (c) String literals have static storage duration, so the view is valid for the whole program.
+    - (d) The referenced string outlives the statement; the view is fine as long as that member lives (and
+      isn't reallocated).
+    - (e), (f) view the named, still-alive `s`. `substr` on a `string_view` returns another view into `s`,
+      with no allocation. (By contrast `s.substr(2)` on the `std::string` returns a temporary string, and
+      viewing *that* would dangle.)
+
+- id: cpp-strings-008
+  topic: cpp
+  subtopic: Strings and string_view
+  difficulty: medium
+  type: short
+  tags: [string-view, api-design]
+  prompt: |
+    When is `std::string_view` a good choice for a function parameter, and when is it a bad choice (as a
+    parameter, return type or data member)?
+  reference: |
+    Good: read-only string parameters that are only inspected during the call (parsing, lookups,
+    comparisons, logging). A `string_view` accepts `std::string`, string literals, `char` buffers and
+    substrings without allocating or copying, and is cheap to pass by value (pointer plus length). Bad:
+    (1) when the function needs a NUL-terminated string for a C API (`fopen`, `open`, `strtol`): a view may
+    not be terminated, so you'd have to copy anyway; (2) when the function stores the string (a sink): take
+    `std::string` by value and move, since a view would force a copy from it later, or worse be stored and
+    dangle; (3) as a return type or data member referring to data the callee doesn't own for the caller's
+    whole usage. Returning a view into a temporary or local, or storing a view in a long-lived object
+    whose source string is freed or reallocated, creates dangling references; (4) when overloads on
+    `const std::string&` and `const char*` exist, adding `string_view` can create ambiguities; (5) for
+    heterogeneous lookup in maps, you need transparent comparators. Rule: views as parameters are great;
+    views that outlive the call need careful lifetime reasoning.
+  explanation: |
+    Look for no-allocation flexibility as the benefit, and null-termination, sinks and dangling as the
+    main risks.
+  keyPoints:
+    - Great for read-only parameters used only during the call; accepts any string source with no allocation
+    - Bad for C APIs needing NUL termination
+    - Bad for sink parameters that store the string (take std::string by value)
+    - Returned or stored views can dangle when the source dies or reallocates
+    - Overload ambiguities and the need for transparent comparators in maps
+
+- id: cpp-strings-009
+  topic: cpp
+  subtopic: Strings and string_view
+  difficulty: easy
+  type: single
+  tags: [c-str, pointer-invalidation, std-string]
+  prompt: |
+    ```cpp
+    std::string name = "order";
+    const char* p = name.c_str();
+    name += "_book_with_a_much_longer_suffix";
+    std::puts(p);
+    ```
+    What is the problem?
+  choices:
+    - { id: a, text: "Appending can reallocate the string's buffer, which invalidates `p`; using it is undefined behaviour." }
+    - { id: b, text: "`c_str()` returns a copy, so `p` prints the old value `order`, which is fine." }
+    - { id: c, text: "`c_str()` must be freed with `free()`." }
+    - { id: d, text: "There's no problem; `c_str()` pointers stay valid for the string's lifetime." }
+  answer: a
+  explanation: |
+    `c_str()`/`data()` return a pointer into the string's internal buffer, valid only until the next
+    non-const operation that may modify the string ([string.require]): appending, inserting, `reserve`,
+    assignment, and so on. Here the new length exceeds the small-string buffer, so the characters move to a
+    heap allocation and `p` dangles. Call `c_str()` again right before each use and never store the
+    pointer long-term.

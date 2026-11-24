@@ -1,0 +1,261 @@
+# Standard algorithms and C++20 ranges.
+- id: cpp-algorithms-001
+  topic: cpp
+  subtopic: Algorithms and ranges
+  difficulty: easy
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [std-remove, erase-remove]
+  prompt: What does this program print?
+  code: |
+    #include <algorithm>
+    #include <iostream>
+    #include <vector>
+
+    int main() {
+        std::vector<int> v{1, 2, 3, 2, 5};
+        auto new_end = std::remove(v.begin(), v.end(), 2);
+        std::cout << v.size() << ' ' << (new_end - v.begin()) << '\n';
+    }
+  answer: { kind: output, output: "5 3" }
+  explanation: |
+    Algorithms work on iterators and can't change a container's size. `std::remove` shifts the elements
+    to keep (`1, 3, 5`) to the front and returns the new logical end; the tail holds valid but unspecified
+    values and the vector still has 5 elements. Complete the job with
+    `v.erase(new_end, v.end())` (the erase-remove idiom) or, in C++20, `std::erase(v, 2)`.
+
+- id: cpp-algorithms-002
+  topic: cpp
+  subtopic: Algorithms and ranges
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [std-accumulate, implicit-conversions]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+    #include <numeric>
+    #include <vector>
+
+    int main() {
+        std::vector<double> prices{1.5, 2.5, 3.5};
+        std::cout << std::accumulate(prices.begin(), prices.end(), 0) << '\n';
+    }
+  answer: { kind: output, output: "6" }
+  explanation: |
+    The accumulator's type is the type of the *initial value*, here `int` from `0`. Each step computes
+    `acc = acc + x` in `double` and converts back to `int`, truncating: `0+1.5 → 1`, `1+2.5 → 3`,
+    `3+3.5 → 6`. The correct sum 7.5 needs `0.0` as the initial value. (`std::reduce` has the same
+    rule.)
+
+- id: cpp-algorithms-003
+  topic: cpp
+  subtopic: Algorithms and ranges
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++20
+  tags: [ranges, views, lazy-evaluation, cpp20]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+    #include <ranges>
+
+    int main() {
+        auto odd_squares = std::views::iota(1)
+                         | std::views::filter([](int x) { return x % 2 == 1; })
+                         | std::views::transform([](int x) { return x * x; })
+                         | std::views::take(3);
+        for (int x : odd_squares) std::cout << x << ' ';
+        std::cout << '\n';
+    }
+  answer: { kind: output, output: "1 9 25" }
+  explanation: |
+    `std::views::iota(1)` is an infinite range, which is fine because views are *lazy*: nothing is computed
+    when the pipeline is built. Elements are pulled one at a time by the loop: 1 passes the filter
+    → 1, 2 is skipped, 3 → 9, 5 → 25, and then `take(3)` ends the range, so the infinite source is never
+    exhausted.
+
+- id: cpp-algorithms-004
+  topic: cpp
+  subtopic: Algorithms and ranges
+  difficulty: hard
+  type: output
+  language: cpp
+  standard: C++20
+  tags: [ranges, views, lazy-evaluation, cpp20]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+    #include <ranges>
+
+    int main() {
+        int calls = 0;
+        auto v = std::views::iota(0, 3)
+               | std::views::transform([&](int x) { ++calls; return x; })
+               | std::views::filter([](int x) { return x >= 0; });
+        for (int x : v) (void)x;
+        std::cout << calls << '\n';
+    }
+  answer: { kind: output, output: "6" }
+  explanation: |
+    `transform_view` doesn't cache: it calls the function every time its iterator is dereferenced.
+    `filter_view` dereferences the underlying iterator to test the predicate while searching
+    (in `begin()` and in each `++`), and the loop body dereferences the filter iterator again to get `x`.
+    So each of the 3 elements is transformed twice: 6 calls.
+
+    Expensive or side-effecting functions placed *before* a filter run more often than you'd expect. Put
+    the filter first where possible, or materialize the transformed values.
+
+- id: cpp-algorithms-005
+  topic: cpp
+  subtopic: Algorithms and ranges
+  difficulty: medium
+  type: multiple
+  tags: [algorithms, sorted-ranges]
+  prompt: |
+    Which standard algorithms **require** their input range(s) to be sorted (or at least partitioned
+    with respect to the value) to give correct results? Select all that apply.
+  choices:
+    - { id: a, text: "`std::binary_search`" }
+    - { id: b, text: "`std::lower_bound`" }
+    - { id: c, text: "`std::set_intersection`" }
+    - { id: d, text: "`std::merge`" }
+    - { id: e, text: "`std::unique`" }
+    - { id: f, text: "`std::find`" }
+  answer: [a, b, c, d]
+  explanation: |
+    Binary searches (`binary_search`, `lower_bound`, `upper_bound`, `equal_range`) require the range to be
+    partitioned with respect to the value, which a sorted range is. Set operations and `merge` require
+    sorted inputs; violating the precondition is undefined behaviour (no diagnostic, wrong results).
+
+    `std::unique` works on any range; it only removes *consecutive* duplicates, so it's usually combined
+    with `sort` to deduplicate, but it doesn't require it. `std::find` is a linear scan.
+
+- id: cpp-algorithms-006
+  topic: cpp
+  subtopic: Algorithms and ranges
+  difficulty: medium
+  type: single
+  tags: [nth-element, partial-sort, complexity]
+  prompt: |
+    You need the median of 10 million prices in a `std::vector<double>` and don't care about the
+    order of the other elements. Which algorithm is the best fit?
+  choices:
+    - { id: a, text: "`std::nth_element` (average O(n))" }
+    - { id: b, text: "`std::sort` then index the middle (O(n log n))" }
+    - { id: c, text: "`std::partial_sort` of the first half (O(n log n))" }
+    - { id: d, text: "Insert everything into a `std::set` and advance to the middle" }
+  answer: a
+  explanation: |
+    `std::nth_element` (introselect) places the element that would be at position `n` in sorted order there,
+    with everything smaller before it and everything larger after it, in linear time on average. Sorting
+    does strictly more work. `partial_sort` is the right tool for "top k *in sorted order*" (O(n log k)).
+    A `std::set` costs an allocation per element and O(n log n) with terrible cache behaviour.
+
+- id: cpp-algorithms-007
+  topic: cpp
+  subtopic: Algorithms and ranges
+  difficulty: medium
+  type: single
+  tags: [std-sort, strict-weak-ordering, undefined-behavior]
+  prompt: |
+    What is wrong with `std::sort(v.begin(), v.end(), [](int a, int b) { return a <= b; });`?
+  choices:
+    - { id: a, text: "The comparator is not a strict weak ordering (`comp(x, x)` is true), which is undefined behaviour; with some inputs implementations can read out of bounds or crash." }
+    - { id: b, text: "Nothing; it sorts in ascending order, just with equal elements in a different order." }
+    - { id: c, text: "It sorts in descending order." }
+    - { id: d, text: "It fails to compile because the comparator must take `const int&`." }
+  answer: a
+  explanation: |
+    `std::sort` requires `comp` to induce a strict weak ordering ([alg.sorting]); in particular
+    `comp(a, a)` must be `false` (irreflexivity). With `<=`, the unguarded inner loops of typical
+    introsort implementations rely on this property to stop, and with many equal elements they can run
+    past the end of the range: a real crash bug seen in production. Use `<` (or `std::less<>{}`).
+    Comparators over floating point with NaNs, or "compare by a then by b" written wrongly, break the
+    same requirement.
+
+- id: cpp-algorithms-008
+  topic: cpp
+  subtopic: Algorithms and ranges
+  difficulty: hard
+  type: single
+  tags: [ranges, dangling, borrowed-range, cpp20]
+  prompt: |
+    Given `std::vector<int> load();`, what happens with this C++20 code?
+
+    ```cpp
+    auto it = std::ranges::find(load(), 42);
+    std::cout << *it;
+    ```
+  choices:
+    - { id: a, text: "It fails to compile: for an rvalue non-borrowed range, `ranges::find` returns `std::ranges::dangling`, which can't be dereferenced." }
+    - { id: b, text: "It compiles and is undefined behaviour because `it` points into a destroyed vector." }
+    - { id: c, text: "It compiles and works, because the temporary's lifetime is extended to match `it`." }
+    - { id: d, text: "It fails to compile because `ranges::find` doesn't accept containers, only iterator pairs." }
+  answer: a
+  explanation: |
+    Range algorithms that return iterators return `std::ranges::borrowed_iterator_t<R>`. If `R` is an rvalue
+    of a type that isn't a *borrowed range* (one whose iterators outlive it, such as `std::string_view` or
+    `std::span`), the algorithm returns the empty type `std::ranges::dangling` instead. So a bug that would
+    be use-after-free with the classic `std::find(load().begin(), ...)` becomes a compile error here.
+    Store the vector in a variable first.
+
+- id: cpp-algorithms-009
+  topic: cpp
+  subtopic: Algorithms and ranges
+  difficulty: easy
+  type: short
+  tags: [erase-remove, std-erase-if]
+  prompt: |
+    Explain the erase-remove idiom. Why doesn't `std::remove_if` remove anything from the container, and
+    what does C++20 offer instead?
+  reference: |
+    Standard algorithms operate on iterator ranges and have no access to the container, so they can't
+    change its size. `std::remove_if(first, last, pred)` moves the elements that should be kept to the
+    front, preserving their relative order, and returns an iterator to the new logical end. The elements
+    after it are in a valid but unspecified state. The container still has its old size until you call
+    `c.erase(new_end, c.end())`. Together this is the erase-remove idiom, and it is O(n), unlike erasing
+    elements one by one, which is O(n²) for a vector. C++20 adds `std::erase(c, value)` and
+    `std::erase_if(c, pred)` free functions for all standard containers, which do the right thing for each
+    (for `std::list` they call the member `remove_if`, which relinks nodes).
+  explanation: |
+    The key idea is "algorithms don't know about containers". A strong answer adds the O(n) vs O(n²)
+    argument and the C++20 replacement.
+  keyPoints:
+    - Algorithms operate on iterators and cannot change container size
+    - remove_if compacts kept elements forward and returns the new logical end
+    - Follow with erase(new_end, end()); the whole idiom is O(n)
+    - C++20 std::erase / std::erase_if do it in one call for every container
+
+- id: cpp-algorithms-010
+  topic: cpp
+  subtopic: Algorithms and ranges
+  difficulty: medium
+  type: short
+  tags: [std-sort, introsort, stable-sort, complexity]
+  prompt: |
+    What algorithm does `std::sort` typically use, what complexity does the standard guarantee, and when
+    would you use `std::stable_sort` or `std::partial_sort` instead?
+  reference: |
+    Mainstream implementations use introsort: quicksort with median-of-three pivot selection, switching to
+    heapsort if the recursion depth exceeds about 2·log2(n) (which avoids quicksort's O(n²) worst case), and
+    finishing small partitions (around 16 elements) with insertion sort. Since C++11 the standard requires
+    O(n log n) comparisons in the worst case. `std::sort` is not stable: equal elements may be reordered.
+    `std::stable_sort` preserves the relative order of equal elements (needed when sorting by a secondary key
+    after a primary one, or for deterministic output); it's typically a merge sort that is O(n log n) with an
+    O(n) buffer, and degrades to O(n log² n) if no memory is available. `std::partial_sort` sorts only the
+    first k elements in O(n log k) (heap-based), good for top-k. `std::nth_element` gives O(n) average
+    selection without sorting. Requirements: random-access iterators for `sort` and `stable_sort`, and a
+    strict weak ordering comparator.
+  explanation: |
+    Mention introsort's three components, the C++11 worst-case guarantee, stability, and the
+    alternatives with their complexities.
+  keyPoints:
+    - Introsort is quicksort plus a heapsort fallback on deep recursion plus insertion sort for small ranges
+    - O(n log n) worst-case comparisons guaranteed since C++11; not stable
+    - stable_sort preserves the order of equal elements (merge sort, needs a buffer)
+    - partial_sort O(n log k) for top-k; nth_element O(n) average for selection
+    - Requires random-access iterators and a strict weak ordering

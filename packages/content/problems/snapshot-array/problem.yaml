@@ -1,0 +1,27 @@
+slug: snapshot-array
+title: Snapshot Array
+difficulty: medium
+tags: [design, binary-search, array]
+signature:
+  className: SnapshotArray
+  kind: design
+  ctorParams:
+    - { name: length, type: int }
+  methods:
+    - name: set
+      params:
+        - { name: index, type: int }
+        - { name: val, type: int }
+      returns: void
+    - name: snap
+      params: []
+      returns: int
+    - name: get
+      params:
+        - { name: index, type: int }
+        - { name: snapId, type: int }
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Snapshot Array (LeetCode 1146)
+  url: https://leetcode.com/problems/snapshot-array/

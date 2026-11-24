@@ -1,0 +1,17 @@
+slug: longest-repeating-character-replacement
+title: Longest Repeating Character Replacement
+difficulty: medium
+tags: [string, hash-table, sliding-window]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: characterReplacement
+      params:
+        - { name: s, type: string }
+        - { name: k, type: int }
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (Blind 75; LeetCode 424)
+  url: https://leetcode.com/problems/longest-repeating-character-replacement/

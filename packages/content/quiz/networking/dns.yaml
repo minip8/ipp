@@ -1,0 +1,247 @@
+# DNS.
+- id: net-dns-001
+  topic: networking
+  subtopic: DNS
+  difficulty: easy
+  type: single
+  prompt: |
+    Which transport does classic DNS use?
+  choices:
+    - { id: a, text: "TCP port 53 only" }
+    - { id: b, text: "UDP port 53 for most queries, with TCP port 53 for responses too large for UDP and for zone transfers" }
+    - { id: c, text: "UDP port 853" }
+    - { id: d, text: "HTTPS only" }
+  answer: b
+  explanation: |
+    Queries normally go over **UDP/53**, a single round trip with no handshake. TCP/53 is used when a
+    response is truncated (TC bit set), for zone transfers (AXFR/IXFR), and increasingly in general.
+    RFC 7766 makes TCP support **mandatory** for implementations. Port 853 is DNS over TLS (RFC 7858),
+    and DNS over HTTPS (RFC 8484) runs on 443. Both are encrypted alternatives, not "classic DNS".
+  tags: [dns, udp, tcp]
+
+- id: net-dns-002
+  topic: networking
+  subtopic: DNS
+  difficulty: medium
+  type: single
+  prompt: |
+    A resolver receives a UDP DNS response with the **TC** (truncated) bit set. What should it do?
+  choices:
+    - { id: a, text: "Use the partial answer it has" }
+    - { id: b, text: "Retry the same query over TCP" }
+    - { id: c, text: "Retry over UDP with a smaller query" }
+    - { id: d, text: "Treat the name as nonexistent (NXDOMAIN)" }
+  answer: b
+  explanation: |
+    TC means the full answer didn't fit in the UDP payload size the client advertised: 512 bytes by
+    default, or the EDNS(0) buffer size. The client should re-ask **over TCP**, which has no such limit.
+    A truncated answer can't be trusted to be complete. Large responses such as DNSSEC-signed answers
+    or long TXT records often take this path, which is one reason firewalls that block TCP/53 cause
+    intermittent DNS failures.
+  tags: [dns, tcp, edns]
+
+- id: net-dns-003
+  topic: networking
+  subtopic: DNS
+  difficulty: medium
+  type: short
+  prompt: |
+    Describe step by step how `www.example.com` is resolved on a laptop with a cold cache, naming every
+    party involved and where caching happens.
+  reference: |
+    1. The application calls getaddrinfo(). The OS's stub resolver checks /etc/hosts (per nsswitch) and
+       any local cache, such as systemd-resolved or the browser's own DNS cache.
+    2. On a miss the stub sends a **recursive** query (RD bit set) to the configured recursive resolver:
+       the ISP's, the corporate one, or a public resolver such as 1.1.1.1.
+    3. The recursive resolver resolves **iteratively**. It asks a **root server** (whose addresses it
+       knows from root hints), which answers with a referral to the `.com` TLD servers (NS records plus
+       glue A/AAAA records). The resolver asks a `.com` server, which refers it to `example.com`'s
+       authoritative name servers. It asks one of those, which gives the authoritative answer: the
+       A/AAAA records for www, possibly via a CNAME chain that must be followed.
+    4. The resolver caches every record (referrals and answers) for its TTL, plus negative answers
+       (NXDOMAIN/NODATA) per RFC 2308, and returns the answer to the stub. The stub and the browser
+       may cache it too.
+
+    Later lookups are usually served from cache. The TLD and root steps are skipped while their NS
+    records are still cached.
+  keyPoints:
+    - "Stub resolver (hosts file, local cache) sends a recursive query to a recursive resolver"
+    - "Recursive resolver walks iteratively: root -> TLD -> authoritative, following referrals"
+    - "Referrals carry NS records plus glue addresses"
+    - "Answers (including CNAME chains) and negative answers cached per TTL at several layers"
+    - "Distinguishes recursive (client to resolver) from iterative (resolver to servers) queries"
+  explanation: |
+    The DNS part of "what happens when you type a URL". Interviewers probe whether you know who does
+    the iteration.
+  tags: [dns, resolution, caching]
+
+- id: net-dns-004
+  topic: networking
+  subtopic: DNS
+  difficulty: medium
+  type: single
+  prompt: |
+    Why can't you put a standard **CNAME** record at a zone apex such as `example.com` (as opposed to
+    `www.example.com`)?
+  choices:
+    - { id: a, text: "CNAMEs only work with names that have at least three labels" }
+    - { id: b, text: "A CNAME can't coexist with any other record at the same name, but the apex must have SOA and NS records" }
+    - { id: c, text: "Root servers reject CNAMEs" }
+    - { id: d, text: "CNAME targets must be in the same zone" }
+  answer: b
+  explanation: |
+    RFC 1034 §3.6.2: if a CNAME is present at a node, no other data should be present (with
+    DNSSEC-related exceptions in RFC 2181/4035). Every zone apex needs **SOA** and **NS** records, so a
+    CNAME there would break the rule. DNS providers work around this with proprietary "ALIAS" /
+    "ANAME" / CNAME-flattening records, which resolve the target server-side and return A/AAAA records.
+    The newer HTTPS/SVCB records (RFC 9460) offer a standard alternative for aliasing an apex.
+    CNAME targets can be in any zone.
+  tags: [dns, cname]
+
+- id: net-dns-005
+  topic: networking
+  subtopic: DNS
+  difficulty: easy
+  type: multiple
+  prompt: |
+    Which record-type descriptions are correct? Select all that apply.
+  choices:
+    - { id: a, text: "A: maps a name to an IPv4 address" }
+    - { id: b, text: "AAAA: maps a name to an IPv6 address" }
+    - { id: c, text: "MX: names the mail exchangers for a domain, with preferences" }
+    - { id: d, text: "PTR: used for reverse lookups (address to name) under in-addr.arpa / ip6.arpa" }
+    - { id: e, text: "NS: maps a name directly to the IP address of a web server" }
+  answer: [a, b, c, d]
+  explanation: |
+    A, AAAA, MX and PTR are described correctly. **NS** records delegate a zone to its authoritative
+    name servers (by name, not address; address "glue" records may accompany them). They have nothing
+    to do with web servers. Other common types: CNAME (alias), TXT (free text, e.g. SPF or domain
+    verification), SRV (service location with port), SOA (zone metadata), CAA (which CAs may issue
+    certificates).
+  tags: [dns, records]
+
+- id: net-dns-006
+  topic: networking
+  subtopic: DNS
+  difficulty: medium
+  type: single
+  prompt: |
+    Your A record had a TTL of 86,400 s. Five minutes before migrating you lower the TTL to 60 s, then
+    change the IP. Some users keep reaching the old server for up to a day. Why?
+  choices:
+    - { id: a, text: "DNS changes always take 24–48 hours to \"propagate\" between authoritative servers" }
+    - { id: b, text: "Resolvers that cached the record before your TTL change keep it for the old 86,400 s TTL; you needed to lower the TTL at least one old-TTL period ahead" }
+    - { id: c, text: "The new TTL of 60 s is below the minimum and is ignored" }
+    - { id: d, text: "Browsers ignore DNS TTLs entirely" }
+  answer: b
+  explanation: |
+    A cached record lives for the TTL it was **cached with**. Any resolver that fetched it in the day
+    before your change holds the old IP with up to 86,400 s left, and never sees the new 60 s TTL until
+    that entry expires. The correct procedure: lower the TTL, wait at least the *old* TTL, migrate, and
+    raise the TTL again afterwards.
+
+    "Propagation delay" is mostly this caching effect. Pushing changes to secondary authoritative
+    servers usually takes seconds (NOTIFY/IXFR). Some resolvers clamp very low TTLs and some clients
+    cache a bit longer, but 60 s is commonly honoured.
+  tags: [dns, ttl, caching, operations]
+
+- id: net-dns-007
+  topic: networking
+  subtopic: DNS
+  difficulty: hard
+  type: single
+  prompt: |
+    The 2008 Kaminsky attack made DNS cache poisoning practical against resolvers. Which change was the
+    main deployed mitigation, short of DNSSEC?
+  choices:
+    - { id: a, text: "Increasing the DNS transaction ID from 16 to 32 bits" }
+    - { id: b, text: "Randomising the resolver's UDP source port for each query, so an attacker must guess both the port and the 16-bit transaction ID" }
+    - { id: c, text: "Switching all DNS traffic to TCP" }
+    - { id: d, text: "Lowering all TTLs to zero" }
+  answer: b
+  explanation: |
+    An off-path attacker must forge a response that matches the outstanding query. With a fixed source
+    port only the **16-bit transaction ID** had to be guessed. Kaminsky's trick queried random
+    nonexistent subdomains, which gave unlimited fresh attempts with no need to wait out a TTL, and
+    forged referrals to hijack the whole domain. **Source-port randomisation** (RFC 5452) adds about
+    16 more bits of entropy. DNS cookies (RFC 7873) and 0x20 case randomisation add more. The header
+    format couldn't change (choice a), and moving all traffic to TCP wasn't feasible at the time.
+    **DNSSEC** is the cryptographic fix, because it authenticates the data itself.
+  tags: [dns, security, cache-poisoning]
+  source: { name: "RFC 5452", url: "https://www.rfc-editor.org/rfc/rfc5452" }
+
+- id: net-dns-008
+  topic: networking
+  subtopic: DNS
+  difficulty: easy
+  type: single
+  prompt: |
+    What does **DNSSEC** provide?
+  choices:
+    - { id: a, text: "Confidentiality: queries and answers are encrypted" }
+    - { id: b, text: "Data origin authentication and integrity: answers are signed, so a validating resolver can detect forged or modified records, including proof that a name doesn't exist" }
+    - { id: c, text: "Protection against DDoS on authoritative servers" }
+    - { id: d, text: "Authentication of the client to the server" }
+  answer: b
+  explanation: |
+    DNSSEC (RFC 4033–4035) signs record sets (RRSIG) with zone keys (DNSKEY), chained up from the root
+    via DS records. Authenticated denial of existence uses NSEC/NSEC3. It provides **integrity and
+    authenticity**, not privacy: anyone on the path can still see what you looked up. Encryption comes
+    from DoT, DoH or DoQ. DNSSEC can actually make DDoS *worse*, through larger responses used for
+    amplification.
+  tags: [dns, dnssec, security]
+
+- id: net-dns-009
+  topic: networking
+  subtopic: DNS
+  difficulty: medium
+  type: short
+  prompt: |
+    Many services do global load balancing with DNS (GeoDNS, returning different IPs per region). What
+    are the limitations of DNS-based traffic steering?
+  reference: |
+    - **Caching and TTLs**: answers are cached by resolvers, operating systems and applications, and
+      some ignore or extend TTLs. Failover is only as fast as the TTL (or slower), and a dead backend
+      keeps receiving traffic until caches expire.
+    - **Coarse granularity**: one resolver serves many clients. A popular resolver concentrates a lot
+      of load on whichever IP it was given, so load is lumpy.
+    - **Location is the resolver's, not the client's**: GeoDNS sees the recursive resolver's IP. With
+      public resolvers this can be far from the user. EDNS Client Subnet (RFC 7871) passes a truncated
+      client prefix, but has privacy costs and isn't sent everywhere.
+    - **No connection-level awareness**: DNS doesn't know current server load or health unless the
+      authoritative side integrates health checks, and long-lived connections ignore DNS changes
+      altogether.
+    - Clients may pick any of several returned records, and many resolve only once.
+
+    That's why DNS steering is combined with anycast and L4/L7 load balancers that can react
+    immediately.
+  keyPoints:
+    - "TTL/caching delays failover; some clients ignore TTLs"
+    - "Granularity per resolver, not per user: lumpy load"
+    - "Geo decision based on resolver IP; ECS as partial fix"
+    - "No real-time health/load awareness without extra integration; long-lived connections don't re-resolve"
+    - "Usually paired with anycast or real load balancers"
+  explanation: |
+    A typical systems-design follow-up when a candidate proposes "just use DNS round robin".
+  tags: [dns, load-balancing, geodns]
+
+- id: net-dns-010
+  topic: networking
+  subtopic: DNS
+  difficulty: medium
+  type: single
+  prompt: |
+    What did **EDNS(0)** (RFC 6891) change about DNS over UDP?
+  choices:
+    - { id: a, text: "It encrypted DNS messages" }
+    - { id: b, text: "It let a client advertise a UDP payload size larger than 512 bytes (plus carry extra flags and options such as the DNSSEC OK bit) via an OPT pseudo-record" }
+    - { id: c, text: "It moved DNS from port 53 to 853" }
+    - { id: d, text: "It removed the 16-bit transaction ID" }
+  answer: b
+  explanation: |
+    RFC 1035 limited DNS-over-UDP messages to 512 bytes. EDNS(0) adds an **OPT** pseudo-RR in the
+    additional section that advertises the requester's UDP buffer size and carries flags (the DO bit
+    for DNSSEC) and options (Client Subnet, cookies, padding). DNS Flag Day 2020 recommended a
+    1232-byte default buffer, to avoid IP fragmentation, falling back to TCP above that. Encryption
+    comes from DoT and DoH.
+  tags: [dns, edns]

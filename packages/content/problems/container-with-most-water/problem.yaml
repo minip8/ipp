@@ -1,0 +1,16 @@
+slug: container-with-most-water
+title: Container With Most Water
+difficulty: medium
+tags: [array, two-pointers, greedy]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: maxArea
+      params:
+        - { name: height, type: { array: int } }
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (Blind 75; LeetCode 11)
+  url: https://leetcode.com/problems/container-with-most-water/

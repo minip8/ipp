@@ -1,0 +1,19 @@
+slug: find-if-path-exists
+title: Find if Path Exists in Graph
+difficulty: easy
+tags: [graph, bfs, dfs, union-find]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: validPath
+      params:
+        - { name: n, type: int }
+        - { name: edges, type: { array: { array: int } } }
+        - { name: source, type: int }
+        - { name: destination, type: int }
+      returns: bool
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 1971)
+  url: https://leetcode.com/problems/find-if-path-exists-in-graph/

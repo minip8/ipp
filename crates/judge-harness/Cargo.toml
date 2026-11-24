@@ -1,0 +1,16 @@
+[package]
+name = "ipp-judge-harness"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Class extraction (tree-sitter), driver generation, result framing and diagnostics for the judge"
+
+[dependencies]
+ipp-judge-contracts.workspace = true
+serde_json.workspace = true
+tree-sitter.workspace = true
+tree-sitter-cpp.workspace = true
+tree-sitter-python.workspace = true
+tree-sitter-java.workspace = true

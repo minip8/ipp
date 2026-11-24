@@ -1,0 +1,17 @@
+slug: accounts-merge
+title: Accounts Merge
+difficulty: medium
+tags: [graph, union-find, dfs, hash-table, string]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: accountsMerge
+      params:
+        - { name: accounts, type: { list: { list: string } } }
+      returns: { list: { list: string } }
+      compare: unordered
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 721)
+  url: https://leetcode.com/problems/accounts-merge/

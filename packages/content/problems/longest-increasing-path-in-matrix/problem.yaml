@@ -1,0 +1,16 @@
+slug: longest-increasing-path-in-matrix
+title: Longest Increasing Path in a Matrix
+difficulty: hard
+tags: [dynamic-programming, depth-first-search, memoization, topological-sort, matrix]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: longestIncreasingPath
+      params:
+        - { name: matrix, type: { array: { array: int } } }
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 329)
+  url: https://leetcode.com/problems/longest-increasing-path-in-a-matrix/

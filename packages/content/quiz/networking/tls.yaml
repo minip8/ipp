@@ -1,0 +1,234 @@
+# TLS.
+- id: net-tls-001
+  topic: networking
+  subtopic: TLS
+  difficulty: medium
+  type: single
+  prompt: |
+    For a **full** handshake with no session resumption, how many round trips does TLS 1.3 need before
+    the client can send application data, compared with TLS 1.2? (Count TLS only, not the TCP
+    handshake.)
+  choices:
+    - { id: a, text: "TLS 1.3: 1 RTT; TLS 1.2: 2 RTT" }
+    - { id: b, text: "TLS 1.3: 0 RTT; TLS 1.2: 1 RTT" }
+    - { id: c, text: "Both need 2 RTT" }
+    - { id: d, text: "TLS 1.3: 2 RTT; TLS 1.2: 3 RTT" }
+  answer: a
+  explanation: |
+    In TLS 1.3 (RFC 8446) the client sends key shares in its ClientHello, guessing the group. The
+    server's single flight (ServerHello, then encrypted EncryptedExtensions, Certificate,
+    CertificateVerify, Finished) completes the key exchange. The client sends its Finished together
+    with its first application data: **1 RTT**. TLS 1.2 needs a second round trip (ClientKeyExchange,
+    ChangeCipherSpec, Finished) before data: **2 RTT**, unless the False Start optimisation is used.
+    0-RTT applies only to TLS 1.3 *resumption* with early data. If the server doesn't support the
+    client's guessed group, a HelloRetryRequest adds an RTT.
+  tags: [tls, tls13, latency]
+  source: { name: "RFC 8446", url: "https://www.rfc-editor.org/rfc/rfc8446" }
+
+- id: net-tls-002
+  topic: networking
+  subtopic: TLS
+  difficulty: medium
+  type: single
+  prompt: |
+    What is the TLS **Server Name Indication (SNI)** extension for?
+  choices:
+    - { id: a, text: "It encrypts the host name so the network can't see which site you visit" }
+    - { id: b, text: "The client puts the target host name in the ClientHello, so a server hosting many sites on one IP can choose the right certificate before any HTTP request is sent" }
+    - { id: c, text: "It authenticates the client to the server" }
+    - { id: d, text: "It tells the client which DNS server to use" }
+  answer: b
+  explanation: |
+    The certificate must be chosen during the handshake, before the encrypted HTTP Host header exists,
+    so SNI (RFC 6066) carries the name early. In TLS 1.2 and 1.3 it is sent in **plaintext**, which is
+    why middleboxes can filter on it. **Encrypted Client Hello (ECH)** is the effort to hide it, by
+    encrypting an inner ClientHello with a key published in DNS (HTTPS records). Client authentication
+    is done with client certificates (mTLS), not SNI.
+  tags: [tls, sni, privacy]
+
+- id: net-tls-003
+  topic: networking
+  subtopic: TLS
+  difficulty: medium
+  type: multiple
+  prompt: |
+    Which statements describe changes in TLS 1.3 compared with TLS 1.2? Select all that apply.
+  choices:
+    - { id: a, text: "Static RSA key transport was removed, so every full handshake uses (EC)DHE and has forward secrecy" }
+    - { id: b, text: "Handshake messages after the ServerHello, including the server certificate, are encrypted" }
+    - { id: c, text: "Only AEAD cipher constructions (e.g. AES-GCM, ChaCha20-Poly1305) are allowed" }
+    - { id: d, text: "0-RTT early data is protected against replay by the protocol" }
+    - { id: e, text: "The client must always present a certificate" }
+  answer: [a, b, c]
+  explanation: |
+    TLS 1.3 pared the protocol down. It removed RSA key transport, static DH, CBC-mode MAC-then-encrypt
+    suites, compression and renegotiation, and it encrypts everything after the ServerHello. Choice d
+    is false: RFC 8446 §8 says 0-RTT data **has no inherent replay protection** across connections, and
+    servers or applications must mitigate it (single-use tickets, ClientHello recording, idempotent
+    requests only). Choice e is false: client certificates remain optional (mTLS).
+  tags: [tls, tls13, forward-secrecy]
+
+- id: net-tls-004
+  topic: networking
+  subtopic: TLS
+  difficulty: medium
+  type: short
+  prompt: |
+    During a TLS handshake the server sends its certificate chain. What exactly does the client check
+    before it trusts that it's talking to `api.example.com`?
+  reference: |
+    1. **Chain building and signatures**: the leaf certificate is signed by an intermediate, which is
+       signed by (eventually) a root CA in the client's trust store. Each signature must verify, and
+       each issuer must be allowed to act as a CA (basicConstraints, keyUsage, path-length and name
+       constraints).
+    2. **Validity period**: notBefore ≤ now ≤ notAfter for every certificate.
+    3. **Name match**: `api.example.com` must match a DNS name in the leaf's **subjectAltName** (the CN
+       is ignored by modern clients). Wildcards cover a single label only.
+    4. **Key usage / extended key usage** must permit serverAuth.
+    5. **Revocation** where checked: OCSP, OCSP stapling, CRLs, or browser-pushed lists. Browsers may
+       also require Certificate Transparency SCTs.
+    6. **Proof of possession**: the server signs the handshake transcript (CertificateVerify in TLS
+       1.3) with the private key matching the certificate. That proves it holds the key; it isn't just
+       replaying a public certificate.
+  keyPoints:
+    - "Chain to a trusted root, with every signature verified and CA constraints honoured"
+    - "Validity dates checked"
+    - "Host name matched against subjectAltName"
+    - "Server proves possession of the private key (signature over the handshake)"
+    - "Revocation/CT checks (OCSP stapling, CRLs, SCTs)"
+  explanation: |
+    Many candidates forget the proof-of-possession step and the host-name check, the two things that
+    stop a stolen *public* certificate from being useful.
+  tags: [tls, certificates, pki]
+
+- id: net-tls-005
+  topic: networking
+  subtopic: TLS
+  difficulty: medium
+  type: single
+  prompt: |
+    What does **forward secrecy** mean for a TLS deployment?
+  choices:
+    - { id: a, text: "Future sessions are protected even if the CA is compromised" }
+    - { id: b, text: "If the server's long-term private key is stolen later, previously recorded sessions still can't be decrypted, because session keys came from ephemeral Diffie-Hellman keys that were discarded" }
+    - { id: c, text: "Each record is encrypted with the next record's key" }
+    - { id: d, text: "The client can resume sessions without a handshake" }
+  answer: b
+  explanation: |
+    With static RSA key exchange the client encrypted the pre-master secret to the server's long-term
+    RSA key. Anyone who recorded the traffic and later obtained that key could decrypt everything. With
+    **ephemeral** (EC)DHE, the long-term key only *signs* the handshake, and each session's secret comes
+    from DH key pairs that are thrown away afterwards. TLS 1.3 requires this. Caveat: resumption
+    tickets encrypted under a long-lived ticket key can weaken forward secrecy if that key isn't
+    rotated.
+  tags: [tls, forward-secrecy, crypto]
+
+- id: net-tls-006
+  topic: networking
+  subtopic: TLS
+  difficulty: hard
+  type: single
+  prompt: |
+    You enable TLS 1.3 **0-RTT** (early data) on an API edge. What risk must the backend handle, and
+    what's the standard HTTP-level tool for it?
+  choices:
+    - { id: a, text: "Early data isn't encrypted; use HSTS" }
+    - { id: b, text: "Early data can be replayed by an attacker, so it should only carry replay-safe (idempotent) requests; servers can reject with 425 Too Early (RFC 8470), and proxies flag early requests with `Early-Data: 1`" }
+    - { id: c, text: "Early data skips certificate validation; use certificate pinning" }
+    - { id: d, text: "Early data can arrive out of order with 1-RTT data; use sequence numbers" }
+  answer: b
+  explanation: |
+    0-RTT data is encrypted under keys from a previous session's resumption secret. The server can't
+    tell a first copy from a replayed one without extra state, and RFC 8446 §8 offers only partial,
+    server-side defences. So a captured `POST /transfer` could be replayed. RFC 8470 defines the
+    `Early-Data: 1` request header, which an intermediary adds, and the **425 Too Early** status, which
+    tells the client to retry after the handshake completes. Typical policy: allow GET/HEAD in 0-RTT,
+    reject everything else. The certificate is still authenticated: it was authenticated in the original
+    session.
+  tags: [tls, tls13, zero-rtt, security]
+  source: { name: "RFC 8470", url: "https://www.rfc-editor.org/rfc/rfc8470" }
+
+- id: net-tls-007
+  topic: networking
+  subtopic: TLS
+  difficulty: medium
+  type: short
+  prompt: |
+    Where should TLS terminate in a service behind a load balancer? Compare terminating at the LB,
+    passing TLS through to backends, and re-encrypting, and say where mutual TLS fits.
+  reference: |
+    - **Terminate at the LB** (TLS offload): the LB holds the certificates and decrypts, so it can do
+      L7 routing, header injection (X-Forwarded-For), WAF and caching, and certificates live in one
+      place. Traffic from the LB to the backends is plaintext unless re-encrypted, which is
+      unacceptable on untrusted or shared networks and under many compliance regimes.
+    - **Passthrough** (L4, routed by SNI): end-to-end encryption, and the private keys stay on the
+      backends, but the LB can't inspect HTTP. Routing is limited to SNI or IP, and each backend pays
+      the handshake cost.
+    - **Re-encrypt** (TLS bridging): terminate at the LB, then open a new TLS connection to the
+      backend. You get L7 features and encryption in transit, at the cost of two handshakes and more
+      certificates to manage. Connection pooling to the backends hides most of that.
+
+    **Mutual TLS** authenticates both sides with certificates. It's used service to service (often by
+    a service mesh issuing short-lived workload certificates) and for B2B and API clients. At an edge
+    LB, the client certificate is checked there and its identity forwarded in a header, or TLS is
+    passed through so the backend checks it.
+  keyPoints:
+    - "Terminating at the LB enables L7 features and central cert management but exposes plaintext behind it"
+    - "Passthrough keeps end-to-end encryption, limits LB to L4/SNI routing"
+    - "Re-encryption gives both, at extra handshake/cert-management cost"
+    - "mTLS authenticates clients/services, common in service meshes and zero-trust"
+  explanation: |
+    A common systems-design probe.
+  tags: [tls, load-balancing, mtls]
+
+- id: net-tls-008
+  topic: networking
+  subtopic: TLS
+  difficulty: easy
+  type: single
+  prompt: |
+    In a TLS connection, what is public-key (asymmetric) cryptography used for, and what encrypts the
+    bulk application data?
+  choices:
+    - { id: a, text: "Everything is encrypted with the server's RSA public key" }
+    - { id: b, text: "Asymmetric crypto does key agreement (e.g. ECDHE) and authentication (certificate signatures); the bulk data is protected with a fast symmetric AEAD cipher such as AES-GCM using the derived keys" }
+    - { id: c, text: "Asymmetric crypto encrypts the bulk data; symmetric crypto signs the certificate" }
+    - { id: d, text: "TLS uses only symmetric crypto with a pre-shared key from the CA" }
+  answer: b
+  explanation: |
+    Public-key operations are orders of magnitude slower than symmetric ciphers, so TLS uses them only
+    to (1) agree on a shared secret and (2) authenticate the server (and optionally the client) with
+    signatures. A key schedule (HKDF in TLS 1.3) derives symmetric traffic keys, and records are
+    protected with an AEAD such as AES-GCM or ChaCha20-Poly1305, with hardware support (AES-NI) on
+    most CPUs. Choice a describes a misunderstanding of the old RSA key exchange, which only encrypted
+    the pre-master secret.
+  tags: [tls, crypto]
+
+- id: net-tls-009
+  topic: networking
+  subtopic: TLS
+  difficulty: easy
+  type: short
+  prompt: |
+    Give a high-level walkthrough of a TLS 1.3 full handshake and what each step achieves.
+  reference: |
+    1. **ClientHello**: supported versions and cipher suites, a random nonce, SNI, ALPN (e.g. h2), and
+       **key shares** (ephemeral ECDHE public keys) for the groups it guesses the server supports.
+    2. **ServerHello**: the chosen cipher suite and the server's key share. Both sides can now compute
+       the shared secret and derive handshake keys. Everything after this is encrypted.
+    3. Server sends **EncryptedExtensions** (e.g. the ALPN result), its **Certificate** chain,
+       **CertificateVerify** (a signature over the transcript with its private key, proving it owns the
+       certificate) and **Finished** (a MAC over the transcript).
+    4. Client validates the certificate and signature and sends its **Finished**. Both derive
+       application traffic keys, and the client can send its request in the same flight: 1 RTT.
+    5. Afterwards the server may send NewSessionTicket messages for resumption and 0-RTT.
+  keyPoints:
+    - "ClientHello carries key shares, SNI, ALPN; ServerHello completes (EC)DHE key agreement"
+    - "Everything after ServerHello is encrypted"
+    - "Certificate + CertificateVerify authenticate the server (proof of private key)"
+    - "Finished messages authenticate the transcript; 1 RTT before application data"
+    - "Session tickets enable resumption/0-RTT"
+  explanation: |
+    A frequent "explain it to me" question. Reward precise ordering and the purpose of
+    CertificateVerify and Finished.
+  tags: [tls, tls13, handshake]

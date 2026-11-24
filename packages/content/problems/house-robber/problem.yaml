@@ -1,0 +1,16 @@
+slug: house-robber
+title: House Robber
+difficulty: easy
+tags: [dynamic-programming, array]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: rob
+      params:
+        - { name: nums, type: { array: int } }
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 198)
+  url: https://leetcode.com/problems/house-robber/

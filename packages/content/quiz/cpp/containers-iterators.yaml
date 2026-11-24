@@ -1,0 +1,419 @@
+# Standard containers, iterators and invalidation.
+- id: cpp-containers-001
+  topic: cpp
+  subtopic: Containers and iterators
+  difficulty: hard
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [vector-bool, proxy-objects, auto]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+    #include <vector>
+
+    int main() {
+        std::vector<bool> flags{true, true};
+        auto first = flags[0];
+        flags[0] = false;
+        std::cout << first << '\n';
+    }
+  answer: { kind: output, output: "0" }
+  explanation: |
+    `std::vector<bool>` is a space-optimized specialization that packs bits, so `operator[]` can't return a
+    `bool&`. It returns a proxy object, `std::vector<bool>::reference`, that refers to the bit
+    ([vector.bool]). `auto first` deduces the proxy type, not `bool`, so `first` still refers to the
+    element and observes the later write → `0`. With `bool first = flags[0];` (or `auto first =
+    static_cast<bool>(flags[0])`) you'd get `1`.
+
+    `vector<bool>` also isn't a real container: `&flags[0]` is not a `bool*`, and concurrent writes to
+    different elements are data races. Consider `std::vector<char>`, `std::bitset`, or
+    `boost::dynamic_bitset` instead.
+
+- id: cpp-containers-002
+  topic: cpp
+  subtopic: Containers and iterators
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [iterator-invalidation, std-vector, undefined-behavior]
+  prompt: What does this program do?
+  code: |
+    #include <iostream>
+    #include <vector>
+
+    int main() {
+        std::vector<int> v{1, 2, 3};
+        for (int x : v) {
+            if (x == 2) v.push_back(4);
+            std::cout << x;
+        }
+        std::cout << '\n';
+    }
+  answer: { kind: undefined }
+  explanation: |
+    A range-for loop holds `begin()`/`end()` iterators obtained before the loop. `v` was created with
+    capacity 3, so `push_back` must reallocate, which invalidates *all* iterators, pointers and references
+    into the vector ([vector.modifiers]). The loop then reads freed memory: undefined behaviour
+    (AddressSanitizer: heap-use-after-free). Even without reallocation, the loop's `end` iterator would be
+    stale. Don't modify a container's size while range-iterating it; iterate by index, or collect
+    changes and apply them afterwards.
+
+- id: cpp-containers-003
+  topic: cpp
+  subtopic: Containers and iterators
+  difficulty: hard
+  type: single
+  tags: [unordered-map, iterator-invalidation, rehash]
+  prompt: |
+    You hold an iterator `it` and a reference `ref` to an element of a `std::unordered_map`. Another
+    element is then inserted and the insertion causes a **rehash**. What is guaranteed?
+  choices:
+    - { id: a, text: "`it` is invalidated, but `ref` (and pointers to elements) remain valid." }
+    - { id: b, text: "Both `it` and `ref` remain valid." }
+    - { id: c, text: "Both `it` and `ref` are invalidated, as with `std::vector` reallocation." }
+    - { id: d, text: "`ref` is invalidated, but `it` remains valid." }
+  answer: a
+  explanation: |
+    `std::unordered_map` is node-based: each element lives in its own allocated node that is never moved.
+    A rehash rebuilds the bucket array and relinks nodes, which invalidates iterators (their bucket
+    bookkeeping is stale) but not references or pointers to elements ([unord.req.general]). Without a
+    rehash, insertion invalidates nothing. Calling `reserve(n)` up front prevents rehashes up to `n`
+    elements. Open-addressing maps (e.g. `absl::flat_hash_map`) do *not* keep references stable, a
+    common surprise when switching implementations.
+
+- id: cpp-containers-004
+  topic: cpp
+  subtopic: Containers and iterators
+  difficulty: hard
+  type: multiple
+  tags: [iterator-invalidation, references, containers]
+  prompt: |
+    After which single operation are pointers and references to **all** previously existing elements
+    guaranteed to remain valid? Select all that apply.
+  choices:
+    - { id: a, text: "`std::vector::push_back` when `size() == capacity()`" }
+    - { id: b, text: "`std::deque::push_back`" }
+    - { id: c, text: "`std::list::insert` in the middle" }
+    - { id: d, text: "`std::map::insert`" }
+    - { id: e, text: "`std::unordered_map::insert` that triggers a rehash" }
+    - { id: f, text: "`std::vector::insert` in the middle when there is spare capacity" }
+  answer: [b, c, d, e]
+  explanation: |
+    - (a) Reallocation moves every element; everything is invalidated.
+    - (b) `deque` insertion at either end invalidates all *iterators* but not references to elements
+      ([deque.modifiers]), because elements live in fixed blocks that are not moved.
+    - (c), (d) Node-based containers never move elements; insertion invalidates nothing.
+    - (e) A rehash invalidates iterators only; references stay valid.
+    - (f) Without reallocation, elements before the insertion point are fine, but those at and after it
+      are shifted, so references to them now refer to different values.
+
+- id: cpp-containers-005
+  topic: cpp
+  subtopic: Containers and iterators
+  difficulty: medium
+  type: single
+  tags: [erase, iterator-invalidation, std-vector]
+  prompt: |
+    Which loop correctly removes all even numbers from `std::vector<int> v`?
+
+    ```cpp
+    // (a)
+    for (auto it = v.begin(); it != v.end(); ++it)
+        if (*it % 2 == 0) v.erase(it);
+    // (b)
+    for (auto it = v.begin(); it != v.end(); )
+        if (*it % 2 == 0) it = v.erase(it); else ++it;
+    // (c)
+    std::remove_if(v.begin(), v.end(), [](int x) { return x % 2 == 0; });
+    // (d)
+    for (std::size_t i = 0; i < v.size(); ++i)
+        if (v[i] % 2 == 0) v.erase(v.begin() + i);
+    ```
+  choices:
+    - { id: a, text: "(a)" }
+    - { id: b, text: "(b)" }
+    - { id: c, text: "(c)" }
+    - { id: d, text: "(d)" }
+  answer: b
+  explanation: |
+    - (a) `erase` invalidates `it` (and everything after it); incrementing it is undefined behaviour.
+    - (b) is correct: `erase` returns an iterator to the element after the removed one. It is O(n²) in the
+      worst case, though.
+    - (c) `remove_if` only shifts the kept elements forward and returns the new logical end; the vector's
+      size doesn't change. You need `v.erase(std::remove_if(...), v.end())`.
+    - (d) No UB, but after erasing index `i` the next element moves into `i` and is skipped by `++i`,
+      so consecutive even numbers survive.
+
+    Best answer in modern C++: `std::erase_if(v, [](int x) { return x % 2 == 0; });` (C++20), which is O(n).
+
+- id: cpp-containers-006
+  topic: cpp
+  subtopic: Containers and iterators
+  difficulty: easy
+  type: single
+  tags: [std-vector, capacity]
+  prompt: |
+    A `std::vector<int>` holding 1,000,000 elements is cleared with `v.clear()`. What happens to its
+    allocated memory?
+  choices:
+    - { id: a, text: "`size()` becomes 0 but `capacity()` is unchanged; the buffer is kept for reuse." }
+    - { id: b, text: "The buffer is freed and `capacity()` becomes 0." }
+    - { id: c, text: "The capacity is halved." }
+    - { id: d, text: "It is unspecified; implementations usually free the memory." }
+  answer: a
+  explanation: |
+    `clear()` destroys the elements but leaves the capacity unchanged (cppreference: "Leaves the capacity()
+    of the vector unchanged"), since `reserve` promises no reallocation until size exceeds capacity.
+    Reusing a cleared vector in a loop therefore avoids repeated allocations, a common low-latency idiom.
+    To actually release memory use `v.shrink_to_fit()` (a non-binding request) or swap with an empty
+    vector: `std::vector<int>().swap(v);`.
+
+- id: cpp-containers-007
+  topic: cpp
+  subtopic: Containers and iterators
+  difficulty: easy
+  type: single
+  tags: [std-list, iterator-categories, std-sort]
+  prompt: Why does `std::sort(lst.begin(), lst.end())` fail to compile for a `std::list<int> lst`?
+  choices:
+    - { id: a, text: "`std::sort` requires random-access iterators and `std::list` only provides bidirectional iterators; use `lst.sort()` instead." }
+    - { id: b, text: "`std::list` elements are const." }
+    - { id: c, text: "`std::sort` only works on arrays." }
+    - { id: d, text: "Lists are always sorted, so sorting is disallowed." }
+  answer: a
+  explanation: |
+    Introsort needs O(1) jumps (`it + n`, `it2 - it1`), i.e. random-access iterators
+    (`std::random_access_iterator` in C++20 terms). List iterators are bidirectional. `std::list::sort` is a
+    member merge sort that relinks nodes without moving elements, which keeps iterators and references
+    valid. The same applies to `std::forward_list`.
+
+- id: cpp-containers-008
+  topic: cpp
+  subtopic: Containers and iterators
+  difficulty: hard
+  type: single
+  tags: [heterogeneous-lookup, std-map, transparent-comparators]
+  prompt: |
+    A hot path does `m.find(key)` where `m` is `std::map<std::string, Order>` and `key` is a
+    `std::string_view`. Profiling shows the lookup allocating. What's the standard fix?
+  choices:
+    - { id: a, text: "Declare the map as `std::map<std::string, Order, std::less<>>` so `find` accepts any type comparable with `std::string`, without constructing a temporary key." }
+    - { id: b, text: "Call `m.find(key.data())`." }
+    - { id: c, text: "Replace `find` with `operator[]`." }
+    - { id: d, text: "Mark `find` as `noexcept`." }
+  answer: a
+  explanation: |
+    By default `std::map<std::string, V>::find` takes `const std::string&`, so a `string_view` (or a
+    long `const char*`) must first be converted to a temporary `std::string`, which may allocate. With a
+    *transparent* comparator (`std::less<>`, which has `is_transparent`), the C++14 heterogeneous
+    overloads `template <class K> find(const K&)` are enabled and compare `string_view` against
+    `std::string` directly. C++20 adds the same for unordered containers (you need a transparent hash
+    *and* equality). (b) still constructs a `std::string` and also breaks for non-terminated views;
+    (c) can insert and still converts.
+
+- id: cpp-containers-009
+  topic: cpp
+  subtopic: Containers and iterators
+  difficulty: medium
+  type: short
+  tags: [std-vector, std-list, cache-locality, performance]
+  prompt: |
+    Big-O says inserting into the middle of a `std::list` is O(1) and into a `std::vector` is O(n). Why
+    is `std::vector` nevertheless usually faster in practice, even for workloads with middle insertions?
+  reference: |
+    The O(1) list insertion assumes you already have an iterator to the position; finding it is a
+    linear traversal, and traversing a list is pointer chasing: each node is a separate heap allocation,
+    so each step is a dependent load and likely a cache miss, and the hardware prefetcher can't help. A
+    vector stores elements contiguously, so a linear search streams through cache lines at full memory
+    bandwidth with prefetching, and shifting elements on insertion is a `memmove`-like bulk operation that
+    is very fast for trivially copyable types. Lists also pay an allocation per insert (allocator cost,
+    fragmentation) and two extra pointers of memory per element, which reduces cache density further. As a
+    result, for small to medium element types and realistic sizes the vector wins, as Bjarne Stroustrup's
+    and others' benchmarks show. Lists still make sense when elements are huge or non-movable, when you
+    need iterator/reference stability, or for O(1) splicing.
+  explanation: |
+    The core insight is memory locality versus pointer chasing, plus the hidden search cost. See Bjarne
+    Stroustrup, "Why you should avoid linked lists" (GoingNative 2012) and Chandler Carruth, "Efficiency with
+    Algorithms, Performance with Data Structures" (CppCon 2014).
+  keyPoints:
+    - Finding the insertion point in a list is a linear traversal anyway
+    - List traversal is pointer chasing with cache misses; vector is contiguous and prefetch-friendly
+    - Vector shifting is a fast bulk move; list pays an allocation per node plus pointer overhead
+    - Lists are justified for reference/iterator stability, splicing, or huge non-movable elements
+
+- id: cpp-containers-010
+  topic: cpp
+  subtopic: Containers and iterators
+  difficulty: hard
+  type: short
+  tags: [unordered-map, hash-tables, performance]
+  prompt: |
+    How is `std::unordered_map` typically implemented, what does a rehash cost, and why do
+    high-performance codebases often replace it with an open-addressing hash map?
+  reference: |
+    The standard's requirements (stable references across rehash, bucket interface, `max_load_factor`)
+    essentially force *separate chaining*: an array of buckets, each pointing into linked lists of
+    individually allocated nodes (libstdc++ keeps one singly linked list through all nodes, with buckets
+    pointing at predecessors). A lookup hashes the key, picks a bucket (via modulo of a prime in libstdc++,
+    or a power of two in libc++), then follows node pointers comparing keys. When size exceeds
+    `bucket_count * max_load_factor` (default 1.0), the table rehashes: it allocates a larger bucket
+    array (roughly doubling) and relinks every node, O(n) and a latency spike, though nodes aren't
+    moved. `reserve(n)` avoids it. Costs of this design: one allocation per element, pointer chasing and
+    cache misses on every lookup, and poor memory density. Open-addressing tables (`absl::flat_hash_map`,
+    `boost::unordered_flat_map`, robin-hood maps) store elements inline in one array with probing,
+    often with SIMD-scanned metadata bytes, giving far fewer cache misses and allocations. They give up
+    reference stability (elements move on rehash) and need good hash functions, since identity hashes on
+    integers can cluster badly.
+  explanation: |
+    Look for: separate chaining with node allocation, load factor triggering an O(n) rehash, reference
+    stability as the reason for that design, and the cache and allocation argument for open addressing.
+    Matt Kulukundis, "Designing a Fast, Efficient, Cache-friendly Hash Table, Step by Step" (CppCon 2017)
+    is the classic reference.
+  keyPoints:
+    - Separate chaining with per-element node allocations (required by the reference-stability guarantees)
+    - Load factor exceeded triggers a rehash, O(n) relinking into a bigger bucket array; reserve() avoids it
+    - Lookups chase pointers, so cache misses dominate
+    - Open addressing stores elements inline, giving fewer misses and allocations, often with SIMD probing
+    - "Trade-off: open addressing loses reference stability and is more sensitive to hash quality"
+
+- id: cpp-containers-011
+  topic: cpp
+  subtopic: Containers and iterators
+  difficulty: medium
+  type: short
+  tags: [std-vector, amortized-complexity, growth-factor]
+  prompt: |
+    How does `std::vector` grow when you `push_back` beyond its capacity? Why is `push_back` amortized
+    O(1), and what are the consequences of the growth strategy?
+  reference: |
+    When `size() == capacity()`, the vector allocates a new buffer that is a constant factor larger
+    (libstdc++ and libc++ double it; MSVC grows by 1.5×), moves or copies the existing elements into it
+    (moving only if the move constructor is `noexcept`, or the type isn't copyable), destroys the old
+    elements, and frees the old buffer. Because capacity grows geometrically, the total number of element
+    transfers over n pushes is bounded by a geometric series (about n·(1/(k−1)) for factor k), so the
+    average cost per `push_back` is O(1) even though an individual reallocating push is O(n). Consequences:
+    every reallocation invalidates all iterators, pointers and references; individual pushes have latency
+    spikes; up to 2× memory overhead (plus the old and new buffers coexisting during the copy); and with
+    factor 2 the freed blocks can never be reused for the next growth (the sum of previous sizes is less
+    than the next size), an argument for 1.5. Mitigate with `reserve()` when the size is known, and
+    `shrink_to_fit()` to release slack. Growth by a constant *amount* would make push_back O(n) amortized.
+  explanation: |
+    Key points: geometric growth, amortization argument, invalidation, move_if_noexcept, and reserve.
+  keyPoints:
+    - On overflow allocate a geometrically larger buffer (×2 libstdc++/libc++, ×1.5 MSVC) and transfer elements
+    - Geometric growth makes total copying O(n), so push_back is amortized O(1)
+    - Reallocation invalidates all iterators, pointers and references
+    - Elements are moved only if the move constructor is noexcept, else copied
+    - reserve() avoids reallocations and latency spikes; memory overhead up to the growth factor
+
+- id: cpp-containers-012
+  topic: cpp
+  subtopic: Containers and iterators
+  difficulty: easy
+  type: short
+  tags: [std-map, unordered-map, complexity]
+  prompt: |
+    Compare `std::map` and `std::unordered_map`: implementation, complexity, ordering, iterator stability
+    and key requirements. When would you choose `std::map`?
+  reference: |
+    `std::map` is a balanced binary search tree (red-black tree in all major libraries): O(log n) lookup,
+    insertion and erase, keys kept in sorted order, so in-order iteration, `lower_bound`/`upper_bound`
+    range queries, and ordered min/max are available. Keys need a strict weak ordering (`operator<` or a
+    comparator). `std::unordered_map` is a hash table with separate chaining: average O(1) lookup,
+    insertion and erase, worst case O(n) with bad hashes or adversarial inputs; iteration order is
+    unspecified and changes on rehash. Keys need a hash function and `operator==`. Both are node-based, so
+    references to elements stay valid on insert; `unordered_map` iterators are invalidated by rehash, and
+    `map` iterators only by erasing that element. Choose `std::map` when you need ordering or range queries
+    (e.g. an order book's price levels), deterministic iteration, keys without a good hash, or guaranteed
+    worst-case O(log n). Choose `unordered_map` for pure key lookups. In performance-critical code consider
+    flat or open-addressing alternatives for both.
+  explanation: |
+    A basic but very common screening question; look for complexity with the worst case, ordering, key
+    requirements, and a concrete reason to prefer map.
+  keyPoints:
+    - "map: red-black tree, O(log n), sorted iteration, range queries (lower_bound)"
+    - "unordered_map: hash table, average O(1), worst O(n), unspecified order"
+    - "Key requirements: strict weak ordering vs hash plus equality"
+    - Both keep references stable; unordered_map iterators are invalidated by rehash
+    - Choose map for ordering/range queries/deterministic iteration (e.g. order book levels)
+
+- id: cpp-containers-013
+  topic: cpp
+  subtopic: Containers and iterators
+  difficulty: easy
+  type: single
+  tags: [priority-queue, heaps]
+  prompt: |
+    `std::priority_queue<int> pq;` receives `3, 1, 4, 1, 5`. What does `pq.top()` return, and how would
+    you make it return the smallest element instead?
+  choices:
+    - { id: a, text: "`5`; use `std::priority_queue<int, std::vector<int>, std::greater<int>>` for a min-heap." }
+    - { id: b, text: "`1`; it's a min-heap by default." }
+    - { id: c, text: "`3`; it's a FIFO queue ordered by insertion." }
+    - { id: d, text: "`5`; call `pq.reverse()` to get a min-heap." }
+  answer: a
+  explanation: |
+    `std::priority_queue` is a binary max-heap over a container (default `std::vector`), using `std::less`,
+    so `top()` is the largest element. Push and pop are O(log n), and top is O(1). The comparator semantics feel
+    inverted: `std::greater` gives a *min*-heap. For custom types, the comparator must return true if the
+    first argument has *lower* priority. There's no `reverse()`, and no way to iterate or decrease a key;
+    use `std::make_heap`/`push_heap`/`pop_heap` on a vector if you need more control.
+
+- id: cpp-containers-014
+  topic: cpp
+  subtopic: Containers and iterators
+  difficulty: medium
+  type: single
+  tags: [std-deque, containers]
+  prompt: Which statement about `std::deque` is correct?
+  choices:
+    - { id: a, text: "It provides O(1) amortized `push_front` and `push_back` and random access, storing elements in fixed-size blocks, so its elements are *not* contiguous as a whole." }
+    - { id: b, text: "It is a doubly linked list of single elements." }
+    - { id: c, text: "It is a contiguous array like `std::vector`, so `&d[0] + i == &d[i]` always holds." }
+    - { id: d, text: "It doesn't support random access; `d[i]` is O(n)." }
+  answer: a
+  explanation: |
+    A deque is typically a map (array) of pointers to fixed-size blocks. Pushing at either end adds to the
+    first or last block (allocating a new block when full), so references to existing elements stay valid;
+    indexing computes block and offset in O(1), though with an extra indirection compared to a vector. Since
+    the storage isn't one contiguous array, you can't pass `&d[0]` to an API expecting a contiguous buffer,
+    and iteration is somewhat slower than over a vector. Block sizes differ: libstdc++ uses 512-byte blocks
+    (one element per block for larger elements) and libc++ 4 KiB (16 elements per block for elements of
+    256 bytes or more), while MSVC's are just 16 bytes (a single element for anything larger than 8 bytes),
+    which makes its deque behave almost like a list of individually allocated elements.
+    `std::queue` and `std::stack` use deque by default.
+
+- id: cpp-containers-015
+  topic: cpp
+  subtopic: Containers and iterators
+  difficulty: medium
+  type: short
+  tags: [iterator-categories, algorithms, concepts]
+  prompt: |
+    What are the standard iterator categories, which containers provide which, and why do they matter
+    for algorithms?
+  reference: |
+    The categories form a hierarchy of guarantees: input iterators (single-pass reading, e.g.
+    `std::istream_iterator`), output iterators (single-pass writing, e.g. `std::back_inserter`), forward
+    iterators (multi-pass, can be copied and re-traversed: `std::forward_list`, unordered containers),
+    bidirectional (adds `--`: `std::list`, `std::map`/`set`), random access (adds `it + n`, `it2 - it1`, `[]`
+    and `<` in O(1): `std::deque`), and contiguous (C++20; random access plus elements adjacent in memory:
+    `std::vector`, `std::array`, `std::string`, raw arrays, `std::span`). Algorithms state the minimum
+    category they need: `std::sort` needs random access, `std::reverse` bidirectional, `std::find` input,
+    `std::unique` forward. Some adapt their complexity to the category: `std::distance` and `std::advance`
+    are O(1) for random access and O(n) otherwise; `std::lower_bound` does O(log n) comparisons but O(n)
+    steps on non-random-access iterators. Implementations dispatch on iterator tags (`iterator_category`)
+    or, in C++20, iterator concepts (`std::random_access_iterator`); contiguity enables `memmove`/SIMD
+    fast paths. Knowing the category explains why `std::sort(list)` doesn't compile and why member
+    functions such as `list::sort` and `map::find` exist.
+  explanation: |
+    A strong answer lists the hierarchy with an example container for each and ties it to algorithm
+    requirements and complexity.
+  keyPoints:
+    - Input/output, forward, bidirectional, random access, contiguous (C++20)
+    - Example containers for each (forward_list, list/map, deque, vector/array)
+    - Algorithms require minimum categories (sort needs random access)
+    - Complexity depends on category (distance, advance, lower_bound steps)
+    - Dispatch via iterator tags or C++20 iterator concepts; contiguity enables memmove fast paths

@@ -1,0 +1,17 @@
+slug: word-break
+title: Word Break
+difficulty: medium
+tags: [dynamic-programming, string, hash-table, trie]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: wordBreak
+      params:
+        - { name: s, type: string }
+        - { name: wordDict, type: { list: string } }
+      returns: bool
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 139)
+  url: https://leetcode.com/problems/word-break/

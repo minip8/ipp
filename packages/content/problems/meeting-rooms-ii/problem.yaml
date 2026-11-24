@@ -1,0 +1,16 @@
+slug: meeting-rooms-ii
+title: Meeting Rooms II
+difficulty: medium
+tags: [array, intervals, sorting, sweep-line]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: minMeetingRooms
+      params:
+        - { name: intervals, type: { array: { array: int } } }
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 253, premium; NeetCode 150); among the most frequently reported Google/Meta/Amazon questions
+  url: https://leetcode.com/problems/meeting-rooms-ii/

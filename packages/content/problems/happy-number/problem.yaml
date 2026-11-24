@@ -1,0 +1,16 @@
+slug: happy-number
+title: Happy Number
+difficulty: easy
+tags: [math, hash-table, two-pointers]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: isHappy
+      params:
+        - { name: n, type: int }
+      returns: bool
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 202; NeetCode 150 math)
+  url: https://leetcode.com/problems/happy-number/

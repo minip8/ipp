@@ -1,0 +1,434 @@
+# Progress guarantees, ABA, memory reclamation, classic lock-free structures, ring buffers, seqlocks, RCU.
+
+- id: conc-lockfree-001
+  topic: concurrency
+  subtopic: Progress guarantees
+  difficulty: easy
+  type: single
+  prompt: |
+    Which definition of **lock-free** is correct?
+  choices:
+    - { id: a, text: "The data structure uses no mutex objects" }
+    - { id: b, text: "At any time, if threads keep taking steps, at least one thread completes its operation in a finite number of steps, even if other threads are suspended; individual threads may starve" }
+    - { id: c, text: "Every thread completes its operation within a bounded number of its own steps" }
+    - { id: d, text: "A thread running in isolation (others paused) completes in a finite number of steps" }
+  answer: b
+  explanation: |
+    Lock-freedom is a **system-wide** progress guarantee: the system as a whole always makes progress,
+    and no thread being suspended (preempted, page-faulted, killed) can block the others. A CAS retry
+    loop is typical: a thread's CAS fails only because some other thread's succeeded.
+
+    (c) is **wait-freedom** (per-thread bound, no starvation). (d) is **obstruction-freedom**, the
+    weakest of the three. (a) is a common misconception: a spinlock built from atomics uses "no mutex"
+    yet is blocking, because a preempted holder stops everyone.
+  tags: [lock-free, wait-free, progress-guarantees]
+  source: { name: "Herlihy & Shavit, The Art of Multiprocessor Programming, ch. 3 (idea)" }
+
+- id: conc-lockfree-002
+  topic: concurrency
+  subtopic: Progress guarantees
+  difficulty: medium
+  type: multiple
+  prompt: |
+    Which of these operations or structures are **wait-free** (not merely lock-free) on a typical
+    x86-64 implementation? (Select all that apply.)
+  choices:
+    - { id: a, text: "std::atomic<int>::fetch_add, compiled to a single lock xadd instruction" }
+    - { id: b, text: "Incrementing a counter with a compare_exchange_weak retry loop" }
+    - { id: c, text: "A single-producer single-consumer ring buffer's push and pop (each returns 'full'/'empty' instead of waiting)" }
+    - { id: d, text: "Treiber stack push using a CAS loop on the head pointer" }
+    - { id: e, text: "A spinlock-protected queue" }
+  answer: [a, c]
+  explanation: |
+    - (a) A hardware atomic RMW completes in a bounded number of steps regardless of other threads:
+      wait-free.
+    - (b), (d) CAS loops are lock-free but not wait-free: one thread's CAS can fail repeatedly if
+      others keep winning, so it can starve.
+    - (c) SPSC push/pop perform a fixed number of loads and stores with no retry loop, so each
+      operation is wait-free (bounded steps). There is no contention between producers because there
+      is only one.
+    - (e) Lock-based, so blocking: a preempted lock holder stops everyone.
+  tags: [wait-free, lock-free, spsc]
+
+- id: conc-lockfree-003
+  topic: concurrency
+  subtopic: ABA problem
+  difficulty: medium
+  type: short
+  prompt: |
+    Explain the ABA problem using a lock-free stack `pop`, and describe two ways to prevent it.
+  reference: |
+    Treiber stack pop: read `head` (node A), read `next = A->next` (B), then
+    `CAS(head, A, B)`. Between the read and the CAS, thread 2 pops A, pops B, frees B, and pushes A back
+    (or a new node allocated at A's old address). `head` is A again, so thread 1's CAS succeeds, but it
+    installs B, which is no longer in the stack and may be freed memory. The CAS compared only the
+    pointer value, which went A → … → A, so it could not detect the change.
+
+    Fixes:
+    1. **Tagged pointers / version counters**: pair the pointer with a counter incremented on every
+       change and CAS both together (double-width CAS like `cmpxchg16b`, or pack a tag into unused
+       pointer bits). A→A now differs in tag.
+    2. **Safe memory reclamation**: hazard pointers or epoch-based reclamation (or RCU) ensure a node
+       cannot be freed and reused while some thread may still hold a reference, which removes the
+       common source of ABA in pointer-based structures. Garbage-collected languages get this for
+       free.
+    3. LL/SC hardware (ARM, POWER) fails the store-conditional on *any* intervening write, avoiding
+       ABA at the instruction level (though C++ CAS on those platforms does not expose this directly).
+  keyPoints:
+    - "CAS compares values only; it cannot see that a value changed and changed back"
+    - "Stack pop scenario: head A, another thread pops A and B and pushes A back; CAS installs a stale next"
+    - "Often caused by memory reuse: a freed node's address is reallocated"
+    - "Fix with a version tag / counter alongside the pointer (double-width CAS)"
+    - "Or fix with safe reclamation: hazard pointers, epoch-based reclamation, RCU, or GC"
+  explanation: |
+    ABA is the classic lock-free pitfall. The two expected fixes are tagging (detect the change) and
+    deferred reclamation (prevent the reuse). Noting that LL/SC avoids it in hardware and that GC
+    languages largely avoid it shows breadth.
+  tags: [aba, lock-free, treiber-stack, hazard-pointers]
+
+- id: conc-lockfree-004
+  topic: concurrency
+  subtopic: Memory reclamation
+  difficulty: hard
+  type: short
+  prompt: |
+    In a lock-free linked structure in C++, when is it safe to `delete` a node that has been unlinked?
+    Compare hazard pointers, epoch-based reclamation and reference counting.
+  reference: |
+    It is safe only when no other thread can still hold a pointer to the node obtained before it was
+    unlinked. Unlinking does not tell you that: a concurrent reader may have loaded the pointer just
+    before and be about to dereference it.
+
+    - **Hazard pointers** (Michael): each thread publishes, in a per-thread slot, the pointers it is
+      about to dereference, then re-validates that they are still reachable. Reclaimers put unlinked
+      nodes on a retire list and only free those not present in any hazard slot. Bounded unreclaimed
+      memory even if a thread stalls; costs a store plus a full fence per protected pointer on the read
+      path. (Standardised for C++26 as `std::hazard_pointer`.)
+    - **Epoch-based reclamation** (EBR, also the basis of RCU-like schemes): threads announce entry to a
+      global epoch when they start an operation; a retired node is freed after all threads have moved
+      past the epoch in which it was retired. Very cheap reads, but one stalled thread blocks all
+      reclamation, so memory can grow unboundedly.
+    - **Atomic reference counting** of nodes: simple to explain but expensive (contended RMW on every
+      traversal step) and tricky (you must increment a count on a node that may be freed concurrently,
+      requiring split or differential reference counts).
+
+    Garbage-collected runtimes (Java) sidestep the problem.
+  keyPoints:
+    - "A node is safe to free only when no thread can hold a previously loaded pointer to it"
+    - "Hazard pointers: publish pointers in use, re-validate, and free retired nodes not in any hazard slot"
+    - "Hazard pointers bound unreclaimed memory but add a fence per protected load"
+    - "Epoch-based reclamation: cheap reads, but a stalled thread blocks reclamation"
+    - "Reference counting works but is costly and subtle; GC languages avoid the issue"
+  explanation: |
+    Memory reclamation is the hard part of lock-free programming in non-GC languages. A good answer
+    explains why unlinking is not enough and contrasts the bounded-memory property of hazard pointers
+    with the cheap read side of epochs.
+  tags: [memory-reclamation, hazard-pointers, epoch-based-reclamation, lock-free]
+  source: { name: "Maged Michael, Hazard Pointers: Safe Memory Reclamation for Lock-Free Objects (2004)" }
+
+- id: conc-lockfree-005
+  topic: concurrency
+  subtopic: Progress guarantees
+  difficulty: hard
+  type: single
+  prompt: |
+    Herlihy's consensus hierarchy assigns each synchronisation primitive a consensus number: the
+    maximum number of threads for which it can solve wait-free consensus. Which assignment is correct?
+  choices:
+    - { id: a, text: "Atomic read/write registers: ∞; compare-and-swap: 2" }
+    - { id: b, text: "Atomic read/write registers: 1; test-and-set, fetch-and-add, swap: 2; compare-and-swap: ∞" }
+    - { id: c, text: "All of them: ∞, given enough memory" }
+    - { id: d, text: "Atomic read/write registers: 2; fetch-and-add: ∞" }
+  answer: b
+  explanation: |
+    Herlihy (1991) showed that plain atomic registers cannot solve consensus even for two threads
+    (consensus number 1); test-and-set, swap, fetch-and-add and queues/stacks solve it for exactly two;
+    compare-and-swap (and LL/SC) solves it for any number of threads. Consequence: you cannot build a
+    wait-free implementation of a CAS-like object for three or more threads from only fetch-and-add,
+    and CAS is "universal": any sequential object has a wait-free implementation using CAS. This is why
+    modern ISAs provide CAS or LL/SC.
+  tags: [consensus-number, wait-free, theory]
+  source: { name: "Maurice Herlihy, Wait-Free Synchronization (TOPLAS 1991)" }
+
+- id: conc-lockfree-006
+  topic: concurrency
+  subtopic: Ring buffers
+  difficulty: medium
+  type: short
+  prompt: |
+    Design a lock-free single-producer single-consumer (SPSC) bounded queue in C++. Specify the indices,
+    the memory orders, how you detect full and empty, and any performance details.
+  reference: |
+    A fixed array of capacity N (a power of two), a `head` index (next to read, written only by the
+    consumer) and a `tail` index (next to write, written only by the producer), both
+    `std::atomic<size_t>`, as monotonically increasing counters masked with `& (N - 1)` to index.
+
+    ```cpp
+    bool push(const T& v) {                       // producer only
+        auto t = tail_.load(relaxed);             // own index
+        if (t - head_.load(acquire) == N) return false;   // full
+        buf_[t & (N - 1)] = v;
+        tail_.store(t + 1, release);              // publish the element
+        return true;
+    }
+    bool pop(T& out) {                            // consumer only
+        auto h = head_.load(relaxed);
+        if (tail_.load(acquire) == h) return false;       // empty
+        out = buf_[h & (N - 1)];
+        head_.store(h + 1, release);              // hand the slot back
+        return true;
+    }
+    ```
+    The producer's release store of `tail` pairs with the consumer's acquire load, so the element write
+    is visible before the consumer reads it. Symmetrically, the consumer's release of `head` pairs with
+    the producer's acquire load, so the producer does not overwrite a slot still being read. Each
+    thread reads its own index relaxed.
+
+    Full vs empty: with free-running counters, empty is `tail == head` and full is `tail - head == N`
+    (unsigned wraparound is fine). The alternative with wrapped indices wastes one slot.
+
+    Performance: put `head` and `tail` on separate cache lines (`alignas(64)`) to avoid false sharing;
+    cache a local copy of the other side's index and only reload it when the queue looks full/empty,
+    reducing cross-core traffic; batch publication. No CAS is needed because each index has one writer.
+  keyPoints:
+    - "Head written only by consumer, tail only by producer; no CAS needed"
+    - "Producer writes the slot then release-stores tail; consumer acquire-loads tail before reading the slot"
+    - "Consumer release-stores head; producer acquire-loads head before reusing a slot"
+    - "Full/empty via free-running counters (tail - head == N / == 0) or one wasted slot"
+    - "Power-of-two capacity with masking; head and tail on separate cache lines; cache the other index"
+  explanation: |
+    This is one of the most common low-latency interview questions. Graders look for correct
+    release/acquire pairing on both indices (many candidates forget the consumer-to-producer direction),
+    a correct full/empty test, and awareness of false sharing between the indices.
+  tags: [spsc, ring-buffer, lock-free, acquire-release, low-latency]
+  source: { name: "Erik Rigtorp — SPSCQueue (design notes)", url: "https://github.com/rigtorp/SPSCQueue" }
+
+- id: conc-lockfree-007
+  topic: concurrency
+  subtopic: Ring buffers
+  difficulty: medium
+  type: single
+  prompt: |
+    In an SPSC ring buffer, the producer writes the element into the slot and then advances `tail`. With
+    which memory order must the producer store the new `tail` value (assuming the consumer loads it with
+    `memory_order_acquire`)?
+  choices:
+    - { id: a, text: "memory_order_relaxed, since only the producer writes tail" }
+    - { id: b, text: "memory_order_release, so the element write cannot become visible after the index update" }
+    - { id: c, text: "memory_order_acquire" }
+    - { id: d, text: "memory_order_consume" }
+  answer: b
+  explanation: |
+    The `tail` update is the *publication* of the element. A release store guarantees the preceding
+    write to the slot happens-before any consumer that acquire-loads the new `tail`. With relaxed, the
+    consumer could see the new index and read a stale or half-written element (and the element access
+    would be a data race). Single-writer ownership means no RMW is needed, but ordering is still needed.
+    Acquire is a load-side ordering and is not valid for a plain store; consume is a load ordering too.
+  tags: [spsc, ring-buffer, memory-order]
+
+- id: conc-lockfree-008
+  topic: concurrency
+  subtopic: Ring buffers
+  difficulty: easy
+  type: single
+  prompt: |
+    Why do ring buffers in low-latency code usually use a power-of-two capacity?
+  choices:
+    - { id: a, text: "Because hardware caches require power-of-two sized arrays" }
+    - { id: b, text: "So the slot index can be computed as counter & (N - 1) instead of a division/modulo, and free-running unsigned counters wrap around consistently" }
+    - { id: c, text: "Because std::atomic only supports power-of-two sized integers" }
+    - { id: d, text: "To guarantee the buffer never becomes full" }
+  answer: b
+  explanation: |
+    `i % N` compiles to a division (tens of cycles) unless N is a compile-time constant power of two;
+    `i & (N - 1)` is a single AND. Also, when counters are free-running unsigned integers that wrap at
+    2^64, a power-of-two N divides 2^64, so the mapping from counter to slot stays consistent across the
+    wraparound. Caches have no such requirement, and a buffer can still fill up.
+  tags: [ring-buffer, performance]
+
+- id: conc-lockfree-009
+  topic: concurrency
+  subtopic: Lock-free performance
+  difficulty: medium
+  type: single
+  prompt: |
+    A team replaces a mutex-protected queue with a lock-free MPMC queue built on CAS loops and sees
+    *lower* throughput under heavy contention from 32 threads. Which explanation is most plausible?
+  choices:
+    - { id: a, text: "Lock-free structures are always slower than locks" }
+    - { id: b, text: "All threads hammer the same head/tail cache lines; failed CAS attempts still need exclusive ownership of the line, so coherence traffic and retries grow with contention, whereas a mutex lets waiters sleep and the owner run uncontended" }
+    - { id: c, text: "CAS instructions are not atomic on multi-socket machines" }
+    - { id: d, text: "The lock-free queue disables the CPU caches" }
+  answer: b
+  explanation: |
+    Lock-free guarantees progress, not speed. Under high contention, every CAS (successful or not)
+    requests the cache line in exclusive state; with 32 threads the line bounces between cores and
+    sockets and most CAS attempts fail and retry, wasting work. A mutex serialises access but lets the
+    owner work on a hot, local cache line while waiters sleep. Real gains come from reducing sharing:
+    per-producer SPSC queues, sharding, batching, or designs such as fetch_add-based slot claiming
+    (one RMW per operation, no retries). Measure rather than assume.
+  tags: [lock-free, contention, mpmc, performance]
+
+- id: conc-lockfree-010
+  topic: concurrency
+  subtopic: Seqlocks
+  difficulty: hard
+  type: short
+  prompt: |
+    Explain how a seqlock works, when you would use one (e.g. publishing a market-data snapshot), and
+    its pitfalls in C++.
+  reference: |
+    A seqlock protects data written by one writer (or writers serialised by a separate lock) and read
+    by many readers who never block the writer. It has a sequence counter:
+    - **Writer**: increment seq (now odd), write the data, increment seq again (even).
+    - **Reader**: read seq (s1); if odd, retry. Read the data into a local copy. Read seq again (s2);
+      if s1 != s2, a write overlapped, so discard the copy and retry.
+
+    Use it for small, frequently written, read-mostly data where the writer must never wait: the latest
+    top-of-book for an instrument, a clock/time snapshot (the Linux kernel uses it for timekeeping), or
+    statistics. Readers are invisible to the writer (they do not write shared memory), so it scales
+    to many readers.
+
+    Pitfalls:
+    - Readers may read torn data while the writer is mid-update, so they must only use the copy after
+      validation, and the data must be trivially copyable (no pointers to chase).
+    - In C++ the concurrent plain reads and writes of the payload are a **data race (UB)**. Correct
+      implementations make the payload accesses atomic (e.g. relaxed atomic words or
+      `std::atomic_ref`) and use fences: writer `seq.store(odd, relaxed)` then a release fence, then data
+      stores, then `seq.store(even, release)`; reader `s1 = seq.load(acquire)`, data loads, acquire
+      fence, `s2 = seq.load(relaxed)`.
+    - Readers can starve if writes are continuous; large payloads increase retry rates.
+    - Only one writer at a time.
+  keyPoints:
+    - "Writer makes the counter odd, writes, then makes it even"
+    - "Readers copy the data and retry if the counter was odd or changed"
+    - "Readers do not write shared state, so they never block or slow the writer"
+    - "Suits small, read-mostly snapshots (market data top-of-book, kernel timekeeping)"
+    - "In C++ the payload reads race with writes; use atomics/atomic_ref plus correct fences, trivially copyable data"
+    - "Reader starvation under continuous writes; single writer only"
+  explanation: |
+    Seqlocks are common in trading systems and the Linux kernel. Many hand-written versions are
+    technically UB in C++ because the payload is accessed non-atomically; Hans Boehm's paper "Can
+    Seqlocks Get Along With Programming Language Memory Models?" discusses the correct fencing.
+  tags: [seqlock, low-latency, memory-order, market-data]
+  source: { name: "Hans Boehm, Can Seqlocks Get Along With Programming Language Memory Models? (MSPC 2012)" }
+
+- id: conc-lockfree-011
+  topic: concurrency
+  subtopic: RCU
+  difficulty: medium
+  type: single
+  prompt: |
+    Which description of read-copy-update (RCU) is correct?
+  choices:
+    - { id: a, text: "Readers take a shared lock; writers take an exclusive lock" }
+    - { id: b, text: "Readers access the current version without locks or shared writes; a writer copies, modifies, and atomically publishes a new version via a pointer swap, then frees the old version only after a grace period in which all pre-existing readers have finished" }
+    - { id: c, text: "Writers update data in place, and readers retry if they observe a change" }
+    - { id: d, text: "Each reader gets its own private copy of the data, updated by the writer" }
+  answer: b
+  explanation: |
+    RCU makes reads extremely cheap (in the Linux kernel, `rcu_read_lock` is little more than disabling
+    preemption) by never modifying data in place. Writers publish a new version with a release store
+    (`rcu_assign_pointer`) and wait for a grace period (`synchronize_rcu`) or defer the free
+    (`call_rcu`) so no reader still using the old version sees it freed. It suits read-mostly data
+    (routing tables, configuration). Writers pay for the copy and the wait. Option c describes a
+    seqlock; option a a reader-writer lock.
+  tags: [rcu, read-mostly, memory-reclamation]
+  source: { name: "Paul McKenney, What is RCU, Fundamentally? (LWN)", url: "https://lwn.net/Articles/262464/" }
+
+- id: conc-lockfree-012
+  topic: concurrency
+  subtopic: Lock-free structures
+  difficulty: hard
+  type: single
+  prompt: |
+    In the Michael–Scott lock-free queue, enqueue links the new node with a CAS on `tail->next` and then
+    swings `tail` with a second CAS. What happens if a thread finds `tail->next` is not null?
+  choices:
+    - { id: a, text: "It spins until the other thread finishes its enqueue" }
+    - { id: b, text: "It helps: it tries to CAS tail forward to tail->next itself, then retries its own operation, so a stalled enqueuer cannot block others" }
+    - { id: c, text: "It reports the queue as full" }
+    - { id: d, text: "It overwrites tail->next with its own node" }
+  answer: b
+  explanation: |
+    Between the two CASes, `tail` lags behind the real last node. If other threads waited for the
+    original enqueuer to fix `tail`, a thread preempted between its two CASes would block everyone, and
+    the algorithm would not be lock-free. Instead any thread that sees a lagging tail **helps** by
+    advancing it, then retries. Helping is a common technique for turning a multi-step update into a
+    lock-free one. The queue also uses a dummy (sentinel) node so head and tail never become null, and
+    needs ABA protection / safe reclamation in non-GC languages.
+  tags: [michael-scott-queue, lock-free, helping]
+  source: { name: "Michael & Scott, Simple, Fast, and Practical Non-Blocking and Blocking Concurrent Queue Algorithms (PODC 1996)" }
+
+- id: conc-lockfree-013
+  topic: concurrency
+  subtopic: Correctness criteria
+  difficulty: medium
+  type: short
+  prompt: |
+    What does it mean for a concurrent data structure to be *linearizable*, and how does that differ from
+    sequential consistency?
+  reference: |
+    **Linearizable**: every operation appears to take effect instantaneously at some point (its
+    linearization point) between its invocation and its response, and the resulting order is a legal
+    sequential history of the object. So if operation A completes before operation B starts (in real
+    time), A must appear before B.
+
+    **Sequential consistency** (as a correctness condition for objects/histories) only requires that
+    the result equal some interleaving that respects each thread's program order; it may reorder
+    non-overlapping operations from different threads against real time.
+
+    Linearizability is composable (a system of linearizable objects is linearizable), while sequential
+    consistency is not. In practice, you argue a lock-free structure is correct by identifying each
+    operation's linearization point, e.g. the successful CAS on `head` in a Treiber stack push.
+  keyPoints:
+    - "Each operation appears to take effect atomically at a point between invocation and response"
+    - "Respects real-time order: an operation that finished before another started is ordered first"
+    - "Sequential consistency only respects per-thread program order, not real time"
+    - "Linearizability is composable; sequential consistency is not"
+    - "Correctness arguments name a linearization point (e.g. the successful CAS)"
+  explanation: |
+    This is the standard correctness condition for concurrent objects (Herlihy and Wing, 1990).
+    Graders look for the real-time ordering requirement and the idea of a linearization point.
+  tags: [linearizability, sequential-consistency, correctness]
+  source: { name: "Herlihy & Wing, Linearizability: A Correctness Condition for Concurrent Objects (1990)" }
+
+- id: conc-lockfree-014
+  topic: concurrency
+  subtopic: Lock-free structures
+  difficulty: hard
+  type: short
+  prompt: |
+    Sketch how a bounded multi-producer multi-consumer (MPMC) array queue can be built so that each
+    enqueue/dequeue usually needs only one atomic RMW, and why per-slot sequence numbers are used.
+  reference: |
+    A Vyukov-style bounded MPMC queue: an array of N slots (power of two), each slot holding
+    `std::atomic<size_t> seq` plus the data. Initially `slot[i].seq = i`. Global `enqueue_pos` and
+    `dequeue_pos` counters.
+
+    Enqueue: read `pos = enqueue_pos`; look at `slot = buf[pos & mask]`; if `slot.seq == pos`, the slot
+    is free for this lap, so CAS `enqueue_pos` from pos to pos+1 to claim it (retry on failure); write
+    the data; then `slot.seq.store(pos + 1, release)` to publish. If `slot.seq < pos`, the queue is
+    full (the consumer of the previous lap has not freed it).
+
+    Dequeue: read `pos = dequeue_pos`; if `slot.seq == pos + 1` the slot holds data for this lap; CAS
+    `dequeue_pos` to claim; read the data; then `slot.seq.store(pos + N, release)` marking it free for
+    the next lap. If `slot.seq < pos + 1` the queue is empty.
+
+    The per-slot sequence number decouples claiming a position (the CAS on the shared counter) from
+    publishing the data (the per-slot release store), lets consumers know whether a slot is filled for
+    *this* lap, and avoids ABA on indices because the sequence encodes the lap. Contention is limited
+    to the two counters; slots should be padded to avoid false sharing. It is not strictly lock-free: a
+    producer preempted after claiming a slot but before publishing it blocks consumers of that slot.
+  keyPoints:
+    - "Array of slots each with an atomic sequence number initialised to its index"
+    - "Producers and consumers claim positions by CAS (or fetch_add) on shared enqueue/dequeue counters"
+    - "Publish with a release store of the slot's sequence; readers acquire-load it"
+    - "Sequence encodes the lap, distinguishing full/empty and avoiding ABA"
+    - "A stalled thread between claim and publish can block that slot (not strictly lock-free); pad to avoid false sharing"
+  explanation: |
+    Dmitry Vyukov's bounded MPMC queue is the design behind many production queues. The insight is
+    separating "claim" from "publish" with per-slot sequence numbers. Candidates who note the progress
+    caveat (a stalled producer holds up its slot) show real understanding.
+  tags: [mpmc, ring-buffer, lock-free, sequence-numbers]
+  source: { name: "Dmitry Vyukov — Bounded MPMC queue", url: "https://www.1024cores.net/home/lock-free-algorithms/queues/bounded-mpmc-queue" }

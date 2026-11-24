@@ -1,0 +1,31 @@
+slug: design-twitter
+title: Design Twitter Feed
+difficulty: medium
+tags: [design, heap, hash-table]
+signature:
+  className: Twitter
+  kind: design
+  methods:
+    - name: postTweet
+      params:
+        - { name: userId, type: int }
+        - { name: tweetId, type: int }
+      returns: void
+    - name: getNewsFeed
+      params:
+        - { name: userId, type: int }
+      returns: { list: int }
+    - name: follow
+      params:
+        - { name: followerId, type: int }
+        - { name: followeeId, type: int }
+      returns: void
+    - name: unfollow
+      params:
+        - { name: followerId, type: int }
+        - { name: followeeId, type: int }
+      returns: void
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Design Twitter (LeetCode 355; NeetCode 150)
+  url: https://leetcode.com/problems/design-twitter/

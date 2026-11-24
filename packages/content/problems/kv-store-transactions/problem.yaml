@@ -1,0 +1,37 @@
+slug: kv-store-transactions
+title: Key-Value Store with Transactions
+difficulty: medium
+tags: [design, hash-table, stack]
+signature:
+  className: KVStore
+  kind: design
+  methods:
+    - name: set
+      params:
+        - { name: key, type: string }
+        - { name: value, type: int }
+      returns: void
+    - name: get
+      params:
+        - { name: key, type: string }
+      returns: int
+    - name: unset
+      params:
+        - { name: key, type: string }
+      returns: void
+    - name: count
+      params:
+        - { name: value, type: int }
+      returns: int
+    - name: begin
+      params: []
+      returns: void
+    - name: commit
+      params: []
+      returns: bool
+    - name: rollback
+      params: []
+      returns: bool
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic "simple in-memory database with nested transactions" interview question (asked in many phone screens and take-homes)

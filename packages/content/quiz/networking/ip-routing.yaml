@@ -1,0 +1,522 @@
+# IP addressing, subnetting, routing, NAT, ICMP, DHCP, IPv6.
+- id: net-ip-001
+  topic: networking
+  subtopic: IP addressing
+  difficulty: easy
+  type: single
+  prompt: |
+    Which of these IPv4 addresses is **not** in a private (RFC 1918) range?
+  choices:
+    - { id: a, text: "10.200.1.1" }
+    - { id: b, text: "172.31.255.1" }
+    - { id: c, text: "172.32.0.5" }
+    - { id: d, text: "192.168.100.7" }
+  answer: c
+  explanation: |
+    RFC 1918 reserves three blocks: **10.0.0.0/8**, **172.16.0.0/12** and **192.168.0.0/16**.
+    172.16.0.0/12 covers 172.16.0.0–172.31.255.255, so 172.31.255.1 is private but **172.32.0.5** is
+    publicly routable. The /12 boundary is the classic trap; people remember "172.something".
+
+    Related ranges that are not RFC 1918 but also not normal public space: 100.64.0.0/10 (carrier-grade
+    NAT, RFC 6598), 169.254.0.0/16 (link-local, RFC 3927) and 127.0.0.0/8 (loopback).
+  tags: [ipv4, addressing, rfc1918]
+  source: { name: "RFC 1918", url: "https://www.rfc-editor.org/rfc/rfc1918" }
+
+- id: net-ip-002
+  topic: networking
+  subtopic: Subnetting
+  difficulty: medium
+  type: single
+  prompt: |
+    A host is configured as **10.1.2.200/27**. What are the network address and the broadcast address
+    of its subnet?
+  choices:
+    - { id: a, text: "Network 10.1.2.192, broadcast 10.1.2.223" }
+    - { id: b, text: "Network 10.1.2.200, broadcast 10.1.2.231" }
+    - { id: c, text: "Network 10.1.2.160, broadcast 10.1.2.191" }
+    - { id: d, text: "Network 10.1.2.0, broadcast 10.1.2.255" }
+  answer: a
+  explanation: |
+    /27 leaves 32 − 27 = 5 host bits, so each subnet is 2⁵ = **32** addresses and subnets start at
+    multiples of 32 in the last octet: 0, 32, 64, …, 160, **192**, 224.
+
+    200 lies in [192, 224), so the network is **10.1.2.192** and the broadcast (all host bits set) is
+    192 + 31 = **10.1.2.223**. Usable hosts are .193–.222 (30 hosts).
+
+    - (b) treats the host address as the network address.
+    - (c) is the previous block.
+    - (d) is what you'd get with a /24 mask.
+  tags: [subnetting, ipv4, quantitative]
+
+- id: net-ip-003
+  topic: networking
+  subtopic: Subnetting
+  difficulty: easy
+  type: single
+  prompt: |
+    How many usable host addresses does a conventional IPv4 **/26** subnet provide?
+  choices:
+    - { id: a, text: "64" }
+    - { id: b, text: "62" }
+    - { id: c, text: "30" }
+    - { id: d, text: "126" }
+  answer: b
+  explanation: |
+    32 − 26 = 6 host bits, so 2⁶ = 64 addresses. Take away the network address (all host bits 0) and
+    the broadcast address (all 1), leaving **62** usable hosts. 30 is for a /27 and 126 for a /25.
+    (/31 point-to-point links, RFC 3021, are the exception where neither address is reserved.)
+  tags: [subnetting, ipv4, quantitative]
+
+- id: net-ip-004
+  topic: networking
+  subtopic: Subnetting
+  difficulty: medium
+  type: single
+  prompt: |
+    You want a single route that summarises exactly 192.168.0.0/24, 192.168.1.0/24, 192.168.2.0/24
+    and 192.168.3.0/24, and nothing else. Which prefix is it?
+  choices:
+    - { id: a, text: "192.168.0.0/16" }
+    - { id: b, text: "192.168.0.0/23" }
+    - { id: c, text: "192.168.0.0/22" }
+    - { id: d, text: "192.168.0.0/21" }
+  answer: c
+  explanation: |
+    Four contiguous /24s = 4 × 256 = 1024 addresses = 2¹⁰, so the summary has 32 − 10 = **/22**. It's
+    valid because the block starts on a multiple of 4 in the third octet (0). In binary the third
+    octets 0–3 are 000000**00**–000000**11**: the first 22 bits are shared.
+
+    /23 covers only .0 and .1. /21 covers .0–.7, which includes four networks you don't own. /16 is far
+    too broad.
+  tags: [subnetting, cidr, route-summarization, quantitative]
+
+- id: net-ip-005
+  topic: networking
+  subtopic: Routing
+  difficulty: medium
+  type: single
+  prompt: |
+    A router has these routes:
+
+    | Prefix | Next hop |
+    |---|---|
+    | 0.0.0.0/0 | D |
+    | 10.0.0.0/8 | A |
+    | 10.1.0.0/16 | B |
+    | 10.1.2.0/24 | C |
+
+    Where does it send a packet for **10.1.3.4**?
+  choices:
+    - { id: a, text: "A" }
+    - { id: b, text: "B" }
+    - { id: c, text: "C" }
+    - { id: d, text: "D" }
+  answer: b
+  explanation: |
+    IP forwarding uses **longest-prefix match**: of all routes that contain the destination, the most
+    specific one wins. 10.1.3.4 matches 0/0, 10.0.0.0/8 and 10.1.0.0/16, but **not** 10.1.2.0/24
+    (that covers 10.1.2.0–10.1.2.255). The longest matching prefix is /16, so the packet goes to **B**.
+
+    A distractor that picks C has matched on "10.1" without checking the third octet. Route order in
+    the table and administrative distance only matter between routes for the *same* prefix.
+  tags: [routing, longest-prefix-match]
+
+- id: net-ip-006
+  topic: networking
+  subtopic: Subnetting
+  difficulty: medium
+  type: single
+  prompt: |
+    Each office subnet must hold **at least 500 hosts**. What is the longest (smallest) IPv4 prefix
+    that works?
+  choices:
+    - { id: a, text: "/24" }
+    - { id: b, text: "/23" }
+    - { id: c, text: "/22" }
+    - { id: d, text: "/25" }
+  answer: b
+  explanation: |
+    Find the smallest h with 2ʰ − 2 ≥ 500. 2⁸ − 2 = 254 is too small; 2⁹ − 2 = **510** is enough. So
+    there are 9 host bits and the prefix is 32 − 9 = **/23**. A /22 (1022 hosts) also works but wastes
+    space; a /24 holds only 254 hosts.
+  tags: [subnetting, ipv4, quantitative]
+
+- id: net-ip-007
+  topic: networking
+  subtopic: Routing
+  difficulty: medium
+  type: multiple
+  prompt: |
+    An ordinary IPv4 router (no NAT, no fragmentation, no IP options) forwards a packet. Which IPv4
+    header fields does it change? Select all that apply.
+  choices:
+    - { id: a, text: "TTL" }
+    - { id: b, text: "Header checksum" }
+    - { id: c, text: "Source address" }
+    - { id: d, text: "Destination address" }
+    - { id: e, text: "Protocol" }
+  answer: [a, b]
+  explanation: |
+    The router decrements **TTL**. Since the IPv4 header checksum covers the TTL, it must also update
+    the **checksum**, usually incrementally (RFC 1624). Source and destination addresses change only
+    under NAT; the protocol field never changes.
+
+    IPv6 dropped the header checksum altogether, partly so routers don't have to recompute it at every
+    hop; routers just decrement Hop Limit. (DSCP/ECN bits may be re-marked by some networks, which is
+    why they weren't offered as an option.)
+  tags: [ipv4, routing, ttl]
+
+- id: net-ip-008
+  topic: networking
+  subtopic: IPv6
+  difficulty: medium
+  type: single
+  prompt: |
+    An IPv6 router receives a 1500-byte packet that must leave over a link with a 1400-byte MTU. What
+    happens?
+  choices:
+    - { id: a, text: "The router fragments the packet, as IPv4 routers do" }
+    - { id: b, text: "The router drops it and sends an ICMPv6 Packet Too Big message (with the MTU) to the source" }
+    - { id: c, text: "The router truncates the packet to 1400 bytes" }
+    - { id: d, text: "The router drops it silently; IPv6 relies on TCP retransmission" }
+  answer: b
+  explanation: |
+    In IPv6 **only the source host fragments** (with a Fragment extension header). Routers never do.
+    They drop oversized packets and send **ICMPv6 Packet Too Big** (type 2) carrying the next-hop MTU,
+    which drives Path MTU Discovery (RFC 8201). Every IPv6 link must support at least **1280** bytes
+    (RFC 8200).
+
+    That's why blocking ICMPv6 is especially harmful: without Packet Too Big, large packets just
+    vanish (a PMTU black hole).
+  tags: [ipv6, mtu, icmp, pmtud]
+  source: { name: "RFC 8200 §5", url: "https://www.rfc-editor.org/rfc/rfc8200" }
+
+- id: net-ip-009
+  topic: networking
+  subtopic: ICMP and PMTUD
+  difficulty: medium
+  type: short
+  prompt: |
+    Users report that an HTTPS site connects (the TCP handshake completes) and small pages load, but
+    large responses hang forever. Some of the path is a tunnel with a smaller MTU, and a firewall
+    blocks all ICMP. Explain the failure and how to fix it.
+  reference: |
+    This is a **Path MTU Discovery black hole**. TCP segments are sent with the DF bit set (IPv4) or
+    can't be fragmented by routers at all (IPv6). When a full-size segment reaches the low-MTU hop, the
+    router drops it and returns ICMP "Fragmentation Needed" (type 3 code 4, RFC 1191) or ICMPv6
+    "Packet Too Big". The firewall drops that ICMP, so the sender never learns the smaller MTU and keeps
+    retransmitting full-size segments that are dropped every time. The handshake and small responses
+    get through because those packets are small.
+
+    Fixes: allow the necessary ICMP types through the firewall; clamp TCP MSS on the tunnel router
+    (rewrite the MSS option in SYNs to fit the tunnel MTU); lower the interface MTU; or enable
+    Packetization-Layer PMTUD (RFC 4821, RFC 8899), which probes with packet sizes and doesn't rely on
+    ICMP (Linux `net.ipv4.tcp_mtu_probing`).
+  keyPoints:
+    - "Identifies a PMTUD black hole: large DF packets dropped at the low-MTU link"
+    - "The ICMP Fragmentation Needed / Packet Too Big messages are blocked, so the sender never lowers its size"
+    - "Explains why the handshake and small transfers still work (small packets fit)"
+    - "Fix: permit the ICMP error types, and/or MSS clamping on the tunnel edge"
+    - "Mentions packetization-layer PMTUD (probing) or lowering the MTU as alternatives"
+  explanation: |
+    Classic operational question. "Block all ICMP" is a well-known anti-pattern for exactly this
+    reason.
+  tags: [icmp, mtu, pmtud, debugging]
+
+- id: net-ip-010
+  topic: networking
+  subtopic: NAT
+  difficulty: medium
+  type: short
+  prompt: |
+    Explain how a home router's NAT (NAPT / "PAT") lets many devices share one public IPv4 address.
+    Why do unsolicited inbound connections fail, and how do peer-to-peer applications get around it?
+  reference: |
+    On an outbound packet, the NAT rewrites the private source IP and port to its public IP and a
+    chosen public port (and fixes the checksums). It records the mapping (private ip:port <-> public
+    port, usually keyed on the remote endpoint too) in a translation table. Replies to the public port
+    are looked up in that table and rewritten back to the private host. Ports multiplex many hosts
+    behind one address.
+
+    A new inbound connection matches no mapping, so the NAT has nowhere to send it and drops it. Fixes:
+    static port forwarding, or protocols that let the host open a mapping (UPnP IGD / NAT-PMP / PCP).
+    For peer-to-peer, ICE (RFC 8445) is used: each peer learns its public mapping from a STUN server,
+    the peers exchange candidates through a signalling server, then both send packets at once to
+    create mappings (UDP hole punching). If that fails, for example with symmetric NAT, traffic is
+    relayed through a TURN server. Mappings also time out, especially for UDP, so long-lived flows need
+    keepalives.
+  keyPoints:
+    - "NAT rewrites private source ip:port to public ip:port and keeps a mapping table"
+    - "Return traffic is translated back using the table"
+    - "Unsolicited inbound packets match no mapping and are dropped"
+    - "Workarounds: port forwarding / UPnP / PCP; STUN + hole punching; TURN relay (ICE)"
+    - "Mapping timeouts mean idle flows need keepalives"
+  explanation: |
+    Good answers distinguish endpoint-independent from symmetric (endpoint-dependent) mapping
+    behaviour (RFC 4787) and explain why hole punching fails against symmetric NAT.
+  tags: [nat, stun, p2p]
+
+- id: net-ip-011
+  topic: networking
+  subtopic: NAT
+  difficulty: easy
+  type: single
+  prompt: |
+    Laptops 192.168.1.5 and 192.168.1.6 behind the same home NAT (public address 198.51.100.7) both
+    open a TCP connection from local port 50000 to 203.0.113.9:443. How does the server tell the two
+    connections apart?
+  choices:
+    - { id: a, text: "It can't; the second connection is refused because the 4-tuple is identical" }
+    - { id: b, text: "The NAT maps them to different public source ports, so the server sees two distinct 4-tuples" }
+    - { id: c, text: "The server uses the private source IPs, which the NAT forwards in an IP option" }
+    - { id: d, text: "The TCP sequence numbers distinguish them" }
+  answer: b
+  explanation: |
+    The NAT must keep its public-side tuples unique. It gives the second connection a different public
+    source port (port translation), e.g. 198.51.100.7:50000 and 198.51.100.7:61234. The server
+    identifies TCP connections by the 4-tuple (src ip, src port, dst ip, dst port), and these now
+    differ.
+
+    NAT doesn't pass private addresses along (proxies may put the client address in headers such as
+    X-Forwarded-For, but that's layer 7). Sequence numbers aren't part of connection identity.
+  tags: [nat, tcp]
+
+- id: net-ip-012
+  topic: networking
+  subtopic: ICMP and PMTUD
+  difficulty: easy
+  type: single
+  prompt: |
+    Which statement about `ping` is correct?
+  choices:
+    - { id: a, text: "It sends TCP SYNs to port 7 (echo) and measures the SYN-ACK delay" }
+    - { id: b, text: "It sends ICMP Echo Request (type 8) messages and waits for Echo Reply (type 0); ICMP has no port numbers" }
+    - { id: c, text: "It sends UDP datagrams to port 33434 and waits for Port Unreachable" }
+    - { id: d, text: "It uses ARP to check whether the remote host is alive" }
+  answer: b
+  explanation: |
+    For IPv4, `ping` uses **ICMP Echo Request (type 8) / Echo Reply (type 0)** (RFC 792); ICMPv6 uses
+    types 128/129. ICMP sits directly on IP (protocol 1) and has no ports, which is why "ping a port"
+    makes no sense. Option c describes classic Unix `traceroute`'s probes. A host that doesn't answer
+    ping may still be up: ICMP is often filtered.
+  tags: [icmp, ping]
+
+- id: net-ip-013
+  topic: networking
+  subtopic: ICMP and PMTUD
+  difficulty: medium
+  type: multiple
+  prompt: |
+    Which statements about ICMP are true? Select all that apply.
+  choices:
+    - { id: a, text: "A router that decrements a packet's TTL to 0 discards it and may send ICMP Time Exceeded to the source" }
+    - { id: b, text: "A host receiving a UDP datagram for a port with no socket typically answers with ICMP Destination Unreachable (Port Unreachable)" }
+    - { id: c, text: "Hosts send ICMP error messages in response to other ICMP error messages so errors are never lost" }
+    - { id: d, text: "ICMP messages are carried inside UDP datagrams" }
+    - { id: e, text: "ICMP Destination Unreachable with code \"fragmentation needed and DF set\" is what classic IPv4 Path MTU Discovery relies on" }
+  answer: [a, b, e]
+  explanation: |
+    - **a**: Time Exceeded (type 11, code 0). This is what `traceroute` exploits.
+    - **b**: Port Unreachable is type 3, code 3. (TCP answers a closed port with an RST instead.)
+    - **e**: type 3, code 4 carries the next-hop MTU (RFC 1191).
+    - **c** is false: RFC 1122 forbids sending ICMP errors about ICMP error messages, to avoid storms
+      of errors about errors. Errors are also not sent for broadcast/multicast destinations or for
+      non-first fragments.
+    - **d** is false: ICMP is carried directly in IP, as protocol number 1.
+  tags: [icmp, traceroute, pmtud]
+
+- id: net-ip-014
+  topic: networking
+  subtopic: IP addressing
+  difficulty: easy
+  type: single
+  prompt: |
+    A laptop on a network with a broken DHCP server comes up with the address 169.254.37.12. What does
+    that tell you?
+  choices:
+    - { id: a, text: "It was assigned a public address by the ISP" }
+    - { id: b, text: "It failed to get a DHCP lease and self-assigned an IPv4 link-local address (RFC 3927)" }
+    - { id: c, text: "It is behind carrier-grade NAT" }
+    - { id: d, text: "It is using the loopback interface" }
+  answer: b
+  explanation: |
+    169.254.0.0/16 is **IPv4 link-local** (APIPA). Hosts pick an address there on their own when DHCP
+    fails. It works only on the local link and isn't routed. Carrier-grade NAT uses 100.64.0.0/10;
+    loopback is 127.0.0.0/8. (Cloud providers also put their instance metadata service on
+    169.254.169.254, because link-local addresses are never forwarded off-host.)
+  tags: [ipv4, dhcp, addressing]
+
+- id: net-ip-015
+  topic: networking
+  subtopic: IP addressing
+  difficulty: medium
+  type: short
+  prompt: |
+    Describe how a newly booted host gets an IPv4 address with DHCP. Why are some of the messages
+    broadcast, and how does DHCP work when the server is on a different subnet?
+  reference: |
+    The four-message exchange is **DORA**. The client broadcasts DHCPDISCOVER (UDP from port 68 to
+    port 67, source 0.0.0.0, destination 255.255.255.255). Servers reply with DHCPOFFER. The client
+    broadcasts a DHCPREQUEST for the offer it picks, which also tells the other servers they weren't
+    chosen. The chosen server confirms with DHCPACK. The lease includes the address, subnet mask,
+    default gateway (router option), DNS servers and lease time. The client renews at T1 (half the
+    lease) by unicasting to its server.
+
+    Messages are broadcast because the client has no address yet, and doesn't know the server's. A
+    router doesn't forward broadcasts, so on remote subnets the router acts as a **DHCP relay agent**
+    (e.g. Cisco `ip helper-address`). It catches the broadcast and unicasts it to the server, filling
+    in the giaddr field so the server knows which subnet's pool to allocate from.
+  keyPoints:
+    - "DORA: Discover, Offer, Request, Ack over UDP 67/68"
+    - "Broadcast because the client has no IP and doesn't know the server"
+    - "Lease delivers address, mask, gateway, DNS and lease time; renewal at T1"
+    - "Relay agent on the router forwards to a remote server as unicast, using giaddr to pick the pool"
+  explanation: |
+    Bonus points: the client may ARP-probe the offered address to detect conflicts before using it.
+    IPv6 can instead use SLAAC (router advertisements) or DHCPv6.
+  tags: [dhcp, ipv4]
+
+- id: net-ip-016
+  topic: networking
+  subtopic: IPv6
+  difficulty: medium
+  type: single
+  prompt: |
+    Which is a valid compressed form of **2001:0db8:0000:0000:0000:ff00:0042:8329**?
+  choices:
+    - { id: a, text: "2001:db8::ff00:42:8329" }
+    - { id: b, text: "2001:db8::ff00::42:8329" }
+    - { id: c, text: "2001:db8:0:0:ff00:42:8329" }
+    - { id: d, text: "2001:db8::ff:42:8329" }
+  answer: a
+  explanation: |
+    Rules (RFC 4291, with RFC 5952's canonical form): leading zeros in each 16-bit group may be
+    dropped, and **one** run of consecutive all-zero groups may be replaced by `::`.
+
+    - (a) drops leading zeros and collapses the three zero groups: correct.
+    - (b) uses `::` twice, which is ambiguous and illegal.
+    - (c) lists only 7 groups without a `::`, so it isn't a valid address (one zero group is missing).
+    - (d) changes `ff00` to `ff`; you may drop *leading* zeros, never trailing ones.
+  tags: [ipv6, addressing]
+
+- id: net-ip-017
+  topic: networking
+  subtopic: Routing
+  difficulty: medium
+  type: short
+  prompt: |
+    Contrast an interior gateway protocol such as **OSPF** with **BGP**. What problem is each designed
+    for, and how does each choose a path?
+  reference: |
+    OSPF is a link-state IGP used *inside* one administrative domain. Every router floods link-state
+    advertisements, builds the same map of the area, and runs Dijkstra's shortest-path-first algorithm
+    over configured link costs. It converges quickly and has areas for scale.
+
+    BGP is the path-vector EGP used *between* autonomous systems (eBGP), and also iBGP within one. Each
+    route carries attributes, including the AS_PATH that is used for loop prevention. The best path is
+    chosen by a policy-driven decision process (local preference, AS_PATH length, origin, MED, eBGP over
+    iBGP, IGP cost to the next hop, tie-breakers), not by a pure metric. Its job is to express business
+    policy (customer, peer, transit) and to scale to the full Internet table of roughly a million
+    prefixes. It runs over TCP port 179 and converges more slowly. Data centres also use BGP as the
+    fabric routing protocol, for its simplicity and policy control.
+  keyPoints:
+    - "OSPF: link-state, floods LSAs, every router runs Dijkstra (SPF) on link costs, within one AS"
+    - "BGP: path-vector between autonomous systems, AS_PATH for loop prevention"
+    - "BGP path selection is policy-based (local-pref, AS path, MED…) rather than shortest by cost"
+    - "BGP runs over TCP 179, scales to the Internet table, converges more slowly"
+  explanation: |
+    Interviewers for infrastructure roles like hearing that BGP is about policy and reachability, not
+    performance.
+  tags: [routing, bgp, ospf]
+
+- id: net-ip-018
+  topic: networking
+  subtopic: Subnetting
+  difficulty: hard
+  type: single
+  prompt: |
+    Under RFC 3021, how many usable host addresses does a **/31** give on a point-to-point link?
+  choices:
+    - { id: a, text: "0, because the network and broadcast addresses use both" }
+    - { id: b, text: "1" }
+    - { id: c, text: "2" }
+    - { id: d, text: "4" }
+  answer: c
+  explanation: |
+    With the conventional rule (2ʰ − 2) a /31 would have 0 usable addresses. RFC 3021 allows /31 on
+    **point-to-point** links, where a broadcast address isn't needed (there's only one other end) and
+    neither is a network address, so **both** addresses are usable. That halves the address use of
+    router-to-router links compared with /30, which gives 2 usable out of 4. A /32 is a single host
+    route.
+  tags: [subnetting, ipv4]
+  source: { name: "RFC 3021", url: "https://www.rfc-editor.org/rfc/rfc3021" }
+
+- id: net-ip-019
+  topic: networking
+  subtopic: Subnetting
+  difficulty: medium
+  type: single
+  prompt: |
+    What is the last address of the block **172.20.0.0/14**?
+  choices:
+    - { id: a, text: "172.20.255.255" }
+    - { id: b, text: "172.23.255.255" }
+    - { id: c, text: "172.21.255.255" }
+    - { id: d, text: "172.27.255.255" }
+  answer: b
+  explanation: |
+    /14 means the first octet (8 bits) plus the top 6 bits of the second octet are the network, so
+    blocks advance in steps of 2^(16−14) = **4** in the second octet. 172.20 is a multiple of 4, so the
+    block runs 172.20.0.0 to 172.(20+3).255.255 = **172.23.255.255**, which is 2¹⁸ = 262,144 addresses.
+  tags: [subnetting, cidr, quantitative]
+
+- id: net-ip-020
+  topic: networking
+  subtopic: IP addressing
+  difficulty: easy
+  type: short
+  prompt: |
+    What is CIDR, and why did it replace classful addressing (classes A/B/C)?
+  reference: |
+    Classless Inter-Domain Routing (RFC 4632; originally RFC 1519, 1993) writes a network as an address
+    plus a prefix length of any size (e.g. 203.0.113.0/26), not a fixed /8, /16 or /24 implied by the
+    first bits of the address. Classful addressing wasted space: a 2,000-host organisation needed a
+    whole class B of 65,534 addresses, or many class Cs, each of which needed its own routing table
+    entry. CIDR allows right-sized allocations, which slowed IPv4 exhaustion. It also allows
+    **aggregation** (route summarisation): an ISP announces one short prefix covering all its
+    customers, which keeps the global routing table small. Routers forward using longest-prefix match.
+  keyPoints:
+    - "Address plus arbitrary prefix length (VLSM), not class boundaries"
+    - "Classful allocation wasted addresses (class B too big, class C too small)"
+    - "Enables route aggregation / supernetting, shrinking routing tables"
+    - "Forwarding becomes longest-prefix match"
+  explanation: |
+    An easy conceptual check before subnetting arithmetic.
+  tags: [cidr, ipv4, addressing]
+
+- id: net-ip-021
+  topic: networking
+  subtopic: Routing
+  difficulty: hard
+  type: single
+  prompt: |
+    A host has two interfaces: eth0 10.0.0.5/24 (default route via 10.0.0.1) and eth1 192.168.50.5/24.
+    A packet from 172.16.9.9 arrives on **eth1**. Linux has `rp_filter=1` (strict reverse-path
+    filtering) on eth1. What happens to the packet?
+  choices:
+    - { id: a, text: "It's accepted; reverse-path filtering only applies to forwarded packets" }
+    - { id: b, text: "It's dropped, because the route back to 172.16.9.9 goes out eth0, not eth1, the interface it arrived on" }
+    - { id: c, text: "It's accepted, and the reply is sent out eth1 automatically" }
+    - { id: d, text: "It's dropped, because 172.16.0.0/12 is a private range" }
+  answer: b
+  explanation: |
+    Strict RPF (RFC 3704, Linux `rp_filter=1`) accepts a packet only if the best route back to its
+    **source** goes out the interface it arrived on. The route to 172.16.9.9 is the default route via
+    eth0, so a packet arriving on eth1 fails the check and is silently dropped (counted in
+    `IPReversePathFilter`, logged if `log_martians` is on). This applies to locally delivered packets
+    too, not just forwarded ones.
+
+    This classic gotcha also hits **multicast market data** on a dedicated feed NIC: fixes are a
+    specific route for the source network via eth1, `rp_filter=2` (loose), or 0. Private source
+    addresses are not dropped by RPF.
+  tags: [routing, linux, multicast, rp-filter]

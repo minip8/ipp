@@ -1,0 +1,287 @@
+# Exceptions, try/except/else/finally, chaining, exception groups, context managers.
+- id: py-exc-001
+  topic: python
+  subtopic: Exceptions
+  difficulty: medium
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [try, finally, else, return]
+  prompt: What does this program print?
+  code: |
+    def f():
+        try:
+            print('try')
+            return 'ret'
+        except Exception:
+            print('except')
+        else:
+            print('else')
+        finally:
+            print('finally')
+
+    print(f())
+  answer:
+    kind: output
+    output: |
+      try
+      finally
+      ret
+  explanation: |
+    The `else` clause runs only if the `try` block **completes normally**, i.e. without an exception *and* without leaving early via `return`, `break` or `continue`. Here `return` leaves the try block, so `else` is skipped. `finally` always runs on the way out, *before* the caller receives the return value, so `finally` is printed before `ret`.
+
+    Reference: "Compound statements → The try statement".
+
+- id: py-exc-002
+  topic: python
+  subtopic: Exception chaining
+  difficulty: hard
+  type: output
+  language: python
+  standard: Python 3.3+
+  tags: [exception-chaining, raise-from]
+  prompt: What does this program print?
+  code: |
+    try:
+        try:
+            {}['k']
+        except KeyError:
+            raise ValueError('bad') from None
+    except ValueError as e:
+        print(type(e.__context__).__name__, e.__cause__, e.__suppress_context__)
+  answer: { kind: output, output: "KeyError None True" }
+  explanation: |
+    Raising inside an `except` block always records the exception being handled as `__context__` (implicit chaining), so `__context__` is the `KeyError`. `raise ... from X` sets `__cause__ = X` (explicit chaining) and `__suppress_context__ = True`. With `from None` the cause is `None`, and the suppress flag tells the traceback printer **not** to show the "During handling of the above exception, another exception occurred" section.
+
+    `from None` hides the context from the traceback display but doesn't erase it, which is useful to know when debugging. (PEP 3134, PEP 409, PEP 415.)
+
+- id: py-exc-003
+  topic: python
+  subtopic: Context managers
+  difficulty: medium
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [context-managers, with, exit]
+  prompt: What does this program print?
+  code: |
+    class Quiet:
+        def __enter__(self):
+            return 'resource'
+        def __exit__(self, exc_type, exc, tb):
+            print('exit', exc_type.__name__)
+            return True
+
+    with Quiet() as r:
+        print(r)
+        1 / 0
+        print('unreached')
+    print('after')
+  answer:
+    kind: output
+    output: |
+      resource
+      exit ZeroDivisionError
+      after
+  explanation: |
+    `as r` binds the **return value of `__enter__`** (here a string), not the context manager itself. When the body raises, `__exit__` receives the exception type, value and traceback. If `__exit__` returns a **true** value, the exception is **suppressed**: execution continues after the `with` statement, and the rest of the block is skipped.
+
+    Returning `True` unconditionally is usually a bug, since it swallows every error. `contextlib.suppress(SomeError)` is the explicit way to ignore specific exceptions.
+
+- id: py-exc-004
+  topic: python
+  subtopic: Exceptions
+  difficulty: easy
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [except, ordering]
+  prompt: What does this program print?
+  code: |
+    try:
+        int('x')
+    except Exception:
+        print('Exception')
+    except ValueError:
+        print('ValueError')
+  answer: { kind: output, output: "Exception" }
+  explanation: |
+    `except` clauses are tested **top to bottom**, and the first one whose class matches (via `isinstance`) wins. `int('x')` raises `ValueError`, a subclass of `Exception`, so the first handler catches it and the more specific handler below is unreachable. Python doesn't reorder handlers or warn about this. Put specific exceptions first.
+
+- id: py-exc-005
+  topic: python
+  subtopic: Exceptions
+  difficulty: medium
+  type: multiple
+  tags: [exception-hierarchy, baseexception]
+  prompt: Which of these exceptions are **not** caught by `except Exception:`? Select all that apply.
+  choices:
+    - { id: a, text: "`KeyboardInterrupt`" }
+    - { id: b, text: "`SystemExit`" }
+    - { id: c, text: "`StopIteration`" }
+    - { id: d, text: "`GeneratorExit`" }
+    - { id: e, text: "`ZeroDivisionError`" }
+    - { id: f, text: "`asyncio.CancelledError` (3.8+)" }
+  answer: [a, b, d, f]
+  explanation: |
+    These derive directly from `BaseException`, not `Exception`, so a broad `except Exception:` doesn't intercept control-flow signals: `KeyboardInterrupt` (Ctrl-C), `SystemExit` (`sys.exit()`), `GeneratorExit` (`generator.close()`), and since 3.8 `asyncio.CancelledError` (task cancellation). `StopIteration` and `ZeroDivisionError` are ordinary `Exception` subclasses.
+
+    That is why a bare `except:` (equivalent to `except BaseException:`) is discouraged: it would swallow Ctrl-C and cancellation. Reference: "Built-in exceptions → Exception hierarchy".
+
+- id: py-exc-006
+  topic: python
+  subtopic: Exception groups
+  difficulty: hard
+  type: single
+  tags: [exception-groups, except-star]
+  prompt: |
+    ```python
+    try:
+        raise ExceptionGroup('batch', [ValueError(1), TypeError(2), ValueError(3)])
+    except* ValueError as eg:
+        print('V', len(eg.exceptions))
+    except* TypeError as eg:
+        print('T', len(eg.exceptions))
+    ```
+    What does this print (Python 3.11+)?
+  choices:
+    - { id: a, text: "`V 2` only; after the first matching handler the rest are skipped" }
+    - { id: b, text: "`V 2` then `T 1`" }
+    - { id: c, text: "`V 1`, `T 1`, `V 1`, once per exception" }
+    - { id: d, text: "Nothing: `except*` only matches an exception group whose members are all of that type" }
+  answer: b
+  explanation: |
+    `except*` (PEP 654) **splits** the group: each clause handles the subgroup of matching exceptions, and *several* clauses can run for one raise, each at most once. The `ValueError` clause receives an `ExceptionGroup` containing both `ValueError`s; the `TypeError` clause receives the remaining one. Any unmatched exceptions would be re-raised in a new group after all clauses have run.
+
+    This is the model `asyncio.TaskGroup` uses to report multiple concurrent failures.
+
+- id: py-exc-007
+  topic: python
+  subtopic: Context managers
+  difficulty: medium
+  type: single
+  tags: [contextlib, contextmanager, generators]
+  prompt: |
+    ```python
+    from contextlib import contextmanager
+
+    @contextmanager
+    def opened(path):
+        f = open(path)
+        yield f
+        f.close()
+    ```
+    What is wrong with this context manager?
+  choices:
+    - { id: a, text: "If the `with` body raises, the exception is thrown into the generator at the `yield`, so `f.close()` is skipped; the `yield` should be inside `try`/`finally`" }
+    - { id: b, text: "A `@contextmanager` generator must `return f`, not `yield f`" }
+    - { id: c, text: "It must yield exactly twice: once for entry and once for exit" }
+    - { id: d, text: "Nothing; `@contextmanager` always runs the code after `yield`" }
+  answer: a
+  explanation: |
+    `@contextmanager` runs the generator up to `yield` for `__enter__`. On exit it resumes the generator, either normally or, if the body raised, by **throwing the exception in at the `yield` point**. Without `try: yield f` / `finally: f.close()`, the exception propagates straight out of the generator and the cleanup line never runs.
+
+    The generator must yield exactly once. To suppress the exception you would catch it around the `yield`.
+
+- id: py-exc-008
+  topic: python
+  subtopic: Exceptions
+  difficulty: hard
+  type: single
+  tags: [except, syntax, pep-758, python-3-14]
+  prompt: |
+    In **Python 3.14**, what does this handler do?
+
+    ```python
+    try:
+        connect()
+    except TimeoutError, ConnectionRefusedError:
+        retry()
+    ```
+  choices:
+    - { id: a, text: "It is a `SyntaxError`, as in every Python 3 version" }
+    - { id: b, text: "It catches either `TimeoutError` or `ConnectionRefusedError`, the same as `except (TimeoutError, ConnectionRefusedError):`" }
+    - { id: c, text: "It catches `TimeoutError` and binds it to the name `ConnectionRefusedError` (Python 2 semantics)" }
+    - { id: d, text: "It catches only `ConnectionRefusedError`" }
+  answer: b
+  explanation: |
+    PEP 758 (new in 3.14) allows `except` and `except*` to list several exception types **without parentheses**, provided there is no `as` clause. With `as`, the parentheses are still required: `except (A, B) as e:`. Earlier Python 3 versions reject the unparenthesised form with a `SyntaxError`, a deliberate change from Python 2, where `except A, e:` meant "bind to `e`", which is option c and the reason the form was banned for so long.
+
+    Answer b holds for 3.14+; on 3.13 and earlier the correct answer would be a.
+
+- id: py-exc-009
+  topic: python
+  subtopic: Exceptions
+  difficulty: easy
+  type: short
+  tags: [eafp, lbyl, style]
+  prompt: What do "EAFP" and "LBYL" mean, and which style is considered more Pythonic? Give an example where the choice matters for correctness, not just style.
+  reference: |
+    LBYL, "look before you leap", checks preconditions first (`if key in d: v = d[key]`). EAFP, "easier to ask forgiveness than permission", just does the operation and handles the failure (`try: v = d[key] except KeyError: ...`). EAFP is the idiomatic Python style: it relies on duck typing, avoids duplicated lookups, and reads well when failures are rare. It matters for correctness with race conditions (time-of-check to time-of-use): `if os.path.exists(p): open(p)` can still fail if another process deletes the file between the check and the open, so you must handle the exception anyway. Similarly with threads and a shared dict. LBYL is still fine, or better, when failures are common (exceptions are relatively slow) or the check is cheap and has no race, and the `try` block should be kept minimal so it doesn't catch unrelated errors.
+  keyPoints:
+    - "LBYL: check first; EAFP: attempt and catch the exception"
+    - EAFP is idiomatic Python (duck typing, avoids double lookups)
+    - Race condition / TOCTOU example (file exists then open; shared data between threads)
+    - Keep try blocks narrow and catch specific exceptions
+    - When failures are frequent, LBYL or dict.get may be cheaper
+  explanation: |
+    Both terms appear in the official Python glossary. The TOCTOU example shows real understanding rather than a slogan.
+
+- id: py-exc-010
+  topic: python
+  subtopic: Context managers
+  difficulty: medium
+  type: short
+  tags: [context-managers, with, contextlib]
+  prompt: Explain exactly what a `with` statement does, and describe two ways to write your own context manager.
+  reference: |
+    `with EXPR as VAR: BODY` evaluates `EXPR` to get a manager, looks up `__enter__` and `__exit__` on its type, calls `__enter__()` and binds its return value to `VAR`, then runs `BODY`. Whether the body finishes normally, raises, or exits via `return`/`break`/`continue`, `__exit__(exc_type, exc, tb)` is called: with three `None`s on normal exit, or with the exception's details. If `__exit__` returns a true value, the exception is suppressed; otherwise it propagates. Ways to write one: (1) a class with `__enter__` and `__exit__`; (2) a generator function decorated with `contextlib.contextmanager`, with setup before a single `yield`, the yielded value as `VAR`, and cleanup in a `finally` after it. Also: `contextlib.ExitStack` for a dynamic number of managers, `contextlib.closing`/`suppress`, and the async variants `__aenter__`/`__aexit__` with `async with`.
+  keyPoints:
+    - __enter__ is called and its return value is bound by `as` (not the manager itself)
+    - __exit__ always runs, receiving exception info or None
+    - A truthy return from __exit__ suppresses the exception
+    - Class-based implementation with __enter__/__exit__
+    - contextlib.contextmanager generator with try/finally around a single yield; ExitStack/async variants
+  explanation: |
+    Reference: PEP 343 and the language reference "The with statement", which gives the exact desugaring. A common slip is thinking `as` binds the manager; `open()` happens to return itself from `__enter__`, which hides the distinction.
+
+- id: py-exc-011
+  topic: python
+  subtopic: Exceptions
+  difficulty: medium
+  type: short
+  tags: [exceptions, best-practices, chaining]
+  prompt: What practices do you follow when raising and handling exceptions in a library or service codebase?
+  reference: |
+    Catch the narrowest exception you can handle, and keep `try` blocks small. Never use bare `except:` or `except BaseException` except at a top-level boundary that logs and re-raises, since it swallows `KeyboardInterrupt`, `SystemExit` and cancellation. Don't silently pass; at least log with the traceback (`logger.exception`). Re-raise with a bare `raise` to keep the original traceback. When translating to a domain error, chain with `raise NewError(...) from err` so the cause is preserved (or `from None` to hide irrelevant internals deliberately). Define a small hierarchy of custom exceptions deriving from `Exception`, with a package-level base class, so callers can catch your errors broadly or specifically. Clean up resources with `with`/`finally`. Use `ExceptionGroup`/`except*` when several independent failures must be reported together (3.11+), and add context with `add_note()`.
+  keyPoints:
+    - Catch specific exceptions; avoid bare except / BaseException; narrow try blocks
+    - Don't swallow errors silently; log with traceback
+    - Bare `raise` to re-raise; `raise ... from err` to chain when translating
+    - A custom exception hierarchy with a library base class inheriting from Exception
+    - Use with/finally for cleanup; ExceptionGroup / add_note in modern Python
+  explanation: |
+    This is an open design question; grade on whether the candidate covers specificity, preserving information (tracebacks and chaining), and API design for callers.
+
+- id: py-exc-012
+  topic: python
+  subtopic: Exceptions
+  difficulty: hard
+  type: output
+  language: python
+  standard: Python 3.x (3.14+ also emits a SyntaxWarning)
+  tags: [finally, return, pep-765]
+  prompt: What does this program print to standard output?
+  code: |
+    def f():
+        try:
+            return 'try'
+        finally:
+            return 'finally'
+
+    print(f())
+  answer: { kind: output, output: "finally" }
+  explanation: |
+    `finally` runs on the way out of the `try`, after the `return 'try'` value has been computed. A `return` inside `finally` **replaces** the pending return value. The same `return` (or `break`/`continue`) in `finally` would also silently **discard an in-flight exception**, which is why it's dangerous.
+
+    Since 3.14, PEP 765 makes the compiler emit `SyntaxWarning: 'return' in a 'finally' block` (on stderr). The program still runs and prints `finally`. Keep `finally` for cleanup only.

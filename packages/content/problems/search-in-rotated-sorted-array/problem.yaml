@@ -1,0 +1,17 @@
+slug: search-in-rotated-sorted-array
+title: Search in Rotated Sorted Array
+difficulty: medium
+tags: [array, binary-search]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: search
+      params:
+        - { name: nums, type: { array: int } }
+        - { name: target, type: int }
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (Blind 75; LeetCode 33)
+  url: https://leetcode.com/problems/search-in-rotated-sorted-array/

@@ -1,0 +1,17 @@
+slug: word-search
+title: Word Search
+difficulty: medium
+tags: [backtracking, matrix, dfs]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: exist
+      params:
+        - { name: board, type: { array: string } }
+        - { name: word, type: string }
+      returns: bool
+limits: { timeMs: 2000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 79)
+  url: https://leetcode.com/problems/word-search/

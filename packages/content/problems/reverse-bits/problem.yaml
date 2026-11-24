@@ -1,0 +1,16 @@
+slug: reverse-bits
+title: Reverse Bits
+difficulty: easy
+tags: [bit-manipulation]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: reverseBits
+      params:
+        - { name: n, type: long }
+      returns: long
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (Blind 75; LeetCode 190); bit tricks are a staple of low-latency C++ screens
+  url: https://leetcode.com/problems/reverse-bits/

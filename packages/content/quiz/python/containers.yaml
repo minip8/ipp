@@ -1,0 +1,234 @@
+# Built-in containers: complexity, dict/set internals, hashing, ordering, views.
+- id: py-con-001
+  topic: python
+  subtopic: Dicts
+  difficulty: easy
+  type: output
+  language: python
+  standard: Python 3.7+
+  tags: [dict, ordering]
+  prompt: What does this program print?
+  code: |
+    d = {'b': 1, 'a': 2}
+    d['c'] = 3
+    d['b'] = 4
+    del d['a']
+    d['a'] = 5
+    print(list(d))
+  answer: { kind: output, output: "['b', 'c', 'a']" }
+  explanation: |
+    Dicts preserve **insertion order** (a language guarantee since 3.7). Updating the value of an existing key (`d['b'] = 4`) keeps its original position. Deleting a key and inserting it again puts it at the **end**, because it counts as a new insertion.
+
+- id: py-con-002
+  topic: python
+  subtopic: Hashing and ordering
+  difficulty: medium
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [set, ordering, hash-randomization]
+  prompt: What does this program print?
+  code: |
+    print({'banana', 'apple', 'cherry'})
+  answer: { kind: unspecified }
+  explanation: |
+    **Unspecified.** Sets are unordered: iteration order depends on the elements' hashes and on the table's history. `str` hashes are **randomized per process** (`PYTHONHASHSEED`, on by default since 3.3 to defeat hash-flooding attacks), so the printed order of these strings can change between runs of the same program.
+
+    Unlike dicts, sets do *not* preserve insertion order. If you need ordered unique items, use `dict.fromkeys(items)` or sort before printing. (Small ints often *appear* sorted in a set because `hash(n) == n`, but that is not a guarantee either.)
+
+- id: py-con-003
+  topic: python
+  subtopic: Dicts
+  difficulty: medium
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [dict-views, set-operations]
+  prompt: What does this program print?
+  code: |
+    d = {'a': 1}
+    k = d.keys()
+    d['b'] = 2
+    print(k, k & {'b', 'z'})
+  answer: { kind: output, output: "dict_keys(['a', 'b']) {'b'}" }
+  explanation: |
+    `dict.keys()`, `values()` and `items()` return **views**, not copies: they reflect later changes to the dict, so `k` shows `'b'` even though the key was added after the view was created. Keys views (and items views, when the values are hashable) are **set-like** and support `&`, `|`, `-` and `^` with any iterable, returning a regular `set`.
+
+    In Python 2 `keys()` returned a list snapshot, which is why old code wraps it in `list()` unnecessarily.
+
+- id: py-con-004
+  topic: python
+  subtopic: Complexity
+  difficulty: medium
+  type: multiple
+  tags: [complexity, list, deque, set]
+  prompt: In CPython, which of these operations are O(1) (average or amortized) for a container holding *n* elements? Select all that apply.
+  choices:
+    - { id: a, text: "`lst.append(x)`" }
+    - { id: b, text: "`lst.pop(0)`" }
+    - { id: c, text: "`x in some_set`" }
+    - { id: d, text: "`x in some_list`" }
+    - { id: e, text: "`dq.popleft()` on a `collections.deque`" }
+    - { id: f, text: "`lst.insert(0, x)`" }
+    - { id: g, text: "`lst.pop()`" }
+    - { id: h, text: "`len(lst)`" }
+  answer: [a, c, e, g, h]
+  explanation: |
+    A `list` is a dynamic array of pointers. Appending and popping at the **end** are amortized O(1) (over-allocation makes resizes rare), and `len` is stored. Inserting or removing at the **front** shifts every element, which is O(n), and so is `in`, a linear scan.
+
+    `set`/`dict` membership is an average O(1) hash lookup. `deque` is a doubly linked list of fixed-size blocks, giving O(1) appends and pops at both ends, but O(n) indexing in the middle. Source: the "TimeComplexity" page on the Python wiki.
+
+- id: py-con-005
+  topic: python
+  subtopic: Dicts
+  difficulty: medium
+  type: single
+  tags: [dict, ordering, history]
+  prompt: Which statement about `dict` ordering is accurate?
+  choices:
+    - { id: a, text: "Insertion order became an implementation detail of CPython 3.6 and a language guarantee in Python 3.7" }
+    - { id: b, text: "Dicts are sorted by key since Python 3.6" }
+    - { id: c, text: "Insertion order is guaranteed only for `collections.OrderedDict`; plain dicts are unordered" }
+    - { id: d, text: "Insertion order is guaranteed only for string keys" }
+  answer: a
+  explanation: |
+    CPython 3.6 introduced the compact dict layout (a dense entries array plus a sparse index table), which preserves insertion order as a side effect. Python 3.7 made that order part of the language specification. `OrderedDict` still exists and differs: its equality comparison is **order-sensitive**, and it has `move_to_end` and `popitem(last=False)`, which makes it handy for LRU caches. Dicts are not sorted, and the guarantee covers keys of any type.
+
+- id: py-con-006
+  topic: python
+  subtopic: Hashing and ordering
+  difficulty: hard
+  type: single
+  tags: [hashing, security, dict]
+  prompt: Why are `str` and `bytes` hashes randomized per process by default (since Python 3.3)?
+  choices:
+    - { id: a, text: "To stop attackers from crafting many keys with colliding hashes, which would degrade dict/set operations to O(n) each and enable denial of service" }
+    - { id: b, text: "To make dict iteration order unpredictable so programs don't depend on it" }
+    - { id: c, text: "To spread keys more evenly in memory for better cache performance" }
+    - { id: d, text: "Because hash values must be unique across processes" }
+  answer: a
+  explanation: |
+    Hash tables degrade to linear probing chains when many keys collide. With a fixed, known hash function, an attacker could submit (say) form fields or JSON keys that all collide and make each insert O(n), so O(n²) per request: the 2011 "hash flooding" attacks. Randomizing the hash seed (and, since 3.4, using SipHash, PEP 456) makes such collisions infeasible to predict.
+
+    Dict order is insertion order and is unaffected by hashes; set order is what changes between runs. `PYTHONHASHSEED=0` disables randomization for reproducibility.
+
+- id: py-con-007
+  topic: python
+  subtopic: Containers
+  difficulty: easy
+  type: single
+  tags: [set, dict, literals]
+  prompt: What is `type({})`?
+  choices:
+    - { id: a, text: "`set`" }
+    - { id: b, text: "`dict`" }
+    - { id: c, text: "`frozenset`" }
+    - { id: d, text: "`SyntaxError`" }
+  answer: b
+  explanation: |
+    `{}` is an empty **dict**: dicts had brace literals long before set literals were added. An empty set must be written `set()`. Non-empty `{1, 2}` is a set and `{1: 2}` is a dict.
+
+- id: py-con-008
+  topic: python
+  subtopic: Containers
+  difficulty: medium
+  type: multiple
+  tags: [tuple, list]
+  prompt: Which are genuine advantages of a `tuple` over a `list` for a fixed record such as `(x, y)`? Select all that apply.
+  choices:
+    - { id: a, text: "It is hashable (if its items are), so it can be a dict key or set member" }
+    - { id: b, text: "It cannot be resized or reassigned element-wise, which signals intent and prevents accidental modification" }
+    - { id: c, text: "Its contents are deeply immutable, even if an element is a list" }
+    - { id: d, text: "It uses slightly less memory, and tuple literals of constants can be built once at compile time" }
+    - { id: e, text: "Indexing a tuple is O(1) while indexing a list is O(n)" }
+  answer: [a, b, d]
+  explanation: |
+    - a, b: tuples are immutable containers, so they can be hashed when all their items can.
+    - d: a tuple has no over-allocation and no separate item buffer, and the compiler folds constant tuples like `(1, 2, 3)` into a single constant.
+    - c is false: immutability is **shallow**, so a list inside a tuple can still be mutated (and such a tuple isn't hashable).
+    - e is false: both are arrays and index in O(1).
+
+- id: py-con-009
+  topic: python
+  subtopic: Dicts
+  difficulty: hard
+  type: short
+  tags: [dict, hash-table, internals]
+  prompt: How is a Python `dict` implemented in CPython, and what does that imply for performance and for the objects you use as keys?
+  reference: |
+    A dict is a hash table using open addressing (perturbed probing, not chaining). Since 3.6 it is "compact": a sparse index table of small integers points into a dense array of entries `(hash, key, value)` stored in insertion order, which saves memory and gives ordered iteration. Lookup computes `hash(key)`, probes slots, and for a matching slot checks identity first, then the stored hash and `==`. The table resizes (roughly doubling the index table) when about two thirds full, so insertion is amortized O(1); lookups, inserts and deletes are O(1) on average but O(n) in the worst case under heavy collisions. Deleted entries leave dummy markers until the next resize. Implications: keys must be hashable and their hash and equality must not change while they're in the dict (a mutated key becomes unfindable); `a == b` must imply `hash(a) == hash(b)`; expensive `__hash__`/`__eq__` slow every operation; str hashes are cached on the object. Many internal namespaces (instance `__dict__`, module globals) are dicts, with key-sharing dicts for instances of the same class.
+  keyPoints:
+    - Open-addressing hash table with probing
+    - "Compact layout: sparse index array plus dense insertion-ordered entries (3.6+)"
+    - Average O(1) lookup/insert/delete; amortized resizing at about 2/3 load; O(n) worst case
+    - Lookup compares hash then identity/equality; keys must be hashable and stable
+    - Mutating a key's hash-relevant state makes it unfindable; eq/hash contract
+  explanation: |
+    References: Raymond Hettinger's "Modern Python Dictionaries" talk and the comments in CPython's `Objects/dictobject.c`. Asking what happens if a key's hash changes after insertion is a good follow-up.
+
+- id: py-con-010
+  topic: python
+  subtopic: Containers
+  difficulty: easy
+  type: short
+  tags: [list, deque, set, dict, data-structures]
+  prompt: "Choosing a container: when would you use a `list`, a `collections.deque`, a `set` and a `dict`? Mention the operations each is fast and slow at."
+  reference: |
+    `list`: an ordered, indexable dynamic array. O(1) indexing and amortized O(1) append/pop at the end; O(n) insert/delete at the front or middle and O(n) membership tests. Use it for sequences you index or append to. `deque`: O(1) append/pop at both ends and a `maxlen` for bounded buffers; O(n) indexing in the middle. Use it for queues, BFS and sliding windows (not `list.pop(0)`). `set`: unordered unique hashable items with average O(1) membership, add and remove, plus set algebra; use it for de-duplication and fast `in` checks. `dict`: key→value mapping with average O(1) lookup, insert and delete, insertion-ordered; use it for indexes, counting (`Counter`), grouping (`defaultdict`) and caches. Keys and set elements must be hashable.
+  keyPoints:
+    - "list: O(1) index and append; O(n) front insert/delete and membership"
+    - "deque: O(1) at both ends; for queues/BFS; slow middle indexing"
+    - "set: average O(1) membership; uniqueness; requires hashable items"
+    - "dict: average O(1) key lookup; insertion ordered; Counter/defaultdict variants"
+  explanation: |
+    The classic mistake this catches is using `list.pop(0)` for a queue or `x in big_list` inside a loop, both of which turn linear algorithms quadratic.
+
+- id: py-con-011
+  topic: python
+  subtopic: Hashing and ordering
+  difficulty: medium
+  type: short
+  tags: [hashing, mutable-keys]
+  prompt: |
+    Suppose a class defines `__eq__` and `__hash__` from a mutable attribute `self.name`. You put an instance in a set and then change its `name`. What goes wrong, and what's the right design?
+  reference: |
+    The set stored the object in the slot chosen by its old hash. After mutation, `obj in s` computes the new hash and probes a different slot, so it normally reports `False` even though the object is in the set. Meanwhile an equal-by-new-name object may be added as a "duplicate", and removing it fails with `KeyError`. Iteration still yields the object, so the set's invariants are silently broken. Right design: the hash must depend only on data that never changes while the object is hashed. Make such objects immutable (frozen dataclass, NamedTuple, read-only properties), or use identity-based hashing (don't override `__eq__`/`__hash__`) for mutable entities, or key a dict by an immutable ID instead of the object.
+  keyPoints:
+    - The object sits in the slot computed from its old hash
+    - Lookups use the new hash and miss it; duplicates or KeyError on removal can follow
+    - Hash and equality must be based on state that doesn't change while in a hash container
+    - Use immutable value objects (frozen dataclass, tuple) or identity hashing for mutable entities
+  explanation: |
+    This is why Python makes mutable built-ins (`list`, `dict`, `set`) unhashable, and why defining `__eq__` without `__hash__` sets `__hash__` to `None`.
+
+- id: py-con-012
+  topic: python
+  subtopic: Hashing and ordering
+  difficulty: hard
+  type: output
+  language: python
+  standard: CPython 3.x
+  tags: [hashing, mutable-keys, dict]
+  prompt: What does this program print?
+  code: |
+    class K:
+        def __init__(self, n):
+            self.n = n
+        def __hash__(self):
+            return hash(self.n)
+        def __eq__(self, other):
+            return isinstance(other, K) and self.n == other.n
+
+    k = K(1)
+    d = {k: 'v'}
+    k.n = 2
+    print(k in d, K(1) in d, K(2) in d, len(d))
+  answer: { kind: output, output: "False False False 1" }
+  explanation: |
+    The entry was stored in the slot for `hash(1)`. After `k.n = 2`:
+
+    - `k in d` hashes to `hash(2)` and probes a different (empty) slot, so it isn't found, even though `k` itself is in the dict.
+    - `K(1) in d` reaches the right slot, but the stored key now has `n == 2`, so equality fails.
+    - `K(2) in d` hashes like `k` now does, but that slot is empty.
+
+    The entry is effectively lost: still counted by `len()` and still yielded by iteration, but impossible to look up or delete by key. That's why hash-relevant state must be immutable while an object is in a dict or set. (The exact probing is CPython's, but any hash table behaves like this.)

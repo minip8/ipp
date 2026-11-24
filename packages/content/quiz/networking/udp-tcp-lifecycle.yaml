@@ -1,0 +1,483 @@
+# UDP; TCP handshake, teardown, states, sequence numbers, TIME_WAIT, resets.
+- id: net-udp-001
+  topic: networking
+  subtopic: UDP
+  difficulty: easy
+  type: multiple
+  prompt: |
+    Which properties does UDP itself provide? Select all that apply.
+  choices:
+    - { id: a, text: "No connection setup before sending data" }
+    - { id: b, text: "Message boundaries are preserved: one send is one datagram is one receive" }
+    - { id: c, text: "In-order delivery" }
+    - { id: d, text: "A checksum over header and payload (optional in IPv4, mandatory in IPv6 in general)" }
+    - { id: e, text: "Congestion control" }
+  answer: [a, b, d]
+  explanation: |
+    UDP (RFC 768) is a thin layer over IP. It adds ports, a length field and a checksum. It is
+    connectionless and keeps datagram boundaries, unlike TCP's byte stream. It gives **no** delivery,
+    ordering or duplicate-suppression guarantees, and no congestion control: applications must add
+    those themselves if they need them (RFC 8085 gives guidelines). Over IPv4 a zero checksum means
+    "not computed"; IPv6 requires it, except for specific tunnel cases (RFC 6935).
+  tags: [udp]
+
+- id: net-udp-002
+  topic: networking
+  subtopic: UDP
+  difficulty: medium
+  type: single
+  prompt: |
+    What is the largest payload a single UDP datagram can carry over IPv4, without IPv6 jumbograms or
+    other extensions?
+  choices:
+    - { id: a, text: "65,535 bytes" }
+    - { id: b, text: "65,507 bytes" }
+    - { id: c, text: "1,472 bytes" }
+    - { id: d, text: "512 bytes" }
+  answer: b
+  explanation: |
+    The IPv4 Total Length field is 16 bits, so a packet can be at most 65,535 bytes. Subtract the
+    20-byte IPv4 header and the 8-byte UDP header: 65,535 − 28 = **65,507** bytes of payload. Such a
+    datagram is IP-fragmented on normal links, and losing any one fragment loses the whole datagram.
+
+    1,472 (1500 − 28) is the largest payload that fits in one Ethernet frame **without fragmentation**,
+    which is often the practical limit. 512 bytes was the classic DNS-over-UDP limit before EDNS(0).
+  tags: [udp, mtu, quantitative]
+
+- id: net-udp-003
+  topic: networking
+  subtopic: UDP
+  difficulty: medium
+  type: short
+  prompt: |
+    When would you choose UDP over TCP? Give concrete examples, and say what you take on yourself when
+    you do.
+  reference: |
+    Choose UDP when TCP's guarantees cost more than they're worth.
+    - Low-latency or real-time data where late data is useless: VoIP, video calls, games. A
+      retransmission arriving 200 ms late doesn't help, and TCP's head-of-line blocking stalls fresh
+      data behind a lost segment.
+    - One-to-many delivery: IP multicast (e.g. exchange market data) is UDP-only, since TCP is
+      inherently point-to-point.
+    - Short request/response exchanges where a handshake would dominate: DNS, NTP.
+    - Building a custom transport in user space: QUIC/HTTP/3 runs over UDP.
+
+    You then own whatever reliability you need: sequence numbers, loss detection, retransmission or
+    FEC, ordering, deduplication, and gap recovery such as market-data snapshot and retransmit
+    services. You also own congestion control or rate limiting, so you don't flood the network
+    (RFC 8085), and packetisation to avoid IP fragmentation (keep datagrams under the path MTU). You
+    also have to deal with NAT timeouts and firewalls that treat UDP less kindly.
+  keyPoints:
+    - "Real-time traffic where late data is worthless and HOL blocking hurts (voice, video, games)"
+    - "Multicast fan-out (market data) is only possible with UDP"
+    - "Small request/response protocols (DNS) avoid handshake RTTs; QUIC builds its own transport on UDP"
+    - "You must add sequencing / loss detection / recovery yourself if needed"
+    - "You must add congestion control or rate limiting and avoid fragmentation"
+  explanation: |
+    Weak answers say "UDP is faster". A strong answer explains *why* (no HOL blocking, no handshake,
+    multicast) and the responsibilities that come with it.
+  tags: [udp, tcp, design]
+
+- id: net-tcp-001
+  topic: networking
+  subtopic: TCP connection lifecycle
+  difficulty: easy
+  type: single
+  prompt: |
+    In the TCP three-way handshake the client's SYN carries sequence number **x**. The server's SYN-ACK
+    carries its own sequence number **y**. What acknowledgment number does the SYN-ACK carry?
+  choices:
+    - { id: a, text: "x" }
+    - { id: b, text: "x + 1" }
+    - { id: c, text: "y + 1" }
+    - { id: d, text: "0, because no data has been received yet" }
+  answer: b
+  explanation: |
+    The SYN flag **consumes one sequence number**, so after receiving the SYN with seq = x the next
+    byte the server expects is x + 1, and that is its ACK number. The client's final ACK then carries
+    ack = y + 1 for the same reason. The ACK number always means "the next sequence number I expect".
+  tags: [tcp, handshake, sequence-numbers]
+
+- id: net-tcp-002
+  topic: networking
+  subtopic: TCP connection lifecycle
+  difficulty: medium
+  type: single
+  prompt: |
+    A client's SYN has seq = 1000. After the handshake completes, the client sends 500 bytes of data in
+    one segment, which arrives intact. What are the sequence number of that segment and the ACK number
+    the server sends back for it?
+  choices:
+    - { id: a, text: "seq 1000, ack 1500" }
+    - { id: b, text: "seq 1001, ack 1501" }
+    - { id: c, text: "seq 1001, ack 1500" }
+    - { id: d, text: "seq 1000, ack 1501" }
+  answer: b
+  explanation: |
+    The SYN used sequence number 1000, so the first data byte is **1001**. The segment covers bytes
+    1001–1500, and the server acknowledges the next byte it expects: **1501**.
+
+    Choice a forgets that SYN consumes a sequence number. Choice c is an off-by-one about what an ACK
+    number means: it points at the next expected byte, not the last byte received.
+  tags: [tcp, sequence-numbers]
+
+- id: net-tcp-003
+  topic: networking
+  subtopic: TCP connection lifecycle
+  difficulty: easy
+  type: single
+  prompt: |
+    In a normal TCP close, which side ends up in the **TIME_WAIT** state?
+  choices:
+    - { id: a, text: "Always the server" }
+    - { id: b, text: "Always the client" }
+    - { id: c, text: "The side that sends the first FIN (the active closer)" }
+    - { id: d, text: "The side that receives the first FIN (the passive closer)" }
+  answer: c
+  explanation: |
+    The **active closer** goes FIN_WAIT_1 -> FIN_WAIT_2 -> TIME_WAIT. It sends the final ACK and then
+    waits 2×MSL. The passive closer goes CLOSE_WAIT -> LAST_ACK -> CLOSED, with no TIME_WAIT.
+    Client or server doesn't matter: a server that closes connections first (e.g. an HTTP server
+    closing after a response) collects the TIME_WAIT sockets. If both sides close at the same moment,
+    both pass through CLOSING and both end up in TIME_WAIT.
+  tags: [tcp, time-wait, teardown]
+
+- id: net-tcp-004
+  topic: networking
+  subtopic: TCP connection lifecycle
+  difficulty: medium
+  type: short
+  prompt: |
+    Why does TCP have a TIME_WAIT state at all? How long does it last on Linux, what problems does it
+    cause on busy hosts, and what are the legitimate mitigations?
+  reference: |
+    TIME_WAIT (2×MSL; RFC 793/9293 suggested an MSL of 2 minutes, while Linux hard-codes 60 seconds)
+    has two purposes:
+    1. **Reliable termination.** If the final ACK is lost, the peer retransmits its FIN. The
+       TIME_WAIT socket can re-ACK it instead of answering with an RST.
+    2. **Preventing old duplicates** from a previous incarnation of the same 4-tuple being accepted
+       into a new connection.
+
+    Problems: a client making many short connections to the same server ip:port uses up its ephemeral
+    ports (each 4-tuple is held for 60 s), so connect() fails with EADDRNOTAVAIL. Many TIME_WAIT
+    entries also use some memory.
+
+    Mitigations: reuse connections (keep-alive, pooling) so you close less often; let the client be the
+    active closer; widen `ip_local_port_range`; use more destination IPs or ports; enable
+    `net.ipv4.tcp_tw_reuse`, which lets *outgoing* connections reuse a TIME_WAIT 4-tuple when TCP
+    timestamps prove it's safe. Set SO_REUSEADDR on listening sockets so a restarted server can bind
+    its port. Don't use the removed `tcp_tw_recycle`, which broke clients behind NAT and was dropped
+    in Linux 4.12, and don't use SO_LINGER-with-zero RST tricks as a general fix.
+  keyPoints:
+    - "Lets the active closer re-ACK a retransmitted FIN if the final ACK was lost"
+    - "Lets stray delayed segments from the old connection die before the 4-tuple is reused"
+    - "Lasts 2×MSL; 60 s on Linux"
+    - "Problem: ephemeral port exhaustion for many short-lived outgoing connections"
+    - "Mitigations: connection reuse/pooling, tcp_tw_reuse (timestamps), wider port range, SO_REUSEADDR for listeners; not tcp_tw_recycle"
+  explanation: |
+    A senior-level favourite. Watch for the folklore that TIME_WAIT is a bug to be disabled.
+  tags: [tcp, time-wait, linux]
+  source: { name: "RFC 9293 §3.6.1", url: "https://www.rfc-editor.org/rfc/rfc9293" }
+
+- id: net-tcp-005
+  topic: networking
+  subtopic: TCP connection lifecycle
+  difficulty: medium
+  type: single
+  prompt: |
+    `ss -tan` on your server shows thousands of connections stuck in **CLOSE_WAIT**, and the count
+    keeps growing. What is the most likely cause?
+  choices:
+    - { id: a, text: "The network is dropping the peers' final ACKs" }
+    - { id: b, text: "Your application isn't calling close() on sockets after the peer has closed its side" }
+    - { id: c, text: "Your server is the active closer and has to wait 2×MSL" }
+    - { id: d, text: "net.ipv4.tcp_fin_timeout is set too high" }
+  answer: b
+  explanation: |
+    CLOSE_WAIT means "the peer sent FIN, which the kernel ACKed, and we're waiting for the **local
+    application** to close". The kernel can't leave this state by itself. Growing CLOSE_WAIT is almost
+    always an application leak: a code path that sees recv() return 0 (or an error) and never closes
+    the fd, or a stuck thread pool.
+
+    Choice c describes TIME_WAIT. `tcp_fin_timeout` controls orphaned FIN_WAIT_2, not CLOSE_WAIT. Lost
+    ACKs would leave the *peer* in LAST_ACK.
+  tags: [tcp, close-wait, debugging]
+
+- id: net-tcp-006
+  topic: networking
+  subtopic: Sockets API and options
+  difficulty: medium
+  type: single
+  prompt: |
+    You restart a TCP server and `bind()` fails with **EADDRINUSE**, even though the old process has
+    exited. Connections it was serving are in TIME_WAIT. What is the standard fix?
+  choices:
+    - { id: a, text: "Set SO_REUSEADDR on the listening socket before bind()" }
+    - { id: b, text: "Set SO_LINGER to zero on the listening socket" }
+    - { id: c, text: "Set TCP_NODELAY" }
+    - { id: d, text: "Lower net.ipv4.tcp_fin_timeout to 1 second" }
+  answer: a
+  explanation: |
+    On Linux, without **SO_REUSEADDR**, bind() refuses a port still used by sockets in TIME_WAIT.
+    Setting SO_REUSEADDR before bind() lets the new listener bind while those TIME_WAIT entries age out.
+    Every production server should set it. It doesn't allow two *active* listeners on the same port;
+    on Linux that is SO_REUSEPORT.
+
+    SO_LINGER on the listener has no effect on the old connections. TCP_NODELAY is about Nagle's
+    algorithm. `tcp_fin_timeout` affects FIN_WAIT_2, not the fixed 60 s TIME_WAIT.
+  tags: [sockets, time-wait, so-reuseaddr]
+
+- id: net-tcp-007
+  topic: networking
+  subtopic: TCP connection lifecycle
+  difficulty: medium
+  type: multiple
+  prompt: |
+    Which of these consume TCP sequence-number space? Select all that apply.
+  choices:
+    - { id: a, text: "The SYN flag" }
+    - { id: b, text: "The FIN flag" }
+    - { id: c, text: "Each byte of payload data" }
+    - { id: d, text: "A pure ACK with no data" }
+    - { id: e, text: "The RST flag" }
+  answer: [a, b, c]
+  explanation: |
+    SYN and FIN each count as one octet of sequence space (RFC 9293 §3.4). That is how they get
+    reliably acknowledged and retransmitted like data. Every data byte uses one sequence number. Pure
+    ACKs and RSTs consume none. An ACK is never acknowledged, and an RST is not retransmitted.
+  tags: [tcp, sequence-numbers]
+
+- id: net-tcp-008
+  topic: networking
+  subtopic: TCP connection lifecycle
+  difficulty: hard
+  type: short
+  prompt: |
+    Explain a SYN flood and how **SYN cookies** defend against it. What does the server give up when it
+    falls back to SYN cookies?
+  reference: |
+    In a SYN flood an attacker sends many SYNs, often from spoofed sources, and never completes the
+    handshake. Each one creates a half-open entry in the server's SYN queue (SYN_RECV) and triggers
+    SYN-ACK retransmissions. The queue fills and legitimate clients can't connect.
+
+    With SYN cookies the server keeps **no state** for the SYN. It encodes the connection information
+    in its initial sequence number: a keyed hash of the 4-tuple and a coarse timestamp, plus a few bits
+    encoding the MSS (picked from a small table). When the final ACK arrives, ack − 1 is checked
+    against the hash, and the connection is created only then. Spoofed SYNs therefore cost nothing but
+    a SYN-ACK.
+
+    The cost: options sent in the SYN aren't stored, so window scaling, SACK and an exact MSS are lost
+    or approximated (Linux can encode some of them in the TCP timestamp when timestamps are on). The
+    server can't retransmit a lost SYN-ACK because it has no record of it. Linux enables cookies only
+    when the SYN queue overflows (`net.ipv4.tcp_syncookies=1`).
+  keyPoints:
+    - "SYN flood exhausts the half-open (SYN_RECV) queue with never-completed handshakes"
+    - "SYN cookie: no state stored; the ISN encodes a keyed hash of the 4-tuple, a time counter and an MSS index"
+    - "State is rebuilt and verified when the final ACK returns (ack − 1)"
+    - "Trade-off: TCP options (window scale, SACK) lost unless encoded in timestamps; no SYN-ACK retransmission"
+    - "Linux uses cookies only when the queue overflows"
+  explanation: |
+    Strong answers also mention spoofing (so per-IP rate limits are weak) and upstream scrubbing for
+    large volumetric attacks.
+  tags: [tcp, security, syn-flood]
+
+- id: net-tcp-009
+  topic: networking
+  subtopic: TCP connection lifecycle
+  difficulty: easy
+  type: single
+  prompt: |
+    A client calls `connect()` to a reachable host on a TCP port where nothing is listening, and no
+    firewall is in the way. What does the client see?
+  choices:
+    - { id: a, text: "connect() fails quickly with ECONNREFUSED because the host answers the SYN with an RST" }
+    - { id: b, text: "connect() hangs until ETIMEDOUT because the host ignores the SYN" }
+    - { id: c, text: "connect() succeeds and the first recv() returns 0" }
+    - { id: d, text: "connect() fails with EHOSTUNREACH" }
+  answer: a
+  explanation: |
+    A TCP stack answers a SYN to a closed port with an **RST** (RFC 9293), and the client reports
+    *connection refused* within one RTT. A long hang ending in ETIMEDOUT usually means a firewall is
+    silently **dropping** the SYN. EHOSTUNREACH means an ICMP host-unreachable or a failed ARP or
+    neighbour lookup. For UDP the equivalent of the RST is ICMP Port Unreachable. Telling "refused"
+    apart from "timed out" is a basic debugging skill.
+  tags: [tcp, rst, sockets, debugging]
+
+- id: net-tcp-010
+  topic: networking
+  subtopic: Sockets API and options
+  difficulty: hard
+  type: single
+  prompt: |
+    A process sets `SO_LINGER` with `l_onoff = 1, l_linger = 0` on a connected TCP socket and then calls
+    `close()`. What happens?
+  choices:
+    - { id: a, text: "close() blocks until all unsent data has been acknowledged" }
+    - { id: b, text: "The connection is aborted: unsent data is discarded, an RST is sent instead of a FIN, and there is no TIME_WAIT" }
+    - { id: c, text: "A normal FIN close happens, but TIME_WAIT is skipped" }
+    - { id: d, text: "Nothing differs from a normal close; linger only affects shutdown()" }
+  answer: b
+  explanation: |
+    A zero linger timeout makes `close()` an **abortive close** (an RST). Buffered data is thrown away,
+    the peer gets ECONNRESET, and the socket goes straight to CLOSED, skipping TIME_WAIT. It's
+    sometimes used deliberately (load-balancer health checks, killing misbehaving peers), but as a
+    TIME_WAIT "fix" it loses data and defeats TIME_WAIT's protections.
+
+    A *positive* linger timeout gives behaviour like choice a: close() blocks up to that many seconds
+    while unsent data drains.
+  tags: [sockets, so-linger, rst, tcp]
+
+- id: net-tcp-011
+  topic: networking
+  subtopic: TCP connection lifecycle
+  difficulty: medium
+  type: short
+  prompt: |
+    What's the difference between `shutdown(fd, SHUT_WR)` and `close(fd)` on a TCP socket? Give a
+    situation where you need the half-close, and say what happens if you close() while unread data is
+    still in the receive buffer.
+  reference: |
+    `shutdown(SHUT_WR)` sends a FIN, meaning "I'm done sending", but the socket stays open for
+    **reading**: a half-close. It acts on the connection itself, regardless of how many descriptors
+    refer to it. `close()` releases the descriptor. When the last reference goes away the kernel closes
+    both directions (sending FIN), and the application can no longer read anything the peer sends.
+
+    Use case: a client streams a request of unknown length (e.g. `nc`, or a protocol that delimits the
+    request by EOF). It shuts down its write side so the server's read returns 0, then keeps reading
+    the server's response until EOF. Also useful for a graceful close: shut down writing, drain reads
+    until 0, then close.
+
+    If you close() while received data is still unread, Linux (following RFC 2525 and RFC 9293) sends
+    an **RST** instead of a FIN, and the peer may lose data it sent that is still in flight, seeing
+    ECONNRESET.
+  keyPoints:
+    - "SHUT_WR sends FIN but keeps the read side open (half-close)"
+    - "close() drops the descriptor; on the last reference both directions are closed"
+    - "Use case: signal end of request by EOF and still read the response; graceful close by draining"
+    - "Closing with unread data in the receive buffer triggers an RST instead of FIN"
+  explanation: |
+    The RST-on-unread-data behaviour causes "connection reset by peer" errors in HTTP servers that
+    close without draining a request body.
+  tags: [tcp, sockets, teardown, rst]
+
+- id: net-tcp-012
+  topic: networking
+  subtopic: TCP connection lifecycle
+  difficulty: easy
+  type: single
+  prompt: |
+    Can a server hold 50,000 simultaneous TCP connections on the single local port 443?
+  choices:
+    - { id: a, text: "No; each connection needs its own local port, so the limit is 65,535 minus reserved ports" }
+    - { id: b, text: "Yes; a connection is identified by the 4-tuple, and accepted sockets share local port 443 but differ in remote address/port" }
+    - { id: c, text: "Only with SO_REUSEPORT" }
+    - { id: d, text: "Only if the clients are all on different IP addresses" }
+  answer: b
+  explanation: |
+    TCP demultiplexes on the **4-tuple** (local IP, local port, remote IP, remote port). Every socket
+    returned by accept() has local port 443. They're distinguished by remote ip:port, so even one
+    client IP can open many connections using different source ports. The practical limits are memory
+    and file descriptors, not ports. The 16-bit port limit binds on the side that *initiates* many
+    connections to the same destination (see ephemeral port exhaustion). SO_REUSEPORT is about multiple
+    *listening* sockets, not this.
+  tags: [tcp, sockets, four-tuple]
+
+- id: net-tcp-013
+  topic: networking
+  subtopic: TCP connection lifecycle
+  difficulty: hard
+  type: single
+  prompt: |
+    Why do modern TCP stacks pick the initial sequence number (ISN) with a keyed hash of the
+    connection 4-tuple plus a clock (RFC 6528), not by starting at 0 or using a simple global
+    counter?
+  choices:
+    - { id: a, text: "To encrypt the payload" }
+    - { id: b, text: "So an off-path attacker can't predict sequence numbers to inject data or spoof connections, while new incarnations of a 4-tuple still start beyond old ones" }
+    - { id: c, text: "Because sequence number 0 is reserved for SYN cookies" }
+    - { id: d, text: "To make sequence numbers globally unique across all hosts" }
+  answer: b
+  explanation: |
+    Predictable ISNs enabled blind spoofing and injection attacks (the Mitnick-era attack, RFC 1948).
+    RFC 6528 sets ISN = M + F(4-tuple, secret), where M is a timer tick. The secret hash makes ISNs
+    unguessable from off-path. The monotonically increasing M keeps a new connection on the same
+    4-tuple from overlapping the sequence space of an old one, which is the original reason for
+    clock-driven ISNs. Encryption is TLS's job; SYN cookies reuse the ISN *field* but don't reserve 0.
+  tags: [tcp, security, sequence-numbers]
+  source: { name: "RFC 6528", url: "https://www.rfc-editor.org/rfc/rfc6528" }
+
+- id: net-tcp-014
+  topic: networking
+  subtopic: Sockets API and options
+  difficulty: medium
+  type: single
+  prompt: |
+    A load-test client on Linux opens connections from one source IP to a single server
+    `10.0.0.9:8080`, with default `net.ipv4.ip_local_port_range` (32768 60999) and no explicit bind().
+    Roughly how many connections to that destination can it have open at once (counting TIME_WAIT)?
+  choices:
+    - { id: a, text: "About 65,535" }
+    - { id: b, text: "About 28,232" }
+    - { id: c, text: "About 16,384" }
+    - { id: d, text: "Unlimited; the kernel reuses ports automatically" }
+  answer: b
+  explanation: |
+    With source IP, destination IP and destination port all fixed, only the source port varies, and the
+    kernel picks it from the ephemeral range: 60999 − 32768 + 1 = **28,232** ports. Sockets in
+    TIME_WAIT still hold their 4-tuple for 60 s. A tight connect/close loop therefore fails with
+    **EADDRNOTAVAIL** after about 28k connections per minute unless you widen the range, add source IPs
+    or destination ports, reuse connections, or enable `tcp_tw_reuse`.
+
+    16,384 is the size of the IANA-suggested range 49152–65535, which Windows uses by default.
+  tags: [tcp, ephemeral-ports, linux, quantitative]
+
+- id: net-tcp-015
+  topic: networking
+  subtopic: TCP vs UDP
+  difficulty: easy
+  type: short
+  prompt: |
+    Summarise the differences between TCP and UDP, as you would at the start of an interview.
+  reference: |
+    TCP is connection-oriented (three-way handshake) and gives a reliable, ordered, de-duplicated **byte
+    stream**. It has acknowledgments and retransmission, flow control (the receive window) and
+    congestion control, and it's point-to-point only. UDP is connectionless and gives unreliable,
+    unordered **datagrams** that keep message boundaries. It has no flow or congestion control, an
+    8-byte header against TCP's 20–60, supports broadcast and multicast, and has no handshake latency.
+    TCP suits most request/response and bulk transfer. UDP suits real-time media, DNS, multicast, and
+    custom transports such as QUIC.
+  keyPoints:
+    - "TCP: connection-oriented, handshake; UDP: connectionless"
+    - "TCP: reliable, ordered byte stream; UDP: best-effort datagrams with boundaries preserved"
+    - "TCP has flow and congestion control; UDP has neither"
+    - "UDP supports multicast/broadcast, has a smaller header and no setup RTT"
+  explanation: |
+    Easy, but candidates often forget "byte stream versus datagrams", which matters for framing.
+  tags: [tcp, udp]
+
+- id: net-tcp-016
+  topic: networking
+  subtopic: TCP connection lifecycle
+  difficulty: easy
+  type: short
+  prompt: |
+    Walk through the TCP three-way handshake and four-way close, naming the states each side passes
+    through.
+  reference: |
+    Open: the server is in LISTEN. The client sends SYN(seq = x) and enters SYN_SENT. The server
+    replies SYN-ACK(seq = y, ack = x + 1) and enters SYN_RECEIVED. The client sends ACK(ack = y + 1)
+    and enters ESTABLISHED; the server enters ESTABLISHED when it gets that ACK. The handshake
+    synchronises both ISNs and negotiates options (MSS, window scale, SACK-permitted, timestamps).
+
+    Close (active closer A, passive closer B): A sends FIN and enters FIN_WAIT_1. B ACKs and enters
+    CLOSE_WAIT, and A moves to FIN_WAIT_2 on that ACK. When B's application closes, B sends its own FIN
+    and enters LAST_ACK. A ACKs it and enters TIME_WAIT for 2×MSL, then CLOSED. B goes to CLOSED when
+    it receives the final ACK. B's ACK and FIN may be combined into one segment.
+  keyPoints:
+    - "SYN / SYN-ACK / ACK, with ack = peer's seq + 1"
+    - "Handshake exchanges ISNs and options (MSS, window scaling, SACK, timestamps)"
+    - "Client states: SYN_SENT -> ESTABLISHED; server: LISTEN -> SYN_RECEIVED -> ESTABLISHED"
+    - "Close: FIN_WAIT_1 -> FIN_WAIT_2 -> TIME_WAIT on the active side; CLOSE_WAIT -> LAST_ACK on the passive side"
+  explanation: |
+    Fundamentals: expect follow-ups on TIME_WAIT and CLOSE_WAIT.
+  tags: [tcp, handshake, teardown, states]

@@ -1,0 +1,646 @@
+# Overload resolution, implicit conversion ranking, name hiding, ADL, two-phase lookup.
+- id: cpp-overload-001
+  topic: cpp
+  subtopic: Overload resolution and name lookup
+  difficulty: easy
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [overload-resolution, promotions]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    void f(int)    { std::cout << "int "; }
+    void f(double) { std::cout << "double "; }
+
+    int main() {
+        f('a');
+        f(1.0f);
+        f(true);
+        std::cout << '\n';
+    }
+  answer: { kind: output, output: "int double int" }
+  explanation: |
+    `char → int`, `bool → int` and `float → double` are all *promotions* ([conv.prom], [conv.fpprom]),
+    which rank better than *conversions* such as `char → double` or `float → int` ([over.ics.rank]).
+    So each call picks the overload reachable by promotion.
+
+- id: cpp-overload-002
+  topic: cpp
+  subtopic: Overload resolution and name lookup
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [overload-resolution, ambiguity, conversions]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    void f(long)   { std::cout << "long\n"; }
+    void f(double) { std::cout << "double\n"; }
+
+    int main() {
+        f(42);
+    }
+  answer: { kind: compile_error }
+  explanation: |
+    `int → long` is an *integral conversion*, not a promotion (promotions only go to `int`/`unsigned int`,
+    or from `float` to `double`). `int → double` is a floating-integral conversion. Both have
+    Conversion rank, so neither is better and the call is ambiguous ([over.match.best]). People often
+    expect `long` to win because it "loses no information"; overload resolution doesn't care.
+
+- id: cpp-overload-003
+  topic: cpp
+  subtopic: Overload resolution and name lookup
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [overload-resolution, user-defined-conversions, std-string]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+    #include <string>
+
+    void f(bool)               { std::cout << "bool\n"; }
+    void f(const std::string&) { std::cout << "string\n"; }
+
+    int main() {
+        f("hello");
+    }
+  answer: { kind: output, output: "bool" }
+  explanation: |
+    `"hello"` is a `const char[6]`. Reaching `bool` takes a *standard* conversion sequence
+    (array-to-pointer, then pointer-to-bool boolean conversion). Reaching `std::string` needs a
+    *user-defined* conversion (the `std::string(const char*)` constructor). Any standard conversion
+    sequence beats any user-defined one ([over.ics.rank]), so `bool` wins.
+
+    Real-world variants of this bug appear when a `bool` overload is added next to string overloads
+    (e.g. in a JSON or settings API). Fixes: add a `const char*` overload, or `= delete` the template
+    `template <class T> void f(T) = delete;` to block unwanted conversions.
+
+- id: cpp-overload-004
+  topic: cpp
+  subtopic: Overload resolution and name lookup
+  difficulty: easy
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [nullptr, overload-resolution]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    void f(int)   { std::cout << "int "; }
+    void f(char*) { std::cout << "ptr "; }
+
+    int main() {
+        f(0);
+        f(nullptr);
+        std::cout << '\n';
+    }
+  answer: { kind: output, output: "int ptr" }
+  explanation: |
+    The literal `0` is an `int`, so `f(int)` is an exact match, while `0 → char*` is a null pointer
+    conversion. Hence `int`, which is surprising if you meant "null pointer". `nullptr` has type
+    `std::nullptr_t`, which converts to any pointer type but not to `int`, so only `f(char*)` is viable.
+    This is the reason `nullptr` was introduced. (`NULL` is implementation-defined and may be `0`, `0L` or
+    a compiler builtin, so `f(NULL)` may be ambiguous or pick `int`.)
+
+- id: cpp-overload-005
+  topic: cpp
+  subtopic: Overload resolution and name lookup
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [overload-resolution, templates]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    template <class T> void f(T) { std::cout << "T "; }
+    void f(int) { std::cout << "int "; }
+
+    int main() {
+        f(1);
+        f(1L);
+        f<>(1);
+        f('c');
+        std::cout << '\n';
+    }
+  answer: { kind: output, output: "int T T T" }
+  explanation: |
+    - `f(1)`: the template deduces `T = int`, also an exact match. With equally good conversions, a
+      non-template is preferred over a template specialization ([over.match.best]) → `int`.
+    - `f(1L)`: template with `T = long` is an exact match; the non-template needs a conversion → `T`.
+    - `f<>(1)`: the empty template argument list restricts lookup to templates → `T`.
+    - `f('c')`: template with `T = char` is exact; `char → int` is only a promotion, and exact match
+      beats promotion. The non-template tie-breaker applies only when conversions are equal → `T`.
+
+- id: cpp-overload-006
+  topic: cpp
+  subtopic: Overload resolution and name lookup
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [overload-resolution, ambiguity, references]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    void f(int)        { std::cout << "value\n"; }
+    void f(const int&) { std::cout << "ref\n"; }
+
+    int main() {
+        int x = 1;
+        f(x);
+    }
+  answer: { kind: compile_error }
+  explanation: |
+    Binding a reference to an argument of the same type is an identity conversion, exactly like
+    copying it into a by-value parameter ([over.ics.ref]). Both candidates are exact matches and no
+    tie-breaker distinguishes them, so the call is ambiguous. (Overloading `T` against `T&&` behaves the
+    same way for rvalues.) You can declare such a pair, but you can't call it.
+
+- id: cpp-overload-007
+  topic: cpp
+  subtopic: Overload resolution and name lookup
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [name-hiding, using-declaration, inheritance]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    struct B { void f(int) { std::cout << "B "; } };
+    struct D : B { void f(double) { std::cout << "D "; } };
+    struct E : B { using B::f; void f(double) { std::cout << "E "; } };
+
+    int main() {
+        D d;
+        d.f(1);
+        E e;
+        e.f(1);
+        e.f(1.0);
+        std::cout << '\n';
+    }
+  answer: { kind: output, output: "D B E" }
+  explanation: |
+    Name lookup happens *before* overload resolution and stops at the first scope that declares the
+    name ([class.member.lookup]). In `D`, lookup for `f` finds `D::f(double)` and never looks in `B`, so
+    `d.f(1)` converts `1` to `double` → `D`. The derived declaration *hides* every base overload with
+    that name.
+
+    `using B::f;` brings the base overloads into `E`'s scope, so both are candidates: `f(int)` is exact
+    for `1` → `B`, and `f(double)` is exact for `1.0` → `E`.
+
+- id: cpp-overload-008
+  topic: cpp
+  subtopic: Overload resolution and name lookup
+  difficulty: easy
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [adl, name-lookup]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    namespace geo {
+        struct Point { int x, y; };
+        void print(Point p) { std::cout << p.x << ',' << p.y << '\n'; }
+    }
+
+    int main() {
+        geo::Point p{1, 2};
+        print(p);
+    }
+  answer: { kind: output, output: "1,2" }
+  explanation: |
+    Unqualified `print` isn't declared in the global scope, but argument-dependent lookup
+    ([basic.lookup.argdep]) also searches the namespaces associated with the argument types. `p` is a
+    `geo::Point`, so `geo::print` is found. ADL is what makes `std::cout << x` find `operator<<` declared
+    in namespace `std` without qualification.
+
+- id: cpp-overload-009
+  topic: cpp
+  subtopic: Overload resolution and name lookup
+  difficulty: hard
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [adl, name-lookup]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    namespace geo {
+        struct Point { int x, y; };
+        void print(Point p) { std::cout << p.x << ',' << p.y << '\n'; }
+    }
+
+    int main() {
+        geo::Point p{1, 2};
+        print(p);
+        (print)(p);
+    }
+  answer: { kind: compile_error }
+  explanation: |
+    ADL applies only when the function name in the call is an *unqualified-id*. A parenthesized name
+    `(print)` is not, so only ordinary unqualified lookup runs, finds nothing at global scope, and the
+    second call is ill-formed ([basic.lookup.argdep]).
+
+    The standard library uses this deliberately: writing `(f)(args)` (or qualifying the name) is the
+    standard way to *suppress* ADL, e.g. to prevent macro expansion of `(std::max)(a, b)` on Windows or to
+    stop user overloads from hijacking a call.
+
+- id: cpp-overload-010
+  topic: cpp
+  subtopic: Overload resolution and name lookup
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [ref-qualifiers, member-functions]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+    #include <utility>
+
+    struct S {
+        void f() &  { std::cout << "& "; }
+        void f() && { std::cout << "&& "; }
+    };
+
+    int main() {
+        S s;
+        s.f();
+        S{}.f();
+        std::move(s).f();
+        std::cout << '\n';
+    }
+  answer: { kind: output, output: "& && &&" }
+  explanation: |
+    Ref-qualified member functions overload on the value category of the object expression
+    ([over.match.funcs]): `&` binds the implicit object parameter to lvalues, `&&` to rvalues.
+    `s` is an lvalue; `S{}` is a prvalue; `std::move(s)` is an xvalue. Typical use: a getter that returns
+    `const T&` for lvalues but `T&&` (moving the member out) for rvalues, as `std::optional::value()` does.
+
+- id: cpp-overload-011
+  topic: cpp
+  subtopic: Overload resolution and name lookup
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [char-types, overload-resolution, promotions]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    void f(char)          { std::cout << "char "; }
+    void f(signed char)   { std::cout << "signed "; }
+    void f(unsigned char) { std::cout << "unsigned "; }
+    void f(int)           { std::cout << "int "; }
+
+    int main() {
+        f('a');
+        f(static_cast<signed char>('a'));
+        f(true);
+        std::cout << '\n';
+    }
+  answer: { kind: output, output: "char signed int" }
+  explanation: |
+    `char`, `signed char` and `unsigned char` are three *distinct* types ([basic.fundamental]), even
+    though `char` has the same representation as one of the other two. A character literal has type
+    `char`, so `f(char)` is exact. `bool` is not a character type; its best match is the promotion to
+    `int`. Distinctness is also why `std::int8_t` (usually `signed char`) and `char` don't overload the same.
+
+- id: cpp-overload-012
+  topic: cpp
+  subtopic: Overload resolution and name lookup
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [operator-overloading, implicit-conversions]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    struct Money {
+        long cents;
+        Money(long c) : cents(c) {}
+        Money operator+(const Money& o) const { return Money(cents + o.cents); }
+    };
+
+    int main() {
+        Money a = Money(100) + 5;
+        Money b = 5 + Money(100);
+        std::cout << a.cents + b.cents << '\n';
+    }
+  answer: { kind: compile_error }
+  explanation: |
+    For a member `operator+`, the left operand is the implicit object argument, and no user-defined
+    conversion is applied to it ([over.match.funcs]). `Money(100) + 5` works (`5` converts to `Money`
+    for the parameter), but `5 + Money(100)` finds no viable operator.
+
+    This asymmetry is why symmetric binary operators are usually non-member functions, often *hidden
+    friends* defined inside the class: `friend Money operator+(Money a, Money b)`. Then both operands
+    may be converted.
+
+- id: cpp-overload-013
+  topic: cpp
+  subtopic: Overload resolution and name lookup
+  difficulty: hard
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [overload-resolution, templates, arrays]
+  prompt: What does this program print?
+  code: |
+    #include <cstddef>
+    #include <iostream>
+
+    void f(const char*) { std::cout << "pointer\n"; }
+
+    template <std::size_t N>
+    void f(const char (&)[N]) { std::cout << "array\n"; }
+
+    int main() {
+        f("hi");
+    }
+  answer: { kind: output, output: "pointer" }
+  explanation: |
+    Binding `const char(&)[3]` to the literal is an identity conversion; converting it to `const char*`
+    uses the array-to-pointer conversion, which is an *Lvalue Transformation* with Exact Match rank.
+    When comparing conversion sequences, lvalue transformations are ignored ([over.ics.rank]), so
+    the two are indistinguishable. The final tie-breaker prefers the non-template ([over.match.best])
+    → `pointer`.
+
+    If you want the array overload (to get `N` at compile time), make both templates or remove the
+    pointer overload.
+
+- id: cpp-overload-014
+  topic: cpp
+  subtopic: Overload resolution and name lookup
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [user-defined-conversions, implicit-conversions]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    struct Celsius { Celsius(double d) : v(d) {} double v; };
+    struct Reading { Reading(Celsius c) : c(c) {} Celsius c; };
+
+    void record(Reading r) { std::cout << r.c.v << '\n'; }
+
+    int main() {
+        record(Celsius(21.5));
+        record(21.5);
+    }
+  answer: { kind: compile_error }
+  explanation: |
+    An implicit conversion sequence may contain *at most one* user-defined conversion
+    ([class.conv], [over.best.ics]). `record(Celsius(21.5))` needs one (`Celsius → Reading`) and is fine.
+    `record(21.5)` would need two (`double → Celsius → Reading`), so `record` isn't viable and the call fails.
+
+- id: cpp-overload-015
+  topic: cpp
+  subtopic: Overload resolution and name lookup
+  difficulty: hard
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [hidden-friends, adl]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    namespace lib {
+        struct Id {
+            int v;
+            friend bool operator==(Id a, Id b) { return a.v == b.v; }
+            friend void dump(Id i) { std::cout << "id" << i.v << '\n'; }
+        };
+    }
+
+    int main() {
+        lib::Id a{1}, b{1};
+        if (a == b) dump(a);
+    }
+  answer: { kind: output, output: "id1" }
+  explanation: |
+    A friend function first declared inside a class is a member of the enclosing namespace, but it is
+    not visible to ordinary lookup there; it can only be found by ADL ([namespace.memdef]). Because the
+    arguments are `lib::Id`, ADL finds both the hidden-friend `operator==` and `dump`. (`lib::dump(a)`
+    would *not* compile.)
+
+    "Hidden friends" are the recommended way to define operators: they don't pollute overload sets
+    for unrelated types, which makes compile errors shorter and compilation faster, and they allow
+    conversions on both operands.
+
+- id: cpp-overload-016
+  topic: cpp
+  subtopic: Overload resolution and name lookup
+  difficulty: medium
+  type: single
+  tags: [adl, swap, two-step]
+  prompt: |
+    Generic code often swaps values like this. Why?
+
+    ```cpp
+    template <class T>
+    void reset(T& a, T& b) {
+        using std::swap;
+        swap(a, b);
+    }
+    ```
+  choices:
+    - { id: a, text: "So that a type-specific `swap` found by ADL in `T`'s namespace is preferred, with `std::swap` as the fallback." }
+    - { id: b, text: "Because calling `std::swap(a, b)` directly is ill-formed for user-defined types." }
+    - { id: c, text: "To force `std::swap` to be used even if the user defined their own `swap`." }
+    - { id: d, text: "It is purely stylistic; it is equivalent to `std::swap(a, b)`." }
+  answer: a
+  explanation: |
+    This is the "std::swap two-step". The using-declaration makes `std::swap` visible to ordinary lookup,
+    and the unqualified call also triggers ADL, which finds e.g. `mylib::swap(Widget&, Widget&)`. Overload
+    resolution then prefers the more specific, user-provided swap (often a cheap pointer swap), falling
+    back to the generic move-based `std::swap`. A qualified `std::swap(a, b)` disables ADL and always uses
+    the generic version, which works but may be slower. C++20 `std::ranges::swap` is a customization point
+    object that does the two-step for you.
+
+- id: cpp-overload-017
+  topic: cpp
+  subtopic: Overload resolution and name lookup
+  difficulty: hard
+  type: multiple
+  tags: [adl, name-lookup, templates]
+  prompt: |
+    For the unqualified call `process(v)` where `v` has type `std::vector<app::Order>` and the call
+    appears inside a function in namespace `server`, which namespaces does **argument-dependent lookup**
+    search? Select all that apply.
+  choices:
+    - { id: a, text: "`std`" }
+    - { id: b, text: "`app`" }
+    - { id: c, text: "`server`" }
+    - { id: d, text: "The global namespace" }
+  answer: [a, b]
+  explanation: |
+    The associated namespaces of a class template specialization include those of the template itself
+    (`std`) *and* those of its template type arguments (`app`, via `app::Order`), plus the default
+    allocator `std::allocator<app::Order>`, which is also in `std` ([basic.lookup.argdep]).
+
+    `server` and the global namespace are searched by *ordinary* unqualified lookup from the point of the
+    call, not by ADL. Ordinary lookup also runs, so a `server::process` could be found, but by ordinary lookup.
+
+- id: cpp-overload-018
+  topic: cpp
+  subtopic: Overload resolution and name lookup
+  difficulty: easy
+  type: single
+  tags: [overload-resolution, conversions]
+  prompt: |
+    Which list ranks implicit conversion sequences from **best to worst**, as used by overload resolution?
+  choices:
+    - { id: a, text: "Exact match → promotion → standard conversion → user-defined conversion → ellipsis (`...`)" }
+    - { id: b, text: "Exact match → user-defined conversion → promotion → standard conversion → ellipsis" }
+    - { id: c, text: "Promotion → exact match → standard conversion → ellipsis → user-defined conversion" }
+    - { id: d, text: "Exact match → standard conversion → promotion → ellipsis → user-defined conversion" }
+  answer: a
+  explanation: |
+    [over.ics.rank]: standard conversion sequences beat user-defined conversion sequences, which beat
+    ellipsis conversion sequences. Among standard sequences, Exact Match (including lvalue transformations
+    and qualification adjustments) beats Promotion, which beats Conversion. This is why `f(bool)` beats
+    `f(std::string)` for a string literal, and why a C-style `f(...)` overload is the classic
+    "catch-all" for SFINAE tricks.
+
+- id: cpp-overload-019
+  topic: cpp
+  subtopic: Overload resolution and name lookup
+  difficulty: hard
+  type: short
+  tags: [two-phase-lookup, templates, dependent-names]
+  prompt: |
+    Explain two-phase name lookup in templates. Why does calling a member of a dependent base class
+    without `this->` fail to compile?
+
+    ```cpp
+    template <class T> struct Base { void tick() {} };
+    template <class T> struct Derived : Base<T> {
+        void run() { tick(); }   // error
+    };
+    ```
+  reference: |
+    Names in a template are looked up in two phases. Non-dependent names (those not depending on a
+    template parameter) are looked up and bound at the point of the template *definition*. Dependent
+    names (depending on `T`) are looked up at the point of *instantiation*, when `T` is known; for
+    dependent function calls that includes ADL at instantiation. `tick()` has no arguments that depend on
+    `T`, so it is non-dependent and must be found at definition time. But `Base<T>` is a dependent base
+    class: the compiler can't look inside it, because `Base` might be specialized for some `T` without a
+    `tick`. Unqualified lookup therefore doesn't search dependent bases and finds nothing. Fix by making
+    the name dependent: `this->tick()`, `Base<T>::tick()` (which suppresses virtual dispatch), or
+    `using Base<T>::tick;`. The same rules explain why `typename` is needed for dependent type names
+    (`typename T::value_type`) and `template` for dependent member templates (`x.template get<0>()`).
+  explanation: |
+    A strong answer distinguishes dependent from non-dependent names, says why dependent bases aren't
+    searched (possible specializations), and gives the `this->` fix. Old MSVC accepted this code because
+    it didn't implement two-phase lookup; conforming compilers reject it (GCC without `-fpermissive`).
+  keyPoints:
+    - Non-dependent names are bound at template definition, dependent names at instantiation
+    - Unqualified lookup does not search dependent base classes (they could be specialized differently)
+    - Fix with this->name, Base<T>::name, or a using-declaration
+    - Related rules require typename for dependent types and the template keyword for dependent member templates
+    - ADL for dependent calls happens at the point of instantiation
+
+- id: cpp-overload-020
+  topic: cpp
+  subtopic: Overload resolution and name lookup
+  difficulty: medium
+  type: short
+  tags: [adl, name-lookup]
+  prompt: |
+    What is argument-dependent lookup (ADL), why does C++ need it, and can you give an example where it
+    causes surprising behaviour?
+  reference: |
+    ADL (Koenig lookup) means that for an unqualified function call, in addition to ordinary lookup, the
+    compiler searches the namespaces (and classes) associated with the types of the arguments. It's
+    needed so that operators and customization functions declared alongside a type are usable without
+    qualification: `std::cout << s` finds `std::operator<<` and `a + b` finds `mylib::operator+`;
+    `swap(a, b)` and `begin(r)` find type-specific versions. Surprises: a function in an argument's namespace
+    can be chosen over the one you intended, e.g. a call to your own `copy(v.begin(), v.end(), out)` may
+    become ambiguous with `std::copy` because the iterator types live in `std`; a template argument's
+    namespace being associated can drag in unexpected overloads; and code can silently change meaning
+    when a library adds a function. Suppress ADL by qualifying the name or parenthesizing it (`(f)(x)`);
+    C++20 niebloids/CPOs (`std::ranges::begin`) are function objects precisely so ADL doesn't apply to them.
+  explanation: |
+    Interviewers want: the definition, the operator motivation, one concrete hijack/ambiguity example, and
+    how to suppress it. See cppreference "Argument-dependent lookup".
+  keyPoints:
+    - Unqualified calls also search namespaces associated with argument types (including template arguments)
+    - Needed for operators and customization points (operator<<, swap, begin)
+    - "Can cause ambiguity or hijacking (e.g. unqualified copy with std iterators)"
+    - Suppressed by qualified names, parenthesized names, or using function objects (niebloids/CPOs)
+
+- id: cpp-overload-021
+  topic: cpp
+  subtopic: Overload resolution and name lookup
+  difficulty: medium
+  type: single
+  tags: [deleted-functions, implicit-conversions]
+  prompt: |
+    `void set_quantity(long q);` is being called by mistake with `double` values (silently truncated).
+    What is the idiomatic way to turn those calls into compile errors while keeping integer calls working?
+  choices:
+    - { id: a, text: "Add `void set_quantity(double) = delete;` so overload resolution selects the deleted overload for floating-point arguments." }
+    - { id: b, text: "Mark `set_quantity(long)` as `explicit`." }
+    - { id: c, text: "Add `static_assert(std::is_integral_v<long>);` inside the function." }
+    - { id: d, text: "Make the parameter `const long&`." }
+  answer: a
+  explanation: |
+    A deleted function takes part in overload resolution like any other, and if it's selected the program
+    is ill-formed ([dcl.fct.def.delete]). For a `double` (or `float`, via promotion) argument the deleted
+    `double` overload is an exact match, so those calls fail, while `int`/`long` arguments still pick
+    `set_quantity(long)`. A template version, `template <class T> void set_quantity(T) = delete;`, blocks
+    every type except an exact `long`. `explicit` applies only to constructors and conversion functions; a
+    `const long&` parameter still accepts a converted temporary.
+
+- id: cpp-overload-022
+  topic: cpp
+  subtopic: Overload resolution and name lookup
+  difficulty: medium
+  type: short
+  tags: [operator-overloading, hidden-friends]
+  prompt: |
+    What guidelines do you follow when overloading operators for a value type such as `Money`? Cover
+    member versus non-member, the relationship between `+` and `+=`, and comparison operators in C++20.
+  reference: |
+    Overload operators only with their conventional meaning. Operators that must be members: `=`, `[]`,
+    `()`, `->` and conversion operators. Compound assignments (`+=`, `-=`) modify the left operand, so make
+    them members returning `*this` by reference. Symmetric binary operators (`+`, `-`, `==`, `<`) should
+    be non-members so that implicit conversions apply to both operands (a member `operator+` rejects
+    `5 + money`); implement `+` in terms of `+=`: `friend Money operator+(Money a, const Money& b) { a += b;
+    return a; }`, taking the left by value to reuse it. Defining them as *hidden friends* inside the class keeps
+    them out of ordinary lookup (found only via ADL), which shrinks overload sets and error messages and
+    gives access to private members. Stream operators `<<`/`>>` must be non-members (the stream is on the
+    left). In C++20, define `operator==` (often `= default`) and `operator<=>` (often `= default`, returning
+    `std::strong_ordering`); the compiler rewrites `!=`, `<`, `>`, `<=` and `>=` from them, replacing six
+    hand-written operators. Keep operators `constexpr` and `noexcept` where possible.
+  explanation: |
+    Core Guidelines C.160–C.170 and the canonical forms on cppreference "operator overloading" are the
+    reference. The member/non-member asymmetry with implicit conversions is the key technical point.
+  keyPoints:
+    - "Must be members: =, [], (), ->, conversion operators; compound assignment as members returning *this"
+    - Symmetric binary operators as non-members (conversions on both sides), implemented via +=
+    - Hidden friends limit operators to ADL, shrinking overload sets and diagnostics
+    - Stream operators are non-members
+    - C++20 defaulted == and <=> generate the other comparisons by rewriting

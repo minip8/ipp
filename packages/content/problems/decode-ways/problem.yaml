@@ -1,0 +1,16 @@
+slug: decode-ways
+title: Decode Ways
+difficulty: medium
+tags: [dynamic-programming, string]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: numDecodings
+      params:
+        - { name: s, type: string }
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 91)
+  url: https://leetcode.com/problems/decode-ways/

@@ -1,0 +1,383 @@
+# Sockets API, I/O multiplexing and socket options (POSIX / Linux).
+- id: net-sock-001
+  topic: networking
+  subtopic: Sockets API and options
+  difficulty: easy
+  type: single
+  prompt: |
+    What is the usual order of calls for a TCP server using the BSD sockets API?
+  choices:
+    - { id: a, text: "socket() -> connect() -> accept() -> recv()" }
+    - { id: b, text: "socket() -> bind() -> listen() -> accept() -> recv()/send() on the accepted socket" }
+    - { id: c, text: "socket() -> listen() -> bind() -> accept()" }
+    - { id: d, text: "bind() -> socket() -> accept() -> listen()" }
+  answer: b
+  explanation: |
+    A server creates a socket, **binds** it to a local address and port, marks it passive with
+    **listen()** (creating the accept queue), and then calls **accept()**. Each accept() returns a *new*
+    connected socket for one client; the listening socket stays open. connect() is the client-side
+    call. Calling listen() before bind() makes the kernel pick an ephemeral port, which is rarely what a
+    server wants.
+  tags: [sockets, api]
+
+- id: net-sock-002
+  topic: networking
+  subtopic: Sockets API and options
+  difficulty: easy
+  type: single
+  prompt: |
+    On a blocking TCP socket, `recv()` returns **0**. What does that mean?
+  choices:
+    - { id: a, text: "No data is available yet; try again" }
+    - { id: b, text: "The peer has performed an orderly shutdown (sent FIN); no more data will arrive" }
+    - { id: c, text: "The connection was reset" }
+    - { id: d, text: "The buffer passed was of length 0" }
+  answer: b
+  explanation: |
+    A return of 0 is **end of stream**: the peer sent FIN, via close() or shutdown(SHUT_WR). You should
+    finish up and close your side. Otherwise the socket sits in CLOSE_WAIT. "No data yet" on a
+    *non-blocking* socket is −1 with errno EAGAIN/EWOULDBLOCK. A reset is −1 with ECONNRESET. (A
+    zero-length buffer also returns 0, but that's a programming curiosity, not the meaning you act on.)
+  tags: [sockets, recv, eof]
+
+- id: net-sock-003
+  topic: networking
+  subtopic: Sockets API and options
+  difficulty: medium
+  type: single
+  prompt: |
+    You call `send(fd, buf, 1'000'000, 0)` on a **non-blocking** TCP socket and it returns **212,992**.
+    What does that mean?
+  choices:
+    - { id: a, text: "The peer has acknowledged 212,992 bytes" }
+    - { id: b, text: "An error occurred; the connection must be closed" }
+    - { id: c, text: "212,992 bytes were copied into the kernel send buffer; you must keep the rest and send it when the socket becomes writable again" }
+    - { id: d, text: "The message was truncated, and the remaining bytes are discarded" }
+  answer: c
+  explanation: |
+    send() reports how many bytes the kernel **accepted into the socket send buffer**, not how many were
+    transmitted or acknowledged. A partial write is normal for non-blocking sockets. The application
+    must buffer the remainder, register for writability (EPOLLOUT/POLLOUT), and continue from offset
+    212,992. Ignoring the return value is a classic bug that corrupts the stream. TCP never truncates
+    stream data (that's UDP's behaviour on *receive*).
+  tags: [sockets, nonblocking, partial-write]
+
+- id: net-sock-004
+  topic: networking
+  subtopic: Sockets API and options
+  difficulty: easy
+  type: single
+  prompt: |
+    A client calls `send()` twice on a TCP socket, with 100 bytes each time. What can the server's
+    `recv()` calls observe?
+  choices:
+    - { id: a, text: "Always exactly two reads of 100 bytes each" }
+    - { id: b, text: "Any split of the 200 bytes, in order: e.g. one read of 200, or 150 then 50, or 1 then 199" }
+    - { id: c, text: "The two messages in either order" }
+    - { id: d, text: "Either one or two reads, but never a partial message" }
+  answer: b
+  explanation: |
+    TCP is a **byte stream** with no message boundaries. Bytes arrive in order, but how they're split
+    across recv() calls depends on segmentation, Nagle, coalescing, and buffer sizes. Applications
+    must **frame** their messages (length prefixes, delimiters, fixed sizes) and loop until a whole
+    message is buffered. Reordering (choice c) can't happen within one TCP connection. UDP is where one
+    send corresponds to one datagram.
+  tags: [sockets, tcp, framing]
+
+- id: net-sock-005
+  topic: networking
+  subtopic: Sockets API and options
+  difficulty: hard
+  type: single
+  prompt: |
+    On modern Linux, what does the `backlog` argument to `listen(fd, backlog)` limit?
+  choices:
+    - { id: a, text: "The total number of connections the server can ever accept" }
+    - { id: b, text: "The number of fully established connections waiting to be accept()ed (the accept queue), capped by net.core.somaxconn" }
+    - { id: c, text: "The number of half-open SYN_RECV connections only" }
+    - { id: d, text: "The maximum number of concurrent connected sockets" }
+  answer: b
+  explanation: |
+    Since Linux 2.2, `backlog` sizes the **accept queue** of completed connections. Half-open
+    connections are governed separately by `net.ipv4.tcp_max_syn_backlog` and SYN cookies. The value is
+    silently capped at `net.core.somaxconn` (default 4096 since Linux 5.4, 128 before). When the
+    accept queue is full, Linux by default drops the final handshake ACK, so the client retries.
+    You'll see `ListenOverflows` in `nstat` and, for the listener in `ss -ltn`, Recv-Q at or near
+    Send-Q. It doesn't limit how many accepted connections exist (choice d).
+  tags: [sockets, listen, backlog, linux]
+  source: { name: "listen(2) Linux man page", url: "https://man7.org/linux/man-pages/man2/listen.2.html" }
+
+- id: net-sock-006
+  topic: networking
+  subtopic: I/O multiplexing
+  difficulty: hard
+  type: multiple
+  prompt: |
+    Which statements about Linux `epoll` in **edge-triggered** mode (`EPOLLET`) are true?
+    Select all that apply.
+  choices:
+    - { id: a, text: "File descriptors should be non-blocking" }
+    - { id: b, text: "After an EPOLLIN event you should read until read() returns EAGAIN, or you may never be notified about the remaining data" }
+    - { id: c, text: "Level-triggered is the default when EPOLLET isn't set" }
+    - { id: d, text: "Edge-triggered mode guarantees you are woken once per incoming packet" }
+    - { id: e, text: "Edge-triggered mode reports readiness again on every epoll_wait while unread data remains" }
+  answer: [a, b, c]
+  explanation: |
+    Edge-triggered reports **changes** in readiness: roughly, new data arriving. If you read only part
+    of the available data and call epoll_wait again, no new edge happens and the connection can stall,
+    so you drain until EAGAIN (b). That loop would block on a blocking fd, hence (a). Level-triggered is
+    the default and keeps reporting while data remains (c); option e describes level-triggered, not
+    edge-triggered. ET does not promise one wakeup per packet (d): several arrivals can merge into one
+    event, and the epoll(7) man page notes that a new chunk of data can produce a new event even if you
+    didn't drain.
+  tags: [epoll, io-multiplexing, linux, nonblocking]
+  source: { name: "epoll(7) Linux man page", url: "https://man7.org/linux/man-pages/man7/epoll.7.html" }
+
+- id: net-sock-007
+  topic: networking
+  subtopic: Sockets API and options
+  difficulty: medium
+  type: single
+  prompt: |
+    A server process suddenly exits with no error log when it writes to a socket whose peer has already
+    reset the connection. What happened, and what's the usual fix?
+  choices:
+    - { id: a, text: "The kernel sent SIGSEGV; fix with a larger send buffer" }
+    - { id: b, text: "write()/send() raised SIGPIPE, whose default action terminates the process; ignore SIGPIPE or use MSG_NOSIGNAL, then handle EPIPE" }
+    - { id: c, text: "The kernel sent SIGHUP because the terminal closed" }
+    - { id: d, text: "TCP keepalive killed the process" }
+  answer: b
+  explanation: |
+    Writing to a socket that can no longer send (the peer reset it, or it's shut down for writing)
+    raises **SIGPIPE**, whose default disposition terminates the process quietly. Network servers set
+    SIGPIPE to SIG_IGN, or pass **MSG_NOSIGNAL** to send() (Linux), or set SO_NOSIGPIPE (BSD/macOS).
+    The call then fails with **EPIPE**, which the code handles like any other error.
+  tags: [sockets, sigpipe, signals]
+
+- id: net-sock-008
+  topic: networking
+  subtopic: I/O multiplexing
+  difficulty: medium
+  type: short
+  prompt: |
+    Compare `select`, `poll` and `epoll` for a server with 50,000 mostly idle connections. Mention the
+    equivalents on other platforms and newer Linux alternatives.
+  reference: |
+    **select** passes fixed-size bitmaps, limited to FD_SETSIZE (usually 1024) fds. They're copied to
+    and from the kernel and rebuilt on every call, and both kernel and user code scan every fd: O(n)
+    per call. **poll** uses an array of pollfd, so there's no 1024 limit, but it's still O(n) per call:
+    the whole array is passed and scanned every time. With 50k mostly idle connections that's a lot of
+    wasted work for a handful of ready fds.
+
+    **epoll** keeps the interest set inside the kernel (epoll_ctl to add, modify, remove). epoll_wait
+    returns only the ready fds, so the cost is O(ready) per wait. It supports edge- or level-triggered
+    modes and EPOLLONESHOT/EPOLLEXCLUSIVE for multi-threaded use. BSD/macOS use **kqueue**, Windows
+    uses **IOCP** (completion-based). **io_uring** (Linux 5.1+) is a completion-based interface with
+    shared submission and completion rings, which batches syscalls or avoids them altogether.
+  keyPoints:
+    - "select: FD_SETSIZE (1024) limit, sets rebuilt and copied each call, O(n) scan"
+    - "poll: no fd limit but still O(n) per call"
+    - "epoll: kernel-resident interest set, returns only ready fds (O(ready))"
+    - "Readiness (epoll/kqueue) vs completion (IOCP/io_uring) models"
+    - "Names kqueue / IOCP / io_uring as platform alternatives"
+  explanation: |
+    The C10K-style follow-up asks how you'd structure threads around epoll (one loop per core,
+    SO_REUSEPORT or a shared listener with EPOLLEXCLUSIVE).
+  tags: [epoll, select, poll, io-uring, io-multiplexing]
+
+- id: net-sock-009
+  topic: networking
+  subtopic: Sockets API and options
+  difficulty: medium
+  type: single
+  prompt: |
+    What does `SO_REUSEPORT` (Linux 3.9+) let you do that `SO_REUSEADDR` doesn't?
+  choices:
+    - { id: a, text: "Skip TIME_WAIT on outgoing connections" }
+    - { id: b, text: "Bind several sockets, owned by the same effective user, to the same IP and port, with the kernel spreading incoming connections or datagrams across them" }
+    - { id: c, text: "Reuse a port that is in use by a different user's process" }
+    - { id: d, text: "Share one accepted connection between processes" }
+  answer: b
+  explanation: |
+    With SO_REUSEPORT set on every socket before bind(), several listening TCP sockets or UDP sockets
+    can share an address and port. The kernel load-balances new connections or datagrams across them,
+    by default using a hash of the 4-tuple. A common pattern is one listener per worker thread or
+    process, which avoids a single accept queue becoming a point of contention and the thundering herd
+    it causes. To stop port hijacking, all sockets must belong to the same effective UID. SO_REUSEADDR
+    on Linux only relaxes the TIME_WAIT rule for bind. Caveat: when the number of listeners changes,
+    some new connections can be lost from the closing socket's queue.
+  tags: [sockets, so-reuseport, linux, load-balancing]
+
+- id: net-sock-010
+  topic: networking
+  subtopic: Sockets API and options
+  difficulty: hard
+  type: single
+  prompt: |
+    On Linux you `setsockopt(SO_RCVBUF)` to 1 MiB (within `net.core.rmem_max`), then `getsockopt`
+    returns 2 MiB. Why?
+  choices:
+    - { id: a, text: "Window scaling doubled it" }
+    - { id: b, text: "The kernel doubles the requested value to leave room for bookkeeping overhead, and getsockopt reports the doubled value" }
+    - { id: c, text: "TCP autotuning has already grown the buffer" }
+    - { id: d, text: "It's a known getsockopt bug that reports the wrong value" }
+  answer: b
+  explanation: |
+    socket(7): "The kernel doubles this value (to allow space for bookkeeping overhead) when it is set
+    using setsockopt, and this doubled value is returned by getsockopt." The requested value is capped
+    at `rmem_max` first, unless you use SO_RCVBUFFORCE with CAP_NET_ADMIN. Setting SO_RCVBUF
+    explicitly also **turns off receive-buffer autotuning** for that TCP socket, which can hurt
+    high-BDP transfers. For UDP market-data receivers, a large SO_RCVBUF (with rmem_max raised) is the
+    standard defence against drops during bursts.
+  tags: [sockets, so-rcvbuf, linux]
+  source: { name: "socket(7) Linux man page", url: "https://man7.org/linux/man-pages/man7/socket.7.html" }
+
+- id: net-sock-011
+  topic: networking
+  subtopic: Sockets API and options
+  difficulty: hard
+  type: single
+  prompt: |
+    A non-blocking `connect()` returns −1 with `errno == EINPROGRESS`. How do you find out whether the
+    connection succeeded?
+  choices:
+    - { id: a, text: "Call connect() again in a tight loop until it returns 0" }
+    - { id: b, text: "Wait for the socket to become writable (poll/epoll), then read the result with getsockopt(fd, SOL_SOCKET, SO_ERROR, …)" }
+    - { id: c, text: "Wait for it to become readable; readability means the connection is up" }
+    - { id: d, text: "EINPROGRESS means it failed; create a new socket" }
+  answer: b
+  explanation: |
+    connect(2): with EINPROGRESS, "it is possible to select(2) or poll(2) for completion by selecting
+    the socket for writing. After select(2) indicates writability, use getsockopt(2) to read the
+    SO_ERROR option… to determine whether connect() completed successfully (SO_ERROR is zero) or
+    unsuccessfully." Writability alone doesn't mean success: a failed connect also makes the socket
+    writable (and readable). That's the reason for the SO_ERROR check, and for a timeout of your own.
+  tags: [sockets, nonblocking, connect]
+  source: { name: "connect(2) Linux man page", url: "https://man7.org/linux/man-pages/man2/connect.2.html" }
+
+- id: net-sock-012
+  topic: networking
+  subtopic: I/O multiplexing
+  difficulty: hard
+  type: short
+  prompt: |
+    Sketch the architecture of a Linux TCP server that must handle 100k concurrent, mostly idle
+    connections at low tail latency on a 16-core box. Justify your threading model, and say how you'd
+    handle slow clients and overload.
+  reference: |
+    Thread-per-connection is out: 100k stacks, scheduler thrash, and context switches. Instead use
+    **one event loop per core** (16 threads, pinned), each with its own epoll instance (or io_uring)
+    and non-blocking sockets. Spread connections with **SO_REUSEPORT** listeners per thread (kernel
+    hashing), or one listener with EPOLLEXCLUSIVE. Each connection stays on one thread, so there's no
+    locking in the hot path and caches stay warm. Keep per-connection state small (buffers allocated
+    lazily or pooled). Anything CPU-heavy or blocking (disk, DNS, crypto) goes to a separate worker pool
+    so it doesn't stall the loop.
+
+    Slow clients: per-connection output buffers with a cap. Stop reading from a client (backpressure)
+    when its output queue is full, and set idle and write timeouts. Overload: bounded queues, admission
+    control (stop accepting, or shed with 503s), watch accept-queue overflows (`nstat ListenOverflows`)
+    and tune somaxconn and backlog. Raise fd limits (ulimit -n / RLIMIT_NOFILE), size kernel buffers
+    sensibly, and consider TCP_DEFER_ACCEPT and busy polling for tail latency. Measure p99/p999, not
+    averages.
+  keyPoints:
+    - "Event loop per core with epoll (or io_uring) and non-blocking sockets, not thread per connection"
+    - "Distribute connections with SO_REUSEPORT / EPOLLEXCLUSIVE; connection affinity, no shared locks"
+    - "Offload blocking or CPU-heavy work to a separate pool"
+    - "Backpressure: bounded per-connection buffers, stop reading slow clients, timeouts"
+    - "Overload/limits: fd ulimits, accept backlog/somaxconn, load shedding; measure tail latency"
+  explanation: |
+    Open-ended design. Credit any coherent design that hits the key trade-offs.
+  tags: [epoll, server-design, c10k, scalability]
+
+- id: net-sock-013
+  topic: networking
+  subtopic: Sockets API and options
+  difficulty: easy
+  type: single
+  prompt: |
+    Why do C programs call `htons()` on a port number before storing it in `sockaddr_in.sin_port`?
+  choices:
+    - { id: a, text: "To compress it to 16 bits" }
+    - { id: b, text: "To convert from host byte order to network byte order (big-endian), which on little-endian x86 means swapping the bytes" }
+    - { id: c, text: "To encrypt the port number" }
+    - { id: d, text: "To check that the port is below 1024" }
+  answer: b
+  explanation: |
+    Multi-byte protocol fields are carried in **network byte order**, which is big-endian.
+    `htons`/`htonl` ("host to network short/long") convert, and `ntohs`/`ntohl` convert back. On
+    big-endian hosts they do nothing; on little-endian x86 and most ARM configurations they swap bytes.
+    Forgetting it binds port 8080 (0x1F90) as 36895 (0x901F).
+  tags: [sockets, endianness]
+
+- id: net-sock-014
+  topic: networking
+  subtopic: Sockets API and options
+  difficulty: medium
+  type: single
+  prompt: |
+    A UDP datagram of 1,200 bytes arrives, and the application calls `recv(fd, buf, 512, 0)`. What
+    happens to the remaining 688 bytes?
+  choices:
+    - { id: a, text: "They're returned by the next recv() call" }
+    - { id: b, text: "They're discarded: the datagram is truncated (recvmsg reports MSG_TRUNC in msg_flags)" }
+    - { id: c, text: "recv() fails with EMSGSIZE and the datagram stays queued" }
+    - { id: d, text: "The kernel enlarges the buffer automatically" }
+  answer: b
+  explanation: |
+    Datagram sockets keep message boundaries: each receive call consumes **one whole datagram**, and
+    whatever doesn't fit in the buffer is lost. With recvmsg() the MSG_TRUNC flag appears in msg_flags.
+    On Linux, passing MSG_TRUNC in the *flags* argument makes recv() return the real datagram length,
+    which is useful for sizing. Always size UDP receive buffers for the largest datagram you expect
+    (65,507 bytes to be safe). TCP, by contrast, keeps the remaining bytes for the next read.
+  tags: [sockets, udp, truncation]
+
+- id: net-sock-015
+  topic: networking
+  subtopic: Sockets API and options
+  difficulty: medium
+  type: multiple
+  prompt: |
+    What changes when you call `connect()` on a **UDP** socket? Select all that apply.
+  choices:
+    - { id: a, text: "A handshake is sent to the peer" }
+    - { id: b, text: "send()/write() can be used without giving a destination each time" }
+    - { id: c, text: "The socket only receives datagrams from that peer address and port" }
+    - { id: d, text: "ICMP errors (e.g. Port Unreachable) caused by earlier sends can now be reported to the application, typically as ECONNREFUSED on a later call" }
+    - { id: e, text: "Delivery becomes reliable" }
+  answer: [b, c, d]
+  explanation: |
+    connect() on a UDP socket is purely local: it records a default peer. No packets are exchanged
+    (a), and nothing about delivery changes (e). The kernel filters incoming datagrams to that peer
+    (c). An ICMP error caused by an earlier send is reported on a later call on a connected socket
+    (d). On an unconnected socket, BSD-derived stacks don't report these errors at all, and Linux
+    only reports them if IP_RECVERR is set, because the error can't be tied to one peer. The route
+    lookup is also cached, a small speed-up for high-rate senders.
+  tags: [sockets, udp, connect]
+
+- id: net-sock-016
+  topic: networking
+  subtopic: Sockets API and options
+  difficulty: easy
+  type: short
+  prompt: |
+    A client gets "connection refused" connecting to one service and "connection timed out" connecting
+    to another. What does each tell you, and how would you continue debugging?
+  reference: |
+    **Refused** (ECONNREFUSED): the SYN reached a host, which answered with an RST. Either nothing is
+    listening on that port and address (wrong port, service down, bound only to 127.0.0.1 instead of
+    0.0.0.0), or a firewall is actively rejecting with RST or ICMP. Check `ss -ltnp` on the server,
+    confirm the bind address, and check the service logs.
+
+    **Timed out** (ETIMEDOUT): the SYN was never answered, after several retransmissions with
+    exponential backoff. Something silently dropped it: a firewall or security group, a routing
+    problem, a wrong IP, the host down with no ICMP sent back, or a full SYN or accept queue. Debug with
+    traceroute or mtr, tcpdump on both ends (does the SYN arrive? does a SYN-ACK leave?), and the
+    firewall rules.
+  keyPoints:
+    - "Refused = RST received: host reachable, nothing listening (or a reject rule)"
+    - "Common cause of refused: wrong port, service down, bound to localhost only"
+    - "Timed out = no reply to SYN: packet dropped by firewall, routing, or dead host"
+    - "Debug with ss -ltnp, tcpdump on both sides, traceroute/mtr, firewall rules"
+  explanation: |
+    Simple but revealing. Many candidates can't say what packet each error corresponds to.
+  tags: [sockets, debugging, tcp]

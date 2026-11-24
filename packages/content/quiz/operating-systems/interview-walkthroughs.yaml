@@ -1,0 +1,793 @@
+- id: os-walk-001
+  topic: operating-systems
+  subtopic: System calls
+  type: short
+  difficulty: easy
+  tags: [user-mode, kernel-mode, privilege, syscalls]
+  prompt: |
+    What is the difference between user mode and kernel mode, and what are the ways execution
+    moves from one to the other?
+  reference: |
+    The CPU runs at a privilege level. On x86-64, user code runs in ring 3 and the kernel in ring 0.
+    In user mode the CPU refuses privileged instructions (loading page tables, disabling interrupts,
+    talking to most I/O ports, `hlt`) and the MMU refuses access to pages that are not marked
+    user-accessible, which includes all kernel memory. That is what isolates processes from each
+    other and from the kernel. Kernel mode can do everything.
+
+    User code cannot simply jump into the kernel. Control enters kernel mode only through entry
+    points the kernel registered in advance: a **system call** (the `syscall` instruction, a
+    deliberate request), an **exception** (a page fault, divide error or invalid opcode caused by the
+    current instruction) or a **hardware interrupt** (a timer or device, unrelated to the current
+    instruction). The CPU switches to the kernel stack and jumps to the registered handler. The
+    kernel returns to user mode with `sysret`/`iret`, possibly to a different process if it
+    scheduled.
+  keyPoints:
+    - Hardware privilege levels; on x86-64 user code is ring 3 and the kernel ring 0
+    - User mode cannot execute privileged instructions or touch kernel-only pages, which provides isolation
+    - Entry to the kernel only via predefined entry points, never an arbitrary jump
+    - Three ways in, namely system calls, exceptions/faults and hardware interrupts
+    - Return via sysret/iret, possibly to another task after scheduling
+  explanation: |
+    A good answer connects the mode bit to protection (privileged instructions plus the user/supervisor
+    bit in page-table entries) and names all three entry routes. A common gap is to mention only
+    system calls: page faults and timer interrupts are just as much a part of how the kernel gets
+    control, and the timer interrupt is what makes preemptive scheduling possible.
+
+- id: os-walk-002
+  topic: operating-systems
+  subtopic: File descriptors and I/O
+  type: short
+  difficulty: easy
+  tags: [file-descriptors, fd-table, unix]
+  prompt: |
+    What is a file descriptor? What does the integer actually refer to inside the kernel?
+  reference: |
+    A file descriptor is a small non-negative integer that indexes the calling process's **file
+    descriptor table**. Each table slot points to an **open file description** (Linux `struct
+    file`), which holds the current file offset, the status flags given to `open` (such as
+    `O_APPEND` or `O_NONBLOCK`) and a pointer to the underlying object: an inode for a regular file,
+    or a pipe, socket, eventfd, epoll instance, device and so on. The same `read`/`write`/`close`
+    interface therefore works on all of them.
+
+    By convention 0, 1 and 2 are stdin, stdout and stderr. `open` returns the lowest free number.
+    `dup` and `fork` create more descriptors that share one open file description, and hence share
+    the offset. The per-fd flag `FD_CLOEXEC` lives in the descriptor table slot, not in the open
+    file description. The number of descriptors a process can hold is capped by `RLIMIT_NOFILE`
+    (`ulimit -n`).
+  keyPoints:
+    - A per-process small integer index into the fd table
+    - The table entry points to an open file description holding the offset and status flags
+    - The open file description points to the inode, pipe, socket or other kernel object
+    - 0/1/2 are stdin/stdout/stderr and open returns the lowest free number
+    - dup and fork share the open file description, so the offset is shared; limit set by RLIMIT_NOFILE
+  explanation: |
+    The key insight interviewers look for is the three-level structure: descriptor, then open file
+    description, then inode or other object. It explains why two `open` calls on the same file have
+    independent offsets while `dup`ed or inherited descriptors share one, and why `close` on one
+    descriptor does not affect another that shares the description.
+
+- id: os-walk-003
+  topic: operating-systems
+  subtopic: Virtual memory
+  type: short
+  difficulty: easy
+  tags: [address-space, heap, stack, mmap, proc]
+  prompt: |
+    Sketch the virtual address space of a typical 64-bit Linux process. What lives where, and how
+    could you look at a real one?
+  reference: |
+    From low addresses to high, in the user half (the kernel occupies the upper half and is not
+    accessible from user mode):
+
+    - The executable's **text** (code) and read-only data, then the writable **data** segment
+      (initialised globals) and **bss** (zero-initialised globals). With PIE and ASLR the base is
+      randomised.
+    - The **heap**, which glibc grows upwards with `brk` for small allocations.
+    - A large gap, then the **mmap area**: shared libraries (libc, ld.so), file mappings,
+      anonymous mappings for large `malloc` blocks, and thread stacks.
+    - The **main thread's stack** near the top, growing downwards, with the environment and
+      arguments above it, plus small kernel-provided mappings such as `[vdso]` and `[vvar]`.
+
+    You can see it in `/proc/<pid>/maps` (or `pmap <pid>`), and `/proc/<pid>/smaps` adds RSS and
+    other details per mapping.
+  keyPoints:
+    - Text, rodata, data and bss from the executable at low addresses
+    - Heap grown with brk above the data segment
+    - mmap region for shared libraries, file mappings, large allocations and thread stacks
+    - Main stack near the top growing down; vdso mapped by the kernel; kernel in the upper half
+    - Inspect with /proc/PID/maps, pmap or smaps; ASLR randomises the bases
+  explanation: |
+    Exact addresses vary with ASLR, so a strong answer gives the order and purpose of the regions
+    rather than numbers. Common mistakes are to say that thread stacks live on the heap (they are
+    separate `mmap`ed regions) or that all `malloc` memory comes from `brk` (large blocks get their
+    own anonymous mappings).
+
+- id: os-walk-004
+  topic: operating-systems
+  subtopic: System calls
+  type: short
+  difficulty: easy
+  tags: [stdio, buffering, strace, ltrace, syscalls]
+  prompt: |
+    What is the difference between a library call such as `fwrite` or `printf` and a system call
+    such as `write`? Why might a program call `printf` 1,000 times but make only a handful of
+    `write` system calls?
+  reference: |
+    A library call is an ordinary function call into user-space code (here glibc's stdio). A system
+    call crosses into the kernel. stdio keeps a user-space buffer per `FILE*` and only calls
+    `write(2)` when the buffer fills, when it is flushed explicitly (`fflush`, `exit`), or, for
+    line-buffered streams, at each newline. By default stdout is **line-buffered when it is a
+    terminal** and **fully buffered (typically 4 KiB or larger) when it is a pipe or file**, and
+    stderr is unbuffered. So 1,000 small `printf`s to a file collapse into a few `write`s, which is
+    the whole point: each system call costs far more than copying a few bytes into a buffer.
+
+    You can observe this with `strace -e trace=write` (system calls) versus `ltrace` (library
+    calls). The buffering also explains classic surprises: output lost if the process dies by a
+    signal or `_exit` before flushing, and output duplicated after `fork` if the buffer was not
+    flushed first.
+  keyPoints:
+    - Library calls run in user space; system calls enter the kernel
+    - stdio buffers output in user space and only calls write when the buffer is flushed
+    - stdout is line-buffered on a terminal and fully buffered to a pipe or file; stderr unbuffered
+    - Buffering amortises the syscall cost
+    - strace shows system calls, ltrace library calls; unflushed buffers can be lost on _exit or duplicated by fork
+  explanation: |
+    The terminal versus pipe distinction is the detail that separates a good answer: it is why a
+    program's output looks different under `| cat` or when redirected to a log file, and why
+    interleaving between stdout and stderr changes when output is redirected.
+
+- id: os-walk-005
+  topic: operating-systems
+  subtopic: Process lifecycle
+  type: short
+  difficulty: easy
+  tags: [exit, zombie, sigchld, process-lifecycle]
+  prompt: |
+    What does the kernel do when a process exits?
+  reference: |
+    Whether the process called `exit` (which first runs atexit handlers and flushes stdio in user
+    space, then calls `exit_group`) or was killed by a signal, the kernel tears it down in
+    `do_exit`: it closes all its file descriptors (which may release locks, send EOF on pipes or
+    FIN on sockets), drops its memory mappings (freeing pages no one else shares), releases
+    System V semaphore adjustments, timers and other resources, and leaves any namespaces and
+    cgroups. Its children are re-parented to the nearest subreaper or to init (PID 1). The kernel
+    records the exit status and resource usage, sends **SIGCHLD** to the parent, and the process
+    becomes a **zombie** until the parent collects the status with `wait`/`waitpid`, at which point
+    the last of its task structure and its PID are freed.
+  keyPoints:
+    - exit() runs atexit handlers and flushes stdio, then the exit_group system call
+    - Kernel closes all fds and tears down the address space and other resources
+    - Children are re-parented to init or a subreaper
+    - Parent receives SIGCHLD; the process stays a zombie holding its PID and exit status
+    - The parent's wait/waitpid reaps the zombie and frees the PID
+  explanation: |
+    The interview signal here is understanding that exit is not instantaneous disappearance: open
+    descriptors being closed is what wakes the other end of a pipe or socket, and the zombie state
+    exists so the parent can still read the exit status.
+
+- id: os-walk-006
+  topic: operating-systems
+  subtopic: Linking and loading
+  type: short
+  difficulty: easy
+  tags: [exec, shebang, binfmt, scripts]
+  prompt: |
+    You run `./deploy.sh` and the file begins with `#!/usr/bin/env bash`. How does the kernel turn
+    that into a running bash process?
+  reference: |
+    The shell forks and the child calls `execve("./deploy.sh", argv, envp)`. The kernel checks
+    that the file is executable by the caller, reads its first bytes and tries each registered
+    binary format handler. The ELF handler rejects it, while the script handler (`binfmt_script`)
+    recognises the `#!` prefix. It parses the interpreter path (`/usr/bin/env`) and an optional
+    single argument (`bash`), then restarts the exec with the interpreter, building the argument
+    list as: interpreter, its optional argument, the script path, then the original
+    `argv[1..]`. So the kernel effectively runs `/usr/bin/env bash ./deploy.sh args...`; `env`
+    searches `PATH` for `bash` and execs it, and bash opens and reads the script file.
+
+    Consequences: the script needs execute permission; Linux passes everything after the
+    interpreter as **one** argument (so `#!/usr/bin/env bash -e` does not work as people expect
+    without `env -S`); and Linux ignores set-user-ID bits on scripts.
+  keyPoints:
+    - fork then execve of the script path
+    - The kernel tries binary format handlers; binfmt_script recognises the #! line
+    - Re-exec with interpreter, optional argument, script path, then original arguments
+    - env looks bash up on PATH; bash then reads the script itself
+    - Script needs execute permission; only one interpreter argument; setuid ignored on scripts
+  explanation: |
+    The shebang is handled by the kernel, not by the shell, which is why it works from any program
+    calling `execve`. Without the `#!` line, `execve` fails with `ENOEXEC`, and shells then fall
+    back to running the file with `/bin/sh` themselves.
+
+- id: os-walk-007
+  topic: operating-systems
+  subtopic: Kernel synchronization and deadlock
+  type: short
+  difficulty: medium
+  tags: [deadlock, livelock, starvation]
+  prompt: |
+    Distinguish deadlock, livelock and starvation, with an example of each.
+  reference: |
+    **Deadlock**: a set of threads each wait for a resource held by another in the set, so none can
+    ever proceed and none uses CPU. Example: thread 1 holds lock A and wants B, thread 2 holds B
+    and wants A.
+
+    **Livelock**: threads are not blocked and keep running, but they keep reacting to each other in
+    a way that makes no progress. Example: two threads each take one lock, fail a `try_lock` on the
+    other, release and retry in lockstep forever; or two network stations that collide and retry
+    with identical timing. Randomised backoff breaks the symmetry.
+
+    **Starvation**: the system as a whole makes progress but one thread is perpetually denied a
+    resource. Example: a reader-preferring rwlock under a constant stream of readers never lets a
+    writer in, or a low-priority task never gets CPU under a strict-priority scheduler. Fairness
+    (FIFO handoff, ageing, writer preference) prevents it.
+  keyPoints:
+    - Deadlock is a cycle of waits with no progress and no CPU use
+    - Livelock means threads are busy and changing state but make no progress
+    - Starvation means overall progress continues but a particular thread never gets the resource
+    - Concrete example for each (lock ordering, symmetric retry, reader-preferring rwlock or priority scheduling)
+    - Remedies such as lock ordering, randomised backoff and fairness or ageing
+  explanation: |
+    Interviewers use this to check precise vocabulary. The useful distinction is observational: a
+    deadlocked process shows threads asleep on locks with near-zero CPU, a livelocked one burns CPU
+    without progress, and starvation shows up as one request class with unbounded latency while
+    throughput looks fine.
+
+- id: os-walk-008
+  topic: operating-systems
+  subtopic: Memory allocators
+  type: short
+  difficulty: medium
+  tags: [malloc, brk, page-fault, demand-paging, zero-page]
+  prompt: |
+    A fresh process calls `char *p = malloc(100);` and then `p[0] = 1;`. Walk through what happens
+    in glibc and the kernel, and when physical memory is actually allocated.
+  reference: |
+    `malloc(100)` is small, well below the mmap threshold, so glibc serves it from the main arena.
+    If the arena's top chunk is too small (as it is on the first call), glibc calls `brk`/`sbrk` to
+    extend the heap, asking for more than needed (at least the request plus `M_TOP_PAD`, 128 KiB by
+    default) so that later allocations need no system call. The kernel just enlarges the heap VMA;
+    **no physical memory is allocated** and no page tables are filled. glibc writes its chunk
+    header into the heap, which touches the first page, and returns `p`.
+
+    The first touch of a page in the new region, whether glibc's header write or `p[0] = 1`, raises
+    a page fault. The kernel finds the address inside a valid anonymous VMA, allocates a zeroed
+    physical page, installs the page-table entry and restarts the instruction. (A read before any
+    write would instead map the shared zero page, and the first write would copy-on-write it.)
+    Later small mallocs carve from the same region with no system calls; untouched pages of the
+    extension never get physical memory.
+  keyPoints:
+    - Small request served by glibc's arena; brk extends the heap with extra padding
+    - The kernel only extends the VMA; no physical memory yet
+    - First touch triggers a page fault; the kernel allocates a zeroed page and maps it
+    - Reads before writes may map the shared zero page
+    - Subsequent small mallocs need no syscalls; RSS grows only with touched pages
+  explanation: |
+    The central point is that allocation in Linux is lazy at two levels: glibc batches requests to
+    the kernel, and the kernel defers physical allocation until first touch. That is why RSS can be
+    far smaller than what was allocated, why overcommit is possible, and why latency-sensitive code
+    pre-touches memory at startup.
+
+- id: os-walk-009
+  topic: operating-systems
+  subtopic: File systems
+  type: short
+  difficulty: hard
+  tags: [page-cache, writeback, dirty-pages, durability]
+  prompt: |
+    A process calls `write()` on a regular file and it returns success. When does the data actually
+    reach the disk if nobody calls `fsync`, and what happens to a process that writes much faster
+    than the disk can absorb?
+  reference: |
+    A buffered `write` only copies the data into page-cache pages and marks them **dirty**; it
+    returns before any I/O. Background writeback (the per-device flusher workers) later writes
+    dirty pages when either:
+
+    - they have been dirty longer than `vm.dirty_expire_centisecs` (default 3000, i.e. 30 s),
+      checked every `vm.dirty_writeback_centisecs` (default 500, i.e. 5 s); or
+    - the amount of dirty memory exceeds `vm.dirty_background_ratio` (default 10% of available
+      memory) or `dirty_background_bytes`.
+
+    Memory pressure (reclaim) and `sync`/`fsync`/`close` with some file-system options can also
+    force writeback. So without `fsync`, data written just before a power loss can be lost, up to
+    tens of seconds' worth by default.
+
+    If a process keeps dirtying pages faster than the device writes them, dirty memory climbs
+    towards `vm.dirty_ratio` (default 20%) and the writer is **throttled** inside `write` (in
+    `balance_dirty_pages`). Throttling starts once dirty memory passes the midpoint between the
+    background limit and `dirty_ratio`, and the writer is made to sleep for longer the closer it
+    gets to the limit. A
+    process that was seeing microsecond writes suddenly sees `write` calls taking milliseconds or
+    more, which is a classic source of latency spikes in logging threads.
+  keyPoints:
+    - write only dirties page-cache pages and returns before I/O
+    - Background flushers write back pages older than about 30 s (dirty_expire_centisecs) or when dirty memory exceeds dirty_background_ratio
+    - Without fsync, recent writes can be lost on power failure
+    - As dirty memory approaches dirty_ratio the writer itself is throttled inside write (balance_dirty_pages)
+    - Practical consequence is latency spikes in writers; remedies include fsync pacing, lower dirty limits or a separate I/O thread
+  source:
+    name: Linux kernel documentation, /proc/sys/vm (dirty_* settings)
+    url: https://docs.kernel.org/admin-guide/sysctl/vm.html
+  explanation: |
+    Defaults are as documented for the `vm` sysctls; distributions and tuned profiles sometimes
+    change them. The point interviewers want is the two thresholds: the background ratio starts
+    asynchronous writeback, and the higher dirty ratio throttles the writing process itself. A
+    common misconception is that `write` returning means the data is on disk, or conversely that a
+    buffered `write` can never block on the device.
+
+- id: os-walk-010
+  topic: operating-systems
+  subtopic: Virtual memory
+  type: short
+  difficulty: medium
+  tags: [stack, guard-page, sigsegv, threads, rlimit]
+  prompt: |
+    How big is a thread's stack on Linux, what happens when a thread overflows it, and why is the
+    result usually a clean crash rather than silent corruption?
+  reference: |
+    The **main thread's** stack grows on demand up to the `RLIMIT_STACK` soft limit (`ulimit -s`,
+    8 MiB on most distributions). The kernel extends the stack VMA when a fault lands just below it,
+    and keeps a guard gap (by default 256 pages, 1 MiB) between the stack and other mappings.
+    **Other threads'** stacks are fixed-size `mmap` regions allocated by glibc when the thread is
+    created; the default size is taken from the `RLIMIT_STACK` soft limit (so usually 8 MiB) and can
+    be set with `pthread_attr_setstacksize`. Each has a guard page (`PROT_NONE`) at its low end.
+
+    Deep recursion or a large local array moves the stack pointer past the end. The next access
+    hits the guard region, which has no access rights, so the MMU raises a page fault; the kernel
+    finds no valid mapping and delivers **SIGSEGV**, killing the process by default. The guard is why
+    the overflow crashes rather than corrupting neighbouring memory. The guard can be skipped if a
+    single frame is larger than the guard and the first access lands beyond it; compilers mitigate
+    this with stack probing (`-fstack-clash-protection`). To report the crash, a SIGSEGV handler
+    needs an alternate signal stack (`sigaltstack`), because the normal stack is exhausted.
+  keyPoints:
+    - Main thread grows on demand up to RLIMIT_STACK, typically 8 MiB
+    - Other threads get fixed-size mmap'd stacks whose default size comes from RLIMIT_STACK; adjustable with pthread attributes
+    - Guard page or gap with no access rights below each stack
+    - Overflow touches the guard, page fault with no mapping, SIGSEGV
+    - Huge frames can jump over the guard (stack clash, mitigated by probing); handlers need sigaltstack
+  explanation: |
+    Note the difference between the main thread (growable) and other threads (fixed size). A
+    frequent production bug is a worker thread created with a small custom stack size that
+    overflows under recursion or a large local buffer, while the same code works fine on the main
+    thread.
+
+- id: os-walk-011
+  topic: operating-systems
+  subtopic: Signals
+  type: short
+  difficulty: medium
+  tags: [sigsegv, sigbus, mmap, signals]
+  prompt: |
+    What is the difference between SIGSEGV and SIGBUS on Linux? Give a realistic way to get a
+    SIGBUS on x86-64.
+  reference: |
+    **SIGSEGV** means an invalid memory reference: the address is not mapped at all
+    (`SEGV_MAPERR`), or it is mapped but the access violates its protection, such as writing a
+    read-only page (`SEGV_ACCERR`).
+
+    **SIGBUS** means the address is mapped but the memory behind it cannot be accessed. The most
+    common case on x86-64 is a **file mapping whose file is shorter than the mapping**: touching a
+    page that lies entirely beyond the end of the file (for example because another process
+    truncated the file after it was mapped) raises SIGBUS (`BUS_ADRERR`). Others are a hugetlbfs
+    mapping with no huge pages left to fault in, and an uncorrectable memory error reported by
+    hardware (`BUS_MCEERR_*`). Misaligned access, the classic cause on strict-alignment CPUs, does
+    not fault on x86-64 for ordinary loads and stores.
+  keyPoints:
+    - SIGSEGV is for unmapped addresses or protection violations (SEGV_MAPERR, SEGV_ACCERR)
+    - SIGBUS is for a mapped address whose backing cannot be accessed
+    - Typical x86-64 cause is touching an mmap'd file page beyond EOF, for example after truncation
+    - Other causes include hugetlbfs exhaustion and hardware memory errors
+    - Misalignment causes SIGBUS on strict-alignment architectures but not for ordinary x86-64 accesses
+  explanation: |
+    This is a common follow-up for anyone who has used `mmap` for files, such as memory-mapped
+    market-data or log files: a writer that truncates or rotates a file underneath readers turns
+    their next access into SIGBUS. Within the last page of the file, bytes past EOF read as zeros;
+    it is whole pages beyond EOF that fault.
+
+- id: os-walk-012
+  topic: operating-systems
+  subtopic: Practical Linux
+  type: short
+  difficulty: hard
+  tags: [ptrace, debugger, breakpoints, int3]
+  prompt: |
+    How does a debugger such as gdb implement a software breakpoint on x86-64 Linux?
+  reference: |
+    gdb controls the target through `ptrace`: it attaches (or starts the program with
+    `PTRACE_TRACEME`), after which the tracee stops and the debugger is notified whenever it receives
+    a signal. To set a breakpoint, gdb saves the original byte at the target address and writes
+    `0xCC` (`int3`) there with `PTRACE_POKETEXT` (text pages are private copy-on-write mappings, so
+    only the debuggee's copy changes). When execution reaches it, `int3` raises a breakpoint trap;
+    the kernel delivers **SIGTRAP**, which stops the tracee and wakes gdb in `waitpid`.
+
+    To continue, gdb restores the original byte, moves the instruction pointer back by one (the trap
+    leaves RIP after the 1-byte `int3`), single-steps that instruction with `PTRACE_SINGLESTEP`
+    (using the trap flag), reinserts `0xCC`, and resumes with `PTRACE_CONT`. Hardware breakpoints
+    and watchpoints instead use the debug registers DR0 to DR3, so only four can be active, but they
+    need no code modification and can trigger on data accesses.
+  keyPoints:
+    - ptrace gives the debugger control; the tracee stops on signals and the debugger waits
+    - Replace the first byte of the instruction with int3 (0xCC), saving the original
+    - Trap leads to SIGTRAP, which stops the tracee and notifies gdb
+    - To resume, restore the byte, rewind RIP by one, single-step, reinsert the breakpoint and continue
+    - Hardware breakpoints and watchpoints use debug registers DR0 to DR3 (four)
+  explanation: |
+    The step-over dance (restore, rewind, single-step, re-insert) is what distinguishes a candidate
+    who has thought about it from one who only knows "it inserts a trap instruction". `int3` being a
+    single byte matters: it can replace the first byte of any instruction without overwriting the
+    next one.
+
+- id: os-walk-013
+  topic: operating-systems
+  subtopic: Practical Linux
+  type: short
+  difficulty: hard
+  tags: [perf, profiling, pmu, sampling, stack-unwinding]
+  prompt: |
+    How does a sampling profiler such as `perf record` work at the OS and hardware level? What
+    determines whether you get useful call stacks?
+  reference: |
+    `perf` calls `perf_event_open` to program a hardware performance counter (for example cycles)
+    to overflow after N events, or the kernel adjusts N to hit a target sampling frequency (4000 Hz
+    by default for `perf record`). On overflow the PMU raises an interrupt (an NMI on x86, so it can
+    sample even code that runs with interrupts disabled). The handler records the instruction
+    pointer, PID/TID, timestamp and optionally a call chain into a per-CPU ring buffer that is
+    `mmap`ed into the perf process, which drains it to `perf.data`. Symbols are resolved afterwards
+    using the recorded mappings.
+
+    Call stacks need unwinding at sample time. With **frame pointers** (`-fno-omit-frame-pointer`)
+    the kernel walks the RBP chain cheaply. Without them, `--call-graph dwarf` copies a chunk of the
+    user stack for each sample and unwinds later with DWARF CFI (larger and slower), and
+    `--call-graph lbr` uses the CPU's last branch record on supported Intel parts (limited depth).
+    Plain IP samples can also suffer **skid** (attributed a few instructions late); precise modes
+    such as Intel PEBS (`:pp`) reduce it.
+  keyPoints:
+    - perf_event_open programs a PMU counter to overflow after N events or at a target frequency
+    - Overflow interrupt (NMI on x86) records IP, PID/TID and optionally a call chain
+    - Samples go to a per-CPU mmap'd ring buffer and are symbolised later
+    - Stack unwinding by frame pointers, DWARF stack copies or LBR, with their trade-offs
+    - Skid and precise sampling (PEBS)
+  explanation: |
+    A common practical problem is flame graphs full of broken stacks because the binary (or libc)
+    was built without frame pointers; knowing the three unwinding methods and why frame pointers
+    are the cheapest is the point of the question. Several distributions have recently re-enabled
+    frame pointers by default for this reason.
+
+- id: os-walk-014
+  topic: operating-systems
+  subtopic: File systems
+  type: short
+  difficulty: medium
+  tags: [df, du, unlink, lsof, disk-full, inodes]
+  prompt: |
+    A server's disk is full according to `df`, but `du -sh /` accounts for far less space. What are
+    the likely explanations and how would you confirm and fix each?
+  reference: |
+    The most common cause is **deleted files still held open**: for example a log file was removed
+    (by logrotate or by hand) while a process still has it open. Unlinking only removes the
+    directory entry; the inode and its blocks are freed when the last descriptor closes, so `df`
+    still counts the space but `du`, which walks directories, cannot see it. Confirm with
+    `lsof +L1` (open files with link count 0) or by looking for `(deleted)` in `ls -l
+    /proc/<pid>/fd`. Fix by restarting or signalling the process to reopen its logs, or truncate the
+    file through its descriptor (`: > /proc/<pid>/fd/<n>`).
+
+    Other causes: files hidden **under a mount point** (written to the directory before something
+    was mounted over it; check by bind-mounting `/` elsewhere and running `du` there); the
+    file system's **reserved blocks** for root (5% by default on ext4) making `df` show 100% for
+    normal users; and, if `df` shows space but writes still fail with `ENOSPC`, **inode
+    exhaustion**, visible with `df -i`.
+  keyPoints:
+    - Deleted-but-open files keep their blocks until the last fd closes; du cannot see them
+    - Find them with lsof +L1 or (deleted) entries in /proc/PID/fd
+    - Fix by restarting or reopening, or truncating via /proc/PID/fd
+    - Files hidden beneath a mount point
+    - Reserved blocks, and inode exhaustion checked with df -i
+  explanation: |
+    This is a classic operations interview question that tests whether you understand the
+    separation between names (directory entries) and files (inodes with a link count and an open
+    count).
+
+- id: os-walk-015
+  topic: operating-systems
+  subtopic: Practical Linux
+  type: short
+  difficulty: medium
+  tags: [top, cpu-accounting, iowait, steal, softirq]
+  prompt: |
+    `top` breaks CPU time into `us`, `sy`, `ni`, `id`, `wa`, `hi`, `si` and `st`. What does each
+    mean, and why is a high `wa` (iowait) figure easy to misread?
+  reference: |
+    - `us`: user-mode time of normal-priority processes; `ni`: user time of niced processes.
+    - `sy`: kernel time on behalf of processes (system calls, page faults).
+    - `hi` / `si`: time servicing hardware interrupts and softirqs (for example network receive
+      processing).
+    - `st`: steal, time a virtual CPU wanted to run but the hypervisor ran something else.
+    - `id`: idle. `wa`: idle **while** at least one task was waiting for disk I/O.
+
+    iowait is idle time with an excuse. It does not mean the CPU is busy doing I/O, and it is not a
+    reliable measure of disk saturation: a CPU-bound workload starting on the same CPU makes iowait
+    drop to zero while the I/O wait is unchanged, and on a multi-core machine the accounting per
+    CPU is fuzzy because a sleeping task is not really tied to one CPU. To judge storage, look at
+    device metrics (`iostat -x`: utilisation, queue depth, await) or pressure stall information
+    (`/proc/pressure/io`).
+  keyPoints:
+    - us/ni user time, sy kernel time on behalf of processes
+    - hi/si interrupt and softirq time; st steal time under virtualisation
+    - wa is idle time while tasks wait for I/O, not CPU work
+    - iowait varies with unrelated CPU load and does not measure disk saturation
+    - Use iostat -x or PSI (/proc/pressure/io) to judge I/O bottlenecks
+  explanation: |
+    Interviewers for infrastructure roles like this question because high iowait triggers many
+    false alarms. Steal time is the other one worth knowing: sustained `st` on a cloud VM means a
+    noisy neighbour or an oversubscribed host, and it shows up as unexplained latency.
+
+- id: os-walk-016
+  topic: operating-systems
+  subtopic: Signals
+  type: short
+  difficulty: medium
+  tags: [sighup, sessions, nohup, job-control, terminal]
+  prompt: |
+    You start a long-running job in the background from an SSH session (`./job &`) and then
+    disconnect. Why might the job die, and what are the ways to keep it running?
+  reference: |
+    When the SSH connection drops, the pseudo-terminal hangs up and the kernel sends **SIGHUP** to
+    the session's controlling process, the login shell. Bash then sends SIGHUP to its jobs (and
+    continues stopped ones so they can receive it), and SIGHUP's default action is to terminate. A
+    job that survives the hangup may still die later writing to the dead terminal (it gets EIO, or
+    SIGPIPE through a pipe). On systemd hosts, logind can also kill all processes of the session
+    when the user logs out if `KillUserProcesses` is enabled.
+
+    Ways to keep it running: `nohup ./job &` (ignores SIGHUP and redirects output away from the
+    terminal); `disown` the job so bash does not forward SIGHUP; `setsid` to start it in a new
+    session with no controlling terminal; run it inside `tmux` or `screen`, whose server keeps the
+    terminal alive; or, best for anything permanent, run it as a service (for example `systemd-run`
+    or a unit file) so it is not tied to a login session at all.
+  keyPoints:
+    - Hangup leads the kernel to send SIGHUP to the session leader (the shell)
+    - The shell forwards SIGHUP to its jobs; default action terminates
+    - Output to the dead terminal can also fail; systemd-logind may kill session processes
+    - Remedies are nohup, disown, setsid, tmux or screen
+    - For real services, run under a supervisor such as systemd
+  explanation: |
+    The question probes sessions, process groups and controlling terminals. Partial credit for
+    "use nohup"; full credit for explaining where the SIGHUP comes from and why `tmux` and a service
+    manager are the robust answers.
+
+- id: os-walk-017
+  topic: operating-systems
+  subtopic: Practical Linux
+  type: short
+  difficulty: medium
+  tags: [clocks, clock-monotonic, clock-realtime, ntp, timing]
+  prompt: |
+    Explain the difference between `CLOCK_REALTIME`, `CLOCK_MONOTONIC`, `CLOCK_MONOTONIC_RAW` and
+    `CLOCK_BOOTTIME` on Linux. Which should you use to measure how long an operation took, and which
+    to timestamp an event for other machines?
+  reference: |
+    - `CLOCK_REALTIME` is wall-clock time since the Unix epoch. It can **jump** forwards or
+      backwards when the time is set (by an administrator or an NTP step) and is slewed by NTP.
+    - `CLOCK_MONOTONIC` counts from an arbitrary point (boot) and never jumps backwards; NTP may
+      adjust its rate slightly (slewing) but not step it. It does not advance during system
+      suspend.
+    - `CLOCK_MONOTONIC_RAW` is like monotonic but without NTP frequency adjustment: the raw
+      hardware clock rate.
+    - `CLOCK_BOOTTIME` is monotonic but includes time spent suspended.
+
+    Measure intervals with `CLOCK_MONOTONIC` (C++ `std::chrono::steady_clock` on Linux): a
+    realtime interval can come out negative or wildly wrong across a time step. Timestamp events
+    that must be compared across machines with `CLOCK_REALTIME`, kept accurate by NTP or PTP; the
+    monotonic clocks have no meaning outside the machine. Both common clocks are read through the
+    vDSO without a system call.
+  keyPoints:
+    - REALTIME is wall-clock and can jump when time is set or stepped
+    - MONOTONIC never goes backwards, is NTP-slewed, and stops during suspend
+    - MONOTONIC_RAW is not frequency-adjusted; BOOTTIME includes suspend
+    - Use MONOTONIC (steady_clock) for durations and timeouts
+    - Use REALTIME synchronised with NTP/PTP for cross-machine timestamps
+  explanation: |
+    Using wall-clock time for timeouts or latency measurement is a classic bug that only shows up
+    when the clock is adjusted, for example at a leap second or after an NTP correction on a
+    freshly booted VM. In trading systems the cross-machine requirement is why PTP and hardware
+    timestamping matter.
+
+- id: os-walk-018
+  topic: operating-systems
+  subtopic: Scheduling
+  type: short
+  difficulty: medium
+  tags: [real-time, preempt-rt, latency, scheduling]
+  prompt: |
+    What is the difference between hard and soft real-time? Is Linux a real-time operating system?
+  reference: |
+    A **hard** real-time system must meet its deadlines every time; a miss is a failure of the system
+    (airbag controllers, motor control). A **soft** real-time system tries to meet deadlines and
+    degrades gracefully when it misses some (audio, video, most trading systems, where a slow
+    response costs money but is not a fault). Real-time is about bounded worst-case latency, not
+    speed.
+
+    Stock Linux offers real-time scheduling classes (`SCHED_FIFO`, `SCHED_RR`, `SCHED_DEADLINE`)
+    and good average latency, but its worst-case latency is not tightly bounded because long
+    non-preemptible kernel sections, interrupt handlers and softirqs can delay a high-priority task.
+    The **PREEMPT_RT** patch set, merged into mainline in Linux 6.12, makes most of the kernel
+    preemptible (sleeping spinlocks, threaded interrupt handlers, priority inheritance in kernel
+    locks), giving much lower and more predictable worst-case latency. That is suitable for many
+    firm and soft real-time uses and some industrial hard real-time ones, but certified hard
+    real-time systems often still use a dedicated RTOS or a co-kernel.
+  keyPoints:
+    - Hard real-time means a missed deadline is a failure; soft means degraded quality
+    - Real-time is about bounded worst-case latency, not throughput
+    - Stock Linux has RT scheduling classes but unbounded worst cases from non-preemptible sections and interrupts
+    - PREEMPT_RT (mainline since 6.12) adds threaded IRQs, sleeping spinlocks and PI locks
+    - Safety-critical hard real-time often still uses a dedicated RTOS
+  explanation: |
+    A frequent misconception is that `SCHED_FIFO` alone makes Linux real-time. It controls which
+    user task runs, but cannot preempt the kernel while it is in a non-preemptible section or
+    handling interrupts; that is what PREEMPT_RT addresses.
+
+- id: os-walk-019
+  topic: operating-systems
+  subtopic: Linking and loading
+  type: short
+  difficulty: medium
+  tags: [aslr, pie, security, proc]
+  prompt: |
+    What does address space layout randomisation (ASLR) randomise on Linux, what is the role of
+    PIE, and how do you disable it for reproducible debugging?
+  reference: |
+    With `kernel.randomize_va_space = 2` (the default), the kernel randomises the base of the
+    stack, the mmap area (and hence shared library load addresses), the vDSO and the heap (`brk`
+    start). The main executable is randomised only if it is built as a **position-independent
+    executable** (PIE, `-fPIE -pie`, the default on most modern distributions); a non-PIE binary is
+    linked at a fixed address, so its code and globals stay put, which gives an attacker known
+    addresses for return-oriented programming. ASLR forces an exploit to first leak an address.
+
+    For reproducible debugging, run the program with `setarch "$(uname -m)" -R ./prog` (which sets
+    the `ADDR_NO_RANDOMIZE` personality), or rely on gdb, which disables randomisation for programs
+    it launches by default (`set disable-randomization`). System-wide, `randomize_va_space = 0`
+    turns it off, which you should not do in production.
+  keyPoints:
+    - Stack, mmap base and shared libraries, vDSO and heap are randomised
+    - The executable itself is randomised only when built as PIE
+    - Purpose is to make exploits need an address leak
+    - Disable per process with setarch -R (ADDR_NO_RANDOMIZE); gdb does so by default
+    - System-wide control via kernel.randomize_va_space
+  explanation: |
+    ASLR is why pointer values printed by a program, and addresses in `/proc/<pid>/maps`, differ
+    from run to run. This matters when a test inadvertently depends on pointer ordering, for
+    example iterating a container keyed by pointers: the order changes between runs under ASLR.
+
+- id: os-walk-020
+  topic: operating-systems
+  subtopic: Virtual memory
+  type: short
+  difficulty: medium
+  tags: [null-pointer, page-fault, sigsegv, core-dump]
+  prompt: |
+    Walk me through what happens on x86-64 Linux when a C++ program dereferences a null pointer.
+  reference: |
+    Assuming the compiler emits the load (it may not: dereferencing null is undefined behaviour, and
+    the optimiser may delete or reorder code on the assumption that it cannot happen), the CPU
+    translates address 0. No page is mapped there; Linux forbids mapping the lowest pages at all
+    (`vm.mmap_min_addr`, 64 KiB by default). The MMU raises a page fault. The kernel's fault
+    handler finds no VMA covering the address, so instead of fixing anything it sends **SIGSEGV**
+    to the thread, with `si_code = SEGV_MAPERR` and `si_addr` set to the faulting address.
+
+    The default action for SIGSEGV is to terminate the process and dump core. Whether a core file
+    appears depends on `ulimit -c` and `kernel.core_pattern` (often piped to `systemd-coredump`,
+    viewable with `coredumpctl`). The parent sees the process killed by signal 11, which shells
+    report as exit status 139. A handler can catch SIGSEGV to log a backtrace, but resuming normal
+    execution afterwards is not safe.
+  keyPoints:
+    - Null dereference is UB; the compiler may not emit the access as written
+    - Page 0 is unmapped and low addresses are protected by mmap_min_addr
+    - MMU page fault; the kernel finds no VMA and sends SIGSEGV (SEGV_MAPERR)
+    - Default action terminates with a core dump subject to ulimit -c and core_pattern
+    - Exit status 139 (128 + 11); handlers can log but should not continue
+  explanation: |
+    The hardware path is the main part of the answer, but mentioning that the C++ abstract machine
+    gives no guarantee of a crash is a mark of a strong candidate: code such as `int x = p->v; if
+    (!p) return;` can have its null check removed by the optimiser.
+
+- id: os-walk-021
+  topic: operating-systems
+  subtopic: Process lifecycle
+  type: short
+  difficulty: medium
+  tags: [d-state, uninterruptible-sleep, sigkill, task-killable]
+  prompt: |
+    `ps` shows a process in state `D` and `kill -9` has no effect on it. What is going on, and what
+    can you do?
+  reference: |
+    `D` is **uninterruptible sleep**: the task is blocked inside the kernel in a wait that does not
+    respond to signals, usually waiting for I/O to complete (a disk, an NFS server, a device driver,
+    or a page fault that needs I/O). Signals, including SIGKILL, are marked pending but are not
+    acted upon until the task wakes up and heads back towards user mode, so `kill -9` appears to do
+    nothing. The kernel uses uninterruptible waits where aborting halfway would leave state
+    inconsistent. Many waits have been converted to `TASK_KILLABLE`, which wakes for fatal signals
+    only.
+
+    D-state tasks count towards the Linux load average, so a stuck NFS mount can show a huge load
+    with idle CPUs. To diagnose, look at `/proc/<pid>/stack` (as root) or `cat /proc/<pid>/wchan`,
+    and at `dmesg` for hung-task warnings or device errors. The fix is to resolve the underlying
+    I/O: bring back the NFS server or storage path, or, for NFS, use `umount -f`/`-l`. If the device
+    never answers, a reboot may be the only way out.
+  keyPoints:
+    - D means uninterruptible sleep, blocked in the kernel usually on I/O
+    - SIGKILL stays pending until the wait completes, so kill -9 seems ignored
+    - TASK_KILLABLE waits do respond to fatal signals
+    - D-state tasks inflate the Linux load average
+    - Diagnose with /proc/PID/stack, wchan and dmesg; fix the underlying I/O or reboot
+  explanation: |
+    The question checks that you know signals are acted upon only at certain points (returning to
+    user mode or interruptible waits), and connects to the Linux-specific definition of load
+    average, which counts D-state tasks as well as runnable ones.
+
+- id: os-walk-022
+  topic: operating-systems
+  subtopic: File descriptors and I/O
+  type: short
+  difficulty: hard
+  tags: [wait-queue, blocking-io, sockets, scheduler, softirq]
+  prompt: |
+    A thread calls `recv()` on a blocking TCP socket that has no data. Explain how the kernel puts
+    it to sleep and how it is woken when a packet arrives.
+  reference: |
+    In the receive path the kernel finds the socket's receive queue empty. It adds the task to the
+    socket's **wait queue**, sets the task state to `TASK_INTERRUPTIBLE`, rechecks the queue (to
+    avoid a lost wakeup if data arrived in between) and calls `schedule()`, which takes the task off
+    the CPU's run queue and runs something else. The thread now uses no CPU.
+
+    When a packet arrives, the NIC writes it to memory by DMA and raises an interrupt (or the driver
+    is already in NAPI polling). Protocol processing runs in softirq context: IP and TCP handle the
+    packet, append the data to the socket's receive queue, and call the socket's `sk_data_ready`
+    callback, which **wakes up** the wait queue. Waking sets the sleeping task to `TASK_RUNNING`
+    and puts it on a run queue, possibly on another CPU, which may need an inter-processor
+    interrupt; if it has higher claim than the current task, a reschedule is requested. When the
+    thread runs again it continues inside `recv`, copies the data to the user buffer and returns.
+    The same wait-queue mechanism underlies `poll`/`epoll` waiting.
+  keyPoints:
+    - Task is added to the socket's wait queue and marked TASK_INTERRUPTIBLE, then schedule() is called
+    - Re-check after setting state to avoid lost wakeups; no CPU used while asleep
+    - NIC DMA and interrupt; TCP/IP processing in softirq (NAPI) queues data on the socket
+    - sk_data_ready wakes the wait queue; the task becomes runnable, possibly via an IPI to another CPU
+    - Thread resumes inside recv, copies data and returns; epoll uses the same wait queues
+  explanation: |
+    The wake-up path explains the latency of blocking I/O: interrupt, softirq processing, the wake
+    and the scheduler's context switch each add time, which is why low-latency systems busy-poll
+    instead. The "set state then recheck" ordering is the classic way to avoid a missed wakeup.
+
+- id: os-walk-023
+  topic: operating-systems
+  subtopic: I/O devices and drivers
+  type: short
+  difficulty: hard
+  tags: [kernel-modules, vfio, uio, kernel-bypass, dpdk, ebpf]
+  prompt: |
+    Compare writing a device driver as a kernel module with driving the device from user space (for
+    example via VFIO, as DPDK and SPDK do). What are the trade-offs?
+  reference: |
+    A **kernel module** runs in ring 0 in the kernel's address space. It can handle interrupts
+    directly, integrate with kernel subsystems (the network stack, block layer, file systems) so
+    ordinary applications use it through standard system calls, and share the device between many
+    processes. But a bug can crash or corrupt the whole machine, it must be written against
+    internal kernel APIs that change between versions, and every use pays for system calls and
+    copies across the user/kernel boundary.
+
+    A **user-space driver** maps the device's registers (BARs) into a process and programs its DMA
+    through **VFIO**, which uses the IOMMU so the device can reach only that process's memory
+    (UIO is an older interface without IOMMU protection). DPDK and SPDK use it to poll device queues
+    from a dedicated core with no system calls, interrupts or copies, giving very low and
+    predictable latency and high packet rates. The costs: the device is owned by one application,
+    you lose the kernel's facilities (TCP stack, firewall, `tcpdump`, file systems) unless you
+    reimplement them, and polling burns whole cores. eBPF/XDP is a middle path that runs verified
+    code inside the kernel's fast path.
+  keyPoints:
+    - Kernel module runs in ring 0, integrates with kernel subsystems and is shared by all processes
+    - Kernel bugs can crash the machine; internal APIs are unstable; syscalls and copies on every use
+    - User-space drivers map device registers and use VFIO with the IOMMU for safe DMA
+    - Polling from user space gives low, predictable latency without syscalls or interrupts (DPDK, SPDK)
+    - Costs are exclusive device ownership, losing kernel features and burning cores; XDP/eBPF as a middle ground
+  explanation: |
+    This question comes up in low-latency and infrastructure interviews because kernel bypass is
+    common there. A strong answer explains why the IOMMU is what makes user-space DMA safe, and is
+    honest about the operational costs of bypassing the kernel.

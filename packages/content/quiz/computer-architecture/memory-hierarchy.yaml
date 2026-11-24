@@ -1,0 +1,341 @@
+- id: arch-mem-001
+  topic: computer-architecture
+  subtopic: Memory hierarchy and TLBs
+  type: single
+  difficulty: easy
+  prompt: |
+    What does the TLB (translation lookaside buffer) cache?
+  choices:
+    - { id: a, text: "Recent virtual-page-number to physical-frame translations, along with permission bits" }
+    - { id: b, text: "Recently used data lines from main memory" }
+    - { id: c, text: "Recently executed instructions in decoded form" }
+    - { id: d, text: "The most recent branch targets" }
+  answer: a
+  explanation: |
+    Every memory access needs its virtual address translated. Walking the page tables in memory each time would cost several memory accesses, so the TLB
+    caches recent page translations (and their permission/attribute bits). Data lines live in the data caches (b), decoded instructions in the µop cache (c),
+    and branch targets in the BTB (d).
+  tags: [tlb, virtual-memory]
+
+- id: arch-mem-002
+  topic: computer-architecture
+  subtopic: Memory hierarchy and TLBs
+  type: single
+  difficulty: medium
+  prompt: |
+    A core's second-level TLB (STLB) has 1536 entries that can each map either a 4 KiB or a 2 MiB page.
+    What is its *reach* (memory covered without a TLB miss) with all-4 KiB pages versus all-2 MiB pages?
+  choices:
+    - { id: a, text: "6 MiB vs 3 GiB" }
+    - { id: b, text: "1.5 MiB vs 1.5 GiB" }
+    - { id: c, text: "6 MiB vs 1.5 GiB" }
+    - { id: d, text: "64 MiB vs 3 GiB" }
+  answer: a
+  explanation: |
+    Reach = entries × page size.
+    - 1536 × 4 KiB = 6144 KiB = **6 MiB**
+    - 1536 × 2 MiB = 3072 MiB = **3 GiB**
+
+    That 512× increase is the main reason huge pages help programs with large, randomly accessed working sets (hash tables, in-memory databases, JVM heaps):
+    a 1 GiB random-access working set will miss the STLB constantly with 4 KiB pages but fits comfortably with 2 MiB pages.
+    (These figures match Intel Skylake's STLB.)
+  tags: [tlb, tlb-reach, huge-pages, quantitative]
+  source: { name: "Intel 64 and IA-32 Architectures Optimization Reference Manual (Skylake TLB parameters)" }
+
+- id: arch-mem-003
+  topic: computer-architecture
+  subtopic: Memory hierarchy and TLBs
+  type: single
+  difficulty: medium
+  prompt: |
+    On x86-64 with 4-level paging and 4 KiB pages, how is a 48-bit virtual address split, and how many page-table memory references does a
+    TLB miss need in the worst case (no paging-structure caches)?
+  choices:
+    - { id: a, text: "4 × 9-bit indices + 12-bit offset; 4 references" }
+    - { id: b, text: "4 × 8-bit indices + 16-bit offset; 4 references" }
+    - { id: c, text: "3 × 12-bit indices + 12-bit offset; 3 references" }
+    - { id: d, text: "4 × 9-bit indices + 12-bit offset; 1 reference because the tables are contiguous" }
+  answer: a
+  explanation: |
+    Each table is one 4 KiB page of 512 eight-byte entries, so each level consumes log2(512) = 9 bits: PML4 (bits 47–39), PDPT (38–30), PD (29–21), PT (20–12),
+    then a 12-bit page offset. 4 × 9 + 12 = 48. A walk reads one entry per level: 4 dependent memory references (each may itself hit in the data caches).
+    With 5-level paging (LA57) a fifth level gives 57-bit addresses and up to 5 references. CPUs also keep paging-structure caches so most walks skip upper levels.
+    A 2 MiB page stops at the PD level (3 references, 21-bit offset); a 1 GiB page stops at the PDPT.
+  tags: [tlb, page-walk, x86-64, paging]
+
+- id: arch-mem-005
+  topic: computer-architecture
+  subtopic: Memory hierarchy and TLBs
+  type: short
+  difficulty: medium
+  prompt: |
+    When do huge pages (2 MiB / 1 GiB on x86-64) improve performance, and what are their costs or risks?
+  reference: |
+    Benefits: each TLB entry covers 512× (2 MiB) or 262144× (1 GiB) more memory, so programs with large working sets and poor locality — big hash tables,
+    in-memory databases, JVM/GC heaps, HPC arrays — suffer far fewer TLB misses; page walks are shorter (fewer levels) and page tables are smaller;
+    fewer page faults are needed to populate memory.
+    Costs: internal fragmentation and memory bloat (a 2 MiB page is allocated even if 4 KiB is touched); finding contiguous physical memory requires
+    compaction, which can cause latency spikes (Linux Transparent Huge Pages khugepaged/compaction stalls — why many latency-sensitive systems set THP to
+    `madvise` or `never` and use explicit hugetlbfs/`MAP_HUGETLB` reserved at boot); a fault zeroing 2 MiB takes longer; coarser-grained copy-on-write
+    after fork and coarser NUMA placement; and they help little for workloads that already fit in TLB reach.
+  keyPoints:
+    - Larger TLB reach / fewer TLB misses and shorter page walks
+    - Helps large, randomly accessed working sets
+    - Internal fragmentation / memory bloat
+    - Need for contiguous physical memory — compaction and THP latency spikes
+    - Explicit (hugetlbfs, MAP_HUGETLB) vs transparent huge pages, and the madvise/never setting
+  explanation: |
+    Trading and other latency-sensitive shops commonly pre-reserve explicit huge pages at boot and disable THP's background defragmentation to avoid
+    unpredictable stalls. See the kernel's transhuge.rst documentation.
+  tags: [huge-pages, tlb, thp, latency]
+  source: { name: "Linux kernel docs: Transparent Hugepage Support", url: "https://www.kernel.org/doc/html/latest/admin-guide/mm/transhuge.html" }
+
+- id: arch-mem-006
+  topic: computer-architecture
+  subtopic: DRAM and bandwidth
+  type: single
+  difficulty: easy
+  prompt: |
+    What is the theoretical peak bandwidth of a single DDR4-3200 memory channel (64-bit data bus)?
+  choices:
+    - { id: a, text: "25.6 GB/s" }
+    - { id: b, text: "3.2 GB/s" }
+    - { id: c, text: "51.2 GB/s" }
+    - { id: d, text: "204.8 GB/s" }
+  answer: a
+  explanation: |
+    DDR4-3200 performs 3200 million transfers per second, each 64 bits = 8 bytes wide: 3200 × 10^6 × 8 = **25.6 GB/s** per channel.
+    A desktop with two channels peaks at 51.2 GB/s; an 8-channel server at 204.8 GB/s. Sustained bandwidth is lower (often 70–90% of peak).
+    Note that the "3200" already counts both clock edges (the I/O clock is 1600 MHz) — doubling it again is a common error.
+  tags: [dram, bandwidth, quantitative]
+
+- id: arch-mem-007
+  topic: computer-architecture
+  subtopic: DRAM and bandwidth
+  type: single
+  difficulty: hard
+  prompt: |
+    Memory latency is about 100 ns and you want to sustain 25.6 GB/s of demand reads from DRAM. By Little's law, roughly how many 64-byte cache-line
+    misses must be in flight at once?
+  choices:
+    - { id: a, text: "About 40" }
+    - { id: b, text: "About 4" }
+    - { id: c, text: "About 400" }
+    - { id: d, text: "1, because DRAM serves requests one at a time" }
+  answer: a
+  explanation: |
+    Little's law: concurrency = throughput × latency = 25.6 × 10^9 B/s × 100 × 10^-9 s = 2560 bytes in flight = 2560 / 64 = **40 lines**.
+
+    This is why memory-level parallelism matters. A single core can only track a limited number of outstanding L1 misses (on the order of 10–20 line fill
+    buffers on recent Intel cores; Skylake is usually quoted at about 12), so one core issuing demand misses alone is latency-bound well below the channel's peak — hardware
+    prefetchers into L2 (which has more miss-tracking entries) and multiple cores are needed to saturate DRAM. Pointer-chasing code, with only one miss in
+    flight, gets a tiny fraction of the bandwidth: 64 B / 100 ns = 0.64 GB/s.
+  tags: [memory-level-parallelism, littles-law, bandwidth, latency, quantitative]
+
+- id: arch-mem-008
+  topic: computer-architecture
+  subtopic: NUMA
+  type: single
+  difficulty: medium
+  prompt: |
+    On a two-socket Linux server with the default memory policy, a main thread `malloc`s and `memset`s a 20 GiB array, then starts worker threads on both
+    sockets to process it. Workers on socket 1 run noticeably slower. Why?
+  choices:
+    - { id: a, text: "First-touch placement: pages are physically allocated on the NUMA node of the CPU that first writes them, so the whole array lives on the main thread's node and socket-1 workers do remote accesses" }
+    - { id: b, text: "malloc always allocates from node 0 regardless of which CPU calls it" }
+    - { id: c, text: "Socket 1 has a smaller L3 cache" }
+    - { id: d, text: "Linux interleaves pages across nodes by default, so half of every worker's accesses are remote" }
+  answer: a
+  explanation: |
+    `malloc` only reserves virtual address space; physical pages are allocated on first touch (page fault), and Linux's default "local" policy places them on
+    the node of the CPU taking the fault. The single-threaded `memset` therefore put all pages on one node. Remote accesses cross the inter-socket link
+    (UPI/Infinity Fabric), with higher latency and shared, limited bandwidth.
+
+    Fixes: initialise the data in parallel with the same thread-to-data partitioning used later; use `numactl --interleave=all` or `mbind`/`set_mempolicy`;
+    or pin workers and allocate per-node. (d) is wrong: interleaving is opt-in, not the default. (b) is false.
+  tags: [numa, first-touch, memory-policy, linux]
+
+- id: arch-mem-009
+  topic: computer-architecture
+  subtopic: NUMA
+  type: multiple
+  difficulty: medium
+  prompt: |
+    Which of these tools or interfaces control or report NUMA memory placement on Linux? Select all that apply.
+  choices:
+    - { id: a, text: "numactl --membind / --interleave / --cpunodebind" }
+    - { id: b, text: "set_mempolicy(2) and mbind(2)" }
+    - { id: c, text: "numastat" }
+    - { id: d, text: "taskset" }
+    - { id: e, text: "/proc/<pid>/numa_maps" }
+  answer: [a, b, c, e]
+  explanation: |
+    - `numactl` sets memory policy (membind, interleave, preferred) and CPU node binding for a launched process.
+    - `set_mempolicy` (per thread) and `mbind` (per address range) are the system calls behind it; libnuma wraps them.
+    - `numastat` reports per-node allocation hits/misses and per-process usage.
+    - `/proc/<pid>/numa_maps` shows each mapping's policy and how many pages are on each node.
+    - `taskset` only sets **CPU affinity**. It indirectly influences first-touch placement (because threads run on certain nodes) but it does not set or report
+      memory policy — the common misconception this distractor targets.
+  tags: [numa, linux, tools]
+  source: { name: "numactl(8), set_mempolicy(2) man pages", url: "https://man7.org/linux/man-pages/man8/numactl.8.html" }
+
+- id: arch-mem-010
+  topic: computer-architecture
+  subtopic: NUMA
+  type: short
+  difficulty: hard
+  prompt: |
+    A latency-sensitive service is moved from a single-socket box to a two-socket server with more cores and the same clock speed. Its p99 latency gets
+    worse. What NUMA-related causes would you investigate, and how?
+  reference: |
+    Likely causes: threads scheduled on one socket accessing memory allocated on the other (remote DRAM latency is typically ~1.5–2× local) because of
+    first-touch by a different thread or because the scheduler migrated threads; the kernel's automatic NUMA balancing migrating pages / unmapping them to
+    sample access (hinting faults cause latency spikes); cross-socket cache-line sharing for locks, queues and counters (coherence traffic over UPI is much
+    slower than within a socket); NIC/PCIe device attached to one socket while the processing threads run on the other (DMA and interrupts cross the link);
+    and interrupts handled on the wrong node.
+    Investigate with `numactl --hardware` / `lscpu` (topology and distances), `numastat -p`, `/proc/<pid>/numa_maps`, `perf` counters for remote vs local
+    memory accesses, `perf c2c` for cross-socket HITMs, and checking `/sys/class/net/<if>/device/numa_node` and IRQ affinity.
+    Fixes: pin threads and memory to the NIC's node (`numactl --cpunodebind --membind`, `isolcpus`/cpusets), allocate after pinning, disable automatic NUMA
+    balancing for the pinned process, and keep shared hot data within a socket.
+  keyPoints:
+    - Remote memory access from thread/memory placed on different nodes (first-touch, migration)
+    - Cross-socket coherence traffic for shared cache lines
+    - Device (NIC) locality and IRQ affinity
+    - Automatic NUMA balancing / page migration causing spikes
+    - Concrete tools — numactl/numastat/numa_maps/perf/lscpu — and pinning as the fix
+  explanation: |
+    Interviewers for low-latency roles expect you to know that a single-socket machine is often *preferred* precisely because it avoids these effects.
+  tags: [numa, latency, tail-latency, pinning]
+
+- id: arch-mem-011
+  topic: computer-architecture
+  subtopic: DRAM and bandwidth
+  type: single
+  difficulty: medium
+  prompt: |
+    Why is a stream of random 64-byte reads from DRAM slower (per access) than a sequential stream, even after caches are taken out of the picture?
+  choices:
+    - { id: a, text: "DRAM reads a whole row into the bank's row buffer; consecutive accesses to the open row are cheap, while random accesses mostly need a precharge and a new row activation" }
+    - { id: b, text: "DRAM cells must be refreshed after every random read but not after sequential reads" }
+    - { id: c, text: "The memory controller can only service requests in address order" }
+    - { id: d, text: "Random addresses must be translated by the DRAM chip itself" }
+  answer: a
+  explanation: |
+    A DRAM access activates a row (copying it into the bank's sense amplifiers / row buffer), then reads columns from it. A sequential stream gets many
+    row-buffer hits per activation; random accesses usually hit a different row, paying precharge (close the old row) + activate + column access
+    (tRP + tRCD + CL). Controllers reorder requests and interleave across channels, ranks and banks to hide some of this, which is why bank-level
+    parallelism matters. Refresh (b) happens periodically for all rows regardless of access pattern; (c) and (d) are false — controllers reorder freely,
+    and address translation happens in the CPU's MMU.
+  tags: [dram, row-buffer, bandwidth]
+  source: { name: "Ulrich Drepper, What Every Programmer Should Know About Memory, §2.2", url: "https://people.freebsd.org/~lstewart/articles/cpumemory.pdf" }
+
+- id: arch-mem-012
+  topic: computer-architecture
+  subtopic: Memory hierarchy and TLBs
+  type: short
+  difficulty: hard
+  prompt: |
+    A multithreaded process calls `munmap` (or `mprotect`) on a region. Why can this be surprisingly expensive on a many-core machine, and what is a
+    "TLB shootdown"?
+  reference: |
+    Each core caches translations in its own TLB, and TLBs are not kept coherent by hardware. When the kernel removes or downgrades a mapping, it must ensure
+    no other core still uses a stale translation. It therefore sends inter-processor interrupts (IPIs) to every CPU that may be running a thread of that
+    address space; each one interrupts what it is doing and invalidates the entries (e.g. INVLPG or a full flush), and the initiating CPU waits for
+    acknowledgement before reusing the memory. That is a TLB shootdown. Its cost grows with the number of cores running the process, adds interrupt
+    jitter to unrelated threads, and frequent mmap/munmap (e.g. by an allocator returning memory) can become a scalability bottleneck. Mitigations: avoid
+    unmapping in hot paths (allocators that retain memory, MADV_FREE batching), keep latency-critical threads in separate processes or on isolated cores,
+    and rely on PCID to avoid full flushes on context switches.
+  keyPoints:
+    - TLBs are per-core and not hardware-coherent with page-table changes
+    - Kernel sends IPIs to other CPUs running the mm to invalidate entries
+    - Initiator waits for acknowledgements — cost scales with core count
+    - Causes jitter on other threads; frequent munmap/mprotect is a scalability issue
+    - Mitigation such as batching, avoiding unmaps in hot path, allocator tuning
+  explanation: |
+    This shows up in practice as `tlb_flush`/`TLB shootdowns` counts in `/proc/interrupts` growing rapidly.
+  tags: [tlb, tlb-shootdown, ipi, munmap, multicore]
+
+- id: arch-mem-013
+  topic: computer-architecture
+  subtopic: Memory hierarchy and TLBs
+  type: single
+  difficulty: easy
+  prompt: |
+    Which ordering, from fastest/smallest to slowest/largest, is correct for a typical server?
+  choices:
+    - { id: a, text: "Registers → L1 → L2 → L3 → DRAM → NVMe SSD → HDD" }
+    - { id: b, text: "L1 → registers → L2 → DRAM → L3 → SSD → HDD" }
+    - { id: c, text: "Registers → L1 → L2 → DRAM → L3 → HDD → SSD" }
+    - { id: d, text: "Registers → L1 → L3 → L2 → DRAM → SSD → HDD" }
+  answer: a
+  explanation: |
+    Each level is larger and slower than the one above: registers (sub-cycle access, hundreds of bytes), L1 (~4–5 cycles, tens of KiB), L2 (~12–16 cycles,
+    hundreds of KiB to a few MiB), L3 (~tens of cycles, tens of MiB shared), DRAM (~100 ns, GBs–TBs), NVMe SSD (~tens of µs), HDD (~milliseconds).
+    The hierarchy works because of locality: most accesses are served by the small fast levels.
+  tags: [memory-hierarchy]
+
+- id: arch-mem-014
+  topic: computer-architecture
+  subtopic: Memory hierarchy and TLBs
+  type: short
+  difficulty: hard
+  prompt: |
+    How would you write a microbenchmark that measures memory **latency** at each level of the hierarchy (L1, L2, L3, DRAM)? What pitfalls must it avoid?
+  reference: |
+    Build a pointer-chasing chain: an array of cache-line-sized nodes where each node holds the index/pointer of the next, arranged as a random cyclic
+    permutation, then time `p = *p` for many iterations and divide by the count. Each load depends on the previous one, so loads cannot overlap and
+    you measure latency rather than throughput. Sweep the working-set size from a few KiB to several GiB and plot ns per load; plateaus show L1, L2, L3 and DRAM.
+    Pitfalls: sequential or constant-stride chains are hidden by the hardware prefetcher (use a random permutation); the compiler may delete the loop unless
+    the final pointer is used; TLB misses inflate large-size results (use huge pages or report it as a separate effect); frequency scaling and turbo
+    (pin the core, fix frequency, warm up); timer overhead (time millions of steps); one node per cache line to avoid measuring several hits per line;
+    and NUMA placement (bind memory and thread to the same node).
+  keyPoints:
+    - Dependent pointer chasing so only one load is in flight (latency, not throughput)
+    - Randomised permutation to defeat prefetchers
+    - Sweep working-set size to expose each cache level
+    - Prevent dead-code elimination; amortise timer overhead; warm up
+    - Control for TLB effects, frequency scaling and NUMA placement
+  explanation: |
+    This is how tools such as lmbench's `lat_mem_rd` and Intel MLC's idle-latency mode work. Contrast with a bandwidth test, which uses many independent streams.
+  tags: [benchmarking, latency, pointer-chasing, memory-hierarchy]
+  source: { name: "lmbench lat_mem_rd; Intel Memory Latency Checker" }
+
+- id: arch-mem-015
+  topic: computer-architecture
+  subtopic: Memory hierarchy and TLBs
+  type: single
+  difficulty: medium
+  prompt: |
+    On x86-64, what handles a TLB miss?
+  choices:
+    - { id: a, text: "A hardware page walker reads the page tables pointed to by CR3; the OS is involved only if the walk finds no valid mapping (page fault)" }
+    - { id: b, text: "The CPU raises an exception and the kernel refills the TLB in software on every miss" }
+    - { id: c, text: "The memory controller translates the address in DRAM" }
+    - { id: d, text: "The L3 cache stores all translations, so TLB misses always hit there" }
+  answer: a
+  explanation: |
+    x86 (and ARM) use hardware-managed TLBs: the page-miss handler walks the radix page tables in memory (its reads go through the data caches, and
+    paging-structure caches skip upper levels). Only if an entry is not present or permissions are violated does the CPU raise a page fault for the OS.
+    (b) describes software-managed TLBs, as on classic MIPS, where a TLB-refill exception handler loads the entry. Page-table entries can be cached in L1/L2/L3
+    like any data (that is why walks are often fast) but there is no guarantee they are there (d).
+  tags: [tlb, page-walk, page-fault, x86-64]
+
+- id: arch-mem-016
+  topic: computer-architecture
+  subtopic: Memory hierarchy and TLBs
+  type: single
+  difficulty: medium
+  prompt: |
+    What problem does x86-64's PCID (process-context identifier) feature address?
+  choices:
+    - { id: a, text: "It tags TLB entries with an address-space id so that switching CR3 on a context switch need not flush the whole TLB" }
+    - { id: b, text: "It lets two processes share physical pages without copy-on-write" }
+    - { id: c, text: "It assigns each process its own L3 cache partition" }
+    - { id: d, text: "It encrypts page tables so other processes cannot read them" }
+  answer: a
+  explanation: |
+    Without PCID, loading a new CR3 flushes all non-global TLB entries, so after every switch between address spaces the new process pays TLB misses.
+    With PCID, entries are tagged and entries from other contexts survive. It became especially important after the Meltdown mitigation (KPTI), which switches
+    page tables on every kernel entry/exit — PCID keeps that from flushing the TLB each system call. Cache partitioning (c) is Intel CAT, a different feature.
+  tags: [tlb, pcid, context-switch, kpti]
+

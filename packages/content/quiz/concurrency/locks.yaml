@@ -1,0 +1,365 @@
+# Mutexes, spinlocks, reader-writer locks, futexes, priority inversion.
+
+- id: conc-locks-001
+  topic: concurrency
+  subtopic: Mutexes
+  difficulty: easy
+  type: single
+  prompt: |
+    You need to lock a mutex, wait on a `std::condition_variable`, and unlock early before doing slow
+    work. Which RAII wrapper fits?
+  choices:
+    - { id: a, text: "std::lock_guard, because it is the cheapest" }
+    - { id: b, text: "std::unique_lock, because it can be unlocked and relocked and condition_variable::wait requires it" }
+    - { id: c, text: "std::scoped_lock, because it can lock multiple mutexes" }
+    - { id: d, text: "std::shared_lock, because waiting requires shared ownership" }
+  answer: b
+  explanation: |
+    `std::condition_variable::wait` takes a `std::unique_lock<std::mutex>&`: it must unlock the mutex
+    while blocked and relock it before returning, which needs a movable, unlockable lock object.
+    `unique_lock` also supports `unlock()`/`lock()` mid-scope, deferred locking, and `try_lock`.
+
+    `lock_guard` (and `scoped_lock`) lock in the constructor and unlock only in the destructor, with no
+    way to release early. `shared_lock` is for shared (reader) ownership of a `shared_mutex` and is
+    usable with `condition_variable_any`, not `condition_variable`.
+  tags: [mutex, unique-lock, lock-guard, raii]
+
+- id: conc-locks-002
+  topic: concurrency
+  subtopic: Spinlocks
+  difficulty: medium
+  type: short
+  prompt: |
+    When is a spinlock a better choice than a blocking mutex, and when is it a bad one?
+  reference: |
+    A spinlock busy-waits instead of sleeping. It wins when critical sections are very short (tens to
+    hundreds of nanoseconds), contention is low, and the lock holder is guaranteed to be running on
+    another core, so the wait is shorter than the cost of a sleep and wakeup (a syscall and a context
+    switch, microseconds). Examples: kernel code with preemption/interrupts disabled, low-latency
+    systems with threads pinned to dedicated isolated cores.
+
+    It is bad when the holder can be preempted or descheduled (oversubscribed cores, single core):
+    waiters burn their whole timeslice while the holder is not running, which can be catastrophic.
+    It is also bad for long critical sections, under heavy contention (cache-line traffic), and on SMT
+    siblings without a `pause` instruction. In user space on a general-purpose OS, a good mutex (e.g. a
+    futex-based one that spins briefly before sleeping, as glibc's adaptive mutex can) is usually the
+    right default.
+  keyPoints:
+    - "Spinlocks busy-wait; mutexes sleep in the kernel when contended"
+    - "Spinning wins only for very short critical sections when the holder is running on another core"
+    - "If the holder can be preempted (oversubscription, single core) spinning wastes whole timeslices"
+    - "Heavy contention makes spinning generate cache-coherence traffic; use test-and-test-and-set, pause, backoff"
+    - "Adaptive mutexes spin briefly then sleep; good default in user space"
+  explanation: |
+    The decisive factor is whether the lock holder is guaranteed to be running. Spinning makes sense
+    only when the expected wait is shorter than a sleep/wake round trip *and* the holder cannot be
+    descheduled. Mention cache-line traffic under contention and the hybrid "spin then park" approach
+    used by adaptive mutexes.
+  tags: [spinlock, mutex, latency]
+
+- id: conc-locks-003
+  topic: concurrency
+  subtopic: Spinlocks
+  difficulty: medium
+  type: single
+  prompt: |
+    A naive spinlock loops on `while (flag.exchange(true, std::memory_order_acquire)) {}`. A
+    "test-and-test-and-set" version first spins on a plain `flag.load(std::memory_order_relaxed)` until
+    it sees `false`, and only then attempts the `exchange`. Why is the second version faster under
+    contention?
+  choices:
+    - { id: a, text: "Loads have weaker memory ordering, so they never need to touch the cache" }
+    - { id: b, text: "exchange is a write: each attempt needs the cache line in exclusive state, so spinners keep stealing the line from each other; spinning on loads lets every waiter keep a shared copy until the owner releases" }
+    - { id: c, text: "The load version guarantees FIFO fairness among waiters" }
+    - { id: d, text: "exchange cannot be compiled to a single instruction on x86, while load can" }
+  answer: b
+  explanation: |
+    Under MESI-style coherence, any RMW (even a failing one) needs the line in Modified/Exclusive state,
+    so N spinners doing `exchange` in a loop generate a storm of invalidations and the line ping-pongs
+    between cores, also slowing down the owner when it tries to release. Spinning on a read lets all
+    waiters hold the line in Shared state locally, generating no traffic until the release invalidates
+    it.
+
+    It is still not fair (option c); ticket locks or MCS queue locks provide FIFO order. `xchg` is a
+    single instruction on x86, so d is false. Adding `_mm_pause()` / `std::this_thread::yield` style
+    backoff in the inner loop helps further.
+  tags: [spinlock, cache-coherence, ttas]
+  source: { name: "Herlihy & Shavit, The Art of Multiprocessor Programming, ch. 7 (idea)" }
+
+- id: conc-locks-004
+  topic: concurrency
+  subtopic: Mutexes
+  difficulty: hard
+  type: short
+  prompt: |
+    How is a mutex typically implemented on Linux? Explain the fast path and the slow path, and what
+    a futex is.
+  reference: |
+    A **futex** ("fast user-space mutex") is a 32-bit integer in user memory plus a kernel wait-queue
+    keyed by its address. The syscall offers `FUTEX_WAIT(addr, expected)` (sleep only if `*addr` still
+    equals `expected`, checked atomically in the kernel, which avoids lost wakeups) and
+    `FUTEX_WAKE(addr, n)`.
+
+    A mutex built on it (glibc's pthread_mutex, or a Drepper-style three-state lock) keeps state in the
+    word, e.g. 0 = unlocked, 1 = locked, 2 = locked with waiters:
+    - **Fast path (uncontended):** lock is a single atomic CAS 0→1 in user space; unlock is an atomic
+      exchange to 0. No syscall at all, which is why uncontended mutexes cost only tens of nanoseconds.
+    - **Slow path:** if the CAS fails, the thread (optionally spins briefly, then) sets the state to 2
+      and calls `FUTEX_WAIT`. An unlocker that sees the old state was 2 calls `FUTEX_WAKE` to wake one
+      waiter.
+
+    The kernel is involved only under contention.
+  keyPoints:
+    - "A futex is a user-space integer plus a kernel wait queue keyed by its address"
+    - "Uncontended lock/unlock is a single atomic operation in user space with no syscall"
+    - "Contended path calls FUTEX_WAIT to sleep; unlock calls FUTEX_WAKE only if waiters are recorded"
+    - "FUTEX_WAIT checks the value atomically against the expected one, preventing lost wakeups"
+    - "Optionally spin briefly before sleeping (adaptive mutex)"
+  explanation: |
+    The insight interviewers want is that the kernel is only involved under contention: an
+    uncontended `std::mutex` lock/unlock pair is two atomic operations in user space. FUTEX_WAIT's
+    compare-and-sleep is what makes the user-space check and the kernel sleep race-free.
+  tags: [futex, mutex, linux]
+  source: { name: "Ulrich Drepper, Futexes Are Tricky", url: "https://www.akkadia.org/drepper/futex.pdf" }
+
+- id: conc-locks-005
+  topic: concurrency
+  subtopic: Priority inversion
+  difficulty: medium
+  type: single
+  prompt: |
+    A low-priority task L holds a mutex that high-priority task H needs. A medium-priority task M, which
+    does not use the mutex, becomes runnable and preempts L. What is this situation called, and what is
+    the standard remedy?
+  choices:
+    - { id: a, text: "Deadlock; fix by acquiring locks in a global order" }
+    - { id: b, text: "Priority inversion; fix with priority inheritance (L temporarily runs at H's priority while holding the lock) or a priority ceiling protocol" }
+    - { id: c, text: "Starvation; fix by making the mutex fair (FIFO)" }
+    - { id: d, text: "Livelock; fix with randomised backoff" }
+  answer: b
+  explanation: |
+    H is effectively blocked by M, a lower-priority task, because M prevents L from running and
+    releasing the lock. That is unbounded priority inversion. It is not a deadlock: there is no cycle,
+    and it resolves when M finishes.
+
+    Priority inheritance boosts the lock holder to the highest priority of its waiters, so M can no
+    longer preempt L. Priority ceiling raises the holder to a preset ceiling on acquire. POSIX offers
+    both through `pthread_mutexattr_setprotocol` (`PTHREAD_PRIO_INHERIT`, `PTHREAD_PRIO_PROTECT`). The
+    1997 Mars Pathfinder resets were the famous real-world case, fixed by enabling priority inheritance
+    on a VxWorks mutex.
+  tags: [priority-inversion, real-time, scheduling]
+
+- id: conc-locks-006
+  topic: concurrency
+  subtopic: Reader-writer locks
+  difficulty: medium
+  type: single
+  prompt: |
+    A data structure is read by many threads and written rarely. Each read holds the lock for about
+    50 ns. Someone replaces the `std::mutex` with a `std::shared_mutex` (readers use `shared_lock`)
+    and throughput gets **worse**. What is the most likely reason?
+  choices:
+    - { id: a, text: "shared_mutex does not actually allow concurrent readers" }
+    - { id: b, text: "Acquiring a shared lock still atomically updates a shared reader count, so every read writes the same cache line; with such tiny critical sections that coherence traffic plus the heavier lock costs more than the parallelism saves" }
+    - { id: c, text: "Readers are starved by writers" }
+    - { id: d, text: "shared_lock disables the CPU cache for the protected data" }
+  answer: b
+  explanation: |
+    A reader-writer lock helps when read-side critical sections are long enough that running them in
+    parallel outweighs the lock's own cost. Every shared acquire and release is an atomic RMW on the
+    lock's state word, so with many readers on many cores the line holding it bounces between caches.
+    For 50 ns critical sections the lock overhead dominates and a plain mutex (or no lock: RCU, a
+    seqlock, per-core data, or an immutable snapshot swapped via an atomic pointer) does better.
+
+    `shared_mutex` really does admit concurrent readers (a). Writer starvation of readers (c) is not
+    the issue with rare writes.
+  tags: [rwlock, shared-mutex, cache-coherence, performance]
+
+- id: conc-locks-007
+  topic: concurrency
+  subtopic: Reader-writer locks
+  difficulty: medium
+  type: multiple
+  prompt: |
+    Which statements about C++17 `std::shared_mutex` are correct? (Select all that apply.)
+  choices:
+    - { id: a, text: "Multiple threads may hold it in shared mode at the same time" }
+    - { id: b, text: "A thread holding it in shared mode can atomically upgrade to exclusive mode with a member function" }
+    - { id: c, text: "std::shared_lock acquires it in shared mode; std::unique_lock or std::lock_guard acquire it exclusively" }
+    - { id: d, text: "The standard does not specify whether readers or writers get priority" }
+    - { id: e, text: "It is recursive in shared mode: a thread may take a second shared lock it already holds, by guarantee" }
+  answer: [a, c, d]
+  explanation: |
+    - (a) Shared ownership by many readers is the point of the type.
+    - (b) There is **no** upgrade operation. A naive upgrade deadlocks when two readers both try it
+      (each waits for the other to release its shared lock). You must release and reacquire, or use a
+      design with a separate upgrade lock (Boost has `upgrade_mutex`).
+    - (c) Correct: `lock_shared()` via `shared_lock`; `lock()` via `unique_lock`/`lock_guard`.
+    - (d) Correct: the standard leaves the reader/writer priority policy unspecified, so either
+      starvation mode is possible depending on the platform.
+    - (e) Acquiring shared ownership when the thread already owns the mutex in any mode is undefined
+      behaviour, because a writer could be queued between the two acquisitions and cause deadlock.
+  tags: [shared-mutex, rwlock, cpp17]
+  source: { name: "cppreference — std::shared_mutex", url: "https://en.cppreference.com/w/cpp/thread/shared_mutex" }
+
+- id: conc-locks-008
+  topic: concurrency
+  subtopic: Spinlocks
+  difficulty: hard
+  type: short
+  prompt: |
+    Write (or describe precisely) a minimal correct spinlock in C++ using `std::atomic`, and justify the
+    memory orders you choose.
+  reference: |
+    ```cpp
+    class Spinlock {
+        std::atomic<bool> locked_{false};
+    public:
+        void lock() {
+            for (;;) {
+                if (!locked_.exchange(true, std::memory_order_acquire)) return;
+                while (locked_.load(std::memory_order_relaxed))
+                    _mm_pause();  // or std::this_thread::yield / backoff
+            }
+        }
+        bool try_lock() {
+            return !locked_.load(std::memory_order_relaxed) &&
+                   !locked_.exchange(true, std::memory_order_acquire);
+        }
+        void unlock() { locked_.store(false, std::memory_order_release); }
+    };
+    ```
+    The successful `exchange` must be **acquire** so that reads and writes inside the critical section
+    cannot move before it and so that it synchronises with the previous holder's unlock. The unlock
+    must be a **release** store so all writes in the critical section are visible to the next thread
+    whose acquire reads `false`. Release-unlock/acquire-lock gives the happens-before edge between
+    consecutive critical sections. The inner relaxed load is only a hint (test-and-test-and-set);
+    correctness comes from the acquiring exchange. `seq_cst` would also be correct but costs more on
+    some architectures and is not needed. `std::atomic_flag` with `test_and_set`/`clear` is the other
+    standard building block (guaranteed lock-free).
+  keyPoints:
+    - "Acquire on the successful lock RMW (exchange/test_and_set/CAS)"
+    - "Release on the unlock store"
+    - "Release/acquire pairing makes one critical section happen-before the next"
+    - "Spin on a relaxed load (test-and-test-and-set) with a pause/backoff to reduce coherence traffic"
+    - "Relaxed on lock or unlock would allow critical-section accesses to leak out of the lock"
+  explanation: |
+    Answers that use `memory_order_relaxed` for the lock or unlock are wrong: the critical section's
+    accesses could then be reordered outside the lock. Answers using seq_cst everywhere are correct but
+    should acknowledge acquire/release is sufficient. Bonus points for TTAS, `pause`, and noting that
+    `std::atomic_flag` is the only type guaranteed lock-free.
+  tags: [spinlock, memory-order, acquire-release]
+
+- id: conc-locks-009
+  topic: concurrency
+  subtopic: Mutexes
+  difficulty: medium
+  type: single
+  prompt: |
+    Is the default Linux/glibc `pthread_mutex_t` (and thus `std::mutex` on libstdc++) FIFO-fair, i.e.
+    do threads acquire it in the order they started waiting?
+  choices:
+    - { id: a, text: "Yes; the kernel futex queue guarantees FIFO hand-off" }
+    - { id: b, text: "No; a thread that arrives while the lock is free can grab it ahead of sleeping waiters (barging), which favours throughput over fairness" }
+    - { id: c, text: "Yes, but only when all threads have the same scheduling priority" }
+    - { id: d, text: "No; it always prefers the most recently arrived waiter (LIFO)" }
+  answer: b
+  explanation: |
+    On unlock, the mutex word is released and (if there are waiters) one is woken, but the lock is not
+    *handed* to it. Before the woken thread is scheduled, a running thread can take the free lock. This
+    "barging" avoids a context switch per hand-off and is much faster under contention, at the cost of
+    no fairness guarantee: a thread can be overtaken repeatedly. Neither POSIX nor the C++ standard
+    requires fairness for these mutexes.
+
+    If you need FIFO ordering, use a ticket lock, an MCS/CLH queue lock, or an explicit queue of
+    condition variables.
+  tags: [mutex, fairness, futex, starvation]
+
+- id: conc-locks-010
+  topic: concurrency
+  subtopic: Mutexes
+  difficulty: medium
+  type: short
+  prompt: |
+    What are the trade-offs between coarse-grained and fine-grained locking? Illustrate with a hash map.
+  reference: |
+    **Coarse-grained**: one lock protects the whole map. Simple and easy to reason about, invariants
+    across buckets (size, resize) are trivially protected, and there is no deadlock risk among the
+    map's locks. But all operations serialise, so it scales poorly under contention.
+
+    **Fine-grained**: a lock per bucket or per stripe (lock striping: N locks, bucket i uses lock
+    i mod N). Operations on different stripes proceed in parallel. Costs: more memory, more
+    complexity, whole-map operations (resize, size, iteration) must take all locks in a fixed order,
+    risk of deadlock if two locks are ever taken in inconsistent orders, and per-operation overhead
+    rises.
+
+    Go fine-grained when profiling shows contention on the coarse lock; consider alternatives too:
+    sharding by key, read-mostly snapshots (RCU / copy-on-write), or a concurrent map library.
+  keyPoints:
+    - "Coarse lock is simple and keeps cross-structure invariants easy, but serialises everything"
+    - "Fine-grained / striped locks allow parallel operations on different parts"
+    - "Whole-structure operations (resize, size, iteration) must acquire many locks in a fixed order"
+    - "More locks means more overhead, memory, and deadlock risk"
+    - "Decide based on measured contention; consider sharding or RCU/copy-on-write alternatives"
+  explanation: |
+    Expect the trade-off, not a rule: start coarse, measure, then split where contention shows up.
+    Lock striping is the standard middle ground (Java's old ConcurrentHashMap used 16 segments).
+    Mention that operations touching the whole structure are where fine-grained designs get hard.
+  tags: [lock-granularity, lock-striping, hash-map]
+
+- id: conc-locks-011
+  topic: concurrency
+  subtopic: Mutexes
+  difficulty: easy
+  type: single
+  prompt: |
+    Which is the strongest reason to prefer `std::lock_guard` / `std::scoped_lock` over calling
+    `m.lock()` and `m.unlock()` by hand?
+  choices:
+    - { id: a, text: "They are faster because they avoid a function call" }
+    - { id: b, text: "The destructor releases the mutex on every exit path, including early returns and exceptions" }
+    - { id: c, text: "They make the mutex recursive" }
+    - { id: d, text: "They prevent deadlocks between different mutexes in all cases" }
+  answer: b
+  explanation: |
+    RAII ties the unlock to scope exit, so a `return` in the middle or an exception thrown from the
+    critical section cannot leave the mutex locked forever. Performance is the same, recursion is
+    unchanged, and while `std::scoped_lock` with *several* mutexes avoids deadlock among that set, no
+    wrapper prevents deadlocks in general (e.g. two scopes locking in opposite orders one mutex at a
+    time).
+  tags: [raii, lock-guard, exception-safety]
+
+- id: conc-locks-012
+  topic: concurrency
+  subtopic: Priority inversion
+  difficulty: hard
+  type: short
+  prompt: |
+    In a low-latency trading process, a critical thread pinned to an isolated core occasionally sees
+    multi-millisecond stalls when acquiring a mutex shared with a logging thread. Explain what could be
+    going on and how you would redesign it.
+  reference: |
+    The critical thread can block whenever the logging thread holds the mutex. If the logger is
+    preempted while holding it (it runs on a shared, non-isolated core with other processes, or does
+    blocking I/O such as `write()` or `fsync()` inside the critical section), the hot thread waits for
+    the logger to be rescheduled and finish: effectively priority inversion, with scheduling latencies
+    in milliseconds. A contended futex also means a syscall and a wakeup on the slow path.
+
+    Redesign: remove the lock from the hot path entirely. The critical thread writes fixed-size log
+    records into a pre-allocated lock-free SPSC ring buffer (per producer thread) with release/acquire
+    publication and never blocks; if the buffer is full it drops or counts the overflow rather than
+    waiting. The logger thread drains the ring and does formatting and I/O off the hot path. Avoid
+    allocation and formatting in the hot thread. If a lock is unavoidable, keep the critical section
+    tiny, never do I/O under it, and consider priority inheritance mutexes or pinning the other party.
+  keyPoints:
+    - "The lock holder (logger) can be preempted or block on I/O while holding the mutex"
+    - "The hot thread inherits the worst-case latency of the other thread (priority-inversion-like)"
+    - "Contended mutex path involves syscalls and wakeups, costing microseconds to milliseconds"
+    - "Replace with a lock-free SPSC ring buffer; the hot thread never blocks and drops on overflow"
+    - "Move formatting and I/O to the consumer thread; no I/O inside critical sections"
+  explanation: |
+    This is a typical low-latency systems question. The core idea is that sharing a lock couples the
+    hot thread's latency to the worst-case behaviour of a non-critical thread. The expected redesign is
+    a non-blocking hand-off (SPSC ring buffer) with all slow work moved off the hot path, plus an
+    explicit overflow policy.
+  tags: [low-latency, logging, spsc, priority-inversion]

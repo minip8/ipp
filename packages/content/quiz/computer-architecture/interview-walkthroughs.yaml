@@ -1,0 +1,563 @@
+- id: arch-walk-001
+  topic: computer-architecture
+  subtopic: Memory hierarchy and TLBs
+  type: short
+  difficulty: easy
+  tags: [caches, memory-hierarchy, memory-wall, sram, dram]
+  prompt: |
+    Why do CPUs have a hierarchy of several cache levels instead of one large, fast cache?
+  reference: |
+    Because you cannot have memory that is simultaneously large, fast and cheap. A DRAM access takes
+    on the order of 100 ns, which is hundreds of cycles for a 3 to 5 GHz core, and that gap (the
+    "memory wall") has grown over decades because core speed improved much faster than DRAM latency.
+    SRAM caches are much faster, but an SRAM array gets slower as it gets bigger: longer wires, more
+    decoding, more ways to compare. It also costs far more area and power per bit than DRAM.
+
+    So designers stack levels: a tiny L1 (tens of KiB) close to the execution units with a latency of
+    about 4 to 5 cycles, a larger private L2 (around 1 to 2 MiB, roughly 12 to 16 cycles), and a
+    shared L3 of tens of MiB at several tens of cycles, then DRAM. Because programs have locality, most
+    accesses hit in the small fast levels, so the average access time stays close to L1 speed while
+    the capacity looks like that of the large levels.
+  keyPoints:
+    - DRAM latency is hundreds of core cycles, and the gap has grown over time
+    - Larger SRAM arrays are inherently slower and cost more area and power
+    - Small fast levels near the core backed by larger slower ones
+    - Typical orders of magnitude for L1, L2, L3 and DRAM latency and size
+    - Locality makes most accesses hit near the core, so average latency is close to L1
+  explanation: |
+    The essential insight is the physical trade-off between size and speed, combined with locality.
+    The numbers vary by microarchitecture; the answer should get the orders of magnitude right rather
+    than quote specific cycle counts.
+
+- id: arch-walk-002
+  topic: computer-architecture
+  subtopic: Performance analysis
+  type: short
+  difficulty: easy
+  tags: [iron-law, ipc, clock-frequency, performance]
+  prompt: |
+    Why is clock frequency (GHz) a poor way to compare the performance of two different CPUs? What
+    equation captures what actually matters?
+  reference: |
+    The "iron law" of processor performance:
+
+    CPU time = instructions executed × cycles per instruction (CPI) × seconds per cycle.
+
+    Frequency is only the last factor. Two CPUs at the same clock can differ several-fold in how many
+    instructions they complete per cycle (IPC = 1/CPI), depending on pipeline width, branch prediction,
+    cache sizes, out-of-order window and memory latency. Different ISAs or compilers also change the
+    instruction count. Historically, the Pentium 4 reached high clock rates with a very deep pipeline
+    but lower IPC, and was beaten by lower-clocked designs. Frequency is also not constant on modern
+    chips: turbo boost and thermal limits change it with load and the number of active cores. To
+    compare, benchmark the actual workload.
+  keyPoints:
+    - CPU time = instruction count × CPI × cycle time
+    - IPC differs widely between microarchitectures at the same frequency
+    - Instruction count depends on ISA and compiler
+    - Frequency varies with turbo, thermal and power limits
+    - Benchmark the real workload; Pentium 4 as a cautionary example
+  explanation: |
+    This is a warm-up question that checks the candidate can decompose performance. A strong answer
+    names IPC and gives at least one concrete reason it differs between cores.
+
+- id: arch-walk-003
+  topic: computer-architecture
+  subtopic: SIMD
+  type: short
+  difficulty: easy
+  tags: [simd, vectorization, avx, sse]
+  prompt: |
+    What is SIMD? Give two examples of work where it helps a lot and one where it does not.
+  reference: |
+    SIMD (single instruction, multiple data) instructions operate on a wide register holding several
+    values at once: on x86-64, 128-bit SSE registers hold four `float`s, 256-bit AVX registers eight,
+    and 512-bit AVX-512 registers sixteen; ARM has NEON (128-bit) and SVE. One instruction then adds,
+    multiplies or compares all the lanes, so throughput on data-parallel loops can rise several-fold.
+
+    It helps for regular, independent operations over arrays: adding or scaling arrays, dot products
+    and matrix kernels, image and audio processing, and byte scanning such as `memchr`, `strlen`,
+    UTF-8 validation or JSON parsing (simdjson). It helps little for pointer-chasing code (linked
+    lists, trees), loops where each step depends on the previous result, or code dominated by
+    unpredictable branches and irregular memory access. Compilers auto-vectorise simple loops; more
+    complex cases use intrinsics or libraries.
+  keyPoints:
+    - One instruction operates on several data elements packed in a wide register
+    - x86-64 widths SSE 128, AVX 256, AVX-512 512 bits; ARM NEON/SVE
+    - Good fits are array arithmetic, matrix kernels, media processing and byte scanning
+    - Poor fits are pointer chasing, serial dependencies and irregular branchy code
+    - Compilers auto-vectorise simple loops; otherwise intrinsics or libraries
+  explanation: |
+    Interviewers look for a precise definition and realistic examples. Byte scanning is a good example
+    to give for systems roles because it shows SIMD is not only for floating-point maths.
+
+- id: arch-walk-004
+  topic: computer-architecture
+  subtopic: Multicore and SMT
+  type: short
+  difficulty: easy
+  tags: [smt, hyperthreading, cores, sockets, lscpu]
+  prompt: |
+    `lscpu` on a server reports 2 sockets, 16 cores per socket and 2 threads per core. How many
+    logical CPUs does Linux see, and why don't 64 logical CPUs give 64 times the throughput of one?
+  reference: |
+    Logical CPUs = sockets × cores per socket × threads per core = 2 × 16 × 2 = **64**.
+
+    The "threads per core" are SMT (Intel calls it Hyper-Threading): each physical core keeps two
+    architectural register states and interleaves instructions from both, but they share the core's
+    execution units, caches, TLBs and branch predictor. SMT helps when one thread stalls (cache
+    misses, mispredictions) and leaves units idle; for a core-saturating workload two siblings
+    together typically give only a modest gain over one thread, and each thread individually runs
+    slower. So realistic scaling is closer to 32 cores' worth, and less still if the workload is
+    limited by memory bandwidth, by sharing between the two sockets (NUMA), or by serial portions
+    (Amdahl).
+  keyPoints:
+    - 2 × 16 × 2 = 64 logical CPUs
+    - SMT siblings share execution units, caches and predictors of one physical core
+    - SMT gains come from filling stall slots; much less than 2× for compute-bound work
+    - Further limits are memory bandwidth, NUMA effects and serial fractions
+  explanation: |
+    Many people count hyperthreads as cores when sizing thread pools or estimating capacity. For
+    latency-sensitive work, engineers often keep the SMT sibling of a critical thread idle so it has
+    the core to itself.
+
+- id: arch-walk-005
+  topic: computer-architecture
+  subtopic: Instruction sets and calling conventions
+  type: short
+  difficulty: easy
+  tags: [registers, x86-64, register-allocation]
+  prompt: |
+    What are registers, how many general-purpose registers does x86-64 have, and why do compilers
+    work so hard to keep values in them?
+  reference: |
+    Registers are a tiny set of storage locations inside the core that instructions name directly.
+    x86-64 has **16** 64-bit general-purpose registers (RAX, RBX, RCX, RDX, RSI, RDI, RBP, RSP, R8 to
+    R15), plus 16 vector registers (XMM/YMM, 32 with AVX-512), and the APX extension adds 16 more
+    general-purpose registers on CPUs that support it.
+
+    Reading a register costs essentially nothing extra: operands are available to the execution units
+    immediately, often through bypass networks. Even an L1 hit adds about 4 to 5 cycles of latency
+    and uses a load port. So compilers' register allocators try to keep hot values, such as loop
+    counters, accumulators and pointers, in registers; when there are not enough, they "spill" values
+    to the stack, adding loads and stores. Out-of-order cores rename the architectural registers onto
+    a much larger physical register file, but the compiler can still only name the architectural ones.
+  keyPoints:
+    - Registers are named storage inside the core with effectively zero access latency
+    - x86-64 has 16 general-purpose registers (APX extends this to 32)
+    - L1 access adds several cycles and uses load ports
+    - Register allocation keeps hot values in registers; spills go to the stack
+    - Renaming maps architectural registers to a larger physical register file
+  explanation: |
+    A good answer distinguishes architectural registers (what instructions name) from physical
+    registers (what renaming uses), and explains spilling. "16 registers" is a common follow-up fact
+    for x86-64; 32-bit x86 had only 8, which is one reason 64-bit code is often faster.
+
+- id: arch-walk-006
+  topic: computer-architecture
+  subtopic: Memory hierarchy and TLBs
+  type: short
+  difficulty: easy
+  tags: [ecc, dram, reliability, rowhammer]
+  prompt: |
+    What is ECC memory, what errors does it handle, and why do servers use it?
+  reference: |
+    DRAM bits occasionally flip, from particle strikes, electrical noise, ageing cells or disturbance
+    effects such as Rowhammer. ECC memory stores extra check bits alongside the data; standard server
+    ECC uses 8 check bits per 64 data bits to implement SECDED: it **corrects any single-bit error and
+    detects (but cannot correct) double-bit errors** in a word. Stronger schemes (Chipkill and
+    similar) can survive the failure of a whole DRAM chip.
+
+    Corrected errors are logged (on Linux via the EDAC subsystem or machine-check logs) and a rising
+    count signals a failing module. An uncorrectable error raises a machine check; the kernel may kill
+    the affected process or panic rather than let corrupted data propagate. Servers use ECC because at
+    fleet scale memory errors are routine, and silent corruption of data or of a computation result is
+    much worse than a crash. DDR5's on-die ECC protects only inside the chip and is not a substitute
+    for end-to-end ECC across the memory bus.
+  keyPoints:
+    - DRAM bit flips happen (particles, noise, ageing, Rowhammer)
+    - Extra check bits; SECDED corrects single-bit and detects double-bit errors per word
+    - Chipkill-style schemes tolerate a whole chip failing
+    - Corrected errors are logged (EDAC/MCE); uncorrectable ones trigger machine checks
+    - At scale silent corruption is worse than a crash; DDR5 on-die ECC is not end-to-end
+  explanation: |
+    The precise detail interviewers check is "correct one, detect two". The point about DDR5 on-die
+    ECC addresses a common misconception that all DDR5 memory is ECC memory.
+
+- id: arch-walk-007
+  topic: computer-architecture
+  subtopic: Data representation
+  type: short
+  difficulty: medium
+  tags: [floating-point, comparison, epsilon, ulp]
+  prompt: |
+    How should you compare two `double` values for equality in numerical code, and what is wrong with
+    `fabs(a - b) < 1e-9`?
+  reference: |
+    Exact `==` is right only when the values are known to be exactly representable and computed
+    exactly (small integers, values copied rather than computed, sentinel checks). Otherwise rounding
+    makes results that are mathematically equal differ in the last bits.
+
+    A fixed absolute tolerance like `1e-9` ignores scale: for values around 1e12, adjacent doubles are
+    about 1e-4 apart, so the test is just `==` in disguise; for values around 1e-12 it declares almost
+    everything equal. Better is a **relative** tolerance, `fabs(a - b) <= rel * max(fabs(a), fabs(b))`,
+    with `rel` chosen from the algorithm's expected error (for example a small multiple of machine
+    epsilon, 2^-52 ≈ 2.2e-16, times the number of operations), combined with an **absolute** floor for
+    values near zero, where relative error is meaningless. Comparing by ULP distance (the number of
+    representable doubles between the two) is another formulation. NaN compares unequal to everything,
+    so handle it explicitly if it can occur.
+  keyPoints:
+    - Exact equality only for exactly computed or representable values
+    - A fixed absolute epsilon ignores magnitude; too strict for large values, too loose for small ones
+    - Use relative tolerance scaled by magnitude, chosen from the expected error
+    - Add an absolute tolerance for values near zero
+    - ULP-based comparison as an alternative; NaN needs explicit handling
+  explanation: |
+    There is no universal epsilon; the tolerance must reflect the magnitudes involved and how much
+    error the computation accumulates. Machine epsilon is the spacing just above 1.0, not a general
+    tolerance for arbitrary values.
+
+- id: arch-walk-008
+  topic: computer-architecture
+  subtopic: Cache coherence and memory ordering
+  type: short
+  difficulty: medium
+  tags: [cache-coherence, snooping, directory, snoop-filter]
+  prompt: |
+    Compare snooping and directory-based cache coherence. Why do large multicore chips rely on
+    directories or snoop filters?
+  reference: |
+    In **snooping** coherence, every cache observes (snoops) a shared broadcast medium. A core that
+    needs a line, or needs to write one, broadcasts a request; every other cache checks its tags and
+    responds or invalidates. It is simple and fast for a few cores on a shared bus, but every miss
+    consumes bandwidth and tag-lookup energy at every cache, so it does not scale to dozens of cores.
+
+    A **directory** records, for each line, which caches might hold it and in what state. A request
+    goes to the line's home directory, which forwards it only to the caches that actually have copies
+    (or answers directly if none do). Traffic grows with the number of real sharers rather than with
+    the core count, which suits mesh and ring interconnects and multi-socket systems. The cost is the
+    directory storage and an extra indirection hop on some misses. Modern x86 server chips use snoop
+    filters or directory structures alongside the shared L3, and multi-socket systems track which
+    lines have been cached by other sockets to avoid broadcasting every miss across the interconnect.
+  keyPoints:
+    - Snooping broadcasts requests and every cache checks its tags
+    - Simple and fast for a few cores but bandwidth and energy grow with core count
+    - Directories track sharers per line and send targeted messages
+    - Traffic scales with actual sharers; costs are storage and an indirection hop
+    - Large chips and multi-socket systems use directories or snoop filters
+  explanation: |
+    The protocol states (MESI and variants) can be the same in both; what differs is how requests find
+    the other copies. This explains why heavy sharing of a line across sockets is especially expensive.
+
+- id: arch-walk-009
+  topic: computer-architecture
+  subtopic: Caches
+  type: short
+  difficulty: medium
+  tags: [data-layout, hot-cold-splitting, cache-lines, struct-layout]
+  prompt: |
+    A matching engine keeps a `std::vector<Order>` where each `Order` is 200 bytes, but the hot loop
+    that walks the book reads only `price`, `qty` and `id` (16 bytes in total). How would you change the
+    data layout, and what improvement would you expect?
+  reference: |
+    Each 200-byte order spans more than three 64-byte cache lines, so walking the book pulls in roughly
+    200 bytes per order to use 16: about 8% of the fetched bytes are useful, and the working set is
+    over 12 times larger than necessary, so it spills out of L1 and L2 much sooner.
+
+    Apply **hot/cold splitting**: keep the hot fields in a compact array (for example a struct of
+    price, qty and id, 16 bytes, so four per cache line) or separate arrays (structure of arrays), and
+    move the rarely used fields (client info, timestamps, text) to a parallel cold array indexed the
+    same way or behind a pointer. The scan then touches a quarter of a line per order, the hardware
+    prefetcher streams it efficiently, and the hot set fits in cache for much larger books. Expect
+    several-fold speedups when the loop is memory-bound. Also order fields so hot ones share a line,
+    avoid padding, and measure with cache-miss counters before and after.
+  keyPoints:
+    - 200-byte objects mean most fetched bytes are unused; working set much larger than needed
+    - Split hot fields into a compact array or structure of arrays
+    - Cold fields go to a parallel array or behind a pointer
+    - Several hot records per cache line; better prefetching and cache residency
+    - Verify with cache-miss counters; field ordering and padding also matter
+  explanation: |
+    Data layout often matters more than algorithmic tweaks for scan-heavy code. The quantitative
+    reasoning (useful bytes per line fetched) is what interviewers look for.
+
+- id: arch-walk-010
+  topic: computer-architecture
+  subtopic: Performance analysis
+  type: short
+  difficulty: medium
+  tags: [c-states, turbo, frequency-scaling, low-latency, power-management]
+  prompt: |
+    A low-latency service shows much worse tail latency when traffic is light than when it is busy.
+    What CPU power-management features could explain this, and how do latency-sensitive deployments
+    configure them?
+  reference: |
+    When a core is idle it enters **C-states**; deeper ones (such as C6) power down the core and flush
+    or turn off its private caches, and waking from them takes tens to hundreds of microseconds (the
+    Linux `intel_idle` driver declares worst-case C6 exit latencies of roughly 85–290 µs on recent
+    Intel parts, depending on the generation).
+    Under light load cores sleep between requests, so each request pays the wake-up and then runs on
+    cold caches. **Frequency scaling** (P-states, governed by `cpufreq` or the hardware) also drops the
+    clock when utilisation is low, and ramping back up takes time, so the first part of a burst runs
+    slowly. Under heavy load neither happens, which is why latency paradoxically improves.
+
+    Low-latency setups typically: set the `performance` governor or fix the frequency; limit idle
+    states (kernel parameters such as `intel_idle.max_cstate` and `processor.max_cstate`, disabling
+    deep states in BIOS, or holding `/dev/cpu_dma_latency` open with a low value, which is the PM QoS
+    interface); keep critical threads busy-polling so their cores never idle; and decide on turbo
+    deliberately, since it raises peak frequency but makes it vary with temperature and the number of
+    active cores. The costs are power and heat.
+  keyPoints:
+    - Idle cores enter C-states; deep states take tens to hundreds of microseconds to exit and lose cache contents
+    - Low utilisation also lowers frequency via P-states, which ramp up slowly
+    - Under heavy load cores stay awake and fast, so light load paradoxically has worse latency
+    - Remedies are the performance governor, limiting C-states (kernel parameters, BIOS, /dev/cpu_dma_latency) and busy polling
+    - Turbo is a trade-off between peak speed and variability; costs are power and heat
+  explanation: |
+    This is a classic trading-systems question. The surprising symptom (worse latency at low load) is
+    the clue; exact wake-up latencies vary by CPU and are listed per state in
+    `/sys/devices/system/cpu/cpu0/cpuidle/state*/latency`.
+
+- id: arch-walk-011
+  topic: computer-architecture
+  subtopic: Storage and I/O
+  type: short
+  difficulty: medium
+  tags: [iommu, dma, vt-d, vfio, virtualization]
+  prompt: |
+    What does an IOMMU do, and where does it matter in practice?
+  reference: |
+    An IOMMU sits between devices and memory and translates the addresses devices use for DMA (I/O
+    virtual addresses) into physical addresses through its own page tables, checking permissions as it
+    does so; Intel calls it VT-d and AMD calls it AMD-Vi. Without one, a device can DMA to any physical
+    address, so a buggy or malicious device or driver can overwrite arbitrary memory.
+
+    Uses: **isolation and security**, where each device can reach only the buffers mapped for it,
+    defending against DMA attacks from external ports such as Thunderbolt; **device passthrough to
+    virtual machines**, where the guest programs the device with guest-physical addresses and the
+    IOMMU remaps them, safely; **user-space drivers** through VFIO (DPDK, SPDK), which are safe only
+    because the IOMMU confines the device to the process's memory; and letting devices with limited
+    address width reach memory anywhere, with scattered physical pages appearing contiguous to the
+    device. It also remaps interrupts. The cost is translation overhead (IOTLB misses and mapping
+    updates), which is why some high-throughput setups use passthrough or static large mappings.
+  keyPoints:
+    - Translates and permission-checks device DMA addresses using its own page tables
+    - Without it devices can write any physical memory
+    - Enables safe device passthrough to VMs
+    - Makes VFIO user-space drivers safe (DPDK, SPDK)
+    - Also handles address-width limits and interrupt remapping; costs IOTLB misses and mapping overhead
+  explanation: |
+    The IOMMU is to devices what the MMU is to processes. Interviewers in infrastructure and
+    virtualisation roles expect the passthrough and VFIO use cases.
+
+- id: arch-walk-012
+  topic: computer-architecture
+  subtopic: Cache coherence and memory ordering
+  type: short
+  difficulty: medium
+  tags: [arm, x86-tso, memory-ordering, porting, acquire-release]
+  prompt: |
+    Concurrent C++ code that has run correctly on x86 servers for years shows rare data corruption
+    after the team moves to ARM (for example AWS Graviton). What is the likely cause and how do you fix
+    it?
+  reference: |
+    x86 implements a strong model (TSO): loads are not reordered with other loads, stores are not
+    reordered with other stores, and only a later load may pass an earlier store. ARM's model is weak:
+    the hardware may reorder any independent loads and stores. Code with a data race, such as a
+    producer writing data then setting a plain `bool ready` flag, or using `memory_order_relaxed` where
+    acquire/release was needed, often happens to work on x86 because the hardware keeps store and load
+    order (and the compiler happened not to reorder). On ARM the consumer can see `ready` before the
+    data.
+
+    The fix is to write correct C++: make the flag a `std::atomic` and use release on the store and
+    acquire on the load (or seq_cst), or use locks. On x86 these cost nothing extra for plain loads and
+    stores; on ARM they compile to `stlr`/`ldar` or barriers. `volatile` is not a fix. Tools: run
+    ThreadSanitizer, which finds data races regardless of the platform, and review every use of
+    relaxed atomics.
+  keyPoints:
+    - x86 TSO preserves load-load, store-store and load-store order; only store-load reordering
+    - ARM is weakly ordered and can reorder independent memory operations
+    - Racy code or wrong relaxed atomics happened to work on x86
+    - Fix with std::atomic and acquire/release (or locks); volatile is not synchronisation
+    - Find races with ThreadSanitizer and audit relaxed atomics
+  explanation: |
+    The bug was always there under the C++ memory model; x86 hid it. That framing, rather than "ARM is
+    buggy", is what interviewers listen for. Apple's M-series chips have an optional TSO mode for
+    x86 emulation, which illustrates the same difference.
+
+- id: arch-walk-013
+  topic: computer-architecture
+  subtopic: Cache coherence and memory ordering
+  type: short
+  difficulty: hard
+  tags: [atomics, ll-sc, lse, lock-prefix, split-lock, cas]
+  prompt: |
+    How do x86-64 and ARMv8 implement an atomic read-modify-write such as `fetch_add` or
+    `compare_exchange` in hardware? What is a split lock, and why is it so costly?
+  reference: |
+    **x86-64**: a `lock`-prefixed instruction (`lock xadd`, `lock cmpxchg`, or `xchg`, which is
+    implicitly locked) gets the cache line in the Modified/Exclusive state in the core's L1 and holds
+    it, refusing to give it up to other cores' requests until the read-modify-write completes
+    ("cache locking"). It is also a full memory barrier. Cost is roughly tens of cycles uncontended,
+    and far more when the line bounces between cores.
+
+    **ARMv8.0** uses load-linked/store-conditional: `ldxr` loads and marks the address in an exclusive
+    monitor, the core computes the new value, and `stxr` stores only if no other agent wrote the line
+    in between, otherwise it reports failure and the code loops. This is why C++ has
+    `compare_exchange_weak`, which may fail spuriously. **ARMv8.1 LSE** adds single instructions
+    (`ldadd`, `swp`, `cas`) that can be executed near the cache or interconnect and scale better under
+    contention.
+
+    A **split lock** is a locked x86 operation whose operand crosses a cache-line boundary. Cache
+    locking cannot cover two lines atomically, so the CPU falls back to a bus lock that blocks memory
+    access for all cores, hurting the whole machine. Recent Linux kernels can detect split locks and
+    warn about or throttle the offending process. Keep atomics naturally aligned.
+  keyPoints:
+    - x86 lock prefix holds the line exclusively in L1 during the RMW; also a full barrier
+    - ARMv8.0 uses LL/SC (ldxr/stxr) with an exclusive monitor and retry loop
+    - LL/SC can fail spuriously, hence compare_exchange_weak
+    - ARMv8.1 LSE adds single-instruction atomics (ldadd, swp, cas) that scale better
+    - Split locks cross a line boundary and fall back to a system-wide bus lock; Linux can detect them
+  explanation: |
+    This ties C++ atomics to hardware. Split locks are a practical gotcha: a misaligned atomic in a
+    packed struct can degrade every core on the machine, not just the offending thread.
+
+- id: arch-walk-014
+  topic: computer-architecture
+  subtopic: Caches
+  type: short
+  difficulty: hard
+  tags: [jit, self-modifying-code, icache, arm, cache-maintenance]
+  prompt: |
+    A JIT compiler writes machine code into a buffer and then jumps to it. What must it do so the CPU
+    executes the new bytes, on x86-64 and on ARM64?
+  reference: |
+    In both cases the memory must first be executable without being writable at the same time on
+    hardened systems: map it writable, write the code, then `mprotect` it to read and execute (W^X), or
+    use dual mappings.
+
+    **x86-64** keeps the instruction cache and pipeline coherent with data writes in hardware: stores
+    to code are detected, and stale prefetched instructions are discarded (at some cost, a pipeline
+    flush, if code near what is executing is modified). For code written by one thread and executed by
+    another, the Intel manual's cross-modifying code rules require the executing thread to perform a
+    serialising operation before running the new code; in practice JITs synchronise the threads.
+
+    **ARM64** does not keep instruction caches coherent with data stores. After writing code, the JIT
+    must clean the data cache lines to the point of unification (`dc cvau`), invalidate the
+    corresponding instruction cache lines (`ic ivau`), execute a `dsb ish` barrier, and then an `isb`
+    on the executing core to discard already-fetched instructions. In C or C++ this sequence is
+    wrapped by `__builtin___clear_cache(begin, end)`. Skipping it gives intermittent execution of stale
+    or garbage instructions.
+  keyPoints:
+    - W^X; map writable, write, then make executable (mprotect or dual mapping)
+    - x86 keeps icache coherent with stores in hardware; modifying nearby code costs pipeline flushes
+    - Cross-modifying code on x86 requires synchronisation and serialisation on the executing thread
+    - ARM64 requires explicit cache maintenance (dc cvau, ic ivau, dsb, isb)
+    - __builtin___clear_cache wraps the sequence; omitting it causes intermittent stale-code bugs
+  explanation: |
+    This is a good discriminator for candidates who have worked on JITs, emulators or hot patching. A
+    frequent bug is code that works on x86 and fails intermittently on ARM because the cache
+    maintenance was never needed on x86.
+
+- id: arch-walk-015
+  topic: computer-architecture
+  subtopic: Performance analysis
+  type: short
+  difficulty: hard
+  tags: [rdtsc, rdtscp, timing, microbenchmarking, lfence]
+  prompt: |
+    You want to time a code section of a few hundred nanoseconds on x86-64 using the timestamp counter.
+    What are the pitfalls, and how do you get trustworthy numbers?
+  reference: |
+    - **Ordering**: `rdtsc` is not serialising, so the out-of-order core can execute it before earlier
+      instructions finish or let later ones start before it. Use `lfence; rdtsc` at the start, and
+      `rdtscp` (which waits for earlier instructions to execute) followed by `lfence` at the end, or
+      equivalent fencing.
+    - **Units**: on modern CPUs with an invariant TSC, it ticks at a constant reference rate regardless
+      of the core's current frequency or sleep state. It measures wall time, not core cycles; convert
+      using the TSC frequency, and use performance counters (`perf`, `rdpmc`) if you want core cycles.
+    - **Overhead and resolution**: reading the counter with fences costs tens of cycles, so measure and
+      subtract the empty-section overhead, or time many iterations.
+    - **Noise**: interrupts, context switches, migrations to another core, frequency changes and cold
+      caches and branch predictors. Pin the thread, warm up, repeat many times, and report the
+      distribution (minimum, median, high percentiles) rather than one sample or the mean.
+    - **Compiler**: make sure the work is not optimised away or moved across the timing reads (use
+      results, compiler barriers, `DoNotOptimize`-style helpers).
+  keyPoints:
+    - rdtsc is not serialising; fence with lfence and use rdtscp at the end
+    - Invariant TSC runs at a constant rate, so it measures wall time not core cycles
+    - Subtract measurement overhead or amortise over many iterations
+    - Control noise by pinning and warming up; report percentiles not single samples
+    - Prevent the compiler from removing or moving the measured work
+  explanation: |
+    For a few hundred nanoseconds, measurement error can be a large fraction of the result. The common
+    mistake is a bare `rdtsc` pair around a short section, which can report times that are too short or
+    even reorder the section out of the measured window.
+
+- id: arch-walk-016
+  topic: computer-architecture
+  subtopic: Performance analysis
+  type: short
+  difficulty: medium
+  tags: [memory-bound, compute-bound, roofline, perf-counters]
+  prompt: |
+    How would you determine whether a hot loop is limited by memory bandwidth or latency rather than
+    by computation, and why does it matter which?
+  reference: |
+    Several complementary checks:
+
+    - **Arithmetic intensity**: estimate flops (or operations) per byte moved from DRAM and compare with
+      the machine's balance point (peak compute divided by peak bandwidth), as in the roofline model.
+    - **Measured bandwidth**: compute bytes moved per second, or read memory-controller (uncore)
+      counters, and compare with the measured achievable peak (for example from a STREAM-like test).
+      Near the peak means bandwidth-bound.
+    - **Counters**: low IPC with many last-level cache misses and a large "memory bound" fraction in a
+      top-down analysis (`perf stat` with topdown metrics, VTune) points to memory.
+    - **Experiments**: shrink the data so it fits in cache, or change the core frequency. A compute-bound
+      loop speeds up roughly in proportion to frequency; a memory-bound one barely changes. Adding
+      threads stops helping once bandwidth saturates.
+
+    It matters because the remedies differ: memory-bound code needs better locality, smaller data
+    types, blocking, prefetching or fewer passes over the data; compute-bound code needs vectorisation,
+    better instruction scheduling or a cheaper algorithm. Optimising the wrong side yields nothing.
+  keyPoints:
+    - Arithmetic intensity against machine balance (roofline)
+    - Compare achieved bandwidth with measured peak
+    - IPC, cache-miss and top-down memory-bound counters
+    - Experiments with data size, frequency and thread count
+    - Remedies differ; optimising the non-bottleneck yields nothing
+  explanation: |
+    The frequency experiment is a particularly practical trick. Distinguish also between bandwidth-bound
+    (streaming, many misses in flight) and latency-bound (dependent misses such as pointer chasing),
+    which need different fixes.
+
+- id: arch-walk-017
+  topic: computer-architecture
+  subtopic: Multicore and SMT
+  type: short
+  difficulty: medium
+  tags: [gpu, simt, throughput, latency-hiding]
+  prompt: |
+    How does a GPU's architecture differ from a CPU's, and what kinds of work suit it?
+  reference: |
+    A CPU core is optimised for the latency of one thread: large caches, deep out-of-order execution,
+    aggressive branch prediction and high clock rates, with relatively few cores. A GPU is optimised
+    for throughput: thousands of simple lanes grouped into SIMT units, where a group of threads (a warp
+    of 32 on NVIDIA, a wavefront of 32 or 64 on AMD) executes the same instruction on different data.
+    Instead of hiding memory latency with caches and out-of-order execution, the GPU keeps many warps
+    resident and switches to another warp in hardware when one stalls. It pairs this with very high
+    memory bandwidth (GDDR or HBM).
+
+    It suits massively data-parallel work with regular access and high arithmetic intensity: dense
+    linear algebra, machine-learning training and inference, image processing, simulations. It suits
+    poorly code that is branchy within a warp (divergent threads run their paths one after another),
+    serial or latency-critical work, small problems where kernel launch and PCIe transfer overhead
+    dominate, and irregular pointer-heavy data structures.
+  keyPoints:
+    - CPU optimised for single-thread latency (caches, OoO, prediction); GPU for throughput
+    - SIMT execution of warps or wavefronts of 32 or 64 threads
+    - Latency hidden by switching among many resident warps; very high memory bandwidth
+    - Good for data-parallel, regular, compute-dense work such as ML and linear algebra
+    - Poor for divergent branches, serial work, small problems with transfer overhead, irregular data
+  explanation: |
+    Branch divergence and host-device transfer cost are the two practical points most often missed. A
+    common wrong answer is that GPUs are simply "faster CPUs with more cores".

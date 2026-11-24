@@ -1,0 +1,18 @@
+{
+  "v": 1,
+  "runId": "5f2b8a44-3a1e-4d0b-8a57-2f0f7a0c9b21",
+  "verdict": "ok",
+  "compile": { "ok": true, "output": "", "timeMs": 910.5 },
+  "file": {
+    "exitCode": 0,
+    "signal": null,
+    "stdout": "hello world\n",
+    "stderr": "",
+    "truncated": false,
+    "timeMs": 3.2
+  },
+  "tests": [],
+  "message": null,
+  "timing": { "queueMs": 5, "totalMs": 1200 },
+  "sandbox": { "runtime": "runc", "image": "ipp-sandbox-cpp:1" }
+}

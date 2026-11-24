@@ -1,0 +1,16 @@
+slug: rotting-oranges
+title: Rotting Oranges
+difficulty: medium
+tags: [graph, bfs, matrix]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: orangesRotting
+      params:
+        - { name: grid, type: { array: { array: int } } }
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 994; Amazon favourite)
+  url: https://leetcode.com/problems/rotting-oranges/

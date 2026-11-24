@@ -1,0 +1,218 @@
+/**
+ * Idempotent upsert of packages/content into Postgres.
+ *
+ * Tolerant by design: content is authored in parallel, so an invalid problem or quiz question is
+ * skipped (and reported) instead of aborting the whole seed. Removing something from content never
+ * deletes rows that other rows reference: problems and questions are marked inactive instead.
+ */
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { CONTENT_ROOT, listProblemSlugs, loadProblem, loadQuizTopics } from '@ipp/content';
+import { type ProblemContent, QuizQuestion, type QuizTopic } from '@ipp/contracts';
+import { and, eq, notInArray, sql } from 'drizzle-orm';
+import { parse as parseYaml } from 'yaml';
+import { z } from 'zod';
+import type { Db } from './client';
+import { problems, problemTests, quizQuestions, quizTopics } from './schema';
+
+export interface SeedReport {
+  problems: number;
+  topics: number;
+  questions: number;
+  skipped: { where: string; error: string }[];
+}
+
+interface SeedOptions {
+  root?: string;
+  log?: (msg: string) => void;
+}
+
+function firstLine(e: unknown): string {
+  const msg = e instanceof Error ? e.message : String(e);
+  return msg.split('\n').slice(0, 4).join(' | ');
+}
+
+/** Per-question tolerant version of @ipp/content's loadQuizQuestions (same rules). */
+function loadQuestionsTolerant(
+  root: string,
+  topics: Set<string>,
+  skipped: SeedReport['skipped'],
+): QuizQuestion[] {
+  const dir = join(root, 'quiz');
+  if (!existsSync(dir)) return [];
+  const seen = new Set<string>();
+  const out: QuizQuestion[] = [];
+  for (const topicDir of readdirSync(dir, { withFileTypes: true }).filter((d) => d.isDirectory())) {
+    if (!topics.has(topicDir.name)) {
+      skipped.push({ where: `quiz/${topicDir.name}`, error: 'not listed in quiz/topics.yaml' });
+      continue;
+    }
+    for (const file of readdirSync(join(dir, topicDir.name))
+      .filter((f) => f.endsWith('.yaml'))
+      .sort()) {
+      const where = `quiz/${topicDir.name}/${file}`;
+      let raw: unknown;
+      try {
+        raw = parseYaml(readFileSync(join(dir, topicDir.name, file), 'utf8'));
+      } catch (e) {
+        skipped.push({ where, error: firstLine(e) });
+        continue;
+      }
+      if (!Array.isArray(raw)) {
+        skipped.push({ where, error: 'file must contain a list of questions' });
+        continue;
+      }
+      for (const [i, item] of raw.entries()) {
+        const parsed = QuizQuestion.safeParse(item);
+        const id = (item as { id?: unknown })?.id;
+        const label = `${where}[${i}]${typeof id === 'string' ? ` ${id}` : ''}`;
+        if (!parsed.success) {
+          skipped.push({ where: label, error: firstLine(z.prettifyError(parsed.error)) });
+          continue;
+        }
+        const q = parsed.data;
+        if (q.topic !== topicDir.name) {
+          skipped.push({ where: label, error: `topic must be "${topicDir.name}"` });
+          continue;
+        }
+        if (seen.has(q.id)) {
+          skipped.push({ where: label, error: 'duplicate id' });
+          continue;
+        }
+        if (q.type === 'single' || q.type === 'multiple') {
+          const ids = new Set(q.choices.map((c) => c.id));
+          if (ids.size !== q.choices.length) {
+            skipped.push({ where: label, error: 'duplicate choice ids' });
+            continue;
+          }
+          const answers = q.type === 'single' ? [q.answer] : q.answer;
+          if (answers.some((a) => !ids.has(a))) {
+            skipped.push({ where: label, error: 'answer is not a choice id' });
+            continue;
+          }
+        }
+        seen.add(q.id);
+        out.push(q);
+      }
+    }
+  }
+  return out;
+}
+
+export async function seed(db: Db, opts: SeedOptions = {}): Promise<SeedReport> {
+  const root = opts.root ?? CONTENT_ROOT;
+  const log = opts.log ?? (() => {});
+  const skipped: SeedReport['skipped'] = [];
+
+  const loaded: ProblemContent[] = [];
+  for (const slug of listProblemSlugs(root)) {
+    try {
+      loaded.push(loadProblem(slug, root));
+    } catch (e) {
+      skipped.push({ where: `problems/${slug}`, error: firstLine(e) });
+    }
+  }
+
+  let topics: QuizTopic[] = [];
+  try {
+    topics = loadQuizTopics(root);
+  } catch (e) {
+    skipped.push({ where: 'quiz/topics.yaml', error: firstLine(e) });
+  }
+  const questions = loadQuestionsTolerant(root, new Set(topics.map((t) => t.slug)), skipped);
+
+  await db.transaction(async (tx) => {
+    // Serialize concurrent seeds (e.g. two test workers) on one advisory lock.
+    await tx.execute(sql`select pg_advisory_xact_lock(724100)`);
+
+    for (const p of loaded) {
+      const row = {
+        slug: p.slug,
+        title: p.title,
+        difficulty: p.difficulty,
+        tags: p.tags,
+        statement: p.statement,
+        signature: p.signature,
+        limits: p.limits,
+        interviewerNotes: p.interviewerNotes,
+        referenceSolutions: p.referenceSolutions,
+        source: p.source ?? null,
+        active: true,
+        updatedAt: new Date(),
+      };
+      const { slug: _slug, ...update } = row;
+      await tx
+        .insert(problems)
+        .values(row)
+        .onConflictDoUpdate({ target: problems.slug, set: update });
+      await tx.delete(problemTests).where(eq(problemTests.problemSlug, p.slug));
+      await tx
+        .insert(problemTests)
+        .values(p.tests.map((t, idx) => ({ problemSlug: p.slug, idx, hidden: t.hidden, data: t })));
+    }
+    const slugs = loaded.map((p) => p.slug);
+    // Only deactivate when the whole problems directory loaded; a broken file must not hide a problem.
+    const brokenProblem = skipped.some((s) => s.where.startsWith('problems/'));
+    if (!brokenProblem) {
+      await tx
+        .update(problems)
+        .set({ active: false })
+        .where(slugs.length ? notInArray(problems.slug, slugs) : sql`true`);
+    }
+
+    for (const t of topics) {
+      await tx
+        .insert(quizTopics)
+        .values(t)
+        .onConflictDoUpdate({
+          target: quizTopics.slug,
+          set: { title: t.title, description: t.description },
+        });
+    }
+    // Batched upsert: content has on the order of a thousand questions.
+    for (let i = 0; i < questions.length; i += 200) {
+      const rows = questions.slice(i, i + 200).map((q) => ({
+        id: q.id,
+        topic: q.topic,
+        subtopic: q.subtopic,
+        difficulty: q.difficulty,
+        type: q.type,
+        data: q,
+        active: true,
+      }));
+      await tx
+        .insert(quizQuestions)
+        .values(rows)
+        .onConflictDoUpdate({
+          target: quizQuestions.id,
+          set: {
+            topic: sql`excluded.topic`,
+            subtopic: sql`excluded.subtopic`,
+            difficulty: sql`excluded.difficulty`,
+            type: sql`excluded.type`,
+            data: sql`excluded.data`,
+            active: true,
+          },
+        });
+    }
+    const brokenQuiz = skipped.some((s) => s.where.startsWith('quiz/'));
+    if (!brokenQuiz) {
+      const ids = questions.map((q) => q.id);
+      await tx
+        .update(quizQuestions)
+        .set({ active: false })
+        .where(
+          and(
+            eq(quizQuestions.active, true),
+            ids.length ? notInArray(quizQuestions.id, ids) : sql`true`,
+          ),
+        );
+    }
+  });
+
+  for (const s of skipped) log(`skipped ${s.where}: ${s.error}`);
+  log(
+    `seeded ${loaded.length} problems, ${topics.length} quiz topics, ${questions.length} quiz questions`,
+  );
+  return { problems: loaded.length, topics: topics.length, questions: questions.length, skipped };
+}

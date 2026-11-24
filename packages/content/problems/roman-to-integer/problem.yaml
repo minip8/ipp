@@ -1,0 +1,16 @@
+slug: roman-to-integer
+title: Roman to Integer
+difficulty: easy
+tags: [string, hash-table, math]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: romanToInt
+      params:
+        - { name: s, type: string }
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 13)
+  url: https://leetcode.com/problems/roman-to-integer/

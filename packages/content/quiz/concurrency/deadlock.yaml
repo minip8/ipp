@@ -1,0 +1,271 @@
+# Deadlock, livelock, starvation: conditions, prevention, avoidance, detection, debugging.
+
+- id: conc-deadlock-001
+  topic: concurrency
+  subtopic: Deadlock
+  difficulty: easy
+  type: multiple
+  prompt: |
+    Which of these are among the four Coffman conditions that must all hold for a resource deadlock?
+    (Select all that apply.)
+  choices:
+    - { id: a, text: "Mutual exclusion: a resource can be held by only one thread at a time" }
+    - { id: b, text: "Hold and wait: a thread holds resources while waiting for others" }
+    - { id: c, text: "No preemption: resources cannot be forcibly taken from a holder" }
+    - { id: d, text: "Circular wait: a cycle of threads each waiting for a resource held by the next" }
+    - { id: e, text: "Priority inversion: a low-priority thread holds a resource a high-priority one needs" }
+    - { id: f, text: "Busy waiting: threads spin instead of sleeping" }
+  answer: [a, b, c, d]
+  explanation: |
+    Coffman et al. (1971) identified four necessary conditions: mutual exclusion, hold and wait, no
+    preemption, and circular wait. Breaking any one prevents deadlock, which is the basis of the
+    prevention strategies: lock ordering breaks circular wait; acquiring all locks at once (or
+    `try_lock` and back off) breaks hold-and-wait; lock-free designs sidestep mutual exclusion.
+
+    Priority inversion is a scheduling problem, not a deadlock condition, and busy waiting is
+    orthogonal (spinlocks can deadlock exactly like sleeping locks).
+  tags: [deadlock, coffman-conditions]
+
+- id: conc-deadlock-002
+  topic: concurrency
+  subtopic: Deadlock
+  difficulty: medium
+  type: short
+  prompt: |
+    `void transfer(Account& from, Account& to, int amount)` locks `from.m` then `to.m`. Two threads call
+    `transfer(a, b, …)` and `transfer(b, a, …)` concurrently and the program hangs. Explain why and give
+    two correct fixes, including what happens when `from` and `to` are the same account.
+  reference: |
+    Thread 1 holds `a.m` and waits for `b.m`; thread 2 holds `b.m` and waits for `a.m`: a circular
+    wait, so neither ever proceeds.
+
+    Fix 1, **global lock order**: always lock the two accounts in a consistent order, e.g. by a unique
+    account id (or by address, using `std::less<>` on pointers). Both threads then lock the lower one
+    first, so no cycle can form.
+
+    Fix 2, **lock both at once with a deadlock-avoidance algorithm**: `std::scoped_lock lk(from.m,
+    to.m);` (C++17) or `std::lock(from.m, to.m)` followed by adopting `lock_guard`s. These use a
+    try-and-back-off algorithm so the order of arguments does not matter.
+
+    Self-transfer: with `from == to`, locking the same non-recursive `std::mutex` twice is undefined
+    behaviour (usually self-deadlock) in either fix, so check `if (&from == &to) return;` first.
+  keyPoints:
+    - "Opposite lock orders create a circular wait"
+    - "Fix with a consistent global order (by id or address)"
+    - "Or acquire both together with std::scoped_lock / std::lock"
+    - "Handle from == to explicitly; double-locking a std::mutex is UB"
+  explanation: |
+    This is the canonical deadlock interview question. The expected answers are a global lock order or
+    `std::scoped_lock`/`std::lock`; noticing the self-transfer case distinguishes careful candidates.
+    Ordering by address works but by a stable id is easier to reason about and works across processes.
+  tags: [deadlock, lock-ordering, scoped-lock]
+  source: { name: "Anthony Williams, C++ Concurrency in Action, 2nd ed., ch. 3 (idea)" }
+
+- id: conc-deadlock-003
+  topic: concurrency
+  subtopic: Deadlock
+  difficulty: medium
+  type: single
+  prompt: |
+    How does `std::scoped_lock lk(m1, m2);` avoid deadlock even if another thread writes
+    `std::scoped_lock lk(m2, m1);`?
+  choices:
+    - { id: a, text: "It sorts the mutexes by address and locks them in that order" }
+    - { id: b, text: "It uses the std::lock deadlock-avoidance algorithm (e.g. lock one, try_lock the rest, and on failure release everything and retry), so argument order does not matter" }
+    - { id: c, text: "It converts both mutexes into one recursive mutex" }
+    - { id: d, text: "It does not avoid deadlock; the two orders deadlock" }
+  answer: b
+  explanation: |
+    With more than one mutex, `std::scoped_lock` behaves like `std::lock`, which the standard specifies
+    as acquiring all locks "using a deadlock avoidance algorithm" built on `lock`, `try_lock` and
+    `unlock`. Typical implementations (libstdc++, libc++) lock one mutex, `try_lock` the others, and if
+    any fails, unlock everything and start again from the one that failed. The exact algorithm is
+    unspecified; sorting by address (a) is a valid strategy for user code but is not what the standard
+    requires. The guarantee holds only if every acquisition of the same set goes through `std::lock`
+    or a consistent order; mixing with hand-ordered nested locking can still deadlock.
+  tags: [scoped-lock, std-lock, deadlock-avoidance]
+  source: { name: "cppreference — std::lock", url: "https://en.cppreference.com/w/cpp/thread/lock" }
+
+- id: conc-deadlock-004
+  topic: concurrency
+  subtopic: Livelock and starvation
+  difficulty: easy
+  type: single
+  prompt: |
+    Two threads each need locks A and B. Each grabs one, `try_lock`s the other, and on failure releases
+    what it holds and retries immediately. Under unlucky timing they keep doing this forever, both
+    running at 100% CPU and neither completing. What is this called?
+  choices:
+    - { id: a, text: "Deadlock" }
+    - { id: b, text: "Livelock" }
+    - { id: c, text: "Priority inversion" }
+    - { id: d, text: "A data race" }
+  answer: b
+  explanation: |
+    In a **livelock** the threads are not blocked; they keep changing state in response to each other,
+    but no one makes progress, like two people repeatedly stepping aside in the same direction in a
+    corridor. In a deadlock the threads would be blocked and idle. The cure is to break the symmetry:
+    randomised (exponential) backoff before retrying, or a consistent lock order so the retry is
+    unnecessary.
+  tags: [livelock, backoff]
+
+- id: conc-deadlock-005
+  topic: concurrency
+  subtopic: Livelock and starvation
+  difficulty: easy
+  type: single
+  prompt: |
+    Which situation is **starvation** rather than deadlock or livelock?
+  choices:
+    - { id: a, text: "Two threads each hold one lock and wait forever for the other's" }
+    - { id: b, text: "A writer never gets a reader-preferring rwlock because new readers keep arriving, although the system as a whole keeps making progress" }
+    - { id: c, text: "All threads are blocked waiting on a condition variable that nobody will notify" }
+    - { id: d, text: "Two threads repeatedly back off from each other and neither completes" }
+  answer: b
+  explanation: |
+    Starvation means a particular thread is perpetually denied a resource while others proceed. The
+    system makes progress; one participant does not. A reader-preferring rwlock under a continuous
+    stream of readers is the textbook example; unfair (barging) mutexes and strict priority scheduling
+    can cause it too. (a) and (c) are deadlocks (no one progresses), (d) is livelock.
+  tags: [starvation, rwlock, fairness]
+
+- id: conc-deadlock-006
+  topic: concurrency
+  subtopic: Deadlock
+  difficulty: medium
+  type: short
+  prompt: |
+    A production service has hung: CPU is idle and requests time out. You suspect a deadlock. How do
+    you confirm it and find the cause?
+  reference: |
+    1. Capture all thread stacks without killing the process: `gdb -p PID` then
+       `thread apply all bt` (or `eu-stack`, `pstack`; `jstack` for the JVM, `py-spy dump` for Python).
+    2. Look for threads blocked in lock acquisition (`__lll_lock_wait`, `pthread_mutex_lock`,
+       `futex_wait`) and identify which mutex each waits for. In gdb, a glibc `pthread_mutex_t`'s
+       `__data.__owner` field gives the owning thread's TID, so you can build a wait-for graph and look
+       for a cycle. Also check for threads waiting on condition variables or futures with nobody left to
+       signal them, and a thread blocked on I/O while holding a lock (not a deadlock, but the same
+       symptom).
+    3. Map the cycle back to code paths to find the inconsistent lock order.
+
+    Prevention and earlier detection: enforce a lock hierarchy (debug-mode checks), run tests under
+    ThreadSanitizer (which reports lock-order inversions even when the deadlock did not occur in that
+    run) or Helgrind, and use timeouts (`try_lock_for`) with logging on critical paths.
+  keyPoints:
+    - "Dump all thread stacks of the live process (gdb thread apply all bt, pstack, jstack, py-spy)"
+    - "Identify threads blocked in mutex/futex waits and which lock each waits on"
+    - "Find lock owners (e.g. glibc mutex __owner) and build a wait-for graph to find the cycle"
+    - "Map back to the inconsistent acquisition order in code"
+    - "Prevent with lock hierarchies, TSan lock-order-inversion detection, timeouts"
+  explanation: |
+    Interviewers look for a concrete procedure on a live process (stack dumps, lock owners, wait-for
+    graph), not "add logging and wait". Mentioning that a hang with idle CPU may also be a lost
+    wakeup or a lock held across blocking I/O shows experience.
+  tags: [deadlock, debugging, gdb, tsan]
+
+- id: conc-deadlock-007
+  topic: concurrency
+  subtopic: Deadlock
+  difficulty: medium
+  type: single
+  prompt: |
+    A class holds its mutex while invoking user-registered callbacks (e.g. "on change" listeners).
+    Which risk does this create?
+  choices:
+    - { id: a, text: "None, provided the mutex is a std::mutex" }
+    - { id: b, text: "The callback can call back into the class (re-entrant lock attempt on a non-recursive mutex) or take other locks in an unknown order, causing self-deadlock or lock-order deadlocks" }
+    - { id: c, text: "The callback will run on a different thread" }
+    - { id: d, text: "The compiler may reorder the callback outside the critical section" }
+  answer: b
+  explanation: |
+    Calling "alien" code under a lock is a classic deadlock source. If the callback calls a method of
+    the same object, it tries to lock the already-held non-recursive mutex: undefined behaviour,
+    typically a hang. If it takes some other lock L, you now have an ordering (your mutex → L) that you
+    do not control; another thread taking L then calling into your class creates a cycle. It also
+    extends the critical section unboundedly.
+
+    Standard remedy: copy the listener list (or needed state) under the lock, release the lock, then
+    invoke the callbacks.
+  tags: [deadlock, callbacks, reentrancy]
+  source: { name: "Anthony Williams, C++ Concurrency in Action, 2nd ed., ch. 3, guidelines for avoiding deadlock (idea)" }
+
+- id: conc-deadlock-008
+  topic: concurrency
+  subtopic: Deadlock
+  difficulty: hard
+  type: single
+  prompt: |
+    Which pairing of strategy and example is correct?
+  choices:
+    - { id: a, text: "Prevention: the Banker's algorithm; Avoidance: global lock ordering" }
+    - { id: b, text: "Prevention: global lock ordering (makes circular wait impossible by construction); Avoidance: the Banker's algorithm (grants a request only if the resulting state is safe); Detection: periodically search the wait-for graph for cycles and break one" }
+    - { id: c, text: "Avoidance: try_lock with timeout; Detection: the Banker's algorithm" }
+    - { id: d, text: "Prevention and avoidance are the same thing" }
+  answer: b
+  explanation: |
+    - **Prevention** structurally negates one Coffman condition: a lock hierarchy removes circular
+      wait; acquiring everything up-front removes hold-and-wait.
+    - **Avoidance** decides dynamically, using knowledge of future maximum demands, whether granting a
+      request could lead to an unsafe state. The Banker's algorithm (Dijkstra) is the canonical
+      example. It is rarely used in general-purpose software because maximum demands are unknown.
+    - **Detection and recovery** lets deadlocks happen, finds cycles in the wait-for graph, and aborts
+      or rolls back a victim. Databases do this with transactions.
+
+    A `try_lock` timeout is a recovery-style heuristic, not the Banker's algorithm.
+  tags: [deadlock, bankers-algorithm, prevention, detection]
+
+- id: conc-deadlock-009
+  topic: concurrency
+  subtopic: Deadlock
+  difficulty: hard
+  type: short
+  prompt: |
+    How would you enforce a lock hierarchy in a large C++ codebase so that lock-order bugs are caught
+    in testing rather than in production?
+  reference: |
+    Assign every mutex a level (e.g. wrap `std::mutex` in a `hierarchical_mutex` carrying an integer
+    level). Maintain a `thread_local` "current level" for each thread. On `lock()`, check that the new
+    mutex's level is strictly lower than the thread's current level (i.e. you may only lock downwards);
+    if not, fail loudly (assert/throw/log with both lock names). On success, save the previous level and
+    set the current one; on `unlock()`, restore it. Then any code path that could form a cycle is
+    reported the first time it runs, even if the timing never produces an actual deadlock.
+
+    Complement it with: compile it out or keep it cheap in release builds; document levels by layer
+    (e.g. application locks above library locks); run ThreadSanitizer, which records the lock
+    acquisition graph and reports potential lock-order inversions; and code review rules such as "no
+    callbacks or blocking I/O while holding a lock".
+  keyPoints:
+    - "Give each mutex a hierarchy level and only allow locking in decreasing level order"
+    - "Track the current level per thread with thread_local state and restore it on unlock"
+    - "Violations are detected on the first bad acquisition order, even without an actual deadlock"
+    - "Use TSan's lock-order-inversion detection as a complementary tool"
+    - "Keep the check cheap or debug-only; document levels by layer"
+  explanation: |
+    The idea (from C++ Concurrency in Action's `hierarchical_mutex`) turns a timing-dependent bug into a
+    deterministic one: an ordering violation is reported on any execution of the bad path. Linux's
+    lockdep validator does the same for kernel locks.
+  tags: [lock-hierarchy, deadlock, tooling]
+  source: { name: "Anthony Williams, C++ Concurrency in Action, 2nd ed., hierarchical_mutex (idea)" }
+
+- id: conc-deadlock-010
+  topic: concurrency
+  subtopic: Deadlock
+  difficulty: medium
+  type: single
+  prompt: |
+    Can a program deadlock with only **one** mutex and **two** threads, where every lock is released on
+    every path (RAII)?
+  choices:
+    - { id: a, text: "No; a cycle needs at least two locks" }
+    - { id: b, text: "Yes, e.g. thread A holds the mutex while it joins thread B (or waits on B's future), and B needs the same mutex to finish" }
+    - { id: c, text: "Only if the mutex is recursive" }
+    - { id: d, text: "Only on single-core machines" }
+  answer: b
+  explanation: |
+    Deadlock needs a cycle of waits, and not every wait is on a mutex. Joining a thread, waiting on a
+    future, a condition variable, a full queue or a barrier are all waits. If A holds M and waits for
+    B to complete while B blocks trying to take M, the cycle is A → B → M → A. A common variant: a
+    thread-pool task blocks waiting for another task that cannot be scheduled because all workers are
+    occupied by waiting tasks (thread-starvation deadlock). Rule: do not block on other threads while
+    holding locks they might need.
+  tags: [deadlock, join, futures]

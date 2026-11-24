@@ -1,0 +1,274 @@
+# Descriptors, properties, bound methods, __slots__.
+- id: py-desc-001
+  topic: python
+  subtopic: Properties
+  difficulty: easy
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [property, attributeerror]
+  prompt: What does this program print?
+  code: |
+    class C:
+        @property
+        def x(self):
+            return 1
+
+    c = C()
+    print(c.x)
+    c.x = 2
+    print(c.x)
+  answer: { kind: runtime_error }
+  explanation: |
+    It prints `1`, then `c.x = 2` raises **AttributeError** (in current versions: `property 'x' of 'C' object has no setter`).
+
+    `property` is a **data descriptor**: it defines `__set__` even when you give it no setter, and that `__set__` raises. Data descriptors on the class take precedence over the instance `__dict__`, so the assignment can't quietly create an instance attribute that shadows the property. Add a setter with `@x.setter` to allow assignment.
+
+- id: py-desc-002
+  topic: python
+  subtopic: Descriptors
+  difficulty: hard
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [descriptors, attribute-lookup]
+  prompt: What does this program print?
+  code: |
+    class NonData:
+        def __get__(self, obj, objtype=None):
+            return 'nondata'
+
+    class Data:
+        def __get__(self, obj, objtype=None):
+            return 'data'
+        def __set__(self, obj, value):
+            pass
+
+    class C:
+        a = NonData()
+        b = Data()
+
+    c = C()
+    c.__dict__['a'] = 'inst'
+    c.__dict__['b'] = 'inst'
+    print(c.a, c.b)
+  answer: { kind: output, output: "inst data" }
+  explanation: |
+    `object.__getattribute__` looks up attributes in this order:
+
+    1. **Data descriptors** (defining `__set__` or `__delete__`) found on the type: `b` returns `'data'` even though the instance dict has a `'b'` entry.
+    2. The **instance `__dict__`**: for `a` it finds `'inst'`.
+    3. **Non-data descriptors** and other class attributes: `NonData` would only be used if the instance had no `'a'`.
+
+    This precedence is why properties can't be shadowed by instance attributes, while methods (functions are non-data descriptors) *can* be overridden per instance. Reference: the Descriptor HowTo Guide, "Invocation from an instance".
+
+- id: py-desc-003
+  topic: python
+  subtopic: __slots__
+  difficulty: easy
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [slots, attributeerror]
+  prompt: What does this program print?
+  code: |
+    class P:
+        __slots__ = ('x',)
+
+    p = P()
+    p.x = 1
+    print(p.x)
+    p.y = 2
+    print(p.y)
+  answer: { kind: runtime_error }
+  explanation: |
+    It prints `1`, then `p.y = 2` raises **AttributeError** (`'P' object has no attribute 'y'`, and newer versions add that `__dict__` is missing).
+
+    With `__slots__`, instances get fixed storage slots (each a descriptor on the class) and **no per-instance `__dict__`**, so you can't assign attributes that aren't listed. That saves memory and is the point of `__slots__`; preventing new attributes is a side effect.
+
+- id: py-desc-004
+  topic: python
+  subtopic: Descriptors
+  difficulty: medium
+  type: output
+  language: python
+  standard: Python 3.6+
+  tags: [descriptors, set-name]
+  prompt: What does this program print?
+  code: |
+    class Field:
+        def __set_name__(self, owner, name):
+            self.name = '_' + name
+        def __get__(self, obj, objtype=None):
+            if obj is None:
+                return self
+            return getattr(obj, self.name, 'unset')
+        def __set__(self, obj, value):
+            setattr(obj, self.name, value * 2)
+
+    class M:
+        price = Field()
+
+    m = M()
+    print(m.price)
+    m.price = 5
+    print(m.price, m.__dict__)
+  answer:
+    kind: output
+    output: |
+      unset
+      10 {'_price': 10}
+  explanation: |
+    `__set_name__` (PEP 487) is called automatically when the class `M` is created, with the attribute name `'price'`, so the descriptor knows to store data under `'_price'`.
+
+    - The first read finds no `_price` on the instance and returns the default `'unset'`.
+    - `m.price = 5` goes through the **data descriptor's** `__set__`, which stores `10` in the instance dict under `_price`.
+    - Reading `m.price` again calls `__get__`, which returns `10`. The instance dict contains only `_price`; there is no `price` key, because the descriptor intercepted the assignment.
+
+    `if obj is None: return self` is the convention for access through the class (`M.price`).
+
+- id: py-desc-005
+  topic: python
+  subtopic: Bound methods
+  difficulty: hard
+  type: output
+  language: python
+  standard: Python 3.x
+  tags: [methods, descriptors, identity]
+  prompt: What does this program print?
+  code: |
+    class C:
+        def f(self):
+            return 'f'
+
+    c = C()
+    print(C.f is C.f, c.f is c.f, c.f == c.f)
+  answer: { kind: output, output: "True False True" }
+  explanation: |
+    Functions are **non-data descriptors**. Through the class, `C.f` returns the plain function itself (Python 3 has no "unbound method" objects), so it's the same object every time. Through an instance, `function.__get__` creates a **new bound method object** on each access, binding `__self__ = c`. Two separate accesses give two distinct objects, so `is` is `False`. Bound methods compare equal when they wrap the same function and the same `__self__`, so `==` is `True`.
+
+    The practical consequence: `obj.method` used as a dict key or callback works by equality, but checking it with `is` doesn't.
+
+- id: py-desc-006
+  topic: python
+  subtopic: Descriptors
+  difficulty: medium
+  type: single
+  tags: [descriptors]
+  prompt: What makes a descriptor a **data** descriptor rather than a **non-data** descriptor?
+  choices:
+    - { id: a, text: "It defines `__set__` and/or `__delete__`" }
+    - { id: b, text: "It stores its value in the instance `__dict__`" }
+    - { id: c, text: "It defines `__get__`" }
+    - { id: d, text: "It is defined with `@property`" }
+  answer: a
+  explanation: |
+    Any object whose type defines `__get__`, `__set__` or `__delete__` is a descriptor. If it defines `__set__` or `__delete__` it is a **data descriptor** and takes precedence over the instance `__dict__`; if it defines only `__get__` it is **non-data** and the instance dict wins.
+
+    `property` is one example of a data descriptor, but not the definition. Where the value is stored is up to the descriptor and has nothing to do with the classification. Examples: functions, `classmethod`, `staticmethod` and `functools.cached_property` are non-data; `property`, `__slots__` members and the `__dict__` attribute are data descriptors.
+
+- id: py-desc-007
+  topic: python
+  subtopic: __slots__
+  difficulty: medium
+  type: multiple
+  tags: [slots, memory]
+  prompt: Which statements about `__slots__` are true? Select all that apply.
+  choices:
+    - { id: a, text: "Instances of a class with `__slots__` (and no `__dict__` slot) use less memory than equivalent `__dict__`-based instances" }
+    - { id: b, text: "It makes instances immutable" }
+    - { id: c, text: "A subclass that does not define `__slots__` gets a `__dict__` again" }
+    - { id: d, text: "Each name in `__slots__` becomes a descriptor on the class" }
+    - { id: e, text: "Slots declared in the class can be given default values with class attributes of the same name" }
+  answer: [a, c, d]
+  explanation: |
+    - **a**: true. Without a per-instance dict, each instance stores its attributes in a fixed array.
+    - **b**: false. Slot attributes can be reassigned freely; slots only restrict *which* attributes exist.
+    - **c**: true. `__slots__` only affects the class that declares it. A subclass without its own `__slots__` has a `__dict__` (and `__weakref__`) again.
+    - **d**: true. Each slot is a member descriptor (a data descriptor) on the class.
+    - **e**: false. A class attribute with the same name as a slot conflicts with the slot descriptor, and class creation raises `ValueError: 'x' in __slots__ conflicts with class variable`.
+
+    Reference: data model, "`__slots__`".
+
+- id: py-desc-008
+  topic: python
+  subtopic: Properties
+  difficulty: hard
+  type: single
+  tags: [cached-property, functools, descriptors]
+  prompt: |
+    How does `functools.cached_property` make the second access to an attribute cheap?
+  choices:
+    - { id: a, text: "It is a non-data descriptor: the first access computes the value and stores it in the instance `__dict__` under the same name, which then shadows the descriptor on later lookups" }
+    - { id: b, text: "It wraps the getter in `functools.lru_cache` keyed by `self`" }
+    - { id: c, text: "It is a data descriptor that keeps a dict mapping `id(instance)` to the value" }
+    - { id: d, text: "It replaces the class attribute with the computed value after the first access" }
+  answer: a
+  explanation: |
+    `cached_property` defines only `__get__`. On first access it computes the value and writes it into `instance.__dict__[name]`. Because a non-data descriptor loses to the instance dict, later accesses never call the descriptor at all; they're plain dict lookups. Deleting the attribute clears the cache.
+
+    Consequences: it needs a writable instance `__dict__`, so it fails on classes with `__slots__` and no `__dict__`. It's per-instance and doesn't affect other instances. Since 3.12 it no longer takes a lock, so the function can run more than once under concurrent first access. `lru_cache` keyed by `self` (b) keeps every instance alive, which is why that pattern is discouraged for methods.
+
+- id: py-desc-009
+  topic: python
+  subtopic: Bound methods
+  difficulty: easy
+  type: single
+  tags: [classmethod, staticmethod]
+  prompt: |
+    ```python
+    class Shape:
+        @classmethod
+        def make(cls):
+            return cls()
+
+    class Square(Shape):
+        pass
+    ```
+    What does `type(Square.make())` return?
+  choices:
+    - { id: a, text: "`Shape`" }
+    - { id: b, text: "`Square`" }
+    - { id: c, text: "`TypeError`: `make` needs an instance" }
+    - { id: d, text: "`classmethod`" }
+  answer: b
+  explanation: |
+    A `classmethod` receives the class it was **accessed through** as `cls`, here `Square`, even though the method is defined on `Shape`. That makes classmethods the idiomatic way to write alternative constructors that subclasses inherit correctly (`dict.fromkeys`, `datetime.fromtimestamp`).
+
+    A `staticmethod` receives no implicit argument, so it would have to hard-code `Shape()`.
+
+- id: py-desc-010
+  topic: python
+  subtopic: Descriptors
+  difficulty: hard
+  type: short
+  tags: [descriptors, methods, binding]
+  prompt: Explain the descriptor protocol and use it to explain how `obj.method` turns into a bound method that receives `self`.
+  reference: |
+    A descriptor is an object whose type defines `__get__(self, obj, objtype)`, and optionally `__set__`/`__delete__`, stored as a class attribute. When `object.__getattribute__` finds such an attribute on the type during a lookup, it calls its `__get__` instead of returning it directly. Data descriptors (`__set__`/`__delete__`) take precedence over the instance `__dict__`; non-data descriptors are used only if the instance dict has no entry. Plain functions are non-data descriptors: `function.__get__(obj, type)` returns a bound method object that stores `__func__` and `__self__`, and calling it calls `__func__(__self__, *args)`. Accessed via the class (`obj` is None), the function itself is returned. `property`, `classmethod`, `staticmethod`, `__slots__` and `super()` are all built on descriptors.
+  keyPoints:
+    - "Descriptor: class attribute whose type defines __get__ (and maybe __set__/__delete__)"
+    - Attribute lookup calls __get__(instance, owner) when it finds a descriptor on the type
+    - Data descriptors beat the instance __dict__; non-data descriptors lose to it
+    - Functions are non-data descriptors; __get__ returns a bound method holding __func__ and __self__
+    - property, classmethod, staticmethod, slots are implemented as descriptors
+  explanation: |
+    Reference: the official "Descriptor HowTo Guide" (docs.python.org/3/howto/descriptor.html), which gives pure-Python equivalents of `property`, `classmethod` and function binding. Candidates who can sketch `function.__get__` returning `MethodType(self, obj)` have understood it.
+
+- id: py-desc-011
+  topic: python
+  subtopic: __slots__
+  difficulty: medium
+  type: short
+  tags: [slots, memory, tradeoffs]
+  prompt: When would you add `__slots__` to a class, and what do you give up?
+  reference: |
+    Use it when you create very many small instances (millions of records, nodes, points) and memory or attribute-access speed matters: slots replace the per-instance `__dict__` with fixed storage, saving tens of bytes or more per object, and attribute access is slightly faster. Costs: you can't add attributes not listed (no monkey-patching or ad-hoc attributes); no `__weakref__` unless listed; it gets complicated with multiple inheritance (only one base with non-empty slots can be combined, since layouts conflict); subclasses must also declare `__slots__` or they get a `__dict__` back; class-attribute defaults for slot names aren't allowed; and some tools that expect `__dict__` (`vars()`, some serializers, `cached_property`) don't work. `@dataclass(slots=True)` (3.10+) generates them for you.
+  keyPoints:
+    - Saves memory by removing the per-instance __dict__; useful for huge numbers of instances
+    - Slightly faster attribute access
+    - Cannot add unlisted attributes; no __weakref__ unless listed
+    - Subclasses need their own __slots__ or regain __dict__; multiple-inheritance layout conflicts
+    - Breaks things that rely on __dict__ (vars(), cached_property); dataclass(slots=True) helps
+  explanation: |
+    A senior answer frames `__slots__` as an optimisation to apply after measuring (e.g. with `tracemalloc` or `sys.getsizeof` plus the dict), not as a way to "lock down" a class.

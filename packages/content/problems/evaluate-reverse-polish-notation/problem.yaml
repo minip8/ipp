@@ -1,0 +1,16 @@
+slug: evaluate-reverse-polish-notation
+title: Evaluate Reverse Polish Notation
+difficulty: medium
+tags: [array, stack, math, parsing]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: evalRPN
+      params:
+        - { name: tokens, type: { array: string } }
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 150; NeetCode 150 stack)
+  url: https://leetcode.com/problems/evaluate-reverse-polish-notation/

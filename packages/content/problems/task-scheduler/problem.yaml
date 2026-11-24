@@ -1,0 +1,17 @@
+slug: task-scheduler
+title: Task Scheduler
+difficulty: medium
+tags: [array, greedy, counting, math]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: leastInterval
+      params:
+        - { name: tasks, type: { array: char } }
+        - { name: n, type: int }
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 621; NeetCode 150); frequently reported at Meta
+  url: https://leetcode.com/problems/task-scheduler/

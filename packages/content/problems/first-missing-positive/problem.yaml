@@ -1,0 +1,16 @@
+slug: first-missing-positive
+title: First Missing Positive
+difficulty: hard
+tags: [array, hash-table, cyclic-sort]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: firstMissingPositive
+      params:
+        - { name: nums, type: { array: int } }
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 41); index-as-hash / cyclic sort
+  url: https://leetcode.com/problems/first-missing-positive/

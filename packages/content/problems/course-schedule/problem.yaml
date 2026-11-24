@@ -1,0 +1,17 @@
+slug: course-schedule
+title: Course Schedule
+difficulty: medium
+tags: [graph, topological-sort, dfs, bfs]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: canFinish
+      params:
+        - { name: numCourses, type: int }
+        - { name: prerequisites, type: { array: { array: int } } }
+      returns: bool
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 207; Blind 75)
+  url: https://leetcode.com/problems/course-schedule/

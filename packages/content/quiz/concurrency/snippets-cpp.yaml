@@ -1,0 +1,732 @@
+# Output-prediction questions, C++. "Output" means what the program writes to stdout.
+# Every program here was compiled with g++ 15 and clang++ 21 (-std=c++20 -pthread -O2) and run
+# repeatedly; the "undefined" ones were also run under ThreadSanitizer.
+# Re-run with: python3 packages/content/scripts/verify-net-conc-quiz.py
+
+- id: conc-snip-cpp-001
+  topic: concurrency
+  subtopic: Atomics
+  difficulty: easy
+  type: output
+  language: cpp
+  standard: C++20
+  prompt: |
+    What does this program print? (Assume it compiles and runs normally; "output" means stdout.)
+  code: |
+    #include <atomic>
+    #include <iostream>
+    #include <thread>
+
+    int main() {
+        std::atomic<int> counter{0};
+        auto work = [&] {
+            for (int i = 0; i < 100000; ++i)
+                counter.fetch_add(1, std::memory_order_relaxed);
+        };
+        std::thread a(work), b(work);
+        a.join();
+        b.join();
+        std::cout << counter.load(std::memory_order_relaxed) << '\n';
+    }
+  answer: { kind: output, output: "200000" }
+  explanation: |
+    `fetch_add` is an atomic read-modify-write. Even with `memory_order_relaxed` it is indivisible:
+    every RMW on an atomic object reads the latest value in that object's modification order, so no
+    increment can be lost. Relaxed ordering only means the increments impose no ordering on *other*
+    memory locations, which this program does not rely on.
+
+    The final read is also safe: `join()` synchronises with the completion of the thread, so
+    everything each worker did happens-before the load in `main`. The answer is exactly 200000 on
+    every run and every platform.
+
+    A common wrong answer is "unspecified, because relaxed". Relaxed weakens ordering, never atomicity.
+  tags: [atomics, memory-order, relaxed, fetch-add]
+  source: { name: "cppreference — std::memory_order (relaxed ordering, counter example)", url: "https://en.cppreference.com/w/cpp/atomic/memory_order" }
+
+- id: conc-snip-cpp-002
+  topic: concurrency
+  subtopic: Data races
+  difficulty: easy
+  type: output
+  language: cpp
+  standard: C++20
+  prompt: |
+    What does this program print?
+  code: |
+    #include <iostream>
+    #include <thread>
+
+    int counter = 0;
+
+    int main() {
+        auto work = [] {
+            for (int i = 0; i < 100000; ++i)
+                ++counter;
+        };
+        std::thread a(work), b(work);
+        a.join();
+        b.join();
+        std::cout << counter << '\n';
+    }
+  answer: { kind: undefined }
+  explanation: |
+    Both threads read and write the plain `int counter` with no synchronisation between them. Two
+    conflicting accesses (at least one a write) in different threads, neither atomic and neither
+    happening-before the other, are a **data race**, and a data race is undefined behaviour in C++
+    ([intro.races]).
+
+    It is tempting to answer "some number up to 200000" (lost updates). That describes what you often
+    *observe*, but the language gives no such guarantee: the optimiser may assume no race exists and,
+    for example, turn each loop into a single `counter += 100000`, keep the value in a register, or
+    do something stranger. At `-O2` GCC frequently prints exactly 200000, which shows why testing
+    cannot prove a racy program correct. ThreadSanitizer reports this program.
+
+    Fix: make `counter` a `std::atomic<int>` or protect it with a mutex.
+  tags: [data-race, undefined-behaviour, threads]
+
+- id: conc-snip-cpp-003
+  topic: concurrency
+  subtopic: Futures and async
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++20
+  prompt: |
+    What does this program print?
+  code: |
+    #include <future>
+    #include <iostream>
+
+    int main() {
+        auto f = std::async(std::launch::deferred, [] {
+            std::cout << "task ";
+            return 42;
+        });
+        std::cout << "main ";
+        int v = f.get();
+        std::cout << v << '\n';
+    }
+  answer: { kind: output, output: "main task 42" }
+  explanation: |
+    With `std::launch::deferred`, no thread is started. The callable is stored in the future's shared
+    state and runs **lazily, on the thread that first calls `get()` or `wait()`**. So "main " is
+    printed first, then `f.get()` runs the lambda on the main thread (printing "task "), and returns 42.
+
+    If the policy were `std::launch::async`, the order of "main " and "task " would be unspecified (a
+    new thread races with main). With the default policy (`async | deferred`) the implementation may
+    choose either, so the order would also be unspecified. Only the explicit `deferred` policy makes
+    this output deterministic.
+  tags: [std-async, future, deferred]
+  source: { name: "cppreference — std::async", url: "https://en.cppreference.com/w/cpp/thread/async" }
+
+- id: conc-snip-cpp-004
+  topic: concurrency
+  subtopic: Futures and async
+  difficulty: hard
+  type: output
+  language: cpp
+  standard: C++20
+  prompt: |
+    What does this program print? (A compiler may warn about a discarded `[[nodiscard]]` value; it
+    still compiles.)
+  code: |
+    #include <chrono>
+    #include <future>
+    #include <iostream>
+    #include <thread>
+
+    int main() {
+        std::async(std::launch::async, [] {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            std::cout << "worker\n";
+        });
+        std::cout << "main\n";
+    }
+  answer: { kind: output, output: "worker main" }
+  explanation: |
+    The `std::future` returned by `std::async` is a temporary that is destroyed at the end of the
+    full-expression (the semicolon after the `std::async(...)` call). A future obtained from
+    `std::async` is special: if it is the last reference to a shared state created by
+    `std::async(std::launch::async, ...)`, its destructor **blocks until the task completes**
+    ([futures.async]). So the statement does not finish until the worker has slept and printed
+    "worker", and only then is "main" printed.
+
+    This is a well-known trap: people write `std::async(...)` expecting fire-and-forget concurrency and
+    get fully serial execution. Keep the future in a variable if you want the work to overlap. Futures
+    from `std::promise` or `std::packaged_task` do not block in their destructors.
+  tags: [std-async, future, destructor, gotcha]
+  source: { name: "Scott Meyers, Effective Modern C++, Item 38 (idea)" }
+
+- id: conc-snip-cpp-005
+  topic: concurrency
+  subtopic: Atomics
+  difficulty: easy
+  type: output
+  language: cpp
+  standard: C++20
+  prompt: |
+    What does this program print?
+  code: |
+    #include <atomic>
+    #include <iostream>
+
+    int main() {
+        std::atomic<int> x{5};
+        int expected = 3;
+        bool ok = x.compare_exchange_strong(expected, 10);
+        std::cout << ok << ' ' << expected << ' ' << x.load() << '\n';
+    }
+  answer: { kind: output, output: "0 5 5" }
+  explanation: |
+    `compare_exchange_strong(expected, desired)` compares the atomic's value with `expected`. If they
+    are equal it stores `desired` and returns `true`. If not, it **writes the current value into
+    `expected`** and returns `false`, leaving the atomic unchanged.
+
+    Here 5 != 3, so the CAS fails: `ok` is `false` (printed as 0), `expected` becomes 5, and `x`
+    stays 5. Updating `expected` on failure is what makes the usual CAS retry loop cheap: the next
+    iteration already has the fresh value and does not need a separate load.
+  tags: [atomics, compare-and-swap]
+  source: { name: "cppreference — std::atomic::compare_exchange", url: "https://en.cppreference.com/w/cpp/atomic/atomic/compare_exchange" }
+
+- id: conc-snip-cpp-006
+  topic: concurrency
+  subtopic: Atomics
+  difficulty: easy
+  type: output
+  language: cpp
+  standard: C++20
+  prompt: |
+    What does this program print?
+  code: |
+    #include <atomic>
+    #include <iostream>
+
+    int main() {
+        std::atomic<int> x{1};
+        int a = x.exchange(4);
+        int b = x.fetch_add(3);
+        int c = ++x;
+        std::cout << a << b << c << x << '\n';
+    }
+  answer: { kind: output, output: "1488" }
+  explanation: |
+    - `exchange(4)` stores 4 and returns the **old** value: `a = 1`, `x = 4`.
+    - `fetch_add(3)` adds 3 and returns the **old** value: `b = 4`, `x = 7`.
+    - Pre-increment `++x` on an atomic is an atomic RMW that returns the **new** value: `c = 8`, `x = 8`.
+    - `std::cout << x` performs an implicit `load()`: 8.
+
+    So the output is `1488`. The `fetch_*` functions return the previous value; the operator forms
+    (`++x`, `x += n`) return the resulting value, mirroring the built-in operators.
+  tags: [atomics, exchange, fetch-add]
+
+- id: conc-snip-cpp-007
+  topic: concurrency
+  subtopic: Thread lifecycle
+  difficulty: easy
+  type: output
+  language: cpp
+  standard: C++20
+  prompt: |
+    What does this program print?
+  code: |
+    #include <chrono>
+    #include <iostream>
+    #include <thread>
+
+    int main() {
+        {
+            std::jthread t([] {
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                std::cout << "a";
+            });
+        }
+        std::cout << "b\n";
+    }
+  answer: { kind: output, output: "ab" }
+  explanation: |
+    `std::jthread` (C++20) joins in its destructor (after requesting stop via its `stop_token`, which
+    this lambda ignores). Leaving the inner block destroys `t`, which waits for the thread to finish
+    printing "a". Only then does `main` print "b". The sleep does not matter: the join makes the order
+    deterministic.
+
+    With a plain `std::thread`, destroying a still-joinable thread calls `std::terminate()`, so the
+    same code would abort instead of printing.
+  tags: [jthread, raii, join]
+  source: { name: "cppreference — std::jthread", url: "https://en.cppreference.com/w/cpp/thread/jthread" }
+
+- id: conc-snip-cpp-008
+  topic: concurrency
+  subtopic: One-time initialisation
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++20
+  prompt: |
+    What does this program print?
+  code: |
+    #include <atomic>
+    #include <iostream>
+    #include <mutex>
+    #include <thread>
+    #include <vector>
+
+    std::once_flag flag;
+    std::atomic<int> calls{0};
+
+    void init() { ++calls; }
+
+    int main() {
+        std::vector<std::thread> ts;
+        for (int i = 0; i < 8; ++i)
+            ts.emplace_back([] { std::call_once(flag, init); });
+        for (auto& t : ts) t.join();
+        std::cout << calls << '\n';
+    }
+  answer: { kind: output, output: "1" }
+  explanation: |
+    `std::call_once` guarantees that exactly one *returning* call executes the function for a given
+    `once_flag`. Threads that arrive while it is running block until it completes, and all later calls
+    return immediately. The completion of the active call also synchronises with every other
+    `call_once` on the same flag that returns, so they all see its side effects.
+
+    Eight threads, one call: prints 1.
+  tags: [call-once, initialisation]
+  source: { name: "cppreference — std::call_once", url: "https://en.cppreference.com/w/cpp/thread/call_once" }
+
+- id: conc-snip-cpp-009
+  topic: concurrency
+  subtopic: One-time initialisation
+  difficulty: hard
+  type: output
+  language: cpp
+  standard: C++20
+  prompt: |
+    What does this program print according to the C++ standard?
+  code: |
+    #include <iostream>
+    #include <mutex>
+    #include <stdexcept>
+
+    std::once_flag flag;
+    int attempts = 0;
+
+    void init() {
+        ++attempts;
+        if (attempts < 3) throw std::runtime_error("not yet");
+    }
+
+    int main() {
+        for (int i = 0; i < 5; ++i) {
+            try {
+                std::call_once(flag, init);
+            } catch (const std::exception&) {
+                std::cout << "x";
+            }
+        }
+        std::cout << attempts << '\n';
+    }
+  answer: { kind: output, output: "xx3" }
+  explanation: |
+    A `call_once` execution that exits by throwing is an *exceptional* execution: the exception
+    propagates to the caller and the flag is **not** marked done, so the next `call_once` on the same
+    flag tries again. Only a *returning* execution sets the flag.
+
+    Iteration 1: attempts=1, throws, prints `x`. Iteration 2: attempts=2, throws, prints `x`.
+    Iteration 3: attempts=3, returns normally, flag is set. Iterations 4 and 5 do nothing. Final output:
+    `xx3`.
+
+    Note: libstdc++ implements `call_once` on top of `pthread_once`. Before glibc 2.34, a callable that
+    threw left the once-control stuck "in progress", so the retry hung instead of running `init` again
+    (GCC bug 66146, fixed on the glibc side as BZ #18435). With a current glibc, GCC and Clang both
+    produce the standard behaviour shown here on x86-64 Linux.
+  tags: [call-once, exceptions]
+  source: { name: "cppreference — std::call_once (exceptional executions)", url: "https://en.cppreference.com/w/cpp/thread/call_once" }
+
+- id: conc-snip-cpp-010
+  topic: concurrency
+  subtopic: Thread-local storage
+  difficulty: easy
+  type: output
+  language: cpp
+  standard: C++20
+  prompt: |
+    What does this program print?
+  code: |
+    #include <iostream>
+    #include <thread>
+
+    thread_local int counter = 0;
+
+    void bump(int n) {
+        for (int i = 0; i < n; ++i) ++counter;
+    }
+
+    int main() {
+        bump(5);
+        std::thread t([] {
+            bump(100);
+            std::cout << counter << ' ';
+        });
+        t.join();
+        std::cout << counter << '\n';
+    }
+  answer: { kind: output, output: "100 5" }
+  explanation: |
+    A `thread_local` variable has one instance per thread, each initialised (here to 0) for that
+    thread. The worker's `counter` starts at 0 and reaches 100; main's separate instance is 5. There is
+    no data race because no instance is shared, and the `join()` orders the worker's print before
+    main's.
+  tags: [thread-local]
+
+- id: conc-snip-cpp-011
+  topic: concurrency
+  subtopic: Data races
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++20
+  prompt: |
+    What does this program print?
+  code: |
+    #include <iostream>
+    #include <thread>
+    #include <vector>
+
+    int main() {
+        std::vector<int> out(3);
+        std::vector<std::thread> ts;
+        for (int i = 0; i < 3; ++i)
+            ts.emplace_back([&] { out[i] = i * 10; });
+        for (auto& t : ts) t.join();
+        for (int v : out) std::cout << v << ' ';
+        std::cout << '\n';
+    }
+  answer: { kind: undefined }
+  explanation: |
+    The lambda captures `i` **by reference** (`[&]`). Each new thread reads `i` while `main` keeps
+    incrementing it in the loop, with nothing ordering those accesses. That is a data race on `i`,
+    which is undefined behaviour. In practice threads can see 1, 2, or 3 for `i`, so values can land
+    in the wrong slot, slots can stay 0, and `out[3]` (out of bounds) can be written. After the loop
+    ends `i` is also out of scope, so a late-starting thread reads a dangling reference.
+
+    Fix: capture by value, `[&out, i] { out[i] = i * 10; }`. Then each thread gets its own copy, made
+    before the thread starts (the `std::thread` constructor's completion synchronises with the start
+    of the thread function), and each thread writes a distinct element, which is not a race.
+    ThreadSanitizer flags the original.
+  tags: [data-race, lambda-capture, undefined-behaviour]
+
+- id: conc-snip-cpp-012
+  topic: concurrency
+  subtopic: Mutexes
+  difficulty: easy
+  type: output
+  language: cpp
+  standard: C++20
+  prompt: |
+    What does this program print?
+  code: |
+    #include <iostream>
+    #include <mutex>
+
+    std::mutex m;
+
+    int main() {
+        std::lock_guard<std::mutex> a(m);
+        std::lock_guard<std::mutex> b(m);
+        std::cout << "locked twice\n";
+    }
+  answer: { kind: undefined }
+  explanation: |
+    `std::mutex` is not recursive. A precondition of `m.lock()` is that the calling thread does **not**
+    already own `m` ([thread.mutex.requirements.mutex]); violating it is undefined behaviour. With
+    glibc's default mutex the usual result is a self-deadlock (the program hangs without printing), and
+    an implementation could instead detect it and throw `std::system_error` with
+    `resource_deadlock_would_occur`, which the standard permits but does not require.
+
+    If you genuinely need re-entrant locking use `std::recursive_mutex`, though needing it usually
+    signals that a lock is held across a call into code you do not control.
+  tags: [mutex, recursive-locking, deadlock, undefined-behaviour]
+
+- id: conc-snip-cpp-013
+  topic: concurrency
+  subtopic: Data races
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++20
+  prompt: |
+    What does this program print?
+  code: |
+    #include <iostream>
+    #include <thread>
+
+    int main() {
+        std::thread t([] { std::cout << "A"; });
+        std::cout << "B";
+        t.join();
+        std::cout << '\n';
+    }
+  answer: { kind: unspecified }
+  explanation: |
+    Nothing orders the worker's `std::cout << "A"` relative to main's `std::cout << "B"`, so the output
+    is either `AB` or `BA`. It is **not** undefined: the standard says concurrent use of a
+    synchronised standard stream object (`std::cout`, while `sync_with_stdio(true)`, the default) by
+    multiple threads does not cause a data race ([iostreams.threadsafety]), although characters from
+    different threads may interleave. The output is therefore unspecified, not undefined.
+
+    To force an order, synchronise (for example join before printing "B"). For whole-line atomicity of
+    output from several threads, C++20 offers `std::osyncstream`.
+  tags: [iostream, interleaving, unspecified]
+
+- id: conc-snip-cpp-014
+  topic: concurrency
+  subtopic: One-time initialisation
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++20
+  prompt: |
+    What does this program print?
+  code: |
+    #include <iostream>
+    #include <thread>
+    #include <vector>
+
+    struct Logger {
+        Logger() { std::cout << "ctor "; }
+    };
+
+    Logger& get() {
+        static Logger instance;
+        return instance;
+    }
+
+    int main() {
+        std::vector<std::thread> ts;
+        for (int i = 0; i < 4; ++i)
+            ts.emplace_back([] { get(); });
+        for (auto& t : ts) t.join();
+        std::cout << "done\n";
+    }
+  answer: { kind: output, output: "ctor done" }
+  explanation: |
+    Since C++11, initialisation of a block-scope `static` variable is thread-safe ("magic statics",
+    [stmt.dcl]/3): if several threads reach the declaration at once, one performs the initialisation
+    and the others wait for it to finish. The constructor therefore runs exactly once.
+
+    This is why the Meyers singleton (`static T instance; return instance;`) is the simplest correct
+    lazy singleton in modern C++, with no hand-written double-checked locking.
+  tags: [static-initialisation, singleton, magic-statics]
+
+- id: conc-snip-cpp-015
+  topic: concurrency
+  subtopic: Futures and async
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++20
+  prompt: |
+    What does this program print?
+  code: |
+    #include <future>
+    #include <iostream>
+
+    int main() {
+        std::future<int> f;
+        {
+            std::promise<int> p;
+            f = p.get_future();
+        }
+        try {
+            f.get();
+            std::cout << "value\n";
+        } catch (const std::future_error& e) {
+            std::cout << (e.code() == std::future_errc::broken_promise) << '\n';
+        }
+    }
+  answer: { kind: output, output: "1" }
+  explanation: |
+    When a `std::promise` is destroyed without having stored a value or exception, it "abandons" its
+    shared state: it stores a `std::future_error` with code `std::future_errc::broken_promise` and makes
+    the state ready. The waiting `f.get()` therefore throws that exception rather than blocking
+    forever, and the comparison prints `1`.
+
+    This is how a consumer learns that a producer died or forgot to answer; it is also why a promise
+    should be fulfilled (or `set_exception`ed) on every path, including error paths.
+  tags: [promise, future, broken-promise]
+
+- id: conc-snip-cpp-016
+  topic: concurrency
+  subtopic: Condition variables
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++20
+  prompt: |
+    What does this program print?
+  code: |
+    #include <condition_variable>
+    #include <iostream>
+    #include <mutex>
+    #include <queue>
+    #include <thread>
+
+    std::mutex m;
+    std::condition_variable cv;
+    std::queue<int> q;
+    bool done = false;
+
+    int main() {
+        int sum = 0;
+        std::thread consumer([&] {
+            for (;;) {
+                std::unique_lock lk(m);
+                cv.wait(lk, [] { return !q.empty() || done; });
+                if (q.empty()) break;  // done and drained
+                sum += q.front();
+                q.pop();
+            }
+        });
+        for (int i = 1; i <= 5; ++i) {
+            { std::lock_guard lk(m); q.push(i); }
+            cv.notify_one();
+        }
+        { std::lock_guard lk(m); done = true; }
+        cv.notify_one();
+        consumer.join();
+        std::cout << sum << '\n';
+    }
+  answer: { kind: output, output: "15" }
+  explanation: |
+    This is a correct producer/consumer:
+
+    - All shared state (`q`, `done`) is read and written only under `m`.
+    - The consumer waits with a **predicate**, so a spurious wakeup or a notification that arrives
+      before it starts waiting cannot cause a missed item (the predicate is checked under the lock
+      before blocking).
+    - It exits only when `done` is set **and** the queue is empty, so no items are dropped even if
+      `done` is set before the consumer has drained everything.
+
+    Every item 1..5 is consumed exactly once; `join()` makes `sum` visible to main. Output: 15.
+  tags: [condition-variable, producer-consumer]
+
+- id: conc-snip-cpp-017
+  topic: concurrency
+  subtopic: Futures and async
+  difficulty: hard
+  type: output
+  language: cpp
+  standard: C++20
+  prompt: |
+    What does this program print according to the C++ standard?
+  code: |
+    #include <future>
+    #include <iostream>
+
+    int main() {
+        std::promise<int> p;
+        std::future<int> f = p.get_future();
+        p.set_value(7);
+        std::cout << f.get() << '\n';
+        std::cout << f.get() << '\n';
+    }
+  answer: { kind: undefined }
+  explanation: |
+    `std::future::get()` moves the result out and releases the shared state; afterwards
+    `f.valid()` is `false`. The second `get()` violates the precondition `valid() == true`, which is
+    undefined behaviour. cppreference notes that implementations are *encouraged* to throw
+    `std::future_error` with `future_errc::no_state` in this case, and libstdc++ and libc++ do, so in
+    practice the program dies with an uncaught exception and `std::terminate` (whether the first `7`
+    is ever seen depends on whether stdout was flushed before the abort). That is a courtesy, not a
+    guarantee.
+
+    If several reads (or several consumers) are needed, use `std::shared_future` (from `f.share()`),
+    whose `get()` returns a reference and can be called repeatedly.
+  tags: [future, shared-future, undefined-behaviour]
+  source: { name: "cppreference — std::future::get", url: "https://en.cppreference.com/w/cpp/thread/future/get" }
+
+- id: conc-snip-cpp-018
+  topic: concurrency
+  subtopic: Data races
+  difficulty: hard
+  type: output
+  language: cpp
+  standard: C++20
+  prompt: |
+    What does this program print?
+  code: |
+    #include <chrono>
+    #include <iostream>
+    #include <thread>
+
+    bool ready = false;
+    int payload = 0;
+
+    int main() {
+        std::thread producer([] {
+            payload = 42;
+            ready = true;
+        });
+        while (!ready) {
+            std::this_thread::yield();
+        }
+        std::cout << payload << '\n';
+        producer.join();
+    }
+  answer: { kind: undefined }
+  explanation: |
+    `ready` is a plain `bool` written by one thread and read by another with no synchronisation: a data
+    race, hence undefined behaviour, even though "it works on x86" in many test runs.
+
+    Concretely, the compiler may (a) reorder the two stores in the producer, since they are independent
+    non-atomic writes, (b) hoist the load of `ready` out of the loop and spin forever, because in a
+    race-free program no other thread could change it, and (c) on weakly ordered hardware such as ARM,
+    the reader may see `ready == true` before `payload == 42` becomes visible. `yield()` is not a
+    synchronisation operation and fixes none of this.
+
+    Fix: make `ready` a `std::atomic<bool>`, written with `store(true, std::memory_order_release)` and
+    read with `load(std::memory_order_acquire)` (or default seq_cst). Then the payload write
+    happens-before the read and 42 is guaranteed.
+  tags: [data-race, publication, memory-order, undefined-behaviour]
+  source: { name: "Preshing on Programming — Acquire and Release Semantics (message-passing idea)", url: "https://preshing.com/20120913/acquire-and-release-semantics/" }
+
+- id: conc-snip-cpp-019
+  topic: concurrency
+  subtopic: Futures and async
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++20
+  prompt: |
+    What does this program print?
+  code: |
+    #include <future>
+    #include <iostream>
+    #include <stdexcept>
+    #include <thread>
+
+    int main() {
+        std::packaged_task<int(int)> task([](int x) {
+            if (x < 0) throw std::invalid_argument("negative");
+            return x * 2;
+        });
+        std::future<int> f = task.get_future();
+        std::thread t(std::move(task), -1);
+        t.join();
+        try {
+            std::cout << f.get() << '\n';
+        } catch (const std::invalid_argument& e) {
+            std::cout << "caught " << e.what() << '\n';
+        }
+    }
+  answer: { kind: output, output: "caught negative" }
+  explanation: |
+    A `std::packaged_task` wraps a callable and connects it to a future. When the task runs and the
+    callable throws, the exception is **captured** (as an `exception_ptr`) into the shared state rather
+    than escaping the thread. `f.get()` then rethrows the original exception, with its original type,
+    in the thread that calls `get()`.
+
+    Without this, an exception escaping a `std::thread`'s top-level function would call
+    `std::terminate()`. Futures are the standard mechanism for moving both results and errors across
+    threads.
+  tags: [packaged-task, future, exceptions]

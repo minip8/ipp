@@ -1,0 +1,16 @@
+**/node_modules
+**/.next
+**/.next-e2e
+**/dist
+**/.turbo
+**/test-results
+**/playwright-report
+**/__pycache__
+target
+.git
+.env
+.env.*
+!.env.example
+infra/deploy/.env.prod
+apps/web/e2e/.screens
+apps/web/public/monaco

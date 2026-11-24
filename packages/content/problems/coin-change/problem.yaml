@@ -1,0 +1,17 @@
+slug: coin-change
+title: Coin Change (Fewest Coins)
+difficulty: medium
+tags: [dynamic-programming, breadth-first-search]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: coinChange
+      params:
+        - { name: coins, type: { array: int } }
+        - { name: amount, type: int }
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 322)
+  url: https://leetcode.com/problems/coin-change/

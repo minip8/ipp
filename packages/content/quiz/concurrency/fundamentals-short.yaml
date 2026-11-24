@@ -1,0 +1,706 @@
+# Open questions an interviewer asks aloud, mostly fundamentals. Graded against key points.
+
+- id: conc-fund-001
+  topic: concurrency
+  subtopic: Mutexes
+  difficulty: easy
+  type: short
+  prompt: |
+    What is a mutex, what problem does it solve, and what are the rules for using one correctly?
+  reference: |
+    A mutex (mutual-exclusion lock) ensures that at most one thread at a time executes a critical
+    section guarded by it. It solves concurrent access to shared mutable state: without it, interleaved
+    reads and writes corrupt data or lose updates (and in C++ unsynchronised conflicting accesses are a
+    data race, i.e. undefined behaviour). Lock and unlock also act as memory barriers: an unlock
+    synchronizes-with the next lock, so writes made inside one critical section are visible in the next.
+
+    Rules: every access (reads too) to the protected data must hold the *same* mutex; keep critical
+    sections short; always release on every path (use RAII: `std::lock_guard`/`std::scoped_lock`);
+    only the owning thread unlocks; do not lock a non-recursive mutex twice; acquire multiple mutexes in
+    a consistent order; avoid blocking I/O or calling unknown code while holding it.
+  keyPoints:
+    - "Mutual exclusion: one thread at a time in the critical section"
+    - "Protects shared mutable state from races / lost updates"
+    - "Unlock/lock pairs also provide memory visibility (happens-before)"
+    - "All accesses, including reads, must use the same mutex"
+    - "Use RAII, keep sections short, consistent lock order, owner unlocks"
+  explanation: |
+    A fundamentals question. Mentioning that reads must be locked too, and that the mutex provides
+    visibility and not just exclusion, separates a solid answer from a vague one.
+  tags: [mutex, critical-section, fundamentals]
+
+- id: conc-fund-002
+  topic: concurrency
+  subtopic: Deadlock
+  difficulty: easy
+  type: short
+  prompt: |
+    What is a deadlock? Give the smallest example you can and one way to prevent it.
+  reference: |
+    A deadlock is a state in which a set of threads are each blocked waiting for something that only
+    another thread in the set can provide, so none of them can ever proceed.
+
+    Minimal example: thread 1 locks mutex A then tries to lock B; thread 2 locks B then tries to lock A.
+    If both take their first lock before either takes its second, each waits forever for the other.
+    (Even smaller: one thread locking the same non-recursive mutex twice.)
+
+    Prevention: acquire locks in one global order everywhere (always A before B), or acquire both at
+    once with `std::scoped_lock(a, b)`/`std::lock`, or avoid holding one lock while waiting for another.
+  keyPoints:
+    - "Threads blocked forever, each waiting on a resource held by another in the set"
+    - "Example: two threads locking two mutexes in opposite orders"
+    - "Prevent with a consistent global lock order"
+    - "Or acquire multiple locks atomically (std::scoped_lock/std::lock) or avoid hold-and-wait"
+  explanation: |
+    The basic definition plus the canonical two-lock example. Naming the four Coffman conditions is a
+    bonus, not required.
+  tags: [deadlock, fundamentals, lock-ordering]
+
+- id: conc-fund-003
+  topic: concurrency
+  subtopic: Semaphores
+  difficulty: easy
+  type: short
+  prompt: |
+    What is a semaphore? Explain counting vs binary semaphores and give a use for each.
+  reference: |
+    A semaphore is an integer counter with two atomic operations: `wait`/`P`/`acquire` decrements it,
+    blocking while it is zero; `signal`/`V`/`release` increments it, waking a waiter if any (Dijkstra).
+
+    A **counting semaphore** initialised to N represents N available units of a resource: e.g. limit
+    a service to 10 concurrent database connections, or count filled slots in a bounded buffer.
+
+    A **binary semaphore** (values 0/1) can be used for mutual exclusion, but more usefully for
+    signalling between threads: initialised to 0, one thread waits until another releases it to say
+    "event happened". Unlike a mutex it has no owner, so any thread may release it.
+
+    In C++20: `std::counting_semaphore<N>` and `std::binary_semaphore`.
+  keyPoints:
+    - "An integer with atomic acquire (decrement, block at zero) and release (increment, wake)"
+    - "Counting semaphore: N permits, e.g. limiting concurrent connections"
+    - "Binary semaphore: signalling between threads, or simple exclusion"
+    - "No ownership, unlike a mutex: any thread can release"
+  explanation: |
+    Interviewers often follow up with "how does it differ from a mutex?", so mentioning ownership
+    pre-empts that.
+  tags: [semaphore, fundamentals]
+
+- id: conc-fund-004
+  topic: concurrency
+  subtopic: Condition variables
+  difficulty: easy
+  type: short
+  prompt: |
+    What is a condition variable, and why is it always used together with a mutex?
+  reference: |
+    A condition variable lets a thread sleep until some condition on shared state becomes true, instead
+    of busy-polling. Threads `wait` on it; a thread that changes the state calls `notify_one` or
+    `notify_all` to wake waiters.
+
+    The mutex is needed because the condition is about shared data: the waiter must check the
+    condition and go to sleep *atomically* with respect to threads that change it. `wait(lock)`
+    releases the mutex and blocks as one step, and reacquires it before returning. Without the mutex, a
+    notifier could change the state and notify in the gap between the waiter's check and its sleep,
+    and the wakeup would be lost. The mutex also protects the shared data itself.
+
+    Always wait in a loop or with a predicate, because of spurious wakeups and because another thread
+    may have changed the state again before the woken thread reacquires the mutex.
+  keyPoints:
+    - "Lets threads sleep until a condition on shared state holds, instead of polling"
+    - "wait() atomically releases the mutex and blocks; reacquires before returning"
+    - "The mutex prevents lost wakeups between checking the condition and sleeping"
+    - "The mutex also protects the shared state the condition depends on"
+    - "Always re-check the condition in a loop (spurious / stolen wakeups)"
+  explanation: |
+    The key idea is atomic "unlock and sleep". A candidate who only says "it's required by the API"
+    has missed the point.
+  tags: [condition-variable, fundamentals]
+
+- id: conc-fund-005
+  topic: concurrency
+  subtopic: Atomics
+  difficulty: easy
+  type: short
+  prompt: |
+    What is an atomic operation? Why is `count++` on a plain `int` not atomic, and how do you fix it?
+  reference: |
+    An atomic operation is indivisible: other threads observe it either not at all or completely, never
+    half-done, and two atomic RMWs on the same variable never interleave.
+
+    `count++` on a plain int compiles to load, add, store (even if the CPU has a memory-operand `inc`,
+    without a `lock` prefix it is not atomic across cores, and the compiler is free to split it). Two
+    threads can both load 5, both compute 6, and both store 6: one increment is lost. In C++ it is also a
+    data race and hence undefined behaviour.
+
+    Fix: `std::atomic<int> count; count++` (or `fetch_add`), which compiles to a single atomic RMW
+    (`lock xadd` on x86), or protect the increment with a mutex.
+  keyPoints:
+    - "Atomic = indivisible; never observed half-complete"
+    - "count++ is load, modify, store; interleaving loses updates"
+    - "In C++ unsynchronised count++ from several threads is a data race (UB)"
+    - "Fix with std::atomic (fetch_add / lock xadd) or a mutex"
+  explanation: |
+    A warm-up question. Showing the concrete lost-update interleaving is what graders look for.
+  tags: [atomics, read-modify-write, fundamentals]
+
+- id: conc-fund-006
+  topic: concurrency
+  subtopic: Thread safety
+  difficulty: easy
+  type: short
+  prompt: |
+    What does it mean for a class to be "thread-safe"? What strategies can make a class thread-safe?
+  reference: |
+    A thread-safe class behaves correctly (keeps its invariants and meets its specification) when its
+    methods are called concurrently from multiple threads, without the callers adding their own
+    synchronisation. Usually that means each method is atomic with respect to the others (linearizable).
+    Thread-safety is about the documented operations; a sequence of calls may still need external
+    locking (check-then-act).
+
+    Strategies:
+    - **Immutability**: no mutable state after construction, so nothing to synchronise.
+    - **Confinement**: state owned by one thread (thread-local, or actor/message passing).
+    - **Internal synchronisation**: a mutex inside the class guarding all state, or atomics for
+      simple state.
+    - **Lock-free / concurrent data structures** from a library.
+    - **Copy-on-write snapshots**: readers get an immutable version via an atomic pointer swap.
+    Also important: document the guarantee (e.g. C++ standard library containers allow concurrent const
+    calls but not concurrent mutation).
+  keyPoints:
+    - "Correct under concurrent calls without extra caller synchronisation; invariants preserved"
+    - "Individual operations atomic; compound sequences may still need external locking"
+    - "Immutability and thread confinement avoid sharing"
+    - "Internal locking or atomics for shared mutable state"
+    - "Document the guarantee (e.g. std containers: concurrent const access OK, mutation not)"
+  explanation: |
+    The best answers start from "avoid shared mutable state" (immutability, confinement) before
+    reaching for locks, and note that thread-safe methods do not compose automatically.
+  tags: [thread-safety, immutability, fundamentals]
+
+- id: conc-fund-007
+  topic: concurrency
+  subtopic: Thread pools
+  difficulty: easy
+  type: short
+  prompt: |
+    What is a thread pool, and why use one instead of creating a new thread for every task?
+  reference: |
+    A thread pool is a fixed (or bounded) set of long-lived worker threads that take tasks from a queue
+    and execute them.
+
+    Reasons:
+    - **Cost**: creating and destroying a thread costs tens of microseconds and memory (stack
+      reservation, kernel structures); reusing threads amortises it.
+    - **Bounded concurrency**: an unbounded thread-per-task design can create thousands of threads under
+      load, exhausting memory and causing heavy context-switching and contention; a pool caps it and
+      queues excess work (backpressure).
+    - **Control**: central place for sizing to the hardware, priorities, metrics, and orderly shutdown.
+
+    Sizing: about the core count for CPU-bound work; more for blocking I/O (cores × (1 + wait/compute)).
+    Pitfalls: tasks that block on other tasks in the same pool can deadlock; long tasks starve short
+    ones.
+  keyPoints:
+    - "Fixed set of reusable worker threads pulling tasks from a queue"
+    - "Amortises thread creation/destruction cost"
+    - "Bounds concurrency, preventing thread explosion and excessive context switching"
+    - "Sizing depends on CPU-bound vs I/O-bound work"
+    - "Mentions a pitfall such as nested-wait deadlock or queue growth"
+  explanation: |
+    A basic design question; quantifying thread-creation cost and mentioning bounded concurrency make
+    the answer convincing.
+  tags: [thread-pool, fundamentals]
+
+- id: conc-fund-008
+  topic: concurrency
+  subtopic: Thread lifecycle
+  difficulty: easy
+  type: short
+  prompt: |
+    In C++, what is the difference between `join()` and `detach()` on a `std::thread`, and why is
+    `detach()` dangerous?
+  reference: |
+    `join()` blocks the calling thread until the target thread finishes, then releases its resources;
+    afterwards everything the thread did is visible to the joiner (thread completion
+    synchronizes-with the return of `join`).
+
+    `detach()` lets the thread run independently; the `std::thread` object no longer refers to it, and
+    its resources are released automatically when it ends. You can never wait for it.
+
+    Dangers of detach: the thread may outlive the objects it references (locals captured by reference,
+    `this`, or even static objects destroyed during program exit), causing use-after-free; you cannot
+    know when it is done or collect its errors; at process exit detached threads are killed abruptly
+    in the middle of whatever they are doing. Prefer `join` (or `std::jthread`, which joins
+    automatically), and give long-running background threads an explicit stop signal.
+  keyPoints:
+    - "join waits for completion and synchronises (results visible afterwards)"
+    - "detach lets the thread run on with no handle; cannot be waited on"
+    - "Detached threads can outlive referenced data, causing use-after-free"
+    - "No way to observe completion or errors; killed abruptly at process exit"
+    - "Prefer join / std::jthread with a stop signal"
+  explanation: |
+    Lifetime is the crux: the most common detach bug is a thread capturing references to locals of a
+    function that has already returned.
+  tags: [std-thread, join, detach, lifetime]
+
+- id: conc-fund-009
+  topic: concurrency
+  subtopic: Critical sections
+  difficulty: easy
+  type: short
+  prompt: |
+    What properties must a correct solution to the critical-section problem satisfy?
+  reference: |
+    1. **Mutual exclusion**: at most one thread is in the critical section at a time.
+    2. **Progress** (deadlock-freedom): if no thread is in the critical section and some want to enter,
+       one of them eventually enters; the decision cannot be postponed forever, and threads outside the
+       protocol do not block it.
+    3. **Bounded waiting** (starvation-freedom / fairness): once a thread has requested entry, there is
+       a bound on how many times others can enter before it does.
+
+    Often also stated: no assumptions about relative speeds or the number of CPUs, and a thread
+    failing outside the critical section does not block others. Peterson's algorithm satisfies all
+    three for two threads (under sequential consistency).
+  keyPoints:
+    - "Mutual exclusion"
+    - "Progress / deadlock-freedom: someone waiting eventually gets in"
+    - "Bounded waiting / starvation-freedom"
+    - "No assumptions about thread speeds or scheduling"
+  explanation: |
+    The textbook triad (Silberschatz). Distinguishing progress (the system advances) from bounded
+    waiting (each thread advances) is what matters, mirroring lock-free vs wait-free.
+  tags: [critical-section, mutual-exclusion, fundamentals]
+
+- id: conc-fund-010
+  topic: concurrency
+  subtopic: Livelock and starvation
+  difficulty: easy
+  type: short
+  prompt: |
+    Explain deadlock, livelock and starvation in your own words, with an everyday analogy or example for
+    each.
+  reference: |
+    - **Deadlock**: threads are blocked forever, each waiting for another. Analogy: four cars at a
+      four-way stop, each waiting for the car on its right. Example: two threads locking two mutexes in
+      opposite order.
+    - **Livelock**: threads are active and keep reacting to each other but make no progress. Analogy:
+      two people in a corridor who keep stepping aside in the same direction. Example: two threads that
+      take one lock, fail `try_lock` on the other, release, and retry in lockstep.
+    - **Starvation**: the system makes progress but one thread is perpetually denied. Analogy: a car
+      waiting to turn across constant traffic. Example: a writer on a reader-preferring rwlock with a
+      constant stream of readers, or a low-priority thread under strict priority scheduling.
+
+    Remedies differ: lock ordering for deadlock, randomised backoff for livelock, fairness (FIFO
+    queues, aging, writer preference) for starvation.
+  keyPoints:
+    - "Deadlock: blocked forever in a cycle of waits"
+    - "Livelock: active but no progress, reacting to each other"
+    - "Starvation: others progress while one thread never does"
+    - "A concrete example for each"
+    - "Different remedies: ordering, randomised backoff, fairness/aging"
+  explanation: |
+    The three are often confused. The distinguishing questions are: are threads blocked (deadlock), busy
+    (livelock), or is only one thread affected while others proceed (starvation)?
+  tags: [deadlock, livelock, starvation, fundamentals]
+
+- id: conc-fund-011
+  topic: concurrency
+  subtopic: Futures and async
+  difficulty: easy
+  type: short
+  prompt: |
+    What are a future and a promise? Describe how they are used together.
+  reference: |
+    They are two ends of a one-shot channel for a single result. The **promise** is the write end: the
+    producer calls `set_value(v)` (or `set_exception(e)`) exactly once. The **future** is the read
+    end: the consumer calls `get()`, which blocks until the value is available and then returns it (or
+    rethrows the stored exception). They share a "shared state" allocated when the promise is created
+    (`promise.get_future()`).
+
+    Typical use: start work on another thread, pass it the promise (or use `std::async` /
+    `std::packaged_task`, which create the pair for you), keep the future, and later collect the result.
+    It cleanly transfers both results and errors across threads and gives the necessary
+    synchronisation (setting the value happens-before `get` returns). In C++, a `std::future` can be
+    read once; `std::shared_future` allows many readers. A promise destroyed without setting a value
+    makes `get()` throw `broken_promise`.
+  keyPoints:
+    - "Promise is the producer/write end; future is the consumer/read end of one result"
+    - "set_value / set_exception once; get() blocks then returns the value or rethrows"
+    - "Transfers results and exceptions across threads with proper synchronisation"
+    - "std::async and packaged_task create the pair automatically"
+    - "future is single-read; shared_future for multiple readers; broken_promise if never set"
+  explanation: |
+    Interviewers look for the producer/consumer split and exception propagation. C++ specifics such as
+    single-use `get()` and `broken_promise` are bonuses.
+  tags: [future, promise, fundamentals]
+
+- id: conc-fund-012
+  topic: concurrency
+  subtopic: Event loops
+  difficulty: easy
+  type: short
+  prompt: |
+    Distinguish blocking vs non-blocking I/O and synchronous vs asynchronous I/O. Where do `epoll` and
+    `io_uring` fit?
+  reference: |
+    - **Blocking I/O**: the call (e.g. `read`) does not return until it can complete; the thread sleeps
+      meanwhile.
+    - **Non-blocking I/O**: the call returns immediately; if it cannot make progress it fails with
+      `EAGAIN`/`EWOULDBLOCK`, and the caller tries again later. Usually combined with a readiness
+      notification mechanism.
+    - **Synchronous** vs **asynchronous** is about who performs the transfer and when you learn about
+      completion: with synchronous I/O the data transfer happens inside your call; with asynchronous I/O
+      you submit a request and are notified later when it has completed, the transfer happening in the
+      background.
+
+    `epoll` (like `select`/`poll`/`kqueue`) is **readiness-based** non-blocking I/O multiplexing: it
+    tells you which descriptors are ready, and you then do the (synchronous, non-blocking) `read`
+    yourself. `io_uring` (and Windows IOCP) is **completion-based** asynchronous I/O: you submit the
+    read with a buffer and get a completion event with the result.
+  keyPoints:
+    - "Blocking calls sleep until done; non-blocking calls return immediately (EAGAIN)"
+    - "Synchronous: transfer happens in your call; asynchronous: submit now, completion notified later"
+    - "epoll/select/kqueue: readiness notification, you perform the read/write"
+    - "io_uring/IOCP: completion notification, kernel performs the operation"
+  explanation: |
+    These terms are often used loosely; a precise answer separates "does the call wait?" from "who
+    does the work and how is completion reported?".
+  tags: [non-blocking-io, async-io, epoll, io-uring]
+
+- id: conc-fund-013
+  topic: concurrency
+  subtopic: Latches and barriers
+  difficulty: easy
+  type: short
+  prompt: |
+    What is a barrier in concurrent programming? Give a use case.
+  reference: |
+    A barrier is a synchronisation point for a group of N threads: each thread that arrives blocks until
+    all N have arrived, then all are released together. A cyclic (reusable) barrier then resets for the
+    next round, often running a completion step once per round.
+
+    Use case: an iterative parallel computation in phases, such as a physics simulation or a stencil /
+    Jacobi solver where each thread updates its part of a grid for step k and must not start step k+1
+    until every thread has finished step k (because it reads neighbours' results). Another: a benchmark
+    harness that releases all worker threads simultaneously.
+
+    In C++20, `std::barrier` (reusable, with completion function) and `std::latch` (single-use); in
+    Java, `CyclicBarrier`/`Phaser`; in Python, `threading.Barrier`.
+  keyPoints:
+    - "All N participants wait until everyone arrives, then proceed together"
+    - "Cyclic barriers reset for the next phase; optional completion step"
+    - "Use case: phased/iterative parallel algorithms where step k+1 needs all of step k"
+    - "Names a concrete API (std::barrier, std::latch, CyclicBarrier, threading.Barrier)"
+  explanation: |
+    Straightforward definition; the use case should show why the phase boundary is needed (data
+    dependencies between threads' results).
+  tags: [barrier, latch, fundamentals]
+
+- id: conc-fund-014
+  topic: concurrency
+  subtopic: Thread safety
+  difficulty: easy
+  type: short
+  prompt: |
+    What is *thread confinement*, and why is it often the best way to deal with concurrency?
+  reference: |
+    Thread confinement means a piece of mutable data is only ever accessed by one thread, so it needs no
+    synchronisation at all. Forms: local variables on a thread's stack, `thread_local` storage, objects
+    owned by a single thread that other threads communicate with only by sending messages (actor
+    model, event loops, "share memory by communicating" in Go), or single-writer designs where one
+    thread owns all mutations of an order book.
+
+    Why it is attractive: no locks, no data races, no contention, and better cache locality, so it is
+    both simpler and faster. Shared state is reduced to the hand-off points (queues), which are well
+    understood and easy to make efficient (e.g. SPSC ring buffers). Many low-latency systems are
+    designed as pipelines of single-threaded stages for exactly this reason.
+
+    The cost: work must be partitioned so ownership is clear, and hand-offs add latency and copying.
+  keyPoints:
+    - "Data accessed by only one thread needs no synchronisation"
+    - "Forms: stack locals, thread_local, single-owner objects with message passing (actors, event loops)"
+    - "Avoids locks, races and contention; good cache locality"
+    - "Sharing reduced to explicit hand-off queues"
+    - "Trade-off: requires partitioning and message-passing overhead"
+  explanation: |
+    A strong answer treats "don't share" as the first design choice, before locks or atomics, and
+    connects it to single-writer architectures common in trading systems.
+  tags: [thread-confinement, actor-model, single-writer, design]
+
+- id: conc-fund-015
+  topic: concurrency
+  subtopic: Signals and reentrancy
+  difficulty: medium
+  type: short
+  prompt: |
+    What is the difference between a *reentrant* (async-signal-safe) function and a *thread-safe* one?
+    Why can't you call `malloc` or `printf` from a signal handler even though they are thread-safe?
+  reference: |
+    **Thread-safe**: correct when called concurrently from multiple threads; typically achieved with
+    internal locks.
+
+    **Reentrant / async-signal-safe**: correct even if a call is interrupted *on the same thread* (by a
+    signal handler) and the function is entered again before the first call finishes. Locks do not help
+    here: if the handler interrupts `malloc` while it holds the allocator lock and the handler calls
+    `malloc`, the same thread tries to take the lock it already holds: a self-deadlock (or, with no
+    lock, corrupted internal state). `printf` similarly uses locked, buffered `FILE` state.
+
+    So thread-safe does not imply async-signal-safe. POSIX lists the async-signal-safe functions
+    (`write`, `_exit`, `sigaction`, …). Signal handlers should do minimal work: set a
+    `volatile sig_atomic_t` or lock-free `std::atomic` flag, or write a byte to a self-pipe/eventfd,
+    and let normal code handle it. Or use `signalfd` to receive signals synchronously.
+  keyPoints:
+    - "Thread-safe: safe with concurrent calls from different threads, often via locks"
+    - "Reentrant/async-signal-safe: safe when re-entered on the same thread before the first call finishes"
+    - "A handler interrupting malloc/printf while it holds its lock self-deadlocks or corrupts state"
+    - "Only POSIX-listed async-signal-safe functions may be called in handlers (e.g. write, _exit)"
+    - "Handlers should set a sig_atomic_t/lock-free atomic flag or write to a self-pipe; or use signalfd"
+  explanation: |
+    The key insight is that locks protect against other threads, not against re-entry on the same
+    thread, which is exactly the signal-handler scenario.
+  tags: [reentrancy, signals, async-signal-safe, thread-safety]
+
+- id: conc-fund-016
+  topic: concurrency
+  subtopic: Memory ordering
+  difficulty: medium
+  type: short
+  prompt: |
+    What is a memory barrier (fence), and why do CPUs and compilers need them?
+  reference: |
+    A memory barrier is an instruction (or compiler directive) that constrains the order in which
+    memory operations before and after it become visible.
+
+    Why reordering happens: compilers reorder, merge and eliminate memory accesses for optimisation as
+    long as single-threaded behaviour is preserved. CPUs execute out of order, buffer stores in store
+    buffers, speculate loads and may have caches that make writes visible to other cores in different
+    orders. All of this is invisible to a single thread but observable by others.
+
+    Kinds: a **compiler barrier** (e.g. `asm volatile("" ::: "memory")` or
+    `std::atomic_signal_fence`) only stops compiler reordering. **Hardware fences**: x86 `mfence`
+    (full, needed mainly to stop store→load reordering), ARM `dmb ish`, POWER `sync`/`lwsync`. Acquire
+    and release semantics are one-directional barriers attached to a load or store.
+
+    In C++ you rarely write fences directly: you choose memory orders on atomics
+    (`memory_order_acquire`, `release`, `seq_cst`) or call `std::atomic_thread_fence`, and the compiler
+    emits the right combination for the target.
+  keyPoints:
+    - "Constrains the visible order of memory operations across the barrier"
+    - "Compilers reorder for optimisation; CPUs reorder via out-of-order execution and store buffers"
+    - "Compiler-only barriers vs hardware fences (mfence, dmb, sync)"
+    - "Acquire/release are one-way barriers attached to loads/stores; full fences block StoreLoad reordering"
+    - "In C++ prefer atomics' memory orders or std::atomic_thread_fence over raw asm"
+  explanation: |
+    Good answers distinguish compiler and hardware reordering and know that x86 needs a full fence only
+    for store→load ordering.
+  tags: [memory-barrier, fences, reordering]
+
+- id: conc-fund-017
+  topic: concurrency
+  subtopic: Testing concurrent code
+  difficulty: medium
+  type: short
+  prompt: |
+    How do you test and gain confidence in concurrent code, given that bugs may appear only under rare
+    interleavings?
+  reference: |
+    - **Dynamic race detectors**: ThreadSanitizer (`-fsanitize=thread`) in C/C++/Go/Rust detects data
+      races and lock-order inversions on executed paths, even when the bad timing did not occur; run
+      the test suite under it in CI. Helgrind/DRD for Valgrind.
+    - **Stress tests**: many threads, many iterations, randomised delays/yields injected at
+      interesting points, run on machines with many cores, and on weakly ordered hardware (ARM) for
+      memory-ordering bugs, not just x86.
+    - **Systematic exploration / model checking**: tools that enumerate interleavings and weak-memory
+      behaviours for small tests: CDSChecker/GenMC, Relacy for C++, `loom` for Rust, `jcstress` for
+      Java memory-model tests, TLA+ for designs.
+    - **Deterministic simulation**: run the system on a controlled scheduler with a seed so failures
+      can be replayed (as in FoundationDB's simulation testing).
+    - **Design for testability and review**: minimise shared state, document locking invariants,
+      annotate with Clang thread-safety analysis (`GUARDED_BY`), assertions on invariants, code review
+      focused on lock ordering and memory orders.
+    Passing tests never proves absence of races; tools and design reduce the risk.
+  keyPoints:
+    - "Run under ThreadSanitizer (data races, lock-order inversions)"
+    - "Stress tests with injected delays, many cores, and weakly ordered hardware"
+    - "Model checkers / interleaving explorers (Relacy, CDSChecker/GenMC, loom, jcstress, TLA+)"
+    - "Deterministic, replayable scheduling / simulation testing"
+    - "Static annotations (Clang thread-safety analysis) and design that minimises sharing"
+  explanation: |
+    Interviewers want to hear that ordinary unit tests are insufficient and that specific tools exist.
+    TSan is the minimum expected; model checkers and deterministic simulation mark depth.
+  tags: [testing, tsan, model-checking, stress-testing]
+
+- id: conc-fund-018
+  topic: concurrency
+  subtopic: Compare-and-swap
+  difficulty: medium
+  type: short
+  prompt: |
+    Compare optimistic and pessimistic concurrency control. When does each perform better?
+  reference: |
+    **Pessimistic**: assume conflicts are likely, so acquire exclusive access (a lock) before reading
+    and modifying; others wait. Database row locks, mutexes.
+
+    **Optimistic**: assume conflicts are rare; read without locking, compute the update, then commit
+    only if nothing changed in the meantime, otherwise retry. Implemented with CAS loops (compare the
+    value or a version number), seqlocks, version columns in databases (`UPDATE … WHERE version = v`),
+    or software transactional memory.
+
+    Optimistic wins when contention is low and the work is cheap to redo: no blocking, no lock
+    overhead, readers never block writers. Pessimistic wins under high contention or when the work is
+    expensive or has side effects that cannot be retried (I/O): optimistic schemes then waste work on
+    repeated retries and can livelock or starve. Hybrid: try optimistic a few times, then fall back to a
+    lock.
+  keyPoints:
+    - "Pessimistic: lock first, others wait"
+    - "Optimistic: read, compute, validate/commit with CAS or version check, retry on conflict"
+    - "Optimistic wins with low contention and cheap, side-effect-free work"
+    - "Pessimistic wins under high contention or with expensive / irreversible work"
+    - "Examples: CAS loops, version columns, seqlocks vs mutexes, row locks"
+  explanation: |
+    This connects lock-free CAS loops to the same idea in databases. Graders look for the contention
+    trade-off and the retry-cost argument.
+  tags: [optimistic-concurrency, compare-and-swap, locking]
+
+- id: conc-fund-019
+  topic: concurrency
+  subtopic: Threads and processes
+  difficulty: hard
+  type: short
+  prompt: |
+    What does a context switch actually cost? Break down the direct and indirect costs, and explain why
+    low-latency systems pin busy-polling threads to isolated cores.
+  reference: |
+    **Direct costs** (typically around 1 to a few microseconds on modern Linux, more with mitigations):
+    entering the kernel (syscall, interrupt or timer tick), running the scheduler, saving and restoring
+    registers including FPU/SIMD state, switching the kernel stack, and for a different process
+    switching page tables (CR3), plus security mitigations (e.g. KPTI page-table swaps, IBPB/buffer
+    flushes) on some CPUs.
+
+    **Indirect costs** (often larger): the incoming thread finds cold caches, TLB and branch predictors
+    because the previous thread evicted its working set; the outgoing thread pays the same when it
+    returns. Migration to another core loses L1/L2 contents entirely. Wake-up latency, the time from
+    "event arrived" to "thread running", adds scheduler delays that can reach tens or hundreds of
+    microseconds under load.
+
+    Low-latency practice: dedicate cores to critical threads (`isolcpus`/`nohz_full`/cgroups cpusets),
+    pin threads (`sched_setaffinity`), keep interrupts off those cores, and busy-poll (spin on the NIC
+    queue or an SPSC ring) instead of sleeping, so the thread never context-switches and its caches stay
+    hot. The cost is a fully consumed core per thread and power.
+  keyPoints:
+    - "Direct: kernel entry, scheduler, register/FPU save-restore, possibly page-table switch and mitigations"
+    - "Order of magnitude: microseconds direct"
+    - "Indirect: cold caches, TLB, branch predictors; migration loses cache contents"
+    - "Wake-up/scheduling latency adds jitter"
+    - "Low latency: isolate and pin cores, keep interrupts away, busy-poll instead of sleeping"
+  explanation: |
+    The indirect costs are the part most candidates miss. Connecting them to core isolation and
+    busy-polling is the standard trading-systems angle.
+  tags: [context-switch, latency, cpu-pinning, busy-polling, low-latency]
+
+- id: conc-fund-020
+  topic: concurrency
+  subtopic: Thread safety
+  difficulty: hard
+  type: short
+  prompt: |
+    Design a thread-safe LRU cache for a service where `get` is far more frequent than `put`. Start
+    simple and then explain how you would make it scale.
+  reference: |
+    **Baseline**: a hash map from key to a node in a doubly linked list (most-recent at the front),
+    guarded by one mutex. `get`: lock, look up, move the node to the front, return a copy (or
+    `shared_ptr`) of the value. `put`: lock, insert/update at the front, evict from the back if over
+    capacity. Correct and simple, but note that `get` *mutates* the recency list, so a reader-writer
+    lock does not help: every operation needs exclusive access, and the single lock becomes the
+    bottleneck.
+
+    **Scaling options**:
+    1. **Sharding**: N independent LRU caches, chosen by hash(key) mod N, each with its own lock.
+       Contention drops roughly N-fold; eviction becomes approximately LRU per shard.
+    2. **Relax recency updates**: record accesses in a per-thread or lock-free buffer and apply them in
+       batches under the lock (Caffeine's approach), or update recency only occasionally (sampling),
+       so most `get`s take only a shared/read lock or none.
+    3. **Approximate LRU**: CLOCK (a reference bit set on access with a relaxed atomic store and a
+       sweeping hand on eviction) avoids moving list nodes on reads entirely.
+    4. Return values safely: hand out `shared_ptr` or copies so eviction cannot free data a reader is
+       using.
+  keyPoints:
+    - "Hash map plus doubly linked list; get moves the node to the front"
+    - "get mutates recency, so a single mutex (not a rwlock) is needed in the simple design"
+    - "Shard the cache by key hash to reduce contention"
+    - "Batch or sample recency updates, or use CLOCK/approximate LRU to make reads cheap"
+    - "Return copies or shared_ptr so eviction does not invalidate values in use"
+  explanation: |
+    The trap is reaching for a reader-writer lock without noticing that `get` writes. Sharding is the
+    expected first step; buffered recency updates and CLOCK show deeper knowledge.
+  tags: [lru-cache, design, sharding, contention]
+  source: { name: "Caffeine cache design notes (idea)", url: "https://github.com/ben-manes/caffeine/wiki/Design" }
+
+- id: conc-fund-021
+  topic: concurrency
+  subtopic: Spinlocks
+  difficulty: medium
+  type: short
+  prompt: |
+    In a low-latency system, a thread waits for messages on an in-memory queue. Compare busy-polling
+    with blocking (condition variable / futex) waits.
+  reference: |
+    **Busy-polling**: the consumer spins checking the queue (e.g. an SPSC ring's index) in a tight loop,
+    typically with a `pause` instruction. Latency from enqueue to dequeue is roughly one cache-line
+    transfer between cores (on the order of 100 ns or less). No syscalls, no context switches, caches
+    stay warm. Costs: burns 100% of a core even when idle (power, heat, a core that cannot do other
+    work); with SMT it slows the sibling hyperthread; if the core is oversubscribed it can be
+    catastrophic (spinning while the producer is descheduled). Needs dedicated, isolated cores.
+
+    **Blocking**: the consumer sleeps on a condition variable or futex and the producer wakes it.
+    Efficient when idle and fair to other work, but each wakeup costs a syscall on the producer side and
+    scheduler wake-up latency on the consumer (microseconds, with jitter up to much more under load),
+    and the woken thread starts with colder caches.
+
+    Hybrids: spin for a bounded time then block (adaptive), or spin with backoff/`yield`. Choose busy
+    polling for the critical path on dedicated cores; blocking for everything else.
+  keyPoints:
+    - "Busy-polling gives the lowest latency (cache-line transfer only), no syscalls or context switches"
+    - "Busy-polling burns a full core, affects SMT siblings, and is terrible when oversubscribed"
+    - "Blocking saves CPU but adds syscall and wake-up latency with jitter"
+    - "Hybrid: spin briefly then block"
+    - "Busy-poll only on dedicated/isolated cores for the critical path"
+  explanation: |
+    Standard trading-systems trade-off. The answer should quantify roughly (sub-microsecond vs
+    microseconds) and name the conditions under which spinning is acceptable.
+  tags: [busy-polling, low-latency, spinlock, futex]
+
+- id: conc-fund-022
+  topic: concurrency
+  subtopic: Thread safety
+  difficulty: medium
+  type: short
+  prompt: |
+    What is "safe publication" of an object to other threads, and what goes wrong without it?
+  reference: |
+    Safe publication means making a newly constructed object reachable by other threads in a way that
+    guarantees they see it fully initialised. Constructing an object and then storing a pointer to it
+    in a shared variable is not enough on its own: without synchronisation the compiler or CPU may make
+    the pointer store visible before the constructor's field writes, so another thread can follow the
+    pointer and see default or garbage field values (and in C++ the unsynchronised access is a data
+    race).
+
+    Safe ways (C++): store the pointer with a release store into an `std::atomic` and read it with an
+    acquire load; hand it over under a mutex; pass it through a thread-safe queue or a future; create it
+    before starting the thread (thread start synchronises); or use a function-local static.
+    Java equivalents: store in a `volatile` or `final` field, an `AtomicReference`, a concurrent
+    collection, or under `synchronized`. Immutable objects (only final fields in Java) are additionally
+    safe even if published via a race, thanks to final-field semantics.
+
+    Also avoid letting `this` escape during construction (e.g. registering a listener in the
+    constructor), which publishes an object before it is complete regardless of the mechanism.
+  keyPoints:
+    - "Other threads must see the object fully constructed when they obtain the reference"
+    - "Without synchronisation the reference can become visible before the fields' initialising writes"
+    - "Publish via release/acquire atomics, a mutex, a concurrent queue/future, or before thread start"
+    - "Java: volatile/final fields, AtomicReference, synchronized; final-field semantics for immutables"
+    - "Do not let this escape from the constructor"
+  explanation: |
+    Safe publication (a term from Java Concurrency in Practice) is the general principle behind the
+    double-checked locking bug and the release/acquire message-passing pattern.
+  tags: [safe-publication, memory-model, java, acquire-release]
+  source: { name: "Goetz et al., Java Concurrency in Practice, ch. 3 (idea)" }

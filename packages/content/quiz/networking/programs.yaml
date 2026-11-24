@@ -1,0 +1,104 @@
+# Short programs whose output illustrates a networking rule (verified with CPython 3.14 on Linux).
+- id: net-prog-001
+  topic: networking
+  subtopic: Sockets API and options
+  difficulty: easy
+  type: output
+  language: python
+  standard: "Python 3.12"
+  prompt: |
+    What does this program print? (Byte order on the wire.)
+  code: |
+    import struct
+
+    port = 8080
+    print(struct.pack("!H", port).hex(), struct.pack("<H", port).hex())
+    print(struct.unpack("!I", bytes([192, 168, 1, 10]))[0] >> 24)
+  answer: { kind: output, output: "1f90 901f\n192" }
+  explanation: |
+    `!` in a struct format means **network byte order**, which is big-endian: 8080 = 0x1F90, so the
+    bytes are `1f 90`. `<` is little-endian (what an x86 host keeps in memory), giving `90 1f`. This is
+    exactly the swap `htons()` performs on little-endian machines.
+
+    Reading the IPv4 address bytes 192.168.1.10 as a big-endian 32-bit integer puts the first octet in
+    the top byte, so shifting right by 24 gives **192**. That's why IPv4 addresses on the wire read in
+    dotted order.
+  tags: [endianness, sockets, python]
+
+- id: net-prog-002
+  topic: networking
+  subtopic: UDP
+  difficulty: medium
+  type: output
+  language: python
+  standard: "Python 3.12 on Linux"
+  prompt: |
+    What does this program print on Linux? Assume both datagrams are delivered over loopback, as they
+    are in practice.
+  code: |
+    import socket
+
+    rx = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    rx.bind(("127.0.0.1", 0))
+    tx = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    for msg in (b"hello", b"world!"):
+        tx.sendto(msg, rx.getsockname())
+    print(rx.recv(3))
+    print(rx.recv(100))
+  answer: { kind: output, output: "b'hel'\nb'world!'" }
+  explanation: |
+    UDP keeps **message boundaries**: each `recv` consumes exactly one datagram. The first call's buffer
+    holds only 3 bytes, so the datagram `hello` is **truncated** to `b'hel'` and the rest (`lo`) is
+    discarded. It doesn't carry over. The second call gets the next whole datagram, `b'world!'`.
+
+    With TCP (a byte stream) the leftover bytes would be returned by the next read, and the two sends
+    could even be merged. On Windows the truncating `recv` raises an error (WSAEMSGSIZE) instead,
+    hence "on Linux".
+  tags: [udp, sockets, truncation, python]
+
+- id: net-prog-003
+  topic: networking
+  subtopic: Subnetting
+  difficulty: easy
+  type: output
+  language: python
+  standard: "Python 3.12"
+  prompt: |
+    What does this program print?
+  code: |
+    import ipaddress
+
+    net = ipaddress.ip_network("10.1.2.200/27", strict=False)
+    print(net, net.num_addresses, net.broadcast_address)
+    print(ipaddress.ip_address("172.32.0.5") in ipaddress.ip_network("172.16.0.0/12"))
+  answer: { kind: output, output: "10.1.2.192/27 32 10.1.2.223\nFalse" }
+  explanation: |
+    With `strict=False` the host bits are masked off. A /27 is 32 addresses, and 200 falls in the block
+    starting at 192, so the network is `10.1.2.192/27` and the broadcast is `10.1.2.223`.
+    172.16.0.0/12 spans 172.16.0.0–172.31.255.255, so 172.32.0.5 is **not** inside it (it isn't
+    RFC 1918 private space).
+  tags: [subnetting, python, ipv4]
+
+- id: net-prog-004
+  topic: networking
+  subtopic: Subnetting
+  difficulty: medium
+  type: output
+  language: python
+  standard: "Python 3.12"
+  prompt: |
+    What happens when this program runs?
+  code: |
+    import ipaddress
+
+    net = ipaddress.ip_network("10.1.2.200/27")
+    print(net.num_addresses)
+  answer: { kind: runtime_error }
+  explanation: |
+    `ip_network` is **strict** by default. A network must be written with its host bits zero, and
+    10.1.2.200 isn't on a /27 boundary (the network is 10.1.2.192), so it raises
+    `ValueError: 10.1.2.200/27 has host bits set`. Use `strict=False` to mask the host bits, or
+    `ip_interface("10.1.2.200/27")` to represent "this host on that network" (its `.network` is
+    10.1.2.192/27). The same distinction exists in router configs: an address with a mask versus a
+    route prefix.
+  tags: [subnetting, python, ipv4]

@@ -1,0 +1,17 @@
+slug: koko-eating-bananas
+title: Koko Eating Bananas
+difficulty: medium
+tags: [array, binary-search]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: minEatingSpeed
+      params:
+        - { name: piles, type: { array: int } }
+        - { name: h, type: int }
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 875; NeetCode 150) — the standard "binary search on the answer" question
+  url: https://leetcode.com/problems/koko-eating-bananas/

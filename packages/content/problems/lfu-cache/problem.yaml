@@ -1,0 +1,23 @@
+slug: lfu-cache
+title: LFU Cache
+difficulty: hard
+tags: [design, hash-table, linked-list]
+signature:
+  className: LFUCache
+  kind: design
+  ctorParams:
+    - { name: capacity, type: int }
+  methods:
+    - name: get
+      params:
+        - { name: key, type: int }
+      returns: int
+    - name: put
+      params:
+        - { name: key, type: int }
+        - { name: value, type: int }
+      returns: void
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic design interview question (LeetCode 460; listed on Taro for Rippling and others)
+  url: https://leetcode.com/problems/lfu-cache/

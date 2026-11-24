@@ -1,0 +1,16 @@
+slug: valid-palindrome
+title: Valid Palindrome
+difficulty: easy
+tags: [string, two-pointers]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: isPalindrome
+      params:
+        - { name: s, type: string }
+      returns: bool
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (Blind 75; LeetCode 125)
+  url: https://leetcode.com/problems/valid-palindrome/

@@ -1,0 +1,307 @@
+- id: arch-isa-001
+  topic: computer-architecture
+  subtopic: Instruction sets and calling conventions
+  difficulty: easy
+  type: single
+  tags: [calling-convention, sysv-abi, x86-64]
+  prompt: |
+    Under the x86-64 System V ABI (Linux, macOS, BSD), a function is declared `long f(long a, long b, long c);`. Which registers hold `a`, `b` and `c` at the call, and which register holds the return value?
+  choices:
+    - id: a
+      text: "a, b, c in rdi, rsi, rdx; return value in rax"
+    - id: b
+      text: "a, b, c in rcx, rdx, r8; return value in rax"
+    - id: c
+      text: "a, b, c in rax, rbx, rcx; return value in rax"
+    - id: d
+      text: "all three on the stack; return value in rax"
+  answer: a
+  explanation: |
+    System V passes the first six integer or pointer arguments in **rdi, rsi, rdx, rcx, r8, r9**, and the first eight floating-point arguments in xmm0–xmm7. Integer results come back in rax (with rdx for a 128-bit value) and floating-point results in xmm0.
+
+    - **rcx, rdx, r8(, r9)** is the **Windows x64** convention, which passes only four arguments in registers.
+    - **rax, rbx, rcx** matches no standard convention. rbx is callee-saved in both ABIs.
+    - Passing everything on the stack is the classic 32-bit x86 `cdecl` convention.
+  source:
+    name: "System V Application Binary Interface, AMD64 Architecture Processor Supplement §3.2.3"
+    url: https://gitlab.com/x86-psABIs/x86-64-ABI
+- id: arch-isa-002
+  topic: computer-architecture
+  subtopic: Instruction sets and calling conventions
+  difficulty: medium
+  type: multiple
+  tags: [calling-convention, sysv-abi, registers]
+  prompt: |
+    Which general-purpose registers are **callee-saved** (preserved across calls) under the x86-64 System V ABI? Select all that apply.
+  choices:
+    - id: a
+      text: "rbx"
+    - id: b
+      text: "rbp"
+    - id: c
+      text: "r12–r15"
+    - id: d
+      text: "rdi and rsi"
+    - id: e
+      text: "r10 and r11"
+    - id: f
+      text: "rax"
+  answer: [a, b, c]
+  explanation: |
+    The SysV callee-saved general-purpose registers are **rbx, rbp, r12, r13, r14, r15** (plus rsp, which must of course be restored). A function that uses one of them must save and restore it, usually with a push in the prologue and a pop in the epilogue.
+
+    Everything else is caller-saved (volatile): rax, rcx, rdx, **rsi, rdi**, r8–r11, and every xmm register. A value that must survive a call has to live in a callee-saved register or be spilled to the stack.
+
+    A common mistake is to carry over the **Windows x64** rules, where rsi, rdi and xmm6–xmm15 are callee-saved. r10 and r11 are scratch in both ABIs; the `syscall` instruction itself overwrites r11 (and rcx).
+  source:
+    name: "System V AMD64 psABI, Figure 3.4 (register usage)"
+    url: https://gitlab.com/x86-psABIs/x86-64-ABI
+- id: arch-isa-003
+  topic: computer-architecture
+  subtopic: Instruction sets and calling conventions
+  difficulty: hard
+  type: single
+  tags: [red-zone, sysv-abi, kernel, interrupts]
+  prompt: |
+    The x86-64 System V ABI defines a 128-byte "red zone" below `rsp` that a function may use without moving `rsp`. Why is the Linux kernel built with `-mno-red-zone`?
+  choices:
+    - id: a
+      text: "An interrupt or exception taken while already in kernel mode pushes its frame onto the current stack, just below rsp, overwriting anything in the red zone."
+    - id: b
+      text: "The red zone is reserved for signal handlers, and the kernel needs it to deliver signals."
+    - id: c
+      text: "The kernel stack is too small to spare 128 bytes per frame."
+    - id: d
+      text: "The red zone needs SSE instructions, which the kernel avoids."
+  answer: a
+  explanation: |
+    The red zone is safe in user space because the kernel promises not to touch it: when it delivers a signal, it builds the signal frame *below* the red zone. Hardware gives no such guarantee. An interrupt or exception arriving while the CPU is in kernel mode, where no privilege change and no stack switch happen (absent an IST stack), pushes RIP, CS, RFLAGS and so on directly below the current `rsp`. That would corrupt any locals a leaf function kept in its red zone, so the kernel disables the optimisation.
+
+    - **(b)** is backwards: signal delivery *skips over* the red zone.
+    - **(c)** The red zone uses no extra memory. It is just the area below rsp, used without adjusting rsp.
+    - **(d)** The red zone has nothing to do with SSE. (The kernel does avoid SSE, for a different reason: saving FPU state is expensive.)
+
+    The benefit of the red zone is that a leaf function can skip the `sub rsp, N` / `add rsp, N` pair. Windows x64 has no red zone.
+  source:
+    name: "System V AMD64 psABI §3.2.2 (the red zone)"
+    url: https://gitlab.com/x86-psABIs/x86-64-ABI
+- id: arch-isa-004
+  topic: computer-architecture
+  subtopic: Instruction sets and calling conventions
+  difficulty: medium
+  type: multiple
+  tags: [calling-convention, windows-x64, sysv-abi, data-model]
+  prompt: |
+    Which of these are real differences between the Windows x64 calling convention / data model and the x86-64 System V (Linux) ABI? Select all that apply.
+  choices:
+    - id: a
+      text: "Windows passes the first four integer arguments in rcx, rdx, r8, r9; System V passes six, in rdi, rsi, rdx, rcx, r8, r9."
+    - id: b
+      text: "Windows callers must reserve 32 bytes of \"shadow space\" (home space) on the stack above the return address for the callee."
+    - id: c
+      text: "`long` is 32 bits on Windows (LLP64) but 64 bits on x86-64 Linux (LP64)."
+    - id: d
+      text: "Windows x64 requires only 8-byte stack alignment at call sites, while System V requires 16."
+    - id: e
+      text: "xmm6–xmm15 are callee-saved on Windows, while all xmm registers are caller-saved in System V."
+  answer: [a, b, c, e]
+  explanation: |
+    - **(a) True.** Windows also assigns argument slots by position: the 2nd argument goes in rdx or xmm1 whichever its type, while SysV fills integer and float registers independently.
+    - **(b) True.** The callee may spill its four register arguments into those 32 bytes. The space is reserved even for functions with fewer arguments.
+    - **(c) True.** It is a classic portability bug: code that assumes `long` holds a pointer or a 64-bit count breaks on Windows. Use `int64_t`/`intptr_t`.
+    - **(d) False.** Both ABIs require rsp to be 16-byte aligned at a `call` (so rsp ≡ 8 mod 16 on entry to the callee).
+    - **(e) True.** That is why Windows functions using vector code often have long prologues saving xmm6+. Windows also has no red zone.
+- id: arch-isa-005
+  topic: computer-architecture
+  subtopic: Instruction sets and calling conventions
+  difficulty: medium
+  type: single
+  tags: [stack-alignment, sysv-abi]
+  prompt: |
+    Under the x86-64 System V ABI, what is the value of `rsp mod 16` at the first instruction of a called function, before its prologue has run?
+  choices:
+    - id: a
+      text: "0"
+    - id: b
+      text: "8"
+    - id: c
+      text: "4"
+    - id: d
+      text: "Unspecified; only 8-byte alignment is guaranteed"
+  answer: b
+  explanation: |
+    The ABI requires `rsp` to be a multiple of 16 *immediately before* the `call` instruction. `call` pushes the 8-byte return address, so on entry rsp ≡ **8** (mod 16). That is why a typical prologue does `push rbp` (restoring 16-byte alignment) or `sub rsp, 8+16k`.
+
+    It matters in practice. If hand-written assembly or a JIT calls into compiled code with a misaligned stack, the callee may use `movaps` to spill an xmm register to a stack slot it believes is 16-byte aligned, and crash with SIGSEGV. A famous example is glibc's `printf` crashing when called with a misaligned stack. Main-thread and new-thread stacks are set up to satisfy the rule.
+- id: arch-isa-006
+  topic: computer-architecture
+  subtopic: Instruction sets and calling conventions
+  difficulty: medium
+  type: short
+  tags: [calling-convention, stack-frame, x86-64]
+  prompt: |
+    Walk me through what happens at the machine level when a C function `int g(int x)` calls `int h(int a, int b)` and uses the result, on x86-64 Linux.
+  reference: |
+    In `g`, the compiler first makes sure that any value it needs after the call is in a callee-saved register (rbx, rbp, r12–r15) or spilled to the stack, because caller-saved registers may be clobbered. It loads the arguments into edi and esi, checks that rsp is 16-byte aligned, and executes `call h`, which pushes the return address and jumps. `h`'s prologue optionally pushes rbp and sets up a frame pointer, saves any callee-saved registers it will use, and reserves stack space for locals with `sub rsp`; a leaf function may use the 128-byte red zone instead. The body computes the result into eax. The epilogue restores the callee-saved registers and rsp, and `ret` pops the return address into rip; the return stack buffer predicts that target. Back in `g`, the result is read from eax. Often none of this happens, because the compiler inlines `h`, which removes the call overhead and enables further optimisation.
+  explanation: |
+    Interviewers want the mechanism (argument registers, call/ret and the return address, prologue/epilogue, who saves what), not just "it jumps to the function". Mentioning inlining shows awareness that in optimised code the call often does not exist.
+  keyPoints:
+    - "Arguments in edi/esi (rdi, rsi, …) and the result in eax/rax"
+    - "call pushes the return address and ret pops it; rsp is 16-byte aligned at the call"
+    - "Prologue/epilogue: frame pointer, saving callee-saved registers, stack space for locals"
+    - "Caller-saved vs callee-saved: the caller preserves live values across the call"
+    - "Mentions that inlining often removes the call entirely, or that the red zone lets leaf functions skip adjusting rsp"
+- id: arch-isa-007
+  topic: computer-architecture
+  subtopic: Instruction sets and calling conventions
+  difficulty: medium
+  type: single
+  tags: [calling-convention, sysv-abi, struct-return]
+  prompt: |
+    On x86-64 System V, a function returns `struct S { long a, b, c; }` (24 bytes, trivially copyable) by value. How is the result returned?
+  choices:
+    - id: a
+      text: "In rax, rdx and rcx"
+    - id: b
+      text: "The caller passes a hidden pointer to space it has reserved (in rdi, shifting the real arguments along by one); the callee writes the struct there and returns that pointer in rax."
+    - id: c
+      text: "The callee allocates it on the heap and returns a pointer in rax."
+    - id: d
+      text: "On the stack, just below the callee's frame, where the caller reads it after ret."
+  answer: b
+  explanation: |
+    Aggregates up to 16 bytes made of INTEGER/SSE "eightbytes" come back in registers (rax:rdx, xmm0:xmm1, or a mix). Anything larger, such as this 24-byte struct, has MEMORY class. The caller provides storage and passes its address as a hidden first argument in **rdi**, so `a` of a function `S f(int a)` arrives in rsi. The callee returns that same address in rax. This is what makes return-value optimisation and copy elision cheap: the callee can build the object directly in the caller's destination.
+
+    - **(a)** Only two registers are used for integer returns.
+    - **(c)** No ABI heap-allocates return values.
+    - **(d)** Memory below the callee's frame is dead after `ret` and may be overwritten by the next call or an interrupt.
+- id: arch-isa-008
+  topic: computer-architecture
+  subtopic: Instruction sets and calling conventions
+  difficulty: easy
+  type: short
+  tags: [risc, cisc, micro-ops, isa]
+  prompt: |
+    What is the difference between RISC and CISC instruction sets, and how much does the distinction matter for modern x86-64 and ARM CPUs?
+  reference: |
+    RISC ISAs such as ARM (AArch64) and RISC-V use fixed-length instructions (4 bytes on AArch64), a load/store architecture in which only loads and stores touch memory, many general-purpose registers (31 on AArch64), and simple, regular encodings that are easy to decode in parallel. CISC ISAs such as x86 use variable-length instructions (1 to 15 bytes on x86), instructions that combine memory operands with ALU work (`add rax, [rbx]`), and some complex instructions (`rep movsb`). Today the distinction is mostly about the *ISA encoding and the decoder*, not the execution engine. x86 cores decode instructions into RISC-like micro-ops and cache the decoded µops, while ARM cores also split or fuse operations. Both run them on similar out-of-order backends. The remaining real costs on x86 are decode complexity and power, because finding instruction boundaries in variable-length code is hard, which is why µop caches exist. Performance is determined far more by microarchitecture, the memory hierarchy and the process node than by the RISC/CISC label.
+  explanation: |
+    A good answer avoids the outdated "RISC is faster" claim. Both families are now decoded into simple internal operations, and the ISA mainly affects front-end complexity and power.
+  keyPoints:
+    - "RISC: fixed-length, load/store, many registers, simple encodings"
+    - "CISC: variable-length (x86 1–15 bytes), memory operands in ALU instructions, complex instructions"
+    - "Modern x86 decodes into RISC-like µops executed by an out-of-order core"
+    - "The difference today is mainly decoder complexity and power, not raw performance"
+- id: arch-isa-009
+  topic: computer-architecture
+  subtopic: Instruction sets and calling conventions
+  difficulty: medium
+  type: single
+  tags: [micro-ops, macro-fusion, x86-64]
+  prompt: |
+    On modern Intel and AMD x86-64 cores, what typically happens to an adjacent `cmp rax, rbx` followed by `jne label`?
+  choices:
+    - id: a
+      text: "The decoders macro-fuse them into a single compare-and-branch µop."
+    - id: b
+      text: "They always need two cycles in sequence because the branch must wait for the flags to be written to the register file."
+    - id: c
+      text: "The `cmp` is eliminated at register rename because it produces no register result."
+    - id: d
+      text: "The branch is converted into a conditional move."
+  answer: a
+  explanation: |
+    **Macro-fusion** combines a flag-setting ALU instruction (`cmp`, `test`, and on many cores `add`, `sub`, `and`, `inc`, `dec`) with an immediately following conditional jump into one µop. That saves decode, rename and retire bandwidth, which is why loop conditions are cheap. The exact rules (which pairs fuse, and whether a memory operand plus an immediate prevents it) vary by microarchitecture; Agner Fog's microarchitecture guide documents them per core.
+
+    - **(b)** Flags are renamed and forwarded like any other register. There is no write-then-read delay through a register file.
+    - **(c)** `cmp` produces a flags result that the branch consumes, so it cannot be dropped. Rename-time elimination applies to things like zeroing idioms (`xor eax, eax`) and some register-to-register `mov`s.
+    - **(d)** The hardware never turns branches into cmov. Only the compiler does that.
+
+    Its relative, **micro-fusion**, keeps a load and the ALU operation that uses it (`add rax, [rdi]`) as one fused µop through the front end.
+  source:
+    name: "Agner Fog, The microarchitecture of Intel, AMD and VIA CPUs (macro-op fusion sections)"
+    url: https://www.agner.org/optimize/
+- id: arch-isa-010
+  topic: computer-architecture
+  subtopic: Instruction sets and calling conventions
+  difficulty: medium
+  type: short
+  tags: [calling-convention, registers, performance]
+  prompt: |
+    Why do calling conventions split registers into caller-saved and callee-saved sets instead of making them all one kind? What does this mean for the code a compiler generates around a call in a hot loop?
+  reference: |
+    It is a trade-off over who pays to preserve values. If every register were callee-saved, every function, including tiny leaf functions, would have to save and restore every register it touched even when the caller did not need them. If every register were caller-saved, a caller would have to spill every live value around every call, even when the callee never touched those registers. With a split, leaf functions and short functions work freely in scratch registers at zero cost, while long-lived values such as loop counters and pointers sit in callee-saved registers that survive calls, paid for once per function in the prologue and epilogue rather than once per call. Around a non-inlined call in a hot loop, the loop's live variables end up in callee-saved registers (rbx, r12–r15 on SysV), which means extra push/pop in the function's prologue, or they get spilled and reloaded around each call. All vector registers are caller-saved on SysV, so live SIMD values must be spilled around calls. Inlining removes this cost completely, which is one reason hot paths avoid opaque calls (calls through function pointers, virtual calls, or calls to other translation units without LTO).
+  explanation: |
+    The same reasoning explains why opaque calls inside hot loops are expensive beyond the `call`/`ret` themselves: register spills, lost vectorisation, and lost constant propagation.
+  keyPoints:
+    - "Callee-saved: the callee pays only if it uses the register. Caller-saved: the caller pays only if the value is live across the call"
+    - "The split lets leaf functions use scratch registers for free while long-lived values survive calls"
+    - "Values live across a call go in callee-saved registers (prologue push/pop) or get spilled and reloaded"
+    - "On SysV all xmm/ymm/zmm registers are caller-saved, so live vector values must be spilled"
+    - "Inlining or LTO removes the overhead; opaque, indirect or virtual calls prevent that"
+- id: arch-isa-011
+  topic: computer-architecture
+  subtopic: Instruction sets and calling conventions
+  difficulty: hard
+  type: single
+  tags: [variadic, sysv-abi, calling-convention]
+  prompt: |
+    Disassembling a call to `printf("%f\n", x)` on x86-64 Linux, you see `mov eax, 1` just before `call printf`. What is that instruction for?
+  choices:
+    - id: a
+      text: "For variadic calls, al gives an upper bound on the number of vector registers used for arguments, so the callee knows how many xmm registers to save."
+    - id: b
+      text: "It is the number of format specifiers, which printf uses to check the argument count."
+    - id: c
+      text: "It is the syscall number for write(2), which printf invokes directly."
+    - id: d
+      text: "It initialises printf's return value."
+  answer: a
+  explanation: |
+    The SysV ABI says that when calling a variadic function (or one without a prototype), `%al` holds an upper bound (0–8) on the number of vector registers carrying arguments. The callee's `va_start` prologue saves the register arguments to a save area, and with al == 0 it can skip saving xmm0–xmm7, which avoids touching SSE state unnecessarily. Here one `double` is passed in xmm0, so al = 1.
+
+    - **(b)** printf trusts the format string and gets no argument count. That is why mismatched formats are undefined behaviour and `-Wformat` exists.
+    - **(c)** The `write` syscall number on x86-64 is 1, a coincidence, but syscalls use the `syscall` instruction with the number in rax. A `call printf` is an ordinary library call.
+    - **(d)** The return value comes back in eax after the call. Nothing before the call initialises it.
+
+    A classic bug is calling a variadic function through a non-variadic function-pointer type, or the reverse. Then al is garbage, and the callee may mishandle its floating-point arguments.
+  source:
+    name: "System V AMD64 psABI §3.5.7 (variable argument lists)"
+    url: https://gitlab.com/x86-psABIs/x86-64-ABI
+- id: arch-isa-012
+  topic: computer-architecture
+  subtopic: Instruction sets and calling conventions
+  difficulty: hard
+  type: short
+  tags: [abi, cpp, unique-ptr, zero-cost-abstractions]
+  prompt: |
+    Replacing a raw `T*` parameter with `std::unique_ptr<T>` passed by value makes a hot, non-inlined call measurably slower on x86-64 Linux, even though `unique_ptr` is the size of a pointer. Explain why at the ABI level.
+  reference: |
+    The Itanium C++ ABI, used by GCC and Clang on Linux, says that a type which is non-trivial for the purposes of calls is passed by "invisible reference". Such a type has a non-trivial copy or move constructor or destructor, and `unique_ptr` has a non-trivial destructor. Instead of putting the 8-byte pointer in rdi, the caller materialises a temporary in its own stack memory and passes that temporary's *address*. The callee must load through that address to get the pointer. The caller still owns the temporary, so after the call returns it runs the destructor, which checks whether the moved-from pointer is null, and it needs exception-handling cleanup for the temporary. The raw pointer travels in a register with no memory round trip and no destructor call. The extra store and load, the null check after the call and the extra cleanup code are small but real in a hot path. Inlining removes most of it. Clang's `[[clang::trivial_abi]]` attribute, or passing `T*`/`T&` at the boundary and keeping ownership outside, avoids it.
+  keyPoints:
+    - "Non-trivial destructor or copy/move constructor means the type is passed by invisible reference (in memory), not in a register"
+    - "The caller creates the temporary and passes its address; the callee loads through it"
+    - "The caller runs the destructor after the call (moved-from null check) and needs EH cleanup"
+    - "Fixes and caveats: inlining hides it; [[clang::trivial_abi]]; raw pointer or reference at the boundary"
+  explanation: |
+    This is the main example from Chandler Carruth's CppCon 2019 talk "There Are No Zero-Cost Abstractions". It tests whether a candidate understands that calling conventions depend on C++ type properties, not just on size.
+  source:
+    name: "Chandler Carruth, \"There Are No Zero-Cost Abstractions\", CppCon 2019; Itanium C++ ABI §3.1.2"
+    url: https://itanium-cxx-abi.github.io/cxx-abi/abi.html
+- id: arch-isa-013
+  topic: computer-architecture
+  subtopic: Instruction sets and calling conventions
+  difficulty: easy
+  type: short
+  tags: [abi, isa, calling-convention]
+  prompt: |
+    What is the difference between an ISA and an ABI? Give examples of what each specifies.
+  reference: |
+    The **ISA** (instruction set architecture) is the contract between hardware and software: the instructions, their encodings and semantics, the architectural registers, the addressing modes, the memory model and the privilege levels. x86-64 and AArch64 are examples. The **ABI** (application binary interface) is a contract between pieces of compiled software on a given ISA and OS, so that separately compiled code can interoperate. It covers the calling convention (argument and return registers, caller- and callee-saved registers, stack alignment), the sizes and alignments of fundamental types and the struct layout rules, the system-call interface, the object and executable formats (ELF) and how symbols are resolved, and for C++ the name mangling, vtable layout and exception handling (the Itanium C++ ABI). The same ISA can carry different ABIs: x86-64 System V on Linux and macOS versus Windows x64. Breaking an ABI means existing binaries can no longer link or interoperate correctly even if the source code is unchanged, as happened with the libstdc++ `std::string` change for C++11.
+  keyPoints:
+    - "ISA: the hardware/software contract (instructions, registers, encodings, memory model)"
+    - "ABI: the binary-level contract between compiled components (calling convention, type layout, syscalls, object format, C++ mangling and EH)"
+    - "One ISA can have several ABIs (SysV vs Windows x64)"
+    - "ABI breaks invalidate existing binaries even if the source is unchanged"
+  explanation: |
+    This framing helps with many follow-up questions: why `long` differs between Linux and Windows, why changing a struct in a shared library's header is dangerous, and why C++ standard library vendors avoid some changes.

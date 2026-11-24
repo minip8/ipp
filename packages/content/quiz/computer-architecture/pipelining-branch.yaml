@@ -1,0 +1,349 @@
+- id: arch-pipe-001
+  topic: computer-architecture
+  subtopic: Pipelining and hazards
+  difficulty: easy
+  type: single
+  tags: [pipelining]
+  prompt: |
+    In the classic five-stage RISC pipeline (as in Hennessy & Patterson), what is the order of the stages?
+  choices:
+    - id: a
+      text: "Fetch, Decode/register read, Execute, Memory access, Write-back"
+    - id: b
+      text: "Decode, Fetch, Execute, Write-back, Memory access"
+    - id: c
+      text: "Fetch, Execute, Decode, Memory access, Write-back"
+    - id: d
+      text: "Fetch, Decode, Memory access, Execute, Write-back"
+  answer: a
+  explanation: |
+    **IF** fetches the instruction at the PC. **ID** decodes it and reads its source registers. **EX** runs the ALU, which also computes load/store addresses and branch outcomes. **MEM** accesses the data cache for loads and stores. **WB** writes the result to the register file.
+
+    Memory access must come *after* EX because EX computes the address for `lw r1, 8(r2)`. The consequence is the load-use hazard: a loaded value is not available until the end of MEM, so it is too late to forward into the EX stage of the very next instruction.
+  source:
+    name: "Hennessy & Patterson, Computer Organization and Design, ch. 4"
+- id: arch-pipe-002
+  topic: computer-architecture
+  subtopic: Pipelining and hazards
+  difficulty: easy
+  type: single
+  tags: [pipelining, latency, throughput]
+  prompt: |
+    A non-pipelined processor takes 5 ns per instruction. It is split into a 5-stage pipeline with 1 ns per stage and no hazards. What happens to the latency of an individual instruction, and to throughput?
+  choices:
+    - id: a
+      text: "Latency stays about 5 ns (slightly more with pipeline register overhead); throughput rises towards 1 instruction per ns, about 5×."
+    - id: b
+      text: "Latency drops to 1 ns and throughput rises 5×."
+    - id: c
+      text: "Latency drops to 1 ns and throughput is unchanged."
+    - id: d
+      text: "Both stay the same, because the same work is done."
+  answer: a
+  explanation: |
+    Pipelining overlaps different instructions. It does not make any one instruction faster. Each instruction still passes through all five stages (5 × 1 ns), and the latches between stages add a little delay, so real latency gets slightly *worse*. Once the pipeline is full, though, one instruction completes every cycle, so throughput approaches 5× the original.
+
+    The same latency/throughput distinction appears at every level of systems work: CPU execution ports, memory bandwidth versus latency, network links. A deeper pipeline increases throughput only while it stays full, and hazards and mispredictions are what empty it.
+- id: arch-pipe-003
+  topic: computer-architecture
+  subtopic: Pipelining and hazards
+  difficulty: medium
+  type: multiple
+  tags: [pipelining, hazards, forwarding]
+  prompt: |
+    For the classic in-order five-stage pipeline with full forwarding (bypassing), which statements are true? Select all that apply.
+  choices:
+    - id: a
+      text: "`add r1,r2,r3` followed immediately by `sub r4,r1,r5` needs no stall: r1 is forwarded from the end of EX into the next instruction's EX."
+    - id: b
+      text: "`lw r1,0(r2)` followed immediately by `add r4,r1,r5` still needs a one-cycle stall."
+    - id: c
+      text: "A structural hazard arises when two instructions need the same hardware resource in the same cycle, such as one unified memory port used by both IF and MEM."
+    - id: d
+      text: "WAR (write-after-read) hazards are the most common cause of stalls in this pipeline."
+    - id: e
+      text: "Forwarding removes the load-use stall as well, as long as the load hits in the cache."
+  answer: [a, b, c]
+  explanation: |
+    - **(a) True.** The ALU result exists at the end of the producer's EX stage and is bypassed straight into the consumer's EX in the next cycle.
+    - **(b) True.** A load's data exists only at the end of MEM, but the dependent instruction needs it at the start of its EX, which is the same cycle. One bubble is unavoidable (compilers schedule an independent instruction into that slot when they can).
+    - **(c) True.** That is the definition, and it is why these designs use split instruction and data caches.
+    - **(d) False.** In this pipeline every instruction reads registers in ID before any later instruction writes in WB, so WAR (and WAW) hazards *cannot occur*. They matter in out-of-order machines, which remove them with register renaming.
+    - **(e) False.** The stall in (b) happens even on a cache hit. Forwarding cannot send data back in time.
+  source:
+    name: "Hennessy & Patterson, Computer Organization and Design, §4.7 (data hazards: forwarding vs stalling)"
+- id: arch-pipe-004
+  topic: computer-architecture
+  subtopic: Pipelining and hazards
+  difficulty: medium
+  type: single
+  tags: [cpi, pipelining, quantitative]
+  prompt: |
+    A pipelined processor has an ideal CPI of 1. In a workload, 20% of instructions are loads, and half of those are immediately followed by an instruction that uses the loaded value (a 1-cycle stall each). 15% of instructions are branches, 10% of branches are mispredicted, and each misprediction costs 3 cycles. What is the effective CPI?
+  choices:
+    - id: a
+      text: "1.045"
+    - id: b
+      text: "1.100"
+    - id: c
+      text: "1.145"
+    - id: d
+      text: "1.650"
+  answer: c
+  explanation: |
+    Add each kind of stall's cycles per instruction to the base CPI:
+
+    - Load-use: 0.20 × 0.5 × 1 = 0.100
+    - Mispredictions: 0.15 × 0.10 × 3 = 0.045
+    - CPI = 1 + 0.100 + 0.045 = **1.145**
+
+    1.045 and 1.100 each include only one of the two stall sources. 1.65 charges the misprediction penalty on every branch (0.15 × 3) and adds the full load fraction (0.20 × 1 + 0.15 × 3 = 0.65).
+
+    With a modern 15–20 cycle misprediction penalty instead of 3, the branch term would dominate, which is why branch prediction matters so much on deep pipelines.
+- id: arch-pipe-005
+  topic: computer-architecture
+  subtopic: Branch prediction
+  difficulty: medium
+  type: short
+  tags: [branch-prediction, btb, speculative-execution]
+  prompt: |
+    Why do modern CPUs need branch prediction at all, and what are the main structures involved?
+  reference: |
+    A modern core fetches instructions many cycles before a branch is resolved in the execute stage: the pipeline is deep, and the out-of-order window holds a few hundred instructions. If fetch waited for every branch to resolve, the front end would sit idle for that whole time on every branch, and roughly one instruction in five is a branch. Instead the CPU predicts and keeps fetching and executing speculatively along the predicted path. If the prediction was wrong, the wrongly fetched work is flushed and fetch restarts at the correct target, which costs roughly 15–20 cycles on current x86 cores. The structures are: a **direction predictor** for conditional branches (taken or not taken). These grew from 2-bit saturating counters into designs that use global and local history, such as TAGE and perceptron-style predictors, and recognise correlated and periodic patterns. A **branch target buffer (BTB)** predicts, from the fetch address alone, that an instruction is a branch and where it goes, before decode. A **return stack buffer** predicts `ret` targets. An **indirect branch predictor**, indexed by history, handles virtual calls and jump tables. Predictable code reaches over 95% accuracy on many workloads; data-dependent random branches are the main bottleneck.
+  explanation: |
+    Strong answers separate the three questions a predictor answers: is there a branch here, which way does it go, and where does it go. They also quantify the misprediction penalty.
+  keyPoints:
+    - "Deep pipelines and large out-of-order windows mean branches resolve many cycles after fetch, so stalling would waste huge throughput"
+    - "The CPU predicts, speculates down the predicted path, and flushes on a mispredict (about 15–20 cycles on modern x86)"
+    - "A direction predictor (saturating counters, history-based, e.g. TAGE) for conditional branches"
+    - "The BTB predicts branch presence and target at fetch; an RSB for returns; an indirect predictor for virtual calls and jump tables"
+- id: arch-pipe-006
+  topic: computer-architecture
+  subtopic: Branch prediction
+  difficulty: medium
+  type: single
+  tags: [branch-prediction, quantitative, performance]
+  prompt: |
+    A loop runs 1 billion iterations on a 3 GHz core. Each iteration has a branch on random data that is taken 50% of the time, so a predictor can do no better than about 50% accuracy on it. If a misprediction costs about 15 cycles, roughly how much time do mispredictions add?
+  choices:
+    - id: a
+      text: "About 0.25 s"
+    - id: b
+      text: "About 2.5 s"
+    - id: c
+      text: "About 5 s"
+    - id: d
+      text: "About 25 s"
+  answer: b
+  explanation: |
+    0.5 × 10^9 mispredictions × 15 cycles = 7.5 × 10^9 cycles. At 3 × 10^9 cycles per second that is **2.5 s**.
+
+    For scale, the rest of a simple loop body might take only one or two cycles per iteration, under a second in total, so mispredictions can dominate run time. That is why sorting the data, or rewriting the branch to be branchless (a conditional move, masks, or SIMD), can speed such loops up several times.
+
+    0.25 s drops a factor of 10, 5 s assumes every iteration mispredicts, and 25 s is off by 10× in the other direction.
+- id: arch-pipe-007
+  topic: computer-architecture
+  subtopic: Branch prediction
+  difficulty: medium
+  type: short
+  tags: [branch-prediction, branchless, compilers]
+  prompt: |
+    A classic benchmark sums the elements of a large array that are ≥ 128 (`if (data[i] >= 128) sum += data[i];`) with random values in 0..255. Sorting the array first makes the loop several times faster, even counting only the loop. Explain why, and say whether you would expect the same result with `-O3` on a modern compiler.
+  reference: |
+    With random data the branch is taken 50% of the time with no pattern, so the predictor guesses wrong about half the time. Each misprediction flushes the speculative work (around 15–20 cycles). With sorted data the branch is not taken for the first half of the array and taken for the second half, so the predictor is right almost every time: there is one transition, plus a little warm-up. The loop then runs at the speed of its arithmetic and memory accesses. The work done is identical; only predictability changes. With optimisation the difference often disappears. GCC and Clang may if-convert the branch into a conditional move or a masked add (`sum += (x >= 128) ? x : 0`) or vectorise the whole loop with SIMD compares and masks, and then sorted and unsorted run at the same speed. Whether the compiler does this depends on version and flags, so you check the generated assembly and measure, for example `perf stat -e branch-misses`. The general lesson: data-dependent, unpredictable branches in hot loops are expensive, and the fixes are making the data predictable, writing branchless code, or vectorising.
+  explanation: |
+    Strong candidates add the caveat that this famous benchmark measures what the compiler emitted. Checking the assembly before blaming or crediting the branch predictor is the habit being tested.
+  keyPoints:
+    - "Random data gives about 50% mispredictions; each one flushes the pipeline (about 15–20 cycles)"
+    - "Sorted data makes the branch almost perfectly predictable (one transition)"
+    - "Same work done; the difference is entirely misprediction cost"
+    - "At -O2/-O3 the compiler may use cmov or vectorise, making it branchless so the gap vanishes; check the asm and measure branch-misses"
+  source:
+    name: "Stack Overflow, \"Why is processing a sorted array faster than processing an unsorted array?\""
+    url: https://stackoverflow.com/questions/11227809
+- id: arch-pipe-008
+  topic: computer-architecture
+  subtopic: Branch prediction
+  difficulty: medium
+  type: single
+  tags: [branch-prediction, btb]
+  prompt: |
+    What is the main job of the branch target buffer (BTB)?
+  choices:
+    - id: a
+      text: "To predict, from the fetch address alone, that the fetch block contains a branch and what its target address is, so fetch can redirect before the instruction is even decoded"
+    - id: b
+      text: "To store the taken/not-taken history used by the direction predictor"
+    - id: c
+      text: "To buffer instructions fetched along the not-predicted path, so recovery after a mispredict is instant"
+    - id: d
+      text: "To hold the return addresses of nested calls"
+  answer: a
+  explanation: |
+    Fetch must choose the next fetch address every cycle, long before decode has worked out what the bytes are. The BTB is a cache indexed by fetch address. A hit says "there is a branch here and last time it went to X". Combined with the direction predictor, this lets fetch follow taken branches without bubbles.
+
+    - **(b)** Direction history lives in the direction predictor's own tables and history registers.
+    - **(c)** CPUs generally do not fetch down both paths. A mispredict refetches from the correct target.
+    - **(d)** That is the **return stack buffer**.
+
+    BTB capacity matters for large code bases: a hot path that touches more branches than the BTB holds suffers front-end resteers even when every direction prediction is right. This is one reason for profile-guided optimisation and tools like BOLT, which lay hot code out compactly.
+- id: arch-pipe-009
+  topic: computer-architecture
+  subtopic: Branch prediction
+  difficulty: medium
+  type: single
+  tags: [branch-prediction, return-stack-buffer]
+  prompt: |
+    A coroutine library switches stacks by pushing a new return address and executing `ret` to jump to the other context. Profiling shows a lot of branch mispredictions at those `ret` instructions. Which predictor structure is being defeated?
+  choices:
+    - id: a
+      text: "The return stack buffer (RSB), which predicts each ret target by pairing it with the most recent unmatched call"
+    - id: b
+      text: "The two-bit saturating counters of the conditional-branch predictor"
+    - id: c
+      text: "The TLB, because the stack switch changes pages"
+    - id: d
+      text: "The loop stream detector"
+  answer: a
+  explanation: |
+    The CPU predicts `ret` with a small hardware stack: each `call` pushes its return address and each `ret` pops one as the prediction. That is very accurate for ordinary nested calls, but code that uses `ret` without a matching `call` (stack switching, some tricks for computed jumps) desynchronises it, so this `ret` and later ones mispredict. Context-switch code is usually written with an indirect `jmp`, or keeps calls and returns balanced, for this reason.
+
+    - **(b)** `ret` is not a conditional branch.
+    - **(c)** A TLB miss costs a page walk; it is not counted as a branch misprediction.
+    - **(d)** The LSD replays small loops from the µop queue and has no part in predicting returns.
+
+    The RSB also comes up in security: "retpoline" deliberately makes the RSB mispredict so that speculation goes into a harmless loop (a Spectre v2 mitigation).
+- id: arch-pipe-010
+  topic: computer-architecture
+  subtopic: Branch prediction
+  difficulty: hard
+  type: multiple
+  tags: [branchless, cmov, branch-prediction, performance]
+  prompt: |
+    When can converting a branch into branchless code (cmov, masks, arithmetic selection) make a hot loop **slower**? Select all that apply.
+  choices:
+    - id: a
+      text: "When the branch is highly predictable, so the branchy version was already nearly free"
+    - id: b
+      text: "When computing both sides of the selection is expensive (for example one side does a cache-missing load or a long computation)"
+    - id: c
+      text: "When the selected value feeds a loop-carried dependency chain: cmov turns a predictable control dependency into a data dependency that must wait for the condition"
+    - id: d
+      text: "Because cmov serialises the pipeline, like a memory fence"
+    - id: e
+      text: "Because a cmov cannot execute until all older branches have retired"
+  answer: [a, b, c]
+  explanation: |
+    - **(a) True.** A well-predicted branch costs about one cycle of throughput, and execution continues speculatively without waiting for the condition. Branchless code always does the extra work.
+    - **(b) True.** Branchless code evaluates both alternatives, so the cost becomes the sum of both paths instead of the predicted one.
+    - **(c) True, and the subtle one.** With a predicted branch, later iterations can start before the condition is known. With cmov, the result cannot be computed until the condition's inputs arrive. If those come from a slow load or a long chain, the critical path gets longer. Linus Torvalds's well-known criticism of cmov makes this point.
+    - **(d) False.** cmov is an ordinary ALU µop with three inputs (two values and the flags). It does not serialise anything.
+    - **(e) False.** cmov executes out of order and speculatively like any other instruction.
+
+    The rule of thumb: branchless wins for **unpredictable** branches with cheap alternatives, as in binary search over random keys or the comparisons inside sorting. Measure, because the trade-off depends on the data.
+- id: arch-pipe-011
+  topic: computer-architecture
+  subtopic: Branch prediction
+  difficulty: medium
+  type: short
+  tags: [perf, branch-prediction, profiling]
+  prompt: |
+    You suspect branch mispredictions are what limit a hot function on Linux. How would you confirm it, and locate the offending branches?
+  reference: |
+    Start with hardware performance counters: `perf stat -e branches,branch-misses,cycles,instructions ./app` gives the misprediction rate and the IPC. A misprediction rate of a few percent of branches in a hot loop, combined with low IPC, is suspicious; translate it into cycles (misses × about 15–20 cycles) and compare with total cycles. Top-down microarchitecture analysis (`perf stat --topdown`, or Intel VTune/toplev) states the fraction of pipeline slots lost to "Bad Speculation" directly. To locate the branches, use `perf record -e branch-misses` (preferably with precise sampling such as `:pp`) and then `perf annotate`, which shows the instructions near the guilty branch. On Intel, LBR-based tools (`perf record -b`) show taken-branch history. Then confirm the fix by experiment: change the data's predictability, or make the code branchless, and re-measure. Keep benchmark conditions controlled: pinned CPU, fixed frequency, warmed-up caches.
+  explanation: |
+    The key skill is going from a hypothesis to evidence: measure with counters, attribute the misses to an instruction, then fix and re-measure.
+  keyPoints:
+    - "perf stat for branches, branch-misses, cycles and instructions (miss rate and IPC)"
+    - "Estimate cycles lost (misses × penalty) or use top-down 'Bad Speculation'"
+    - "perf record -e branch-misses plus perf annotate (precise events or LBR) to find the specific branch"
+    - "Verify by experiment, then re-measure under controlled conditions"
+- id: arch-pipe-012
+  topic: computer-architecture
+  subtopic: Branch prediction
+  difficulty: medium
+  type: single
+  tags: [branch-prediction, saturating-counter, quantitative]
+  prompt: |
+    An inner loop runs exactly 10 iterations every time it is entered, so its backward branch goes taken ×9 then not-taken ×1, over and over. Each branch has its own predictor entry and the pattern has reached steady state. How many mispredictions per loop execution does a **1-bit** predictor (predict whatever happened last time) make, and how many does a **2-bit saturating counter** make?
+  choices:
+    - id: a
+      text: "1-bit: 1, 2-bit: 1"
+    - id: b
+      text: "1-bit: 2, 2-bit: 1"
+    - id: c
+      text: "1-bit: 2, 2-bit: 2"
+    - id: d
+      text: "1-bit: 1, 2-bit: 0"
+  answer: b
+  explanation: |
+    **1-bit:** on exit it predicts taken but the branch falls through (miss 1) and the bit flips to not-taken. On the *first* iteration of the next execution it predicts not-taken but the branch is taken (miss 2). That makes **2** per execution.
+
+    **2-bit counter:** in "strongly taken" it mispredicts the exit (miss 1) and drops only to "weakly taken". The next execution's first branch is still predicted taken, which is correct, and the counter climbs back up. That makes **1** per execution.
+
+    The hysteresis of a 2-bit counter exists to tolerate exactly this kind of one-off deviation. Modern predictors that use global or local history, or a dedicated loop predictor, can learn a fixed trip count of 10 and get *zero* mispredictions, which no per-branch counter can do.
+  source:
+    name: "Hennessy & Patterson, Computer Architecture: A Quantitative Approach, ch. 3 (dynamic branch prediction)"
+- id: arch-pipe-013
+  topic: computer-architecture
+  subtopic: Branch prediction
+  difficulty: hard
+  type: short
+  tags: [likely, builtin-expect, branch-prediction, code-layout]
+  prompt: |
+    What do C++20 `[[likely]]` / `[[unlikely]]` (or `__builtin_expect`) actually do on x86-64? Do they program the CPU's branch predictor?
+  reference: |
+    Mainly they change **code generation**, not the dynamic predictor. The compiler lays the likely path out as the straight-line fall-through and moves the unlikely path out of line, sometimes into a separate `.text.unlikely`/cold section. That improves instruction-cache and fetch efficiency: taken branches cost more front-end bandwidth than not-taken ones, and the hot path becomes denser. The hints also change optimisation choices, such as whether to if-convert a branch to cmov, how much to inline, and which side to optimise for size. For many years x86 cores ignored the old branch-hint prefixes (0x2E/0x3E, from the Pentium 4). Intel reintroduced a "taken" hint with Redwood Cove, but it applies only when the predictor has no history for the branch, and compilers do not generally emit it. Once a branch has executed a few times, the dynamic predictor's learned history decides. The hints therefore help mostly with cold or rarely executed branches and with layout, and a wrong hint on a hot unpredictable branch can hurt. Profile-guided optimisation usually does better than hand annotations.
+  explanation: |
+    A common misconception is that these hints "tell the CPU's predictor" which way to go. On x86 their effect is almost entirely through the compiler's code layout and optimisation decisions.
+  keyPoints:
+    - "Primarily affect code layout: the likely path falls through, the unlikely one moves to cold sections, and i-cache density improves"
+    - "Influence other optimisation decisions (if-conversion, inlining, size versus speed)"
+    - "Do not train the dynamic predictor; the learned history dominates once the branch is warm"
+    - "x86 hint prefixes were long ignored; a recent Intel taken-hint applies only to branches with no history and is rarely emitted"
+    - "PGO is usually better than manual hints; a wrong hint can hurt"
+  source:
+    name: "Intel 64 and IA-32 Architectures Optimization Reference Manual (Redwood Cove branch hint)"
+- id: arch-pipe-014
+  topic: computer-architecture
+  subtopic: Pipelining and hazards
+  difficulty: easy
+  type: single
+  tags: [pipelining, branch-prediction, microarchitecture]
+  prompt: |
+    The Pentium 4 (NetBurst) had a very deep pipeline of 20+ stages. What was the main trade-off of going that deep?
+  choices:
+    - id: a
+      text: "Less work per stage allowed higher clock frequencies, but every branch misprediction cost more cycles, and power rose sharply."
+    - id: b
+      text: "A deeper pipeline reduced instruction latency but cut throughput."
+    - id: c
+      text: "A deeper pipeline removed the need for branch prediction."
+    - id: d
+      text: "A deeper pipeline made data cache misses cheaper."
+  answer: a
+  explanation: |
+    Splitting the work into more, shorter stages shortens the cycle time, so the clock goes up. But a branch is resolved later, so a misprediction throws away more in-flight work. Dependent instructions also wait more cycles, and power grows with frequency. NetBurst reached high clock speeds with poor performance per clock, and Intel's next designs (Core) returned to shorter, wider pipelines.
+
+    - **(b)** It is backwards: pipelining improves throughput, and individual instruction latency (in ns) does not improve.
+    - **(c)** Deeper pipelines make prediction *more* important.
+    - **(d)** A miss costs a fixed time in nanoseconds; at a higher clock that is *more* cycles.
+- id: arch-pipe-015
+  topic: computer-architecture
+  subtopic: Pipelining and hazards
+  difficulty: easy
+  type: short
+  tags: [pipelining, hazards]
+  prompt: |
+    What is a pipeline hazard? Name the three classic kinds, with an example of each and how hardware deals with it.
+  reference: |
+    A hazard is a situation that stops the next instruction from proceeding in the next cycle without risking a wrong result. A **structural hazard** happens when two instructions need the same hardware resource in the same cycle, such as a single memory port shared by instruction fetch and a load. It is fixed by duplicating resources (split I- and D-caches, more ports) or by stalling. A **data hazard** happens when an instruction needs a result that an earlier instruction has not produced yet (read after write), as in `add r1,…` followed by `sub …,r1`. It is handled with forwarding or bypassing, with stalls where forwarding is impossible (load-use), by compiler scheduling, and, in out-of-order cores, by dynamic scheduling and register renaming. A **control hazard** happens when the next instruction to fetch depends on a branch that has not resolved yet. It is handled with branch prediction and speculative execution (flushing on a mispredict), or historically with delay slots.
+  keyPoints:
+    - "Definition: something that prevents the next instruction from proceeding safely in the next cycle"
+    - "Structural: a resource conflict; fixed by duplicating resources or stalling"
+    - "Data (RAW): fixed by forwarding, stalls (load-use) or scheduling/renaming"
+    - "Control: branches; fixed by prediction plus speculation (flush on mispredict)"
+  explanation: |
+    This is the vocabulary needed for most deeper questions about pipelines and out-of-order cores. Strong answers attach the remedy to each hazard type.
+  source:
+    name: "Hennessy & Patterson, Computer Organization and Design, ch. 4"

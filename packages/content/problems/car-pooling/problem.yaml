@@ -1,0 +1,17 @@
+slug: car-pooling
+title: Car Pooling
+difficulty: medium
+tags: [array, prefix-sum, sorting, sweep-line]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: carPooling
+      params:
+        - { name: trips, type: { array: { array: int } } }
+        - { name: capacity, type: int }
+      returns: bool
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 1094); difference arrays / sweep line
+  url: https://leetcode.com/problems/car-pooling/

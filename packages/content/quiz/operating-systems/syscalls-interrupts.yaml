@@ -1,0 +1,371 @@
+- id: os-sys-001
+  topic: operating-systems
+  subtopic: System calls
+  type: single
+  difficulty: easy
+  tags: [syscalls, x86-64, abi]
+  prompt: |
+    On x86-64 Linux, how does a user program invoke a system call directly (without libc)?
+  choices:
+    - id: a
+      text: Put the syscall number in RAX and up to six arguments in RDI, RSI, RDX, R10, R8, R9, then execute the `syscall` instruction; the result comes back in RAX
+    - id: b
+      text: Push the arguments on the stack and `call` the kernel function's address
+    - id: c
+      text: Put the syscall number in RDI and arguments in RSI, RDX, RCX, then execute `int 0x80`
+    - id: d
+      text: Write the request to /dev/syscall and read the result back
+  answer: a
+  explanation: |
+    The x86-64 Linux syscall ABI uses RAX for the number and RDI, RSI, RDX, R10, R8, R9 for arguments.
+    Note **R10** instead of RCX (the function-call convention's fourth register), because the `syscall`
+    instruction itself overwrites RCX with the return address and R11 with RFLAGS.
+
+    User code can't call kernel functions directly — the kernel isn't mapped accessibly in user mode
+    and the privilege level must change through a controlled entry point. `int 0x80` is the legacy 32-bit
+    entry point; on x86-64 it still works but uses the 32-bit ABI and syscall numbers (and truncates
+    pointers to 32 bits).
+  source:
+    name: syscall(2) man page, architecture calling conventions table
+    url: https://man7.org/linux/man-pages/man2/syscall.2.html
+
+- id: os-sys-002
+  topic: operating-systems
+  subtopic: System calls
+  type: single
+  difficulty: medium
+  tags: [syscalls, errno, glibc]
+  prompt: |
+    A raw `read` system call on x86-64 Linux fails because the fd is invalid. What does the kernel
+    actually return, and how does the familiar `-1` / `errno == EBADF` arise?
+  choices:
+    - id: a
+      text: The kernel returns −EBADF (−9) in RAX; the libc wrapper sees a value in the range −4095..−1, stores the negated value in the thread's errno and returns −1
+    - id: b
+      text: The kernel writes EBADF directly into the errno variable and returns −1
+    - id: c
+      text: The kernel sets the carry flag and returns EBADF as a positive number in RAX
+    - id: d
+      text: The kernel raises SIGSYS, and libc's handler converts it to errno
+  answer: a
+  explanation: |
+    The kernel knows nothing about `errno` (a thread-local C library variable). Linux returns a negative
+    error code in RAX; the wrapper treats values from −4095 to −1 as errors, sets `errno` and returns −1.
+    That is why raw syscall interfaces such as io_uring completion entries report `-errno` in their
+    result fields.
+
+    Returning a positive error with the carry flag set is the BSD/macOS convention, not Linux's.
+    SIGSYS is for seccomp-filtered or invalid syscalls, not ordinary errors.
+
+- id: os-sys-003
+  topic: operating-systems
+  subtopic: System calls
+  type: single
+  difficulty: medium
+  tags: [vdso, clock-gettime, syscalls, latency]
+  prompt: |
+    Why is `clock_gettime(CLOCK_MONOTONIC, &ts)` typically several times faster than even a trivial
+    real system call like `getppid()` on x86-64 Linux?
+  choices:
+    - id: a
+      text: It is served by the vDSO — kernel-provided code mapped into every process that reads the TSC and kernel-maintained time data from user mode without entering the kernel
+    - id: b
+      text: glibc caches the time and only refreshes it once per millisecond
+    - id: c
+      text: The `syscall` instruction is faster for time-related syscall numbers
+    - id: d
+      text: CLOCK_MONOTONIC is computed by counting loop iterations in user space
+  answer: a
+  explanation: |
+    The kernel maps a small shared library (the vDSO, visible as `[vdso]` in `/proc/self/maps`) into each
+    process, plus a read-only data page it keeps updated with clock parameters. On x86-64 the vDSO
+    implements `clock_gettime`, `gettimeofday`, `time`, `getcpu` and `clock_getres`; with a stable TSC
+    the read is tens of nanoseconds. If the clocksource can't be read from user mode (for example some
+    VMs with a non-TSC clocksource) it falls back to a real syscall and gets much slower — a known
+    performance trap.
+
+    glibc does not cache the time; that would make the clock jump in coarse steps.
+  source:
+    name: vdso(7) man page
+    url: https://man7.org/linux/man-pages/man7/vdso.7.html
+
+- id: os-sys-004
+  topic: operating-systems
+  subtopic: System calls
+  type: short
+  difficulty: hard
+  tags: [syscalls, read, page-cache, kernel-entry]
+  prompt: |
+    Walk me through what happens when a program calls `read(fd, buf, 4096)` on a regular file, from
+    the libc call to the data landing in `buf`.
+  reference: |
+    The glibc wrapper puts `__NR_read` in RAX and the arguments in RDI/RSI/RDX and executes `syscall`.
+    The CPU switches to ring 0, saves the user RIP in RCX and RFLAGS in R11, and jumps to the kernel's
+    entry point (from the LSTAR MSR); the entry code switches to the kernel stack, saves user registers
+    (and, with KPTI, switches to the kernel page tables), then dispatches through the syscall table to
+    `ksys_read`. The kernel looks up the fd in the process's fd table to get the `struct file`, checks it
+    was opened for reading, and calls the filesystem's read path (VFS → e.g. ext4 via
+    `filemap_read`). That looks for the page in the page cache at the current offset: on a hit it copies
+    the data to the user buffer with `copy_to_user` (which may itself page-fault if `buf` isn't mapped
+    yet); on a miss it allocates a page-cache page, submits a block I/O request (possibly with readahead),
+    and puts the task to sleep until the device interrupt completes the I/O, then copies. It advances
+    the file offset, returns the byte count in RAX, and the exit path restores user registers and returns
+    with `sysret`. Short reads are possible (EOF, signals), so callers must loop.
+  keyPoints:
+    - syscall instruction - number and args in registers, switch to kernel mode via the entry point, kernel stack, (KPTI page-table switch)
+    - fd table lookup to struct file, permission/mode checks, VFS dispatch to the filesystem
+    - Page cache lookup - hit copies directly; miss issues block I/O (with readahead) and the task sleeps until completion
+    - copy_to_user into the buffer, offset advanced, byte count returned
+    - Return via sysret; read can return fewer bytes than requested
+  explanation: |
+    The page-cache step is what distinguishes a strong answer: most reads of hot files never touch the
+    disk, and the cost is then dominated by the syscall overhead and the memory copy. Mentioning
+    `O_DIRECT` (bypasses the page cache) or `mmap` (avoids the copy) as alternatives is a good extension.
+
+- id: os-sys-005
+  topic: operating-systems
+  subtopic: System calls
+  type: single
+  difficulty: medium
+  tags: [kpti, meltdown, security, syscalls]
+  prompt: |
+    What is KPTI (kernel page-table isolation), and why did it make system calls slower?
+  choices:
+    - id: a
+      text: A Meltdown mitigation that gives user mode a page table with almost no kernel mappings, so every kernel entry and exit must switch page tables (CR3), adding work and TLB pressure; PCID reduces the TLB cost
+    - id: b
+      text: A Spectre mitigation that flushes the branch predictor on every syscall
+    - id: c
+      text: A feature that encrypts kernel memory, so every syscall must decrypt the pages it touches
+    - id: d
+      text: A mechanism that copies syscall arguments into a separate kernel heap, doubling memory traffic
+  answer: a
+  explanation: |
+    Meltdown (2018) let user code speculatively read kernel memory that was mapped but marked
+    supervisor-only. KPTI stops mapping (almost all of) the kernel while running user code. The cost is
+    a CR3 write on every entry and exit; without PCID that would flush the TLB, so CPUs with PCID tag
+    entries per address space to keep it affordable. Syscall-heavy workloads saw slowdowns ranging from
+    negligible to tens of percent. CPUs not vulnerable to Meltdown (AMD, and newer Intel parts) don't
+    enable it — check `/sys/devices/system/cpu/vulnerabilities/meltdown`.
+
+    Branch-predictor barriers (IBPB/retpolines) are Spectre v2 mitigations, a different thing.
+
+- id: os-sys-006
+  topic: operating-systems
+  subtopic: System calls
+  type: short
+  difficulty: medium
+  tags: [syscalls, performance, batching, io-uring]
+  prompt: |
+    Why is a system call more expensive than an ordinary function call, and what techniques reduce the
+    number or cost of syscalls in a high-throughput program?
+  reference: |
+    A syscall changes privilege level: the `syscall` instruction and its return serialise parts of the
+    pipeline, the kernel switches stacks, saves registers, validates arguments, and may run mitigation
+    code (KPTI CR3 switch, speculation barriers). It also pollutes caches, TLB and branch predictors with
+    kernel state. A trivial syscall costs from on the order of 100 ns up to around a microsecond with
+    mitigations, versus around a nanosecond for a function call. Ways to reduce the count: buffer in user
+    space (stdio, larger reads and writes), vectored I/O (`readv`/`writev`), batch calls (`sendmmsg`/
+    `recvmmsg`, `epoll_wait` returning many events), io_uring (submit many operations through shared
+    rings with one or zero syscalls), vDSO for time, `mmap` instead of read loops, and kernel-bypass
+    networking (DPDK, OpenOnload/ef_vi) in low-latency trading.
+  keyPoints:
+    - Privilege transition, register save/restore, stack switch, argument validation
+    - Mitigations (KPTI, speculation barriers) add significant cost
+    - Indirect cost - cache/TLB/branch-predictor pollution
+    - Batching - buffered I/O, readv/writev, sendmmsg/recvmmsg, epoll returning many events
+    - io_uring, vDSO, mmap, kernel bypass to avoid syscalls entirely
+  explanation: |
+    Give orders of magnitude rather than precise numbers: syscall cost varies by CPU generation and by
+    which mitigations are enabled. Measuring it yourself (e.g. a loop of `syscall(SYS_getppid)` timed
+    with `clock_gettime`) is the honest answer to "how much does it cost on this box?".
+
+- id: os-sys-007
+  topic: operating-systems
+  subtopic: Interrupts and exceptions
+  type: single
+  difficulty: medium
+  tags: [exceptions, page-fault, traps, x86-64]
+  prompt: |
+    x86 classifies exceptions as faults, traps or aborts depending on where execution resumes. Which
+    pairing is correct?
+  choices:
+    - id: a
+      text: Page fault is a fault (the faulting instruction is re-executed after the handler); breakpoint `int3` is a trap (execution resumes after the instruction); machine check is an abort
+    - id: b
+      text: Page fault is a trap (execution resumes after the faulting instruction); `int3` is a fault
+    - id: c
+      text: Page fault is an abort; the process is always terminated
+    - id: d
+      text: Divide error is a trap; the division is skipped and execution continues with a zero result
+  answer: a
+  explanation: |
+    A **fault** reports the address of the faulting instruction so it can be restarted once the cause is
+    fixed — exactly what demand paging needs: the kernel maps the page and the load/store re-executes. A
+    **trap** reports the address of the next instruction (`int3`, single-step debug traps, and
+    conceptually the `syscall` instruction). An **abort** (machine check, double fault) means the state
+    may not be recoverable.
+
+    Divide error (#DE) is a fault; Linux turns it into SIGFPE rather than skipping the instruction.
+    These synchronous exceptions differ from hardware *interrupts*, which are asynchronous and come from
+    devices.
+  source:
+    name: Intel SDM Vol. 3, ch. 6 (Interrupt and Exception Handling); CS:APP ch. 8
+
+- id: os-sys-008
+  topic: operating-systems
+  subtopic: Interrupts and exceptions
+  type: short
+  difficulty: medium
+  tags: [interrupts, softirq, bottom-half, workqueue]
+  prompt: |
+    Explain "top half" and "bottom half" interrupt handling in Linux. What mechanisms exist for the
+    bottom half, and which of them may sleep?
+  reference: |
+    A hardware interrupt handler (top half) runs with that interrupt line masked, in interrupt context,
+    and must be fast: acknowledge the device, grab the minimum state, and schedule the rest of the work.
+    Deferred work (bottom half) runs later with interrupts enabled. Mechanisms: **softirqs** — a fixed
+    set of statically defined handlers (NET_RX, NET_TX, TIMER, BLOCK, TASKLET, RCU…) that run on irq
+    exit or in the per-CPU `ksoftirqd` thread when load is high, can run concurrently on several CPUs,
+    and cannot sleep; **tasklets** — built on softirqs, serialised per tasklet, cannot sleep (being
+    phased out); **workqueues** — work items run by kernel worker threads in process context, so they
+    can sleep and take mutexes; **threaded IRQs** (`request_threaded_irq`) — the handler body runs in a
+    dedicated kernel thread that can sleep and be prioritised (the default model under PREEMPT_RT).
+    Network receive processing (NAPI polling) is the classic softirq user.
+  keyPoints:
+    - Top half runs in interrupt context, minimal work, cannot sleep
+    - Bottom half defers the rest with interrupts enabled
+    - Softirqs (and tasklets on top of them) - atomic context, cannot sleep; ksoftirqd under load
+    - Workqueues run in kernel threads (process context) and can sleep
+    - Threaded IRQs run handlers in schedulable kernel threads (PREEMPT_RT)
+  explanation: |
+    The "can it sleep?" distinction (atomic vs process context) is the crux. For performance work, it
+    explains why high network load shows up as `si` (softirq) time in `top` or as `ksoftirqd` CPU usage,
+    and why tuning interrupt and RPS/RFS placement matters.
+  source:
+    name: Linux Device Drivers / kernel docs on IRQs and workqueues
+
+- id: os-sys-009
+  topic: operating-systems
+  subtopic: Signals and system calls
+  type: multiple
+  difficulty: hard
+  tags: [signals, eintr, sa-restart]
+  prompt: |
+    A process installs a SIGUSR1 handler with `SA_RESTART`. While each of the following calls is blocked,
+    SIGUSR1 arrives and the handler runs. In which cases does the call still fail with `EINTR` instead of
+    being transparently restarted? Select all that apply.
+  choices:
+    - id: a
+      text: "`epoll_wait()`"
+    - id: b
+      text: "`nanosleep()`"
+    - id: c
+      text: "`read()` on a pipe with no data"
+    - id: d
+      text: "`poll()`"
+    - id: e
+      text: "`write()` on a full pipe"
+  answer: [a, b, d]
+  explanation: |
+    `SA_RESTART` restarts most "slow" calls — `read`/`write` on pipes, terminals and sockets (without a
+    timeout), `wait`, `open` on a FIFO, and so on. But signal(7) lists interfaces that are **never**
+    restarted regardless of SA_RESTART, including the multiplexers (`select`, `pselect`, `poll`,
+    `ppoll`, `epoll_wait`, `epoll_pwait`), sleeping calls (`nanosleep`, `clock_nanosleep`, `usleep`),
+    signal-wait calls and socket calls with `SO_RCVTIMEO`/`SO_SNDTIMEO` set.
+
+    So event loops must always handle `EINTR` from their wait call. Note also that if a blocked
+    read/write has already transferred *some* data when the signal arrives, it returns the partial count
+    instead of failing.
+  source:
+    name: signal(7) man page, "Interruption of system calls and library functions by signal handlers"
+    url: https://man7.org/linux/man-pages/man7/signal.7.html
+
+- id: os-sys-010
+  topic: operating-systems
+  subtopic: Interrupts and exceptions
+  type: single
+  difficulty: easy
+  tags: [privilege, user-mode, kernel-mode]
+  prompt: |
+    A user-space program on x86-64 Linux executes the privileged instruction `hlt`. What happens?
+  choices:
+    - id: a
+      text: The CPU raises a general-protection exception because the instruction requires ring 0, and the kernel delivers SIGSEGV to the process
+    - id: b
+      text: The CPU halts until the next interrupt, pausing the whole machine
+    - id: c
+      text: The instruction is silently treated as a no-op
+    - id: d
+      text: The kernel executes the halt on the process's behalf
+  answer: a
+  explanation: |
+    The CPU enforces privilege levels in hardware: user code runs in ring 3, and privileged instructions
+    (`hlt`, `cli`/`sti` without I/O privilege, writing control registers, `wrmsr`…) raise #GP when
+    executed there. Linux's #GP handler sends SIGSEGV to the user process. This hardware enforcement is
+    what makes the kernel/user boundary real: user code can only reach privileged functionality through
+    defined entry points like `syscall`.
+
+    (b) would let any program freeze a core, which is precisely what mode separation prevents.
+
+- id: os-sys-011
+  topic: operating-systems
+  subtopic: Interrupts and exceptions
+  type: single
+  difficulty: medium
+  tags: [interrupts, irq-affinity, networking, low-latency]
+  prompt: |
+    On a Linux server, NIC receive interrupts for all queues are landing on CPU 0, which shows 100%
+    softirq time while other cores are idle. What is the most direct fix?
+  choices:
+    - id: a
+      text: Spread the NIC's per-queue IRQs across CPUs by writing masks to /proc/irq/<n>/smp_affinity (or let irqbalance do it), and if the NIC has few queues, enable RPS/RFS to spread protocol processing
+    - id: b
+      text: Raise the nice value of the application so the kernel has more time for interrupts
+    - id: c
+      text: Increase the socket receive buffer size
+    - id: d
+      text: Pin the application to CPU 0 so it shares cache with the interrupt handler
+  answer: a
+  explanation: |
+    Each IRQ has an affinity mask; multi-queue NICs expose one IRQ per queue so receive processing can
+    be spread across cores (RSS hashes flows to queues). If all IRQs are pinned to CPU 0 — for example
+    because irqbalance isn't running — that core becomes the bottleneck. RPS/RFS spread protocol
+    processing in software when there are fewer hardware queues than cores.
+
+    Nice values don't affect softirq processing. Bigger socket buffers reduce drops but don't add CPU.
+    Pinning the app onto the saturated core makes things worse. (For low-latency setups, the opposite
+    tuning is common: put the relevant queue's IRQ on a chosen core and keep IRQs off isolated cores.)
+  source:
+    name: Linux kernel docs, Scaling in the Linux Networking Stack
+    url: https://www.kernel.org/doc/html/latest/networking/scaling.html
+
+- id: os-sys-012
+  topic: operating-systems
+  subtopic: Signals and system calls
+  type: short
+  difficulty: medium
+  tags: [eintr, signals, robustness]
+  prompt: |
+    Your code calls `read()` on a socket and occasionally gets `-1` with `errno == EINTR`. What does that
+    mean, and how should robust code handle it — and the related case where `read`/`write` returns fewer
+    bytes than requested?
+  reference: |
+    EINTR means a signal handler ran while the call was blocked and the call was interrupted before
+    transferring any data — not an I/O error. Robust code retries the call (a loop like `do { n =
+    read(...); } while (n == -1 && errno == EINTR);`), or installs handlers with SA_RESTART so most calls
+    restart automatically — though some (poll/epoll_wait/select, sleeps, sockets with timeouts) are never
+    restarted. If the call was interrupted after transferring some data, it returns the partial count;
+    `read` and `write` can also legitimately return short counts for sockets, pipes and terminals (and
+    `read` at EOF returns 0). So correct code loops until all bytes are transferred, advancing the buffer
+    pointer, and treats 0 from `read` as EOF. With timeouts, recompute the remaining timeout before
+    retrying. Alternatives: block signals in I/O threads and handle them in one thread or via `signalfd`.
+  keyPoints:
+    - EINTR means a signal handler interrupted a blocking call before any data was transferred
+    - Retry on EINTR, or use SA_RESTART (but some calls are never restarted)
+    - Short reads/writes are normal - loop until done, advancing the buffer
+    - read returning 0 means EOF
+    - Option - block signals in worker threads, use signalfd or a dedicated signal thread
+  explanation: |
+    Many real outages come from code that treats EINTR or a short write as a fatal error (or ignores a
+    short write and silently loses data). Interviewers like to see the loop written correctly.

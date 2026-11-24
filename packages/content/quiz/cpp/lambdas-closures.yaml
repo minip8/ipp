@@ -1,0 +1,312 @@
+# Lambdas and closures: captures, mutable, closure types, std::function.
+- id: cpp-lambdas-001
+  topic: cpp
+  subtopic: Lambdas and closures
+  difficulty: easy
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [lambdas, captures]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    int main() {
+        int x = 1;
+        auto by_value = [x] { return x; };
+        auto by_ref = [&x] { return x; };
+        x = 2;
+        std::cout << by_value() << by_ref() << '\n';
+    }
+  answer: { kind: output, output: "12" }
+  explanation: |
+    A by-value capture copies the variable into the closure object *when the lambda is created*, so
+    `by_value` holds `1` regardless of later changes. A by-reference capture refers to the original
+    variable, so it sees `2`. The reference capture is also why storing such a lambda beyond the
+    variable's lifetime dangles.
+
+- id: cpp-lambdas-002
+  topic: cpp
+  subtopic: Lambdas and closures
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [lambdas, mutable, closure-copies]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    int main() {
+        int n = 0;
+        auto counter = [n]() mutable { return ++n; };
+        counter();
+        counter();
+        auto copy = counter;
+        std::cout << counter() << copy() << n << '\n';
+    }
+  answer: { kind: output, output: "330" }
+  explanation: |
+    `mutable` makes the closure's `operator()` non-const, so the lambda can modify *its own copy* of `n`,
+    which persists across calls. After two calls the member is 2. `copy` is a copy of the whole closure
+    object, member included (2), and from then on the two evolve independently: each returns 3. The outer
+    `n` is never touched → `0`.
+
+    This matters with algorithms: `std::generate` or `std::for_each` take function objects by value, so a
+    stateful lambda's state is not reflected in the original afterwards (though `for_each` returns its
+    copy).
+
+- id: cpp-lambdas-003
+  topic: cpp
+  subtopic: Lambdas and closures
+  difficulty: hard
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [lambdas, static-locals, closure-types]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    int main() {
+        auto next_id = [] {
+            static int id = 0;
+            return ++id;
+        };
+        auto other = next_id;
+        next_id();
+        next_id();
+        std::cout << other() << '\n';
+    }
+  answer: { kind: output, output: "3" }
+  explanation: |
+    A `static` local inside a lambda body belongs to the closure type's `operator()`, which is one
+    function shared by every object of that closure type. `other` is a copy of `next_id`, so it has the
+    same type and therefore the same `static int id`. Copies don't get fresh counters, and the static isn't
+    captured state. Use a `mutable` init-capture (`[id = 0]() mutable { return ++id; }`) for per-object state.
+
+- id: cpp-lambdas-004
+  topic: cpp
+  subtopic: Lambdas and closures
+  difficulty: medium
+  type: single
+  tags: [lambdas, this-capture]
+  prompt: |
+    In C++17, what does this lambda capture, and what does it return if called after `s.v` has been set
+    to 2?
+
+    ```cpp
+    struct S {
+        int v = 1;
+        auto getter() { return [=] { return v; }; }
+    };
+    ```
+  choices:
+    - { id: a, text: "It captures the `this` pointer (not a copy of `v`), so it returns 2, and it dangles if `s` is destroyed." }
+    - { id: b, text: "It captures a copy of `v`, so it returns 1." }
+    - { id: c, text: "It captures a copy of the whole `*this` object, so it returns 1." }
+    - { id: d, text: "It doesn't compile: members can't be used in lambdas." }
+  answer: a
+  explanation: |
+    Data members aren't variables that can be captured. Inside a member function, `v` means `this->v`, and
+    `[=]` implicitly captures `this`, the pointer, by value. The lambda reads the member at call time
+    (→ 2) and dangles if the object dies first, which is a classic bug with callbacks stored in executors.
+    C++17 added `[*this]` to copy the object, and C++20 deprecates implicit capture of `this` via `[=]`,
+    asking you to write `[=, this]` explicitly. To capture the value, use an init-capture: `[v = v]`.
+
+- id: cpp-lambdas-005
+  topic: cpp
+  subtopic: Lambdas and closures
+  difficulty: easy
+  type: single
+  tags: [lambdas, function-pointers]
+  prompt: Which lambda can be converted to a plain function pointer `int (*)(int)`?
+  choices:
+    - { id: a, text: "`[](int x) { return x * 2; }`" }
+    - { id: b, text: "`[k](int x) { return x * k; }`" }
+    - { id: c, text: "`[&](int x) { return x + total; }`" }
+    - { id: d, text: "`[k = 2](int x) { return x * k; }`" }
+  answer: a
+  explanation: |
+    Only a *captureless* lambda has a conversion function to a pointer to function
+    ([expr.prim.lambda.closure]), because its call doesn't need any closure state. That's how such lambdas
+    can be passed to C APIs like `qsort` or `pthread_create` (unary `+` forces the conversion:
+    `+[](int x) { ... }`). Any capture, including init-captures, means the call needs the closure object,
+    so you need a template parameter, `std::function`, or a `void*` context pointer.
+
+- id: cpp-lambdas-006
+  topic: cpp
+  subtopic: Lambdas and closures
+  difficulty: easy
+  type: single
+  tags: [lambdas, closure-types]
+  prompt: |
+    What is the type of `f` in `auto f = [](int x) { return x + 1; };`?
+  choices:
+    - { id: a, text: "A unique, unnamed class type (the closure type) with an `operator()`; two textually identical lambdas have different types." }
+    - { id: b, text: "`std::function<int(int)>`" }
+    - { id: c, text: "`int (*)(int)`" }
+    - { id: d, text: "`std::lambda<int(int)>`" }
+  answer: a
+  explanation: |
+    Each lambda expression defines a distinct closure type ([expr.prim.lambda.closure]), essentially a
+    compiler-generated struct with captures as members and an inline `operator()` (a template `operator()`
+    for generic lambdas with `auto` parameters). Because the type is unique and the call operator is
+    visible, passing a lambda to a template (e.g. `std::sort`) lets the compiler inline it. `std::function`
+    is a separate type-erasing wrapper that can *hold* a lambda, and the function pointer is only a
+    conversion target for captureless lambdas.
+
+- id: cpp-lambdas-007
+  topic: cpp
+  subtopic: Lambdas and closures
+  difficulty: hard
+  type: multiple
+  tags: [lambdas, dangling, captures, async]
+  prompt: |
+    A function creates a lambda and hands it to a thread pool that runs it *after the function has
+    returned*. Which captures make the lambda unsafe to run at that point? Select all that apply.
+
+    ```cpp
+    void Session::schedule(ThreadPool& pool) {
+        int retries = 3;
+        static int total = 0;
+        auto buf = std::make_unique<Buffer>();
+        pool.post(/* lambda here */);
+    }
+    ```
+  choices:
+    - { id: a, text: "`[&] { use(retries); }`" }
+    - { id: b, text: "`[=] { use(member_); }` (where `member_` is a data member of `Session`), if the `Session` may be destroyed before the task runs" }
+    - { id: c, text: "`[retries] { use(retries); }`" }
+    - { id: d, text: "`[b = std::move(buf)] { use(*b); }`" }
+    - { id: e, text: "`[] { use(total); }`" }
+  answer: [a, b]
+  explanation: |
+    - (a) captures the local `retries` by reference; it's gone when `schedule` returns.
+    - (b) `[=]` captures `this`, not `member_`; if the `Session` dies first, the pointer dangles. Use
+      `[self = shared_from_this()]` or copy the needed members (`[m = member_]`).
+    - (c) copies the `int` into the closure: safe.
+    - (d) moves ownership of the buffer into the closure: safe (the closure becomes move-only, so the pool
+      must accept move-only callables, e.g. C++23 `std::move_only_function`).
+    - (e) a `static` local isn't captured at all; it has static storage duration and outlives the call
+      (but concurrent access to it would need synchronization).
+
+- id: cpp-lambdas-008
+  topic: cpp
+  subtopic: Lambdas and closures
+  difficulty: medium
+  type: short
+  tags: [lambdas, closure-types, implementation]
+  prompt: |
+    How does the compiler implement a lambda expression such as
+    `[factor, &total](int x) { total += x * factor; }`? What does that imply for its size, copying, and
+    inlining?
+  reference: |
+    The compiler generates a unique unnamed class (the closure type). Each capture becomes a data member:
+    `factor` is stored by value as an `int` member, initialized when the lambda expression is evaluated;
+    `total` is stored as a reference (in practice a pointer). The body becomes a `const` member
+    `operator()(int)` (non-const if the lambda is `mutable`); a generic lambda gets a member template
+    `operator()`. The lambda expression evaluates to a prvalue object of that class. So the lambda's
+    size is roughly the size of its captures (a captureless lambda is an empty class, size 1); copying a
+    lambda copies its captures; and since `operator()` is an inline member of a type known at compile time,
+    passing the lambda to a template parameter (`std::sort`, `std::for_each`) lets the compiler inline the
+    body, which is usually faster than a function pointer or `std::function`. Captureless lambdas
+    additionally get a conversion to a function pointer.
+  explanation: |
+    A good answer describes the closure type as a functor with members, const `operator()`, and the
+    consequences for inlining and copying. See cppreference "Lambda expressions", "closure type".
+  keyPoints:
+    - A unique unnamed closure class is generated
+    - Captures become data members (by-value copies, by-reference as references or pointers)
+    - The body becomes a const operator() (non-const if mutable; a template for generic lambdas)
+    - Size equals the captures; copying the lambda copies the captures
+    - Known type and inline operator() mean templates can inline it; captureless converts to a function pointer
+
+- id: cpp-lambdas-009
+  topic: cpp
+  subtopic: Lambdas and closures
+  difficulty: hard
+  type: short
+  tags: [std-function, type-erasure, performance, templates]
+  prompt: |
+    You are writing an API that accepts a callback. Compare taking it as a template parameter
+    (`template <class F> void on_tick(F&& f)`), as `std::function<void(Tick)>`, and as a function
+    pointer plus `void*` context. What are the performance and design trade-offs?
+  reference: |
+    Template parameter: the callable's concrete type is known, so calls can be inlined and there's no
+    allocation or indirection. This is fastest, but the API must live in a header, each callable type
+    instantiates new code (bloat, compile time), and the callback can't easily be stored in a non-template
+    member or container. `std::function`: type erasure, so one non-template signature that can store any
+    copyable callable (lambdas with captures, member function binds). Costs: an indirect call through a
+    vtable-like dispatcher that usually prevents inlining; possible heap allocation when the callable is
+    larger than the small-buffer (typically 16–32 bytes); the callable must be copyable (C++23
+    `std::move_only_function` lifts that); and it carries an empty state that throws `bad_function_call`.
+    Function pointer plus context: no allocation, a C-compatible ABI, and a predictable indirect call, but no
+    type safety for the context, manual lifetime management, and still no inlining. In hot paths prefer
+    templates (or a non-owning `function_ref`-style view, C++26 `std::function_ref`); use `std::function`
+    when you need to store heterogeneous callbacks and the call isn't latency critical.
+  explanation: |
+    Interviewers at low-latency firms want to hear "inlining" and "possible allocation" for
+    `std::function`, plus an awareness of the alternatives (`function_ref`, `move_only_function`).
+  keyPoints:
+    - A template parameter enables inlining with no allocation, at the cost of header-only code and bloat
+    - std::function type-erases via an indirect call that usually prevents inlining
+    - std::function may heap-allocate when the callable exceeds the small buffer, and requires copyability
+    - A function pointer plus void* is cheap and C-compatible but unsafe, with manual lifetime handling
+    - Mentions function_ref or move_only_function as modern options
+
+- id: cpp-lambdas-010
+  topic: cpp
+  subtopic: Lambdas and closures
+  difficulty: easy
+  type: short
+  tags: [lambdas, iife, const]
+  prompt: |
+    What is an immediately invoked lambda expression (IIFE), and when is it useful in C++?
+  reference: |
+    It's a lambda that is defined and called in the same expression: `const auto cfg = [&] { ... return x; }();`.
+    It's useful for initializing a variable whose initialization needs several statements, branches, or a
+    loop, while still declaring the variable `const` (or `constexpr`) and avoiding a default-construct-then-assign
+    sequence. Examples: computing a lookup table, choosing a value with a switch, or parsing with error handling.
+    It keeps the helper logic local without polluting the class or namespace with a one-off function, and
+    with guaranteed copy elision the result is constructed directly in the variable. Core Guidelines ES.28
+    recommends it for complex initialization of const variables.
+  explanation: |
+    The main benefits to mention are const-correctness and avoiding two-phase initialization (Core
+    Guidelines ES.28).
+  keyPoints:
+    - A lambda defined and called immediately, e.g. auto x = [&]{ ... }();
+    - Lets complex multi-statement initialization produce a const variable
+    - Avoids default-construct-then-mutate (two-phase initialization)
+    - Keeps one-off helper logic local; the result is constructed in place (copy elision)
+
+- id: cpp-lambdas-011
+  topic: cpp
+  subtopic: Lambdas and closures
+  difficulty: medium
+  type: short
+  tags: [lambdas, captures, init-capture]
+  prompt: |
+    Explain the capture modes `[=]`, `[&]`, `[x]`, `[&x]`, `[this]`, `[*this]` and init-captures like
+    `[p = std::move(ptr)]`. Why do many style guides discourage default captures?
+  reference: |
+    `[x]` copies `x` into the closure at creation time; `[&x]` stores a reference to `x`. `[=]` and `[&]`
+    are default captures that capture, by copy or by reference, every local variable the body odr-uses.
+    `[this]` captures the object pointer so members can be accessed (they're always accessed through it),
+    and `[*this]` (C++17) copies the whole object into the closure. Init-captures (C++14) declare a new
+    closure member initialized from any expression, enabling move-capture (`[p = std::move(ptr)]`),
+    renaming, or capturing a computed value. Default captures are discouraged because they hide what is
+    captured: `[=]` looks like it copies everything but silently captures `this` by pointer (deprecated in
+    C++20 for that reason), and `[&]` makes it easy to capture locals by reference in a lambda that outlives
+    the scope (async callbacks, stored handlers). Explicit capture lists make lifetimes reviewable. `[&]` is
+    fine for lambdas used immediately, such as algorithm predicates.
+  explanation: |
+    Core Guidelines F.52/F.53 ("Prefer capturing by reference in lambdas that will be used locally"; "Avoid
+    capturing by reference in lambdas that will be used non-locally") and F.54 (on `this` with `[=]`) are
+    the reference points.
+  keyPoints:
+    - "[x] copies at creation; [&x] references; [=]/[&] capture whatever is used"
+    - "[this] captures the pointer; [*this] copies the object (C++17)"
+    - Init-captures enable move-capture and computed or renamed members
+    - "Default captures hide dangling risks: [=] silently captures this, [&] references locals"
+    - "[&] is fine for lambdas used immediately; be explicit for stored or async lambdas"

@@ -1,0 +1,396 @@
+# Undefined, unspecified and implementation-defined behaviour; order of evaluation.
+- id: cpp-ub-001
+  topic: cpp
+  subtopic: Undefined and unspecified behaviour
+  difficulty: easy
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [signed-overflow, undefined-behavior]
+  prompt: What does this program do?
+  code: |
+    #include <climits>
+    #include <iostream>
+
+    int main() {
+        int x = INT_MAX;
+        x += 1;
+        std::cout << (x < 0) << '\n';
+    }
+  answer: { kind: undefined }
+  explanation: |
+    Signed integer overflow is undefined behaviour ([expr.pre]): the result isn't representable in
+    `int`. It doesn't "wrap to INT_MIN". Even though C++20 mandates two's complement *representation*,
+    overflow stayed UB, and optimizers rely on it (e.g. assuming `x + 1 > x`, or that a loop counter
+    doesn't wrap). UBSan reports "signed integer overflow". Use unsigned types (which wrap modulo 2^N),
+    `__builtin_add_overflow`, or C++26 `std::add_sat` when you need defined behaviour.
+
+- id: cpp-ub-002
+  topic: cpp
+  subtopic: Undefined and unspecified behaviour
+  difficulty: hard
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [order-of-evaluation, sequencing, cpp17]
+  prompt: What does this program print? (Note the standard.)
+  code: |
+    #include <iostream>
+
+    int main() {
+        int i = 1;
+        i = i++ + 1;
+        std::cout << i << '\n';
+    }
+  answer: { kind: output, output: "2" }
+  explanation: |
+    Before C++17 this was the textbook example of undefined behaviour: the side effect of `i++` and the
+    assignment to `i` were unsequenced. C++17 (P0145) made the right operand of an assignment *sequenced
+    before* the left operand and the assignment ([expr.ass]), and that includes all of the right
+    operand's side effects. So: `i++` yields 1 and sets `i` to 2, then `1 + 1 = 2` is assigned. The result
+    is `2`.
+
+    Still, don't write this. `i++ + i++` remains UB in C++17 (the operands of `+` are unsequenced).
+
+- id: cpp-ub-003
+  topic: cpp
+  subtopic: Undefined and unspecified behaviour
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [order-of-evaluation, function-arguments]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    void show(int a, int b) { std::cout << a << b << '\n'; }
+
+    int main() {
+        int i = 0;
+        show(i++, i++);
+    }
+  answer: { kind: unspecified }
+  explanation: |
+    The order in which function arguments are evaluated is unspecified. Since C++17 each parameter's
+    initialization (with all its side effects) is *indeterminately sequenced* with respect to the others
+    ([expr.call]), so this prints either `01` or `10` (and is no longer UB, as it was before C++17).
+    In practice GCC on x86-64 tends to evaluate right to left and prints `10`, while Clang evaluates left
+    to right and prints `01`. A real-world variant: `process(next_token(), next_token())`.
+
+- id: cpp-ub-004
+  topic: cpp
+  subtopic: Undefined and unspecified behaviour
+  difficulty: hard
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [order-of-evaluation, operator-overloading, cpp17]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    int main() {
+        int i = 0;
+        std::cout << i++ << i++ << i << '\n';
+    }
+  answer: { kind: output, output: "012" }
+  explanation: |
+    Even though `<<` here calls overloaded `operator<<` functions, C++17 (P0145) guarantees that for
+    `E1 << E2` (built-in or overloaded), `E1` is sequenced before `E2` ([expr.shift],
+    [over.match.oper]). A chain `cout << a << b << c` is therefore evaluated left to right: `0`, `1`, then
+    `i` is `2`. Before C++17 this was undefined behaviour (and compilers really did print different things),
+    which is why older references warn against it.
+
+- id: cpp-ub-005
+  topic: cpp
+  subtopic: Undefined and unspecified behaviour
+  difficulty: hard
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [integer-division, signed-overflow, undefined-behavior]
+  prompt: What does this program do?
+  code: |
+    #include <climits>
+    #include <iostream>
+
+    int divide(int a, int b) { return b == 0 ? 0 : a / b; }
+
+    int main() {
+        std::cout << divide(INT_MIN, -1) << '\n';
+    }
+  answer: { kind: undefined }
+  explanation: |
+    The zero check isn't enough. With two's complement, `INT_MIN / -1` would be `INT_MAX + 1`, which isn't
+    representable, so the behaviour is undefined ([expr.mul]: "if the quotient a/b is representable in
+    the type of the result..."). On x86 the `idiv` instruction raises a hardware divide error, so the
+    program dies with SIGFPE. `INT_MIN % -1` is UB for the same reason. UBSan reports "division of
+    -2147483648 by -1 cannot be represented". Robust code checks `b == -1 && a == INT_MIN` too.
+
+- id: cpp-ub-006
+  topic: cpp
+  subtopic: Undefined and unspecified behaviour
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [missing-return, undefined-behavior]
+  prompt: What does this program do?
+  code: |
+    #include <iostream>
+
+    int sign(int x) {
+        if (x > 0) return 1;
+        if (x < 0) return -1;
+    }
+
+    int main() {
+        std::cout << sign(0) << '\n';
+    }
+  answer: { kind: undefined }
+  explanation: |
+    Flowing off the end of a non-void function (other than `main`) is undefined behaviour
+    ([stmt.return]). It's only a warning (`-Wreturn-type`), not an error. Optimizers treat the
+    path as unreachable: Clang at `-O2` may let execution fall through into whatever code follows, and GCC
+    may emit a trap. It is not "returns garbage". UBSan with `-fsanitize=return` reports it. Treat
+    `-Wreturn-type` as an error (`-Werror=return-type`).
+
+- id: cpp-ub-007
+  topic: cpp
+  subtopic: Undefined and unspecified behaviour
+  difficulty: hard
+  type: output
+  language: cpp
+  standard: C++20
+  tags: [shifts, twos-complement, cpp20]
+  prompt: What does this program print? (Note the standard.)
+  code: |
+    #include <iostream>
+
+    int main() {
+        int a = -1;
+        int b = -8;
+        std::cout << (a << 1) << ' ' << (b >> 1) << '\n';
+    }
+  answer: { kind: output, output: "-2 -4" }
+  explanation: |
+    C++20 (P1236, following P0907 "signed integers are two's complement") defines shifts of negative values:
+    `a << n` is `a × 2ⁿ` reduced modulo 2^N, and `a >> n` is `floor(a / 2ⁿ)`, an arithmetic shift
+    ([expr.shift]). So `-1 << 1 == -2` and `-8 >> 1 == -4`.
+
+    In C++17 and earlier, left-shifting a negative value was undefined behaviour and right-shifting one was
+    implementation-defined. Shifting by a negative amount or by ≥ the width of the promoted type is still UB.
+
+- id: cpp-ub-008
+  topic: cpp
+  subtopic: Undefined and unspecified behaviour
+  difficulty: hard
+  type: multiple
+  tags: [order-of-evaluation, sequencing, cpp17]
+  prompt: |
+    With `int i = 0; int a[4] = {};`, which of these expressions have **undefined behaviour** in C++17?
+    Select all that apply.
+  choices:
+    - { id: a, text: "`i = i++ + 1`" }
+    - { id: b, text: "`i++ + i++`" }
+    - { id: c, text: "`f(i++, i++)`" }
+    - { id: d, text: "`a[i] = i++`" }
+    - { id: e, text: "`std::cout << i << i++`" }
+    - { id: f, text: "`i = ++i + i++`" }
+  answer: [b, f]
+  explanation: |
+    C++17 sequencing rules (P0145): for `E1 = E2` the right side is sequenced before the left; for
+    `E1 << E2`, `E1[E2]`, `E1.E2` and `E1->E2` the left is sequenced before the right; function arguments
+    are indeterminately sequenced (unspecified order, but not interleaved).
+
+    - (a), (d), (e) are well-defined in C++17 (all were UB before).
+    - (c) is unspecified (which argument gets 0), not undefined.
+    - (b) and (f): the operands of built-in `+` are still unsequenced, and both modify `i` → UB.
+
+- id: cpp-ub-009
+  topic: cpp
+  subtopic: Undefined and unspecified behaviour
+  difficulty: medium
+  type: multiple
+  tags: [implementation-defined, undefined-behavior, unspecified-behavior]
+  prompt: |
+    Which of the following are **implementation-defined** (the implementation must choose and document
+    the behaviour), as opposed to undefined or unspecified? Select all that apply.
+  choices:
+    - { id: a, text: "`sizeof(int)`" }
+    - { id: b, text: "Whether plain `char` is signed or unsigned" }
+    - { id: c, text: "The order in which function arguments are evaluated" }
+    - { id: d, text: "The result of signed integer overflow" }
+    - { id: e, text: "The number of bits in a byte (`CHAR_BIT`)" }
+    - { id: f, text: "Reading an out-of-bounds array element" }
+  answer: [a, b, e]
+  explanation: |
+    - **Implementation-defined**: the behaviour varies, but each implementation documents its choice:
+      type sizes, signedness of `char`, `CHAR_BIT`, `sizeof(void*)`, alignment requirements.
+    - **Unspecified**: one of several allowed outcomes, but no documentation is required and it may vary
+      per call. Argument evaluation order is the classic example.
+    - **Undefined**: no requirements at all. Signed overflow and out-of-bounds access, and the optimizer
+      may assume they never happen.
+
+- id: cpp-ub-010
+  topic: cpp
+  subtopic: Undefined and unspecified behaviour
+  difficulty: hard
+  type: single
+  tags: [undefined-behavior, optimization, null-pointer]
+  prompt: |
+    Compiled with optimization, the `if` check below disappears from the generated code. Why is the
+    compiler allowed to remove it?
+
+    ```cpp
+    int read(Packet* p) {
+        int len = p->length;
+        if (p == nullptr) return -1;
+        return len;
+    }
+    ```
+  choices:
+    - { id: a, text: "Dereferencing a null pointer is UB, so after `p->length` the compiler may assume `p != nullptr` and delete the check as dead code." }
+    - { id: b, text: "It's a compiler bug; checks for null may never be removed." }
+    - { id: c, text: "`nullptr` comparisons are always evaluated at compile time." }
+    - { id: d, text: "Because `int len` is unused when `p` is null." }
+  answer: a
+  explanation: |
+    Optimizers assume the program has no UB. Since `p->length` already executed, `p` "cannot" be null on
+    any valid execution, so `p == nullptr` is always false and the branch is removed. This exact pattern
+    caused a Linux kernel vulnerability (2009, tun driver), after which the kernel added
+    `-fno-delete-null-pointer-checks`. The fix is to check *before* dereferencing. The general lesson:
+    UB doesn't just make one operation misbehave; it lets the compiler reason backwards and forwards
+    through your code.
+
+- id: cpp-ub-011
+  topic: cpp
+  subtopic: Undefined and unspecified behaviour
+  difficulty: medium
+  type: single
+  tags: [strict-aliasing, type-punning, bit-cast]
+  prompt: |
+    You need the IEEE-754 bit pattern of a `float f` as a `std::uint32_t`. Which approach is
+    well-defined C++?
+  choices:
+    - { id: a, text: "`std::bit_cast<std::uint32_t>(f)` (C++20), or `std::memcpy(&u, &f, sizeof u)`" }
+    - { id: b, text: "`*reinterpret_cast<std::uint32_t*>(&f)`" }
+    - { id: c, text: "`union { float f; std::uint32_t u; } x{f}; return x.u;`" }
+    - { id: d, text: "`static_cast<std::uint32_t>(f)`" }
+  answer: a
+  explanation: |
+    (b) accesses a `float` object through a glvalue of type `uint32_t`, which violates the strict-aliasing
+    rule ([basic.lval]): undefined behaviour, and GCC really does miscompile such code at `-O2`.
+    (c) reading an inactive union member is UB in C++ (it's allowed in C; GCC documents it as an extension).
+    (d) converts the *value* (1.5f → 1), not the bits. `std::bit_cast` and `memcpy` copy the object
+    representation and compile to a single register move.
+
+- id: cpp-ub-012
+  topic: cpp
+  subtopic: Undefined and unspecified behaviour
+  difficulty: hard
+  type: single
+  tags: [forward-progress, infinite-loops, undefined-behavior]
+  prompt: |
+    Which loop may a conforming C++20 compiler assume terminates (and therefore remove or treat as
+    unreachable if it doesn't), even though it is in fact infinite?
+  choices:
+    - { id: a, text: "`while (true) { }` inside a function, with no I/O, volatile or atomic accesses (C++20 rules)" }
+    - { id: b, text: "`while (true) { std::this_thread::sleep_for(1ms); }`" }
+    - { id: c, text: "`while (!flag.load()) { }` where `flag` is a `std::atomic<bool>`" }
+    - { id: d, text: "`for (;;) { std::puts(\"tick\"); }`" }
+  answer: a
+  explanation: |
+    The forward-progress rule ([intro.progress]) lets implementations assume every thread eventually
+    terminates or performs I/O, a volatile access, or a synchronization/atomic operation. A loop that
+    does none of these forever is UB, and Clang famously deleted such loops (for example, making `main` fall
+    through into the next function). (b), (c) and (d) all perform library I/O, sleeping, or atomic
+    operations, so they're fine. C++26 (P2809) makes *trivial* infinite loops like `while (true) {}` with a
+    constant condition well-defined, but loops with a non-constant condition and no side effects remain UB.
+    Clang 19 and later apply P2809 retroactively to C++11 and later modes, so current Clang keeps
+    `while (true) {}` even with `-std=c++20`; that is a compiler choice, not something C++20 requires.
+
+- id: cpp-ub-013
+  topic: cpp
+  subtopic: Undefined and unspecified behaviour
+  difficulty: medium
+  type: short
+  tags: [undefined-behavior, unspecified-behavior, implementation-defined]
+  prompt: |
+    Explain the difference between undefined, unspecified and implementation-defined behaviour, with an
+    example of each. Why do compilers exploit undefined behaviour rather than just doing "what the hardware does"?
+  reference: |
+    Implementation-defined: the standard leaves the choice to the implementation, which must document it
+    (e.g. `sizeof(long)`, whether `char` is signed). Unspecified: one of a set of allowed behaviours, not
+    necessarily documented or consistent (e.g. the order of evaluating function arguments, whether two
+    identical string literals share storage). Undefined: the standard imposes no requirements at all
+    (e.g. signed overflow, out-of-bounds access, data races, use after free, null dereference); the whole
+    execution becomes meaningless, even "before" the UB occurs. Compilers exploit UB because assuming it
+    never happens enables optimizations: assuming signed loop counters don't overflow allows widening to
+    64-bit and vectorization; strict aliasing lets the compiler keep values in registers across stores to
+    other types; null-dereference rules allow removing redundant checks; data-race freedom allows
+    reordering and caching of memory accesses. "What the hardware does" would differ across targets and
+    forbid these transformations.
+  explanation: |
+    Good answers give a correct example of each category and a concrete optimization that relies on UB.
+    See John Regehr's "A Guide to Undefined Behavior in C and C++" and Chris Lattner's "What Every C
+    Programmer Should Know About Undefined Behavior".
+  keyPoints:
+    - "Implementation-defined: the implementation chooses and documents it (sizeof, char signedness)"
+    - "Unspecified: one of several allowed outcomes, not documented (argument evaluation order)"
+    - "Undefined: no requirements; the whole program's behaviour is meaningless (overflow, OOB, races)"
+    - Optimizers assume UB never happens, enabling loop, aliasing and null-check optimizations
+    - Consequences can appear far from, or before, the UB site
+
+- id: cpp-ub-014
+  topic: cpp
+  subtopic: Undefined and unspecified behaviour
+  difficulty: easy
+  type: short
+  tags: [sanitizers, undefined-behavior, tooling]
+  prompt: |
+    What tools and practices would you use to catch undefined behaviour in a C++ codebase?
+  reference: |
+    Compile with warnings (`-Wall -Wextra`, plus `-Werror` on important ones like `-Wreturn-type`) and run
+    static analysis (clang-tidy, the Clang static analyzer, cppcheck). Run the test suite under sanitizers:
+    AddressSanitizer for out-of-bounds, use-after-free, double free and leaks (LeakSanitizer);
+    UndefinedBehaviorSanitizer for signed overflow, bad shifts, misaligned or null access, and invalid
+    enum/bool values; ThreadSanitizer for data races; MemorySanitizer for uninitialized reads. Use debug
+    modes of the standard library (`_GLIBCXX_ASSERTIONS`, `_GLIBCXX_DEBUG`, libc++ hardening) for container
+    bounds and iterator checks. Valgrind works when you can't recompile. Fuzzing (libFuzzer, AFL) combined
+    with sanitizers explores edge inputs. Evaluating pure code in `constexpr`/`static_assert` contexts
+    makes the compiler reject UB. And there are code practices: prefer `.at()` or spans with bounds checks in
+    debug builds, RAII, and avoiding raw casts.
+  explanation: |
+    The minimum good answer names ASan, UBSan and TSan and says to run them in CI over the tests. Bonus
+    points for MSan, library hardening modes, fuzzing, and constexpr evaluation.
+  keyPoints:
+    - Compiler warnings and static analysis (clang-tidy)
+    - AddressSanitizer and UndefinedBehaviorSanitizer in CI over the test suite
+    - ThreadSanitizer for data races; MemorySanitizer or Valgrind for uninitialized reads
+    - Standard library assertion/debug modes and fuzzing
+    - constexpr evaluation rejects UB at compile time
+
+- id: cpp-ub-015
+  topic: cpp
+  subtopic: Undefined and unspecified behaviour
+  difficulty: medium
+  type: single
+  tags: [signed-overflow, overflow-checks]
+  prompt: |
+    For `int a, b` with `b > 0`, which check correctly detects that `a + b` would overflow, without
+    itself invoking undefined behaviour?
+  choices:
+    - { id: a, text: "`if (a > INT_MAX - b) { /* overflow */ }`" }
+    - { id: b, text: "`if (a + b < a) { /* overflow */ }`" }
+    - { id: c, text: "`if ((long)a + b < a) { /* overflow */ }` on a platform where `long` is 32 bits" }
+    - { id: d, text: "`if (a + b > INT_MAX) { /* overflow */ }`" }
+  answer: a
+  explanation: |
+    The check must not perform the overflowing operation. `INT_MAX - b` can't overflow when `b > 0`, and
+    `a > INT_MAX - b` is exactly the overflow condition. (b) computes the overflowing sum first, which is
+    UB, and compilers routinely fold `a + b < a` to `b < 0` (false here), deleting the check. (d) can never
+    be true for an `int` result. (c) only works if `long` is wider than `int`, which it isn't on Windows or
+    32-bit targets. Alternatives: `__builtin_add_overflow(a, b, &r)` (GCC/Clang), C++26 `std::add_sat` or
+    `ckd_add` from C23, or computing in a wider type such as `std::int64_t`.

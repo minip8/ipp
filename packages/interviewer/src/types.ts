@@ -1,0 +1,137 @@
+/**
+ * Boundary between apps/api and packages/interviewer. The API owns I/O (database, sockets, the
+ * live editor document); this package owns the decision of when to speak and what to say.
+ * The interviewer never executes code: it sees the source text, run results and the transcript.
+ */
+import type {
+  AiKeyProblem,
+  Language,
+  Message,
+  MessageIntent,
+  Pad,
+  ProblemContent,
+  QuizQuestion,
+  Report,
+  ReportAssessment,
+  Run,
+  ServerEvent,
+} from '@ipp/contracts';
+
+/** Things the API tells the interviewer about. `handle` returns immediately; work is serialized per pad. */
+export type Trigger =
+  | { type: 'session_started' }
+  | { type: 'candidate_message'; text: string; via: 'text' | 'voice'; userId: string }
+  /** The editor document changed. Sent at most once per second; debouncing is the interviewer's job. */
+  | { type: 'code_changed' }
+  /** Full, unredacted run (the interviewer may reason about hidden-test outcomes but must not leak inputs). */
+  | { type: 'run_finished'; run: Run; hiddenFailures: number }
+  | { type: 'telemetry'; kind: 'paste' | 'blur'; chars?: number; ms?: number }
+  | { type: 'language_changed'; language: Language }
+  /** Sent every ~5 s for each active pad so idle and time-remaining checks need no timers here. */
+  | { type: 'tick' }
+  | { type: 'session_ended' };
+
+export interface InterviewContext {
+  pad: Pad;
+  /** Includes interviewerNotes and reference solutions (server-only fields). Tests are omitted. */
+  problem: Omit<ProblemContent, 'tests'>;
+  language: Language;
+  /** Current editor contents for the active language. */
+  code: string;
+  notes: string;
+  transcript: Message[];
+  /** Most recent first, at most 10. */
+  recentRuns: Run[];
+  /** Notes the interviewer wrote to itself earlier in this session. */
+  privateNotes: string[];
+  now: Date;
+}
+
+export interface NewMessage {
+  /** Supplied when the text was streamed with message.delta events under this id. */
+  id?: string;
+  kind: 'chat' | 'proactive';
+  intent: MessageIntent;
+  text: string;
+}
+
+/**
+ * Whose Anthropic API key (and daily allowance) a model call uses: a pad runs on its owner's key
+ * (collaborators included), short-answer grading on the quiz taker's. There is no operator key.
+ */
+export type AiScope = { padId: string } | { userId: string };
+
+/**
+ * Result of looking up the key for a scope. `keyId` changes whenever the stored key changes, so
+ * the interviewer can tell "the same key again" from "a new key" without comparing secrets.
+ */
+export type ResolvedKey =
+  | { ok: true; keyId: string; apiKey: string }
+  | { ok: false; state: 'missing' | 'rejected' };
+
+export interface InterviewerDeps {
+  now(): Date;
+  /**
+   * The key for one model call (or one burst of calls). Called before every model call, so a
+   * deleted or replaced key takes effect immediately; the host refreshes the key's expiry on use.
+   * The interviewer keeps the plaintext only inside a small, bounded cache of SDK clients.
+   */
+  resolveKey(scope: AiScope): Promise<ResolvedKey>;
+  /**
+   * Anthropic refused the key while it was in use (revoked, out of credit, spend limit, no access
+   * to the model). The host discards it; until a new key is saved `resolveKey` returns `rejected`.
+   */
+  keyRejected(scope: AiScope, keyId: string, problem: AiKeyProblem): Promise<void>;
+  loadContext(padId: string): Promise<InterviewContext>;
+  /** Persists an interviewer message and broadcasts message.created. */
+  saveMessage(padId: string, message: NewMessage): Promise<Message>;
+  appendPrivateNote(padId: string, note: string): Promise<void>;
+  /** Broadcast to everyone connected to the pad (message.delta, interviewer.thinking). */
+  emit(padId: string, event: ServerEvent): void;
+  /** Per-user and per-pad spend guard. When not ok the interviewer stays silent and says why once. */
+  checkBudget(padId: string): Promise<{ ok: true } | { ok: false; reason: string }>;
+  /** Optional: token usage of every model call, for the per-user daily limits (`ai_usage`). */
+  recordUsage?(scope: AiScope, usage: ModelUsage): void;
+  log: {
+    info(obj: object, msg?: string): void;
+    warn(obj: object, msg?: string): void;
+    error(obj: object, msg?: string): void;
+  };
+}
+
+export interface ModelUsage {
+  purpose: 'reply' | 'decision' | 'assessment' | 'grade';
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadInputTokens: number;
+  cacheCreationInputTokens: number;
+}
+
+/** Keys are not configuration: they are resolved per call through `InterviewerDeps.resolveKey`. */
+export interface InterviewerConfig {
+  model: string;
+}
+
+export interface ShortAnswerGrade {
+  score: number;
+  feedback: string;
+}
+
+export interface Interviewer {
+  handle(padId: string, trigger: Trigger): void;
+  /** Drop in-memory state for a pad (after session_ended or when the last client leaves). */
+  release(padId: string): void;
+  /** Null without a usable key for the pad's owner, over budget, or when the model failed. */
+  generateAssessment(padId: string): Promise<ReportAssessment | null>;
+  /** Runs on `userId`'s key; null without a usable key or when the model failed. */
+  gradeShortAnswer(
+    userId: string,
+    question: Extract<QuizQuestion, { type: 'short' }>,
+    answer: string,
+  ): Promise<ShortAnswerGrade | null>;
+}
+
+export type CreateInterviewer = (config: InterviewerConfig, deps: InterviewerDeps) => Interviewer;
+
+export type { Report };

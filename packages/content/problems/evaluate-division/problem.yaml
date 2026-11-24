@@ -1,0 +1,18 @@
+slug: evaluate-division
+title: Evaluate Division
+difficulty: medium
+tags: [graph, union-find, bfs, dfs]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: calcEquation
+      params:
+        - { name: equations, type: { list: { list: string } } }
+        - { name: values, type: { array: double } }
+        - { name: queries, type: { list: { list: string } } }
+      returns: { array: double }
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 399)
+  url: https://leetcode.com/problems/evaluate-division/

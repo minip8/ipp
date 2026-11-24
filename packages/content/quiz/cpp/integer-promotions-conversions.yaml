@@ -1,0 +1,242 @@
+# Integer promotions, usual arithmetic conversions, signed/unsigned pitfalls.
+- id: cpp-integers-001
+  topic: cpp
+  subtopic: Integer promotions and conversions
+  difficulty: easy
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [signed-unsigned, usual-arithmetic-conversions]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    int main() {
+        int a = -1;
+        unsigned b = 1;
+        std::cout << (a < b) << (a < static_cast<int>(b)) << '\n';
+    }
+  answer: { kind: output, output: "01" }
+  explanation: |
+    In `a < b`, the *usual arithmetic conversions* ([expr.arith.conv]) bring both operands to a common
+    type. `int` and `unsigned int` have the same rank, so the signed operand is converted to unsigned:
+    `-1` becomes `UINT_MAX`, and `UINT_MAX < 1` is false. Converting `b` to `int` first gives the
+    expected `true`. `-Wsign-compare` (in `-Wall` for C++) warns, and C++20 `std::cmp_less(a, b)` compares
+    mathematically.
+
+- id: cpp-integers-002
+  topic: cpp
+  subtopic: Integer promotions and conversions
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [integer-promotions, unsigned-char]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    int main() {
+        unsigned char a = 200, b = 100;
+        unsigned char c = a + b;
+        std::cout << a + b << ' ' << +c << '\n';
+    }
+  answer: { kind: output, output: "300 44" }
+  explanation: |
+    Operands narrower than `int` (`char`, `short`, `bool`, their unsigned variants) are *promoted* to `int`
+    before arithmetic ([conv.prom]), so `a + b` is the `int` 300, with no wraparound. Storing it into an
+    `unsigned char` converts modulo 256: 300 − 256 = 44. The unary `+` promotes `c` to `int` so it
+    prints as a number rather than as a character.
+
+- id: cpp-integers-003
+  topic: cpp
+  subtopic: Integer promotions and conversions
+  difficulty: hard
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [integer-promotions, signed-overflow, undefined-behavior]
+  prompt: |
+    What does this program do? Assume 16-bit `unsigned short` and 32-bit `int`, as on all mainstream
+    platforms.
+  code: |
+    #include <iostream>
+
+    int main() {
+        unsigned short a = 65535;
+        unsigned short b = 65535;
+        unsigned int product = a * b;
+        std::cout << product << '\n';
+    }
+  answer: { kind: undefined }
+  explanation: |
+    Everything here looks unsigned, but integer promotion converts both `unsigned short` operands to
+    **`int`** (since `int` can represent all their values) before multiplying. 65535 × 65535 =
+    4,294,836,225 > `INT_MAX`, so this is *signed* overflow: undefined behaviour. UBSan reports it. The
+    fix is to promote explicitly: `unsigned int product = 1u * a * b;` or
+    `static_cast<unsigned>(a) * b`. The same trap affects `uint16_t` hashing and checksum code.
+
+- id: cpp-integers-004
+  topic: cpp
+  subtopic: Integer promotions and conversions
+  difficulty: easy
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [integer-division, modulo]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    int main() {
+        std::cout << -7 / 2 << ' ' << -7 % 2 << ' ' << 7 % -2 << '\n';
+    }
+  answer: { kind: output, output: "-3 -1 1" }
+  explanation: |
+    Since C++11, integer division truncates toward zero ([expr.mul]), so `-7 / 2 == -3` (not −4, which
+    floor division would give). The remainder satisfies `(a/b)*b + a%b == a`, so it takes the sign of the
+    *dividend*: `-7 % 2 == -1` and `7 % -2 == 1`. Consequence: `x % 2 == 1` is false for negative odd
+    `x`; test `x % 2 != 0`. Python's `//` and `%` floor instead, a frequent porting bug.
+
+- id: cpp-integers-005
+  topic: cpp
+  subtopic: Integer promotions and conversions
+  difficulty: medium
+  type: single
+  tags: [uint8-t, iostreams, char-types]
+  prompt: |
+    What does `std::uint8_t level = 65; std::cout << level;` print on GCC, Clang and MSVC?
+  choices:
+    - { id: a, text: "`A`, because `std::uint8_t` is an alias for `unsigned char`, which streams as a character." }
+    - { id: b, text: "`65`, because `uint8_t` is an integer type." }
+    - { id: c, text: "It doesn't compile: there's no `operator<<` for `uint8_t`." }
+    - { id: d, text: "`0x41`" }
+  answer: a
+  explanation: |
+    `std::uint8_t` is a typedef, not a distinct type, and on every mainstream implementation it's `unsigned
+    char` (strictly, which type is implementation-defined). `operator<<` has character overloads for
+    `unsigned char`, so 65 prints as `A`. Similarly `std::int8_t` is `signed char`. Print with
+    `+level` or `static_cast<int>(level)`; reading with `>>` has the same issue (it reads one character).
+
+- id: cpp-integers-006
+  topic: cpp
+  subtopic: Integer promotions and conversions
+  difficulty: easy
+  type: single
+  tags: [unsigned, loops, size-t]
+  prompt: |
+    What's wrong with this loop over a `std::vector<int> v`?
+
+    ```cpp
+    for (std::size_t i = v.size() - 1; i >= 0; --i)
+        std::cout << v[i];
+    ```
+  choices:
+    - { id: a, text: "`i >= 0` is always true for an unsigned type, so after `i == 0` it wraps to `SIZE_MAX` and reads out of bounds; for an empty vector it starts at `SIZE_MAX` immediately." }
+    - { id: b, text: "Nothing; it prints the vector backwards." }
+    - { id: c, text: "It skips the first element." }
+    - { id: d, text: "It's a compile error to compare `size_t` with `0`." }
+  answer: a
+  explanation: |
+    Unsigned arithmetic wraps modulo 2^N, so `0 - 1` is `SIZE_MAX`, and the condition can never be false.
+    Compilers warn ("comparison is always true", `-Wtype-limits` in `-Wextra`). Idiomatic fixes:
+    `for (std::size_t i = v.size(); i-- > 0; )`, reverse iterators / `std::views::reverse`, or a signed
+    index with C++20 `std::ssize(v)`.
+
+- id: cpp-integers-007
+  topic: cpp
+  subtopic: Integer promotions and conversions
+  difficulty: medium
+  type: multiple
+  tags: [integer-promotions, usual-arithmetic-conversions]
+  prompt: |
+    Which of these expressions have type `int`? Select all that apply.
+  choices:
+    - { id: a, text: "`'a' + 'b'`" }
+    - { id: b, text: "`short(1) * short(2)`" }
+    - { id: c, text: "`1u + 1`" }
+    - { id: d, text: "`true + true`" }
+    - { id: e, text: "`1.0f + 1`" }
+    - { id: f, text: "`static_cast<unsigned char>(1) - static_cast<unsigned char>(2)`" }
+  answer: [a, b, d, f]
+  explanation: |
+    Integer promotion turns `char`, `short`, `bool` and `unsigned char`/`unsigned short` operands into
+    `int` before any arithmetic, so (a), (b), (d) and (f) are all `int`. (f) evaluates to `-1`, not 255,
+    which surprises people doing byte arithmetic. (c) `unsigned int` + `int` converts to `unsigned int`.
+    (e) mixing with floating point converts to `float`.
+
+- id: cpp-integers-008
+  topic: cpp
+  subtopic: Integer promotions and conversions
+  difficulty: medium
+  type: single
+  tags: [cpp20, safe-comparisons, signed-unsigned]
+  prompt: |
+    In C++20, what do `std::cmp_less(-1, 1u)` and `-1 < 1u` evaluate to?
+  choices:
+    - { id: a, text: "`true` and `false`" }
+    - { id: b, text: "`false` and `false`" }
+    - { id: c, text: "`true` and `true`" }
+    - { id: d, text: "`std::cmp_less` doesn't compile for mixed signedness." }
+  answer: a
+  explanation: |
+    The built-in `<` applies the usual arithmetic conversions, turning `-1` into `UINT_MAX`, so it's
+    `false`. The C++20 `<utility>` functions `std::cmp_equal`, `cmp_less`, `cmp_greater`, etc. compare the
+    *mathematical* values of any two standard integer types, so `-1 < 1` gives `true`. `std::in_range<T>(x)`
+    checks whether a value fits in `T` before converting.
+
+- id: cpp-integers-009
+  topic: cpp
+  subtopic: Integer promotions and conversions
+  difficulty: medium
+  type: short
+  tags: [integer-promotions, usual-arithmetic-conversions]
+  prompt: |
+    Explain integer promotions and the usual arithmetic conversions. Why is mixing signed and unsigned
+    integers in an expression dangerous?
+  reference: |
+    Integer promotions: before arithmetic, operands of types narrower than `int` (`bool`, `char`,
+    `signed/unsigned char`, `short`, `unsigned short`, small enums and bit-fields) are converted to `int` if
+    `int` can represent all their values, otherwise to `unsigned int`. The usual arithmetic conversions then
+    find a common type for binary operators: if either operand is floating point, convert to the widest
+    floating type; otherwise, after promotion, if both have the same signedness convert to the higher rank;
+    if the unsigned operand's rank is greater than or equal to the signed one's, the signed operand is
+    converted to unsigned; if the signed type can represent all values of the unsigned type, convert to the
+    signed type; otherwise both go to the unsigned version of the signed type. Dangers: a negative value
+    converted to unsigned becomes a huge number, so comparisons like `-1 < v.size()` are false and
+    `v.size() - 1` wraps for empty containers; small unsigned types promote to *signed* `int`, so
+    `uint16_t * uint16_t` can overflow (UB); results differ by platform when `long` is 32 vs 64 bits. Mitigations:
+    `-Wsign-compare` / `-Wconversion`, `std::cmp_*` and `std::ssize` (C++20), signed types for arithmetic
+    quantities, and explicit casts.
+  explanation: |
+    Look for: promotion to int, "same rank: signed becomes unsigned", and concrete bugs (comparisons with
+    `size()`, wraparound, small-unsigned multiplication overflow). See cppreference "Implicit conversions"
+    and "Arithmetic operators".
+  keyPoints:
+    - Types narrower than int are promoted to int (or unsigned int) before arithmetic
+    - Common-type rules; with equal rank the signed operand converts to unsigned
+    - Negative values become huge unsigned values, breaking comparisons and subtraction (size() - 1)
+    - Small unsigned types promote to signed int, so multiplication can overflow (UB)
+    - "Mitigations: warnings, std::cmp_less / std::ssize, explicit casts, consistent signedness"
+
+- id: cpp-integers-010
+  topic: cpp
+  subtopic: Integer promotions and conversions
+  difficulty: medium
+  type: single
+  tags: [floating-integral-conversion, undefined-behavior]
+  prompt: |
+    What happens in `double px = 1e12; int ticks = static_cast<int>(px);` (with 32-bit `int`)?
+  choices:
+    - { id: a, text: "Undefined behaviour: converting a floating-point value whose truncated value can't be represented in the target integer type is UB." }
+    - { id: b, text: "`ticks` is `INT_MAX` (the conversion saturates)." }
+    - { id: c, text: "`ticks` is `1e12` modulo 2³² (the conversion wraps)." }
+    - { id: d, text: "A `std::overflow_error` exception is thrown." }
+  answer: a
+  explanation: |
+    Floating-to-integer conversion truncates toward zero, and "the behavior is undefined if the truncated
+    value cannot be represented in the destination type" ([conv.fpint]). Unlike integer-to-unsigned
+    conversion, it doesn't wrap. On x86 the `cvttsd2si` instruction returns `INT_MIN` (0x80000000) for
+    out-of-range inputs, ARM saturates, and optimizers can assume it doesn't happen. UBSan's
+    `-fsanitize=float-cast-overflow` detects it. Range-check first (e.g. against
+    `std::numeric_limits<int>::max()` as a double), or use `std::llround` with checks.

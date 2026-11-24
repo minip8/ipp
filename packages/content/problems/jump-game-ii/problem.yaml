@@ -1,0 +1,16 @@
+slug: jump-game-ii
+title: Jump Game II
+difficulty: medium
+tags: [array, greedy]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: jump
+      params:
+        - { name: nums, type: { array: int } }
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 45; NeetCode 150 greedy)
+  url: https://leetcode.com/problems/jump-game-ii/

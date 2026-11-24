@@ -1,0 +1,531 @@
+# Output-prediction questions, Python (CPython). "Output" means what the program writes to stdout.
+# Each program was run repeatedly with python3; re-run with
+#   python3 packages/content/scripts/verify-net-conc-quiz.py
+
+- id: conc-snip-py-001
+  topic: concurrency
+  subtopic: asyncio
+  difficulty: easy
+  type: output
+  language: python
+  standard: Python 3.12
+  prompt: |
+    What does this program print?
+  code: |
+    import asyncio
+
+    async def job(name, delay):
+        await asyncio.sleep(delay)
+        print("finished", name)
+        return name
+
+    async def main():
+        results = await asyncio.gather(job("a", 0.3), job("b", 0.1), job("c", 0.2))
+        print(results)
+
+    asyncio.run(main())
+  answer: { kind: output, output: "finished b\nfinished c\nfinished a\n['a', 'b', 'c']" }
+  explanation: |
+    The three jobs run concurrently on the event loop, so they *finish* in order of their sleep
+    durations: b (100 ms), c (200 ms), a (300 ms). All three tasks start, and register their timers,
+    within a single pass of the event loop, microseconds apart, so the deadlines are 100 ms apart.
+    The timers are kept in a heap ordered by deadline, so even if the loop were delayed the callbacks
+    would still fire, and the tasks resume, in deadline order.
+
+    But `asyncio.gather` returns results **in the order the awaitables were passed**, not the order
+    they completed, so the list is `['a', 'b', 'c']`. If you want results as they complete, use
+    `asyncio.as_completed`.
+  tags: [asyncio, gather, ordering]
+  source: { name: "Python docs — asyncio.gather", url: "https://docs.python.org/3/library/asyncio-task.html#asyncio.gather" }
+
+- id: conc-snip-py-002
+  topic: concurrency
+  subtopic: asyncio
+  difficulty: easy
+  type: output
+  language: python
+  standard: Python 3.12
+  prompt: |
+    What does this program print?
+  code: |
+    import asyncio
+
+    async def worker(name):
+        for i in range(2):
+            print(name, i)
+            await asyncio.sleep(0)
+
+    async def main():
+        await asyncio.gather(worker("a"), worker("b"))
+
+    asyncio.run(main())
+  answer: { kind: output, output: "a 0\nb 0\na 1\nb 1" }
+  explanation: |
+    asyncio is **cooperative**: a coroutine runs until it reaches an `await` that actually suspends.
+    `await asyncio.sleep(0)` is the idiomatic "yield to the event loop": the task is put back at the
+    end of the ready queue so other ready tasks get a turn.
+
+    `gather` wraps both coroutines in tasks scheduled in argument order. Task a prints `a 0` and yields;
+    task b prints `b 0` and yields; then a resumes (`a 1`), then b (`b 1`). Without the `sleep(0)`,
+    each worker would run both iterations without interruption, printing `a 0, a 1, b 0, b 1`.
+  tags: [asyncio, cooperative-scheduling, event-loop]
+
+- id: conc-snip-py-003
+  topic: concurrency
+  subtopic: asyncio
+  difficulty: easy
+  type: output
+  language: python
+  standard: Python 3.12
+  prompt: |
+    What does this program print?
+  code: |
+    async def greet():
+        print("hello")
+        return 1
+
+    def main():
+        c = greet()
+        print(type(c).__name__)
+        c.close()
+
+    main()
+  answer: { kind: output, output: "coroutine" }
+  explanation: |
+    Calling an `async def` function does **not** run its body. It creates and returns a coroutine
+    object; the body only runs when the coroutine is awaited, wrapped in a task, or driven with
+    `asyncio.run`. So `hello` is never printed, and `type(c).__name__` is `coroutine`.
+
+    The `c.close()` call just avoids the "coroutine 'greet' was never awaited" `RuntimeWarning` that
+    CPython emits when an un-awaited coroutine is garbage collected. Forgetting an `await` is one of the
+    most common asyncio bugs, and that warning is the main clue.
+  tags: [asyncio, coroutine, gotcha]
+
+- id: conc-snip-py-004
+  topic: concurrency
+  subtopic: asyncio
+  difficulty: medium
+  type: output
+  language: python
+  standard: Python 3.12
+  prompt: |
+    What does this program print? (Default event loop and task factory.)
+  code: |
+    import asyncio
+
+    async def child():
+        print("child start")
+        await asyncio.sleep(0)
+        print("child end")
+
+    async def main():
+        t = asyncio.create_task(child())
+        print("created")
+        await asyncio.sleep(0)
+        print("main resumed")
+        await t
+        print("done")
+
+    asyncio.run(main())
+  answer: { kind: output, output: "created\nchild start\nmain resumed\nchild end\ndone" }
+  explanation: |
+    `create_task` **schedules** the coroutine; it does not start running it. The child's first step
+    is queued, and `main` keeps running until it suspends, so `created` comes first.
+
+    Trace of the ready queue:
+    1. `main` prints `created`, then `sleep(0)` re-queues main behind the child: [child, main].
+    2. child prints `child start`, `sleep(0)` re-queues it: [main, child].
+    3. main prints `main resumed`, then `await t` suspends main until t finishes: [child].
+    4. child prints `child end` and finishes, which wakes main.
+    5. main prints `done`.
+
+    (Python 3.12 added an opt-in *eager* task factory that would run the child immediately up to its
+    first suspension; it is not the default.)
+  tags: [asyncio, create-task, scheduling]
+
+- id: conc-snip-py-005
+  topic: concurrency
+  subtopic: Python threading
+  difficulty: easy
+  type: output
+  language: python
+  standard: Python 3.12
+  prompt: |
+    What does this program print to **stdout**?
+  code: |
+    import threading
+
+    def work():
+        raise ValueError("boom")
+
+    t = threading.Thread(target=work)
+    t.start()
+    t.join()
+    print("main finished")
+  answer: { kind: output, output: "main finished" }
+  explanation: |
+    An exception that escapes a thread's `run()` does **not** propagate to the thread that calls
+    `join()`. It is passed to `threading.excepthook`, whose default prints the traceback to **stderr**,
+    and the thread simply ends. `join()` returns normally and main prints `main finished`; the program
+    exits with status 0.
+
+    So errors in plain threads are easy to lose. If you need the exception in the caller, use
+    `concurrent.futures` (where `future.result()` re-raises it) or capture it yourself.
+  tags: [threading, exceptions, excepthook]
+  source: { name: "Python docs — threading.excepthook", url: "https://docs.python.org/3/library/threading.html#threading.excepthook" }
+
+- id: conc-snip-py-006
+  topic: concurrency
+  subtopic: Python threading
+  difficulty: medium
+  type: output
+  language: python
+  standard: Python 3.12
+  prompt: |
+    What does this program print?
+  code: |
+    from concurrent.futures import ThreadPoolExecutor
+
+    def work(x):
+        if x == 2:
+            raise ValueError(x)
+        return x * x
+
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        futures = [ex.submit(work, i) for i in range(4)]
+        for f in futures:
+            try:
+                print(f.result())
+            except ValueError as e:
+                print("error", e)
+  answer: { kind: output, output: "0\n1\nerror 2\n9" }
+  explanation: |
+    The futures are iterated **in submission order**, regardless of which worker finishes first, and
+    `f.result()` blocks until that particular future is done. Each line is printed by the main
+    thread, so the order is deterministic.
+
+    When the callable raised, the exception is stored in the future and `result()` **re-raises** it in
+    the caller, so the `except` prints `error 2`. Exceptions in executor tasks are not lost the way they
+    are with bare `threading.Thread`, but only if someone calls `result()` (or `exception()`).
+  tags: [concurrent-futures, exceptions, thread-pool]
+
+- id: conc-snip-py-007
+  topic: concurrency
+  subtopic: Python threading
+  difficulty: medium
+  type: output
+  language: python
+  standard: Python 3.12
+  prompt: |
+    What does this program print?
+  code: |
+    import threading
+
+    counter = 0
+
+    def work():
+        global counter
+        for _ in range(1_000_000):
+            counter += 1
+
+    threads = [threading.Thread(target=work) for _ in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    print(counter)
+  answer: { kind: unspecified }
+  explanation: |
+    `counter += 1` on a global is several bytecode operations: load the global, add, store the global.
+    The GIL guarantees only that one thread executes bytecode at a time; it does **not** make that
+    load-add-store sequence atomic. A thread switch between the load and the store loses updates, so
+    the language makes no promise that the result is 4000000.
+
+    In practice, recent GIL builds of CPython often print 4000000 for this exact loop, because a thread
+    switch is only taken at certain points in the interpreter loop and rarely lands between the load
+    and the store, while older versions and the free-threaded build (3.13+, no GIL) regularly print
+    less. Either way, the result depends on scheduling. Python has no "undefined behaviour" in the C++
+    sense (the interpreter stays memory-safe), so the right description is **unspecified**.
+
+    Fix: guard the increment with a `threading.Lock`, or have each thread count locally and combine.
+  tags: [gil, race-condition, threading]
+
+- id: conc-snip-py-008
+  topic: concurrency
+  subtopic: asyncio
+  difficulty: medium
+  type: output
+  language: python
+  standard: Python 3.11
+  prompt: |
+    What does this program print? (Python 3.11 or later.)
+  code: |
+    import asyncio
+
+    async def slow():
+        try:
+            await asyncio.sleep(10)
+        except asyncio.CancelledError:
+            print("cancelled")
+            raise
+
+    async def main():
+        try:
+            await asyncio.wait_for(slow(), timeout=0.05)
+        except TimeoutError:
+            print("timeout")
+
+    asyncio.run(main())
+  answer: { kind: output, output: "cancelled\ntimeout" }
+  explanation: |
+    When the timeout expires, `wait_for` **cancels** the inner task: a `CancelledError` is raised inside
+    `slow()` at its current `await`. `slow` prints `cancelled` and correctly re-raises. Once the inner
+    task has finished cancelling, `wait_for` raises `TimeoutError` to its caller, which prints
+    `timeout`.
+
+    Since Python 3.11, `asyncio.TimeoutError` is an alias of the built-in `TimeoutError`, so
+    `except TimeoutError` catches it. On 3.10 and earlier they were different classes and this
+    `except` would not have matched.
+
+    Re-raising `CancelledError` matters: swallowing it would make the task look as if it finished
+    normally and breaks timeouts and structured concurrency.
+  tags: [asyncio, cancellation, timeout]
+  source: { name: "Python docs — asyncio.wait_for", url: "https://docs.python.org/3/library/asyncio-task.html#asyncio.wait_for" }
+
+- id: conc-snip-py-009
+  topic: concurrency
+  subtopic: asyncio
+  difficulty: hard
+  type: output
+  language: python
+  standard: Python 3.11
+  prompt: |
+    What does this program print? (Python 3.11 or later.)
+  code: |
+    import asyncio
+
+    async def ok():
+        try:
+            await asyncio.sleep(1)
+            print("ok finished")
+        except asyncio.CancelledError:
+            print("ok cancelled")
+            raise
+
+    async def bad():
+        await asyncio.sleep(0.01)
+        raise ValueError("bad")
+
+    async def main():
+        try:
+            async with asyncio.TaskGroup() as tg:
+                tg.create_task(ok())
+                tg.create_task(bad())
+        except* ValueError as eg:
+            print("caught", len(eg.exceptions))
+
+    asyncio.run(main())
+  answer: { kind: output, output: "ok cancelled\ncaught 1" }
+  explanation: |
+    `asyncio.TaskGroup` (3.11) implements structured concurrency. When any child fails with an
+    exception other than `CancelledError`, the group **cancels all remaining children**, waits for
+    them to finish, and then raises an `ExceptionGroup` containing the failures.
+
+    `bad()` raises after 10 ms; the group cancels `ok()`, which is still sleeping, so it prints
+    `ok cancelled` and re-raises. The cancellation itself is not included in the group. The group
+    raises `ExceptionGroup([ValueError('bad')])`, which `except* ValueError` matches, printing
+    `caught 1`.
+
+    Contrast with `asyncio.gather` (default `return_exceptions=False`): the first exception propagates to
+    the awaiting caller, but the other awaitables are **not** cancelled and keep running.
+  tags: [asyncio, taskgroup, structured-concurrency, exception-group]
+  source: { name: "Python docs — asyncio Task Groups", url: "https://docs.python.org/3/library/asyncio-task.html#task-groups" }
+
+- id: conc-snip-py-010
+  topic: concurrency
+  subtopic: Processes
+  difficulty: easy
+  type: output
+  language: python
+  standard: Python 3.12
+  prompt: |
+    What does this program print?
+  code: |
+    import multiprocessing as mp
+
+    counter = 0
+
+    def work():
+        global counter
+        counter += 100
+        print("child", counter)
+
+    if __name__ == "__main__":
+        p = mp.Process(target=work)
+        p.start()
+        p.join()
+        print("parent", counter)
+  answer: { kind: output, output: "child 100\nparent 0" }
+  explanation: |
+    A `multiprocessing.Process` is a separate OS process with its own address space. Whatever the start
+    method (fork, forkserver, or spawn), the child gets its own copy of `counter`, increments it to
+    100, and prints. The parent's `counter` is untouched, so it prints 0. The `join()` orders the two
+    prints: `multiprocessing` flushes the child's stdout before the process exits.
+
+    To share state between processes you need explicit mechanisms: `multiprocessing.Value`/`Array`
+    (shared memory), a `Manager`, or passing messages with a `Queue`/`Pipe`.
+  tags: [multiprocessing, processes, shared-state]
+
+- id: conc-snip-py-011
+  topic: concurrency
+  subtopic: asyncio
+  difficulty: medium
+  type: output
+  language: python
+  standard: Python 3.12
+  prompt: |
+    What does this program print?
+  code: |
+    import asyncio
+
+    async def main():
+        lock = asyncio.Lock()
+        log = []
+
+        async def critical(name):
+            async with lock:
+                log.append(name + "+")
+                await asyncio.sleep(0)
+                log.append(name + "-")
+
+        await asyncio.gather(critical("a"), critical("b"), critical("c"))
+        print(" ".join(log))
+
+    asyncio.run(main())
+  answer: { kind: output, output: "a+ a- b+ b- c+ c-" }
+  explanation: |
+    Without the lock, `await asyncio.sleep(0)` would let the tasks interleave
+    (`a+ b+ c+ a- b- c-`). With an `asyncio.Lock`, b and c block in `async with lock` until a releases
+    it, so each critical section runs to completion before the next begins.
+
+    The waiters acquire in the order they started waiting (asyncio.Lock is fair: waiters are kept in
+    a FIFO), giving `a+ a- b+ b- c+ c-`.
+
+    The point: even single-threaded async code has races whenever a critical section contains an
+    `await`. Note that `asyncio.Lock` is not thread-safe; it coordinates tasks on one event loop only.
+  tags: [asyncio, lock, critical-section]
+
+- id: conc-snip-py-012
+  topic: concurrency
+  subtopic: Python threading
+  difficulty: easy
+  type: output
+  language: python
+  standard: Python 3.12
+  prompt: |
+    What does this program print?
+  code: |
+    import threading
+
+    local = threading.local()
+    local.value = "main"
+    results = []
+
+    def work():
+        results.append(hasattr(local, "value"))
+        local.value = "worker"
+
+    t = threading.Thread(target=work)
+    t.start()
+    t.join()
+    print(results[0], local.value)
+  answer: { kind: output, output: "False main" }
+  explanation: |
+    Attributes of a `threading.local()` object are per-thread. Setting `local.value` in the main thread
+    does not make it visible in the worker: there, `local` starts with no attributes, so `hasattr`
+    returns `False`. The worker's assignment affects only its own copy, so main still sees `"main"`.
+
+    (A subclass of `threading.local` with an `__init__` would have that `__init__` run once per
+    thread, which is the usual way to give every thread a default.)
+  tags: [threading, thread-local]
+
+- id: conc-snip-py-013
+  topic: concurrency
+  subtopic: asyncio
+  difficulty: hard
+  type: output
+  language: python
+  standard: Python 3.12
+  prompt: |
+    What does this program print?
+  code: |
+    import asyncio
+
+    async def main():
+        async def boom():
+            raise RuntimeError("boom")
+
+        async def slow():
+            await asyncio.sleep(0.05)
+            print("slow finished")
+            return "slow"
+
+        try:
+            await asyncio.gather(boom(), slow())
+        except RuntimeError as e:
+            print("caught", e)
+        await asyncio.sleep(0.1)
+        print("end")
+
+    asyncio.run(main())
+  answer: { kind: output, output: "caught boom\nslow finished\nend" }
+  explanation: |
+    With the default `return_exceptions=False`, `gather` propagates the **first** exception to the
+    awaiting caller immediately. The other awaitables are **not cancelled**: `slow()` keeps running as
+    an orphaned task. So `caught boom` prints right away, then while main sleeps for 100 ms the
+    still-running `slow` finishes and prints `slow finished`, then `end`.
+
+    This is a classic surprise and one motivation for `asyncio.TaskGroup` (3.11+), which cancels the
+    siblings when one child fails.
+  tags: [asyncio, gather, exceptions, cancellation]
+  source: { name: "Python docs — asyncio.gather", url: "https://docs.python.org/3/library/asyncio-task.html#asyncio.gather" }
+
+- id: conc-snip-py-014
+  topic: concurrency
+  subtopic: Python threading
+  difficulty: easy
+  type: output
+  language: python
+  standard: Python 3.12
+  prompt: |
+    What does this program print?
+  code: |
+    import queue
+    import threading
+
+    q = queue.Queue()
+    out = []
+
+    def consumer():
+        while True:
+            item = q.get()
+            if item is None:
+                break
+            out.append(item * 2)
+
+    t = threading.Thread(target=consumer)
+    t.start()
+    for i in range(5):
+        q.put(i)
+    q.put(None)
+    t.join()
+    print(out)
+  answer: { kind: output, output: "[0, 2, 4, 6, 8]" }
+  explanation: |
+    `queue.Queue` is a thread-safe FIFO with blocking `get()`. The single consumer receives items in
+    the order they were put, stops at the `None` sentinel, and the `join()` makes its list visible to
+    main. With one producer and one consumer, order is preserved: `[0, 2, 4, 6, 8]`.
+
+    With several consumers you need one sentinel per consumer (or `q.shutdown()` in 3.13+), and the
+    combined output order would no longer be deterministic.
+  tags: [threading, queue, producer-consumer]

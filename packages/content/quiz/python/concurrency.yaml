@@ -1,0 +1,269 @@
+# Concurrency: the GIL and free-threaded builds, threading, multiprocessing, asyncio.
+- id: py-cc-001
+  topic: python
+  subtopic: asyncio
+  difficulty: medium
+  type: output
+  language: python
+  standard: Python 3.7+
+  tags: [asyncio, gather, ordering]
+  prompt: What does this program print?
+  code: |
+    import asyncio
+
+    async def work(name, delay):
+        await asyncio.sleep(delay)
+        print('done', name)
+        return name
+
+    async def main():
+        results = await asyncio.gather(work('a', 0.2), work('b', 0.05))
+        print(results)
+
+    asyncio.run(main())
+  answer:
+    kind: output
+    output: |
+      done b
+      done a
+      ['a', 'b']
+  explanation: |
+    `gather` runs the coroutines **concurrently** on one event loop thread. While `a` is suspended in `await asyncio.sleep(0.2)`, `b` runs and finishes first, so `done b` is printed before `done a`, and the total time is about 0.2 s rather than 0.25 s.
+
+    The returned list, however, is in the **order the awaitables were passed**, not the order they completed. Use `asyncio.as_completed` to process results as they finish.
+
+- id: py-cc-002
+  topic: python
+  subtopic: asyncio
+  difficulty: easy
+  type: output
+  language: python
+  standard: Python 3.7+
+  tags: [asyncio, coroutines, await]
+  prompt: What does this program print to standard output?
+  code: |
+    import asyncio
+
+    async def greet():
+        print('hello')
+
+    async def main():
+        greet()
+        print('main done')
+
+    asyncio.run(main())
+  answer: { kind: output, output: "main done" }
+  explanation: |
+    Calling an `async def` function does **not** run it; it only creates a coroutine object. Nothing executes until the coroutine is awaited or scheduled as a task (`await greet()` or `asyncio.create_task(greet())`). Here the coroutine is created and then discarded, so `hello` is never printed. CPython writes `RuntimeWarning: coroutine 'greet' was never awaited` to **stderr** when the object is garbage-collected.
+
+- id: py-cc-003
+  topic: python
+  subtopic: GIL
+  difficulty: easy
+  type: single
+  tags: [gil, threading, io-bound]
+  prompt: On a standard (GIL-enabled) CPython build, which workload gets a real speed-up from using several `threading.Thread`s?
+  choices:
+    - { id: a, text: "Downloading many URLs, where threads spend most of their time waiting on the network" }
+    - { id: b, text: "Computing prime numbers in pure Python" }
+    - { id: c, text: "Parsing a large JSON string with a pure-Python parser" }
+    - { id: d, text: "None; threads never run concurrently in CPython" }
+  answer: a
+  explanation: |
+    The GIL lets only one thread execute Python bytecode at a time, but it is **released during blocking I/O** (sockets, files, `time.sleep`) and by many C extensions during long computations. I/O-bound work therefore overlaps well across threads. Pure-Python CPU-bound work (b, c) is serialized and can even get slower from contention. Use `multiprocessing`/`ProcessPoolExecutor`, C extensions that release the GIL, or a free-threaded build for CPU parallelism.
+
+    d is wrong: threads do run concurrently; only bytecode execution is serialized.
+
+- id: py-cc-004
+  topic: python
+  subtopic: GIL
+  difficulty: medium
+  type: multiple
+  tags: [gil, thread-safety, atomicity]
+  prompt: On a standard GIL-enabled CPython build, which statements are true? Select all that apply.
+  choices:
+    - { id: a, text: "Only one thread executes Python bytecode at any moment" }
+    - { id: b, text: "`counter += 1` on a shared global is atomic, so no lock is needed" }
+    - { id: c, text: "C extensions such as NumPy or hashlib can release the GIL during long operations, letting other threads run" }
+    - { id: d, text: "The interpreter periodically forces the running thread to drop the GIL (the switch interval, 5 ms by default) so other threads get a turn" }
+    - { id: e, text: "Because of the GIL, Python code never needs locks" }
+  answer: [a, c, d]
+  explanation: |
+    `counter += 1` compiles to several bytecodes (load, add, store), and a thread switch can happen between them, so two threads can read the same value and lose an update. The GIL protects the interpreter's *internal* state, not your program's invariants, so you still need `threading.Lock` or `queue.Queue` for compound operations. The switch interval is set with `sys.setswitchinterval()` (default `0.005` s). Releasing the GIL in C code is what makes NumPy, compression and hashing parallelizable with threads.
+
+- id: py-cc-005
+  topic: python
+  subtopic: Free-threading
+  difficulty: medium
+  type: single
+  tags: [free-threading, gil, pep-703, pep-779]
+  prompt: Which statement best describes free-threaded CPython (PEP 703) as of Python 3.14?
+  choices:
+    - { id: a, text: "The GIL has been removed from all CPython builds" }
+    - { id: b, text: "It is an officially supported but optional separate build (e.g. `python3.14t`); the default build still has the GIL, and importing an extension module not marked as free-threading-safe re-enables the GIL with a warning" }
+    - { id: c, text: "It is only available as an experimental fork outside python.org" }
+    - { id: d, text: "It is enabled per program with `import nogil`" }
+  answer: b
+  explanation: |
+    3.13 shipped the free-threaded build as **experimental**; 3.14 moved it to **officially supported** (PEP 779, phase II) but not default. It's a separate build/executable (usually with a `t` suffix) whose `sys._is_gil_enabled()` normally returns `False`. If you import a C extension that hasn't declared support, the GIL is enabled automatically and a warning is printed (`PYTHON_GIL=0` / `-X gil=0` overrides this). The docs report single-threaded overhead of roughly 1–8% on pyperformance, depending on platform.
+
+    Reference: "Python support for free threading" howto and What's New in 3.14.
+
+- id: py-cc-006
+  topic: python
+  subtopic: asyncio
+  difficulty: easy
+  type: single
+  tags: [asyncio, blocking]
+  prompt: Inside an `async def` handler running on an asyncio event loop, someone calls `time.sleep(2)`. What is the effect?
+  choices:
+    - { id: a, text: "Only that coroutine pauses; other tasks keep running" }
+    - { id: b, text: "The entire event loop thread blocks for 2 seconds; no other task makes progress" }
+    - { id: c, text: "asyncio raises `RuntimeError` because blocking calls are forbidden" }
+    - { id: d, text: "asyncio automatically moves the call to a thread pool" }
+  answer: b
+  explanation: |
+    asyncio is **cooperative**: tasks switch only at `await` points that actually suspend. `time.sleep` is an ordinary blocking call that never yields to the loop, so every task stalls. Use `await asyncio.sleep(2)`. For unavoidable blocking or CPU work, use `await asyncio.to_thread(func)` (3.9+) or `loop.run_in_executor(...)`. Debug mode (`PYTHONASYNCIODEBUG=1`) logs callbacks that take too long.
+
+- id: py-cc-007
+  topic: python
+  subtopic: asyncio
+  difficulty: hard
+  type: single
+  tags: [asyncio, create-task, garbage-collection]
+  prompt: |
+    Why do the asyncio docs tell you to keep a reference to the result of `asyncio.create_task(coro())` when you "fire and forget" a background task?
+  choices:
+    - { id: a, text: "The event loop holds only weak references to tasks, so an unreferenced task may be garbage-collected before it finishes" }
+    - { id: b, text: "Without a reference, the task runs synchronously and blocks the loop" }
+    - { id: c, text: "Tasks without a reference are automatically cancelled when the creating coroutine returns" }
+    - { id: d, text: "A reference is needed to receive the result; otherwise the task never starts" }
+  answer: a
+  explanation: |
+    The docs warn: "The event loop only keeps weak references to tasks. A task that isn't referenced elsewhere may get garbage collected at any time, even before it's done." The usual pattern is to keep tasks in a set and discard each one in a done-callback, or better, use `asyncio.TaskGroup` (3.11+), which owns its tasks, waits for them, and cancels the rest if one fails.
+
+    Tasks start running on their own once scheduled, whether or not you hold a reference.
+
+- id: py-cc-008
+  topic: python
+  subtopic: Multiprocessing
+  difficulty: medium
+  type: single
+  tags: [multiprocessing, pickle, process-pool]
+  prompt: |
+    `ProcessPoolExecutor().map(lambda x: x * x, data)` fails, while the same call with a module-level `def square(x)` works. Why?
+  choices:
+    - { id: a, text: "Work sent to worker processes is pickled, and lambdas (and nested functions) can't be pickled by reference because they have no importable qualified name" }
+    - { id: b, text: "Lambdas cannot be called with `map`" }
+    - { id: c, text: "Process pools only accept generator functions" }
+    - { id: d, text: "Lambdas hold the GIL, so they cannot run in another process" }
+  answer: a
+  explanation: |
+    Processes don't share memory, so `multiprocessing` and `ProcessPoolExecutor` send the callable and its arguments to workers with `pickle`. Functions are pickled **by reference**, as module plus qualified name, and the worker imports them. A lambda's name is `<lambda>`, so it can't be looked up, and pickling fails. The same constraints apply to arguments and results, which must be picklable. With the `spawn` and `forkserver` start methods (the default on Windows/macOS, and on Linux since 3.14), the main module must also be import-safe, hence the `if __name__ == '__main__':` guard.
+
+- id: py-cc-009
+  topic: python
+  subtopic: asyncio
+  difficulty: medium
+  type: single
+  tags: [asyncio, taskgroup, exception-groups]
+  prompt: |
+    In an `async with asyncio.TaskGroup() as tg:` block (3.11+), one of three tasks raises `ValueError`. What happens?
+  choices:
+    - { id: a, text: "The other tasks keep running to completion and the error is returned as a value" }
+    - { id: b, text: "The remaining tasks are cancelled, and after all have finished the `async with` raises an `ExceptionGroup` containing the `ValueError`" }
+    - { id: c, text: "The `ValueError` is logged and ignored" }
+    - { id: d, text: "The event loop stops immediately" }
+  answer: b
+  explanation: |
+    `TaskGroup` gives **structured concurrency**: the first task failure (other than cancellation) cancels the rest of the group, the block waits for everything to finish, and the failures are raised together as an `ExceptionGroup`, which you handle with `except*`. Contrast `asyncio.gather` with the default `return_exceptions=False`: it propagates the first exception immediately but does **not** cancel the other awaitables, which keep running unsupervised.
+
+- id: py-cc-010
+  topic: python
+  subtopic: GIL
+  difficulty: medium
+  type: short
+  tags: [gil, cpython, parallelism]
+  prompt: What is the GIL, why does CPython have it, and how do you get CPU parallelism in Python?
+  reference: |
+    The Global Interpreter Lock is a mutex in (default-build) CPython that allows only one thread at a time to execute Python bytecode in an interpreter. It exists mainly because CPython's memory management uses non-atomic reference counting and much of the interpreter and C-extension ecosystem assumed single-threaded access. A single lock keeps single-threaded code fast and C extensions simple. Consequences: threads give concurrency for I/O-bound work (the GIL is released while blocking), but not parallel speed-up for pure-Python CPU-bound work. Options for CPU parallelism: `multiprocessing` / `concurrent.futures.ProcessPoolExecutor` (separate processes, data pickled between them); C/C++/Rust/Cython extensions or libraries like NumPy that release the GIL in their hot loops; subinterpreters with a per-interpreter GIL (PEP 684, exposed via `concurrent.interpreters` in 3.14); and the free-threaded build (PEP 703; experimental in 3.13, officially supported but optional in 3.14), which removes the GIL at some single-thread cost. The GIL does not make your code thread-safe: compound operations still need locks.
+  keyPoints:
+    - A per-interpreter lock allowing one thread to run bytecode at a time (default CPython)
+    - Exists for refcounting/memory-management safety and simple, fast C extensions
+    - Threads help I/O-bound work (GIL released during blocking calls), not CPU-bound pure Python
+    - "CPU parallelism: multiprocessing/process pools, extensions releasing the GIL, subinterpreters"
+    - Free-threaded build (PEP 703, supported in 3.14, not default); the GIL doesn't make user code thread-safe
+  explanation: |
+    Strong answers are current: they mention the free-threaded build's status and that PyPy also has a GIL, while Jython and IronPython never did. Weak answers claim "Python can't do threads" or "the GIL makes `+=` atomic".
+
+- id: py-cc-011
+  topic: python
+  subtopic: Concurrency models
+  difficulty: medium
+  type: short
+  tags: [threading, multiprocessing, asyncio]
+  prompt: Compare `threading`, `multiprocessing` and `asyncio`. For each, give a workload it suits and its main drawback.
+  reference: |
+    `threading`: OS threads sharing memory; preemptively scheduled. Good for I/O-bound work with blocking libraries (network clients, file I/O, DB drivers) and mixing in C extensions that release the GIL. Drawbacks: the GIL limits CPU parallelism on default builds, and shared state needs locks, so race conditions and deadlocks are possible. `multiprocessing`: separate processes, each with its own interpreter and GIL. Good for CPU-bound pure-Python work. Drawbacks: higher startup and memory cost, and data must be pickled between processes (IPC overhead, picklability constraints, start-method differences). `asyncio`: a single-threaded event loop with cooperative coroutines. Good for very large numbers of concurrent I/O operations (thousands of sockets) with low overhead and explicit switch points (`await`). Drawbacks: needs async-aware libraries, one blocking call stalls everything, it does nothing for CPU-bound work, and async "colours" the call graph. These can be combined: `asyncio.to_thread`, `run_in_executor` with a process pool.
+  keyPoints:
+    - "threading: I/O-bound with blocking libraries; limited by GIL for CPU work; needs locks"
+    - "multiprocessing: CPU-bound parallelism; costs are pickling/IPC, memory, startup"
+    - "asyncio: massive I/O concurrency on one thread; cooperative; needs async libraries"
+    - Blocking calls in asyncio stall the loop; offload with to_thread/executors
+    - Free-threaded builds change the threading trade-off for CPU-bound work
+  explanation: |
+    A crisp heuristic interviewers like: "CPU-bound, use processes; I/O-bound with few connections or blocking libraries, use threads; I/O-bound at high concurrency, use asyncio."
+
+- id: py-cc-012
+  topic: python
+  subtopic: Threading
+  difficulty: medium
+  type: short
+  tags: [threading, locks, queue, race-conditions]
+  prompt: Several worker threads append results to a shared list and increment a shared counter. What could go wrong, and how would you restructure it?
+  reference: |
+    `list.append` itself is safe in CPython (built-in operations on built-in types are protected by the GIL, or by per-object locks in free-threaded builds), but compound operations like `counter += 1` or check-then-act (`if key not in d: d[key] = ...`) are not atomic, so updates can be lost or duplicated. Relying on implementation details is fragile in any case. Fix by protecting compound updates with a `threading.Lock` (`with lock: counter += 1`), or better, avoid shared mutable state: have workers put results on a `queue.Queue` (thread-safe, with blocking `get`/`put` and `task_done`/`join`), or use `concurrent.futures.ThreadPoolExecutor` and collect the futures' return values, then aggregate in one thread. Keep critical sections small, acquire multiple locks in a consistent order to avoid deadlock, and use `with` so locks are always released.
+  keyPoints:
+    - Compound read-modify-write (counter += 1, check-then-set) is not atomic; lost updates
+    - Single built-in operations are safe in CPython but that's an implementation detail
+    - Use threading.Lock with `with` around compound updates
+    - Prefer queue.Queue or executor futures to avoid shared state
+    - Avoid deadlocks with consistent lock ordering and small critical sections
+  explanation: |
+    The free-threading howto recommends explicit locks over relying on built-in types' internal locking. A good candidate makes the design change (message passing or returning results) before reaching for locks.
+
+- id: py-cc-013
+  topic: python
+  subtopic: asyncio
+  difficulty: hard
+  type: short
+  tags: [asyncio, coroutines, event-loop, internals]
+  prompt: How does asyncio work under the hood? Explain what actually happens when a coroutine executes `await some_socket_read()`.
+  reference: |
+    Coroutines are built on the same suspend/resume machinery as generators: a coroutine object has a frame that can be suspended at an `await` and resumed later with `send()`/`throw()`. `await x` calls `x.__await__()` and delegates to that iterator, like `yield from`, until it completes. At the bottom of every chain is a Future: when its result isn't ready, the Future yields *itself* up through all the awaiting coroutines to the Task that drives the outermost coroutine. The Task (a Future subclass) registers a done-callback on that Future and returns control to the event loop. The loop is a single-threaded scheduler: it runs ready callbacks, then waits on the OS selector (epoll/kqueue/IOCP via `selectors`/proactor) for registered file descriptors and the nearest timer. When the socket becomes readable, the transport/protocol layer reads the data and sets the Future's result. Its callback schedules `Task.__step`, which `send()`s the result back into the coroutine, and execution resumes right after the `await`. Hence: switching happens only at awaits that suspend, a blocking call stalls everything, and concurrency comes from many tasks waiting on I/O at once.
+  keyPoints:
+    - Coroutines are suspendable frames (generator-like); await delegates via __await__ like yield from
+    - A pending Future yields up the chain to the Task that drives the coroutine
+    - Task registers a callback on the Future and returns control to the event loop
+    - Event loop runs ready callbacks and waits on an OS selector (epoll/kqueue/IOCP) plus timers
+    - On readiness the Future gets its result, the Task resumes the coroutine with send(); single-threaded, cooperative
+  explanation: |
+    References: the asyncio source (`tasks.py`, `futures.py`, `base_events.py`) and PEP 492. Being able to trace one `await` from the coroutine down to `epoll` and back is what distinguishes deep understanding from API familiarity.
+
+- id: py-cc-014
+  topic: python
+  subtopic: Free-threading
+  difficulty: hard
+  type: short
+  tags: [free-threading, gil, pep-703, c-extensions]
+  prompt: Your team is considering running a service on free-threaded CPython (3.14t). What changes for Python code and for C extensions, and what risks would you check?
+  reference: |
+    Without the GIL, Python threads can execute bytecode truly in parallel, so CPU-bound pure-Python work can scale across cores with threads instead of processes. The interpreter still keeps itself memory-safe: built-in types like `dict`, `list` and `set` use internal per-object locks, and refcounting uses biased/deferred schemes. But code that was only "accidentally" safe under the GIL can now hit races more often: unsynchronised read-modify-write, check-then-act, sharing iterators between threads, lazy initialisation. So audit shared mutable state and use explicit `threading.Lock`/queues, and don't rely on built-in types' internal locking. C extensions must be built for the free-threaded ABI (it isn't compatible with the default build's stable ABI), must declare support (`Py_mod_gil` slot), and must not depend on the GIL for their own invariants. Importing an extension that doesn't declare support re-enables the GIL for the process, with a warning. Check that every dependency ships free-threaded wheels. Expect some single-threaded overhead (the docs cite about 1–8%) and higher memory use (mimalloc, per-object locks). Benchmark the real workload and run tests under thread stress (e.g. with ThreadSanitizer builds or by running tests in parallel threads).
+  keyPoints:
+    - Threads run Python bytecode in parallel; CPU-bound threading can now scale
+    - Built-in containers stay internally consistent via per-object locks, but user-level races are more exposed; use explicit locks
+    - C extensions need free-threaded builds/wheels and must declare support, otherwise the GIL is re-enabled with a warning
+    - Single-threaded overhead and memory cost; benchmark the actual workload
+    - Audit dependencies and test for races before rollout
+  explanation: |
+    Reference: the "Python support for free threading" howto and the "C API extension support for free threading" howto. Since this area changes quickly between releases, good candidates qualify their answers by version.

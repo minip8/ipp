@@ -1,0 +1,84 @@
+{
+  "slug": "lru-cache",
+  "title": "LRU Cache",
+  "difficulty": "medium",
+  "tags": ["design", "hash-table", "linked-list"],
+  "statement": "Design a cache with a fixed `capacity` that evicts the least recently used key.\n\n- `get(key)` returns the value, or `-1` if the key is absent. It counts as a use.\n- `put(key, value)` inserts or updates. If the cache is over capacity, evict the least recently used key.\n\nBoth operations must run in O(1) average time.",
+  "signature": {
+    "className": "LRUCache",
+    "kind": "design",
+    "ctorParams": [
+      {
+        "name": "capacity",
+        "type": "int"
+      }
+    ],
+    "methods": [
+      {
+        "name": "get",
+        "params": [
+          {
+            "name": "key",
+            "type": "int"
+          }
+        ],
+        "returns": "int",
+        "compare": "exact"
+      },
+      {
+        "name": "put",
+        "params": [
+          {
+            "name": "key",
+            "type": "int"
+          },
+          {
+            "name": "value",
+            "type": "int"
+          }
+        ],
+        "returns": "void",
+        "compare": "exact"
+      }
+    ]
+  },
+  "limits": {
+    "timeMs": 1000,
+    "memoryMb": 256
+  },
+  "tests": [
+    {
+      "id": "s1",
+      "hidden": false,
+      "ctorArgs": [2],
+      "calls": [
+        {
+          "method": "put",
+          "args": [1, 1]
+        },
+        {
+          "method": "put",
+          "args": [2, 2]
+        },
+        {
+          "method": "get",
+          "args": [1]
+        },
+        {
+          "method": "put",
+          "args": [3, 3]
+        },
+        {
+          "method": "get",
+          "args": [2]
+        }
+      ],
+      "expected": [null, null, 1, null, -1]
+    }
+  ],
+  "interviewerNotes": "Hash map plus doubly linked list (or an ordered map in Python). Watch for: updating an existing key must refresh recency; eviction order after get.",
+  "referenceSolutions": {
+    "python": "from collections import OrderedDict\n\n\nclass LRUCache:\n    def __init__(self, capacity: int) -> None:\n        self.cap = capacity\n        self.d = OrderedDict()\n\n    def get(self, key: int) -> int:\n        if key not in self.d:\n            return -1\n        self.d.move_to_end(key)\n        return self.d[key]\n\n    def put(self, key: int, value: int) -> None:\n        self.d[key] = value\n        self.d.move_to_end(key)\n        if len(self.d) > self.cap:\n            self.d.popitem(last=False)\n",
+    "cpp": "#include <bits/stdc++.h>\nusing namespace std;\n\nclass LRUCache {\n    int cap;\n    list<pair<int, int>> items;\n    unordered_map<int, list<pair<int, int>>::iterator> pos;\n\npublic:\n    LRUCache(int capacity) : cap(capacity) {}\n\n    int get(int key) {\n        auto it = pos.find(key);\n        if (it == pos.end()) return -1;\n        items.splice(items.begin(), items, it->second);\n        return it->second->second;\n    }\n\n    void put(int key, int value) {\n        auto it = pos.find(key);\n        if (it != pos.end()) {\n            it->second->second = value;\n            items.splice(items.begin(), items, it->second);\n            return;\n        }\n        items.emplace_front(key, value);\n        pos[key] = items.begin();\n        if ((int)items.size() > cap) {\n            pos.erase(items.back().first);\n            items.pop_back();\n        }\n    }\n};\n"
+  }
+}

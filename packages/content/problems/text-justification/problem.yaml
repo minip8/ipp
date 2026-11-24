@@ -1,0 +1,17 @@
+slug: text-justification
+title: Text Justification
+difficulty: hard
+tags: [array, string, simulation, greedy]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: fullJustify
+      params:
+        - { name: words, type: { array: string } }
+        - { name: maxWidth, type: int }
+      returns: { list: string }
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 68); frequently reported at Airbnb, LinkedIn, Google and Coinbase
+  url: https://leetcode.com/problems/text-justification/

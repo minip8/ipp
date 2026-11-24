@@ -1,0 +1,17 @@
+slug: distinct-subsequences
+title: Distinct Subsequences
+difficulty: hard
+tags: [dynamic-programming, string]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: numDistinct
+      params:
+        - { name: s, type: string }
+        - { name: t, type: string }
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 115)
+  url: https://leetcode.com/problems/distinct-subsequences/

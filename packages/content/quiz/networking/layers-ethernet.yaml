@@ -1,0 +1,320 @@
+# Layered model in practice, Ethernet, ARP, switching, VLANs.
+- id: net-layers-001
+  topic: networking
+  subtopic: Ethernet and switching
+  difficulty: easy
+  type: single
+  prompt: |
+    A classic layer-2 Ethernet switch receives a frame. Which piece of information does it use to decide
+    which port to forward the frame out of?
+  choices:
+    - { id: a, text: "The destination IP address in the IP header" }
+    - { id: b, text: "The destination MAC address, looked up in its MAC address table" }
+    - { id: c, text: "The source MAC address of the frame" }
+    - { id: d, text: "The host's ARP cache entry for the destination" }
+  answer: b
+  explanation: |
+    A layer-2 switch forwards on the **destination MAC address**, looking it up in its MAC address
+    (CAM) table. It fills that table by *learning*: it records the **source** MAC of each incoming frame
+    against the port it arrived on. So the source MAC is used to build the table but not to make the
+    forwarding decision for this frame.
+
+    A plain L2 switch never looks at IP headers; routers (and L3 switches doing routing) do that. ARP
+    caches belong to hosts and routers, not to the switch's forwarding path.
+  tags: [ethernet, switching, mac]
+
+- id: net-layers-002
+  topic: networking
+  subtopic: Layered model
+  difficulty: medium
+  type: short
+  prompt: |
+    A browser on your laptop sends an HTTP request to a server three routers away. Walk through the
+    encapsulation on the way down the stack, then say which headers are **rewritten at each router hop**
+    and which normally stay the same end to end.
+  reference: |
+    The application writes the HTTP request bytes into a TCP socket. TCP splits the byte stream into
+    segments and adds a TCP header (ports, sequence/ack numbers, window, flags, checksum). IP wraps each
+    segment in an IP header (source/destination address, TTL, protocol, checksum in IPv4). The link
+    layer wraps the packet in an Ethernet (or Wi-Fi) frame whose destination MAC is the next hop (the
+    default gateway), found with ARP (or NDP for IPv6), and adds an FCS trailer.
+
+    At each router the incoming frame is stripped off, the router does a longest-prefix-match lookup
+    on the destination IP, decrements TTL (IPv4 hop limit for IPv6), recomputes the IPv4 header checksum,
+    and builds a **new** layer-2 frame with its own MAC as the source and the next hop's MAC as the
+    destination. The IP addresses and the TCP header and payload stay the same end to end, unless a NAT
+    or other middlebox rewrites them.
+  keyPoints:
+    - "Order of encapsulation: application data -> TCP segment -> IP packet -> Ethernet frame (with FCS)"
+    - "Destination MAC is the next hop (default gateway) found via ARP/NDP, not the final server"
+    - "Each router builds a new layer-2 frame: source and destination MAC change on every hop"
+    - "Routers decrement TTL / hop limit and (IPv4) recompute the header checksum"
+    - "IP addresses and TCP ports are unchanged end to end unless NAT or a proxy intervenes"
+  explanation: |
+    The key insight interviewers look for is the split between hop-by-hop (layer 2, TTL) and
+    end-to-end (layer 3 addresses, layer 4) information. A common mistake is saying the destination MAC
+    is the server's MAC.
+  tags: [osi, encapsulation, routing]
+
+- id: net-layers-003
+  topic: networking
+  subtopic: Ethernet and switching
+  difficulty: medium
+  type: single
+  prompt: |
+    Host A (192.168.1.10/24, default gateway 192.168.1.1) sends an IP packet to host B at
+    8.8.8.8. What is the **destination MAC address** of the Ethernet frame A puts on the wire?
+  choices:
+    - { id: a, text: "B's MAC address, obtained with an ARP request for 8.8.8.8" }
+    - { id: b, text: "The broadcast address ff:ff:ff:ff:ff:ff" }
+    - { id: c, text: "The MAC address of the default gateway 192.168.1.1" }
+    - { id: d, text: "A's own MAC address; the switch fills in the right destination" }
+  answer: c
+  explanation: |
+    A compares 8.8.8.8 against its own subnet (192.168.1.0/24), sees it is off-link, and so sends the
+    frame to its **default gateway**. It ARPs for 192.168.1.1 (not for 8.8.8.8) and uses the gateway's
+    MAC as the frame destination, while the IP destination stays 8.8.8.8.
+
+    ARP only works within one broadcast domain, so A cannot ARP for a remote host. A broadcast frame would
+    reach everyone on the LAN and is not how unicast IP is delivered. Switches never rewrite MAC addresses.
+  tags: [arp, ethernet, routing]
+
+- id: net-layers-004
+  topic: networking
+  subtopic: ARP
+  difficulty: medium
+  type: multiple
+  prompt: |
+    Which statements about ARP (RFC 826) on an IPv4 Ethernet network are true? Select all that apply.
+  choices:
+    - { id: a, text: "An ARP request is sent to the Ethernet broadcast address" }
+    - { id: b, text: "An ARP reply is normally sent as unicast to the requester" }
+    - { id: c, text: "ARP messages are carried inside IP packets with protocol number 0x0806" }
+    - { id: d, text: "A gratuitous ARP lets a host announce or update its own IP-to-MAC mapping, e.g. after a failover" }
+    - { id: e, text: "IPv6 uses ARP with 128-bit address fields" }
+  answer: [a, b, d]
+  explanation: |
+    - **a, b**: the request ("who has 192.168.1.1?") is broadcast because the sender doesn't know the
+      target's MAC yet; the reply is unicast back to the requester.
+    - **d**: gratuitous ARP (a request or reply for the sender's own address) refreshes other hosts'
+      caches. HA pairs use it so traffic follows a virtual IP to the new active node. It is also used
+      to detect address conflicts.
+    - **c** is wrong: ARP sits *directly* in an Ethernet frame with **EtherType** 0x0806. It is not an
+      IP protocol.
+    - **e** is wrong: IPv6 replaces ARP with Neighbor Discovery (RFC 4861), which runs over ICMPv6 and
+      uses solicited-node multicast rather than broadcast.
+  tags: [arp, ethernet, ipv6]
+
+- id: net-layers-005
+  topic: networking
+  subtopic: Ethernet and switching
+  difficulty: easy
+  type: single
+  prompt: |
+    On a standard (non-jumbo) Ethernet link, what is the largest IP packet that can be sent without
+    fragmentation?
+  choices:
+    - { id: a, text: "1460 bytes" }
+    - { id: b, text: "1500 bytes" }
+    - { id: c, text: "1518 bytes" }
+    - { id: d, text: "65535 bytes" }
+  answer: b
+  explanation: |
+    The Ethernet **MTU** (the maximum payload of a frame) is 1500 bytes, so the whole IP packet,
+    header included, can be up to 1500 bytes.
+
+    - 1518 is the maximum *frame* size: 1500 payload + 14 bytes of Ethernet header + 4 bytes of FCS
+      (1522 with an 802.1Q VLAN tag).
+    - 1460 is the typical TCP **MSS** over IPv4: 1500 − 20 (IPv4 header) − 20 (TCP header), with no options.
+    - 65535 is the largest an IPv4 packet can be at all (the 16-bit Total Length field), which a
+      1500-byte link can only carry by fragmenting it.
+  tags: [ethernet, mtu, mss]
+
+- id: net-layers-006
+  topic: networking
+  subtopic: Ethernet and switching
+  difficulty: hard
+  type: single
+  prompt: |
+    What is the theoretical maximum packet rate of a 10 Gbit/s Ethernet link carrying minimum-size
+    (64-byte) frames? Remember the per-frame overhead that never shows up in a packet capture.
+  choices:
+    - { id: a, text: "About 19.5 million packets per second" }
+    - { id: b, text: "About 14.88 million packets per second" }
+    - { id: c, text: "About 1.49 million packets per second" }
+    - { id: d, text: "About 0.81 million packets per second" }
+  answer: b
+  explanation: |
+    Each frame also needs an 8-byte preamble and start-of-frame delimiter, plus a 12-byte minimum
+    inter-frame gap. So a 64-byte frame takes 64 + 8 + 12 = **84 bytes = 672 bits** of wire time.
+
+    10 × 10⁹ / 672 ≈ **14.88 Mpps**, the figure DPDK and NIC vendors quote as "10G line rate".
+
+    - 19.5 Mpps divides by only the 64-byte frame (10e9 / 512) and ignores preamble and gap.
+    - 1.49 Mpps is the same calculation for **1** Gbit/s.
+    - ~0.81 Mpps is roughly line rate with full 1500-byte packets (1538 bytes on the wire).
+
+    At 14.88 Mpps a packet arrives every ~67 ns, which is why line-rate small-packet processing needs
+    kernel bypass, batching, or hardware offload.
+  tags: [ethernet, throughput, low-latency, quantitative]
+
+- id: net-layers-007
+  topic: networking
+  subtopic: Ethernet and switching
+  difficulty: easy
+  type: single
+  prompt: |
+    A switch receives a unicast frame whose destination MAC address is **not** in its MAC address
+    table. What does it do?
+  choices:
+    - { id: a, text: "Drops the frame and sends an ICMP Destination Unreachable" }
+    - { id: b, text: "Sends an ARP request to find the destination" }
+    - { id: c, text: "Floods the frame out of every port in the same VLAN except the one it arrived on" }
+    - { id: d, text: "Sends it only to the uplink / default port" }
+  answer: c
+  explanation: |
+    Unknown-unicast frames are **flooded** within the VLAN (excluding the ingress port). When the
+    destination replies, the switch learns its port from the reply's source MAC, and later frames are
+    forwarded to that port only.
+
+    Switches don't generate ICMP (that's a layer-3 function) and don't send ARP for forwarding; ARP
+    maps IP to MAC and is the hosts' job. There is no "default port" concept in a learning bridge.
+  tags: [switching, ethernet]
+
+- id: net-layers-008
+  topic: networking
+  subtopic: Ethernet and switching
+  difficulty: medium
+  type: short
+  prompt: |
+    Compare **store-and-forward** and **cut-through** switching. Why do low-latency trading networks
+    favour cut-through switches, and what are its limitations?
+  reference: |
+    A store-and-forward switch receives the whole frame, checks the FCS, then forwards it. So it adds at
+    least one full serialization delay per hop: about 1.2 µs for a 1500-byte frame at 10 Gbit/s, which
+    grows with frame size. A cut-through switch starts sending the frame out of the egress port as soon
+    as it has read the destination MAC (or enough header for its lookup). Its latency is a few hundred
+    nanoseconds or less and doesn't depend on frame size, which is why trading networks use it.
+
+    Limitations: a corrupted frame is already partly forwarded before its FCS can be checked, so errors
+    propagate. The switch can only mark the frame bad or count it, and the next hop drops it.
+    Cut-through also falls back to store-and-forward when the egress port is busy (the frame has to
+    queue) and when going from a slower to a faster link, because the switch can't send faster than it
+    receives.
+  keyPoints:
+    - "Store-and-forward buffers the whole frame and verifies the FCS before sending"
+    - "Store-and-forward adds per-hop latency proportional to frame size (~1.2 µs for 1500 B at 10G)"
+    - "Cut-through starts forwarding after the header lookup, so latency is low and independent of size"
+    - "Cut-through forwards corrupted frames, because the FCS can't be checked in time"
+    - "Falls back to store-and-forward on congestion or a slow-to-fast speed change"
+  explanation: |
+    Serialization delay = frame bits / link rate: 1500 × 8 / 10⁹ s⁻¹ ≈ 1.2 µs per store-and-forward
+    hop at 10 Gbit/s, which matters when tick-to-trade budgets are a few microseconds.
+  tags: [switching, low-latency, trading]
+
+- id: net-layers-009
+  topic: networking
+  subtopic: VLANs
+  difficulty: medium
+  type: single
+  prompt: |
+    Hosts in VLAN 10 and VLAN 20 are plugged into the same physical layer-2 switch. What is needed for
+    them to exchange IP traffic?
+  choices:
+    - { id: a, text: "Nothing: being on the same physical switch is enough" }
+    - { id: b, text: "A layer-3 device (router or L3 switch interface) that routes between the two VLANs' subnets" }
+    - { id: c, text: "Configuring both ports as 802.1Q trunk ports" }
+    - { id: d, text: "Enabling proxy ARP on the hosts" }
+  answer: b
+  explanation: |
+    Each VLAN is a separate **broadcast domain** and (in any sensible design) a separate IP subnet.
+    Frames are never switched between VLANs, so traffic must be **routed**. That can be a router on a
+    stick using a trunk, or an SVI on an L3 switch.
+
+    Trunk ports (802.1Q, which adds a 4-byte tag carrying the VLAN ID) carry several VLANs over one
+    link, but they do not join the VLANs together. Proxy ARP is a router feature and wouldn't help
+    without something to route between the VLANs.
+  tags: [vlan, switching, routing]
+
+- id: net-layers-010
+  topic: networking
+  subtopic: Ethernet and switching
+  difficulty: hard
+  type: short
+  prompt: |
+    Someone accidentally connects two ports of the same pair of switches with an extra cable, and
+    spanning tree is disabled. Describe what happens and why. How does the Spanning Tree Protocol
+    prevent it?
+  reference: |
+    The extra cable creates a layer-2 loop. Ethernet frames have no TTL, so a broadcast (ARP, DHCP) or
+    unknown-unicast frame is flooded around the loop forever. Every switch re-floods each copy out of
+    every other port, so the number of copies grows until the links and switch CPUs saturate: a
+    **broadcast storm**. MAC tables also flap, because the same source MAC keeps showing up on
+    different ports, so even unicast traffic is misdelivered. The network collapses within seconds.
+
+    STP (IEEE 802.1D; Rapid STP is 802.1w, now part of 802.1Q) elects a root bridge and computes a
+    loop-free tree. It puts redundant ports into a **blocking** state; they come back if the active path
+    fails. Classic STP needs tens of seconds to converge; RSTP takes about a second or less. Data
+    centres often avoid L2 loops altogether with routed (L3) fabrics using ECMP, or with MLAG.
+  keyPoints:
+    - "A redundant L2 link creates a loop; Ethernet has no TTL to kill circulating frames"
+    - "Broadcast and unknown-unicast flooding multiplies copies: a broadcast storm"
+    - "MAC address tables flap as the same source MAC appears on different ports"
+    - "STP elects a root bridge and blocks redundant ports to form a loop-free tree"
+    - "Mentions convergence time (STP slow, RSTP faster) or L3/ECMP fabrics as the modern alternative"
+  explanation: |
+    The missing TTL is the crux: an IP routing loop eventually ends because TTL expires, but a layer-2
+    loop does not.
+  tags: [switching, stp, ethernet]
+
+- id: net-layers-011
+  topic: networking
+  subtopic: Ethernet and switching
+  difficulty: easy
+  type: short
+  prompt: |
+    Explain the difference between a hub, a switch and a router, and say which layer each works at.
+  reference: |
+    A **hub** (layer 1) repeats every incoming bit out of every other port. All ports share one
+    collision domain and one half-duplex medium. A **switch** (layer 2) learns which MAC address lives
+    on which port and forwards each frame only to the right port. Every port is its own collision
+    domain and runs full duplex, but all ports in a VLAN share one broadcast domain. A **router**
+    (layer 3) forwards packets between different IP networks by looking up the destination IP in its
+    routing table. It decrements TTL, separates broadcast domains, and rewrites the layer-2 header on
+    every hop.
+  keyPoints:
+    - "Hub: layer 1, repeats to all ports, one shared collision domain"
+    - "Switch: layer 2, learns MAC addresses and forwards to the right port only"
+    - "Router: layer 3, forwards between subnets using destination IP and a routing table"
+    - "Routers separate broadcast domains; switches (within a VLAN) do not"
+  explanation: |
+    A warm-up question. Strong answers mention collision domains versus broadcast domains.
+  tags: [switching, routing, osi]
+
+- id: net-layers-012
+  topic: networking
+  subtopic: ARP
+  difficulty: medium
+  type: short
+  prompt: |
+    What is ARP spoofing (ARP cache poisoning), what does it let an attacker do, and how is it
+    mitigated?
+  reference: |
+    ARP has no authentication, and hosts accept unsolicited ARP replies. An attacker on the same LAN can
+    send forged replies claiming that the gateway's IP maps to the attacker's MAC (and claim the
+    victim's IP to the gateway). Traffic then flows through the attacker, giving a man-in-the-middle:
+    they can sniff, modify, or drop it (denial of service). Mitigations: Dynamic ARP Inspection on
+    switches, validated against DHCP-snooping bindings; static ARP entries for critical hosts; port
+    security and segmentation (smaller VLANs); and, most importantly, end-to-end encryption and
+    authentication (TLS, SSH, IPsec), so that a MITM position doesn't reveal or allow tampering with
+    data.
+  keyPoints:
+    - "ARP is unauthenticated and caches accept unsolicited replies"
+    - "Attacker maps the gateway's (or victim's) IP to its own MAC to get on-path"
+    - "Enables sniffing, tampering or denial of service; limited to the local broadcast domain"
+    - "Switch-side defences: Dynamic ARP Inspection with DHCP snooping, port security"
+    - "Real protection of the data comes from end-to-end crypto (TLS/SSH/IPsec)"
+  explanation: |
+    Interviewers like candidates who say that the LAN is not a trust boundary and that encryption is
+    what actually protects the data.
+  tags: [arp, security]

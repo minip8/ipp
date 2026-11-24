@@ -1,0 +1,25 @@
+slug: implement-trie
+title: Implement a Trie (Prefix Tree)
+difficulty: medium
+tags: [design, trie, string]
+signature:
+  className: Trie
+  kind: design
+  ctorParams: []
+  methods:
+    - name: insert
+      params:
+        - { name: word, type: string }
+      returns: void
+    - name: search
+      params:
+        - { name: word, type: string }
+      returns: bool
+    - name: startsWith
+      params:
+        - { name: prefix, type: string }
+      returns: bool
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 208)
+  url: https://leetcode.com/problems/implement-trie-prefix-tree/

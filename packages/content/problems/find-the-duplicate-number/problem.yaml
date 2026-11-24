@@ -1,0 +1,16 @@
+slug: find-the-duplicate-number
+title: Find the Duplicate Number
+difficulty: medium
+tags: [array, binary-search, two-pointers, bit-manipulation]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: findDuplicate
+      params:
+        - { name: nums, type: { array: int } }
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 287; NeetCode 150); listed in quant coding-interview collections as "find duplicates in O(1) space"
+  url: https://leetcode.com/problems/find-the-duplicate-number/

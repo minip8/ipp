@@ -1,0 +1,436 @@
+- id: arch-data-001
+  topic: computer-architecture
+  subtopic: Data representation
+  difficulty: easy
+  type: single
+  tags: [twos-complement, integers]
+  prompt: |
+    What is the 8-bit two's complement encoding of **-5**, in hexadecimal?
+  choices:
+    - id: a
+      text: "0x85"
+    - id: b
+      text: "0xFA"
+    - id: c
+      text: "0xFB"
+    - id: d
+      text: "0x05 with the carry flag set"
+  answer: c
+  explanation: |
+    To negate in two's complement, invert every bit and add one: 5 = `0000 0101`, inverted = `1111 1010` (0xFA), plus one = `1111 1011` = **0xFB**. Check: 0xFB = 251, and 251 - 256 = -5.
+
+    - **0x85** is the *sign-magnitude* encoding (sign bit set, magnitude 5), which no mainstream CPU uses for integers.
+    - **0xFA** is the *ones' complement* (invert only), which is off by one.
+    - The carry flag plays no part in how a value is represented.
+- id: arch-data-002
+  topic: computer-architecture
+  subtopic: Data representation
+  difficulty: easy
+  type: single
+  tags: [twos-complement, integers]
+  prompt: |
+    What range of values can a signed 8-bit two's complement integer hold?
+  choices:
+    - id: a
+      text: "-127 to 127"
+    - id: b
+      text: "-128 to 127"
+    - id: c
+      text: "-127 to 128"
+    - id: d
+      text: "0 to 255"
+  answer: b
+  explanation: |
+    An N-bit two's complement integer covers -2^(N-1) to 2^(N-1) - 1, which for N = 8 is **-128..127**. Two's complement has a single zero, so it has one more negative value than positive ones. The consequence is that negating the minimum value (-128, or `INT_MIN` for `int`) overflows: the true answer, 128, cannot be represented.
+
+    -127..127 is the range of sign-magnitude or ones' complement, which both have two zeros. 0..255 is the unsigned range.
+- id: arch-data-003
+  topic: computer-architecture
+  subtopic: Data representation
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: "C++20"
+  tags: [unsigned, integer-conversions, twos-complement]
+  prompt: |
+    What does this program print? Assume x86-64 Linux, where `int` and `unsigned int` are 32 bits.
+  code: |
+    #include <iostream>
+
+    int main() {
+        unsigned int u = 0;
+        int i = -1;
+        std::cout << (i < u) << ' ' << u - 1 << '\n';
+    }
+  answer:
+    kind: output
+    output: "0 4294967295"
+  explanation: |
+    **`i < u`:** under the usual arithmetic conversions, when a signed and an unsigned operand of the same rank are compared, the signed one is converted to unsigned. -1 becomes 2^32 - 1 = 4294967295, which is not less than 0, so the comparison is `false` and prints `0`. GCC flags this with `-Wsign-compare`.
+
+    **`u - 1`:** unsigned arithmetic is defined to wrap modulo 2^32, so 0 - 1 = 4294967295. Unlike signed overflow, this is well-defined behaviour.
+
+    At the hardware level both results come from the same fact: the bit pattern `0xFFFFFFFF` means -1 when read as signed and 4294967295 when read as unsigned. The CPU's `cmp` instruction sets flags for both readings, and the compiler picks the signed (`jl`) or unsigned (`jb`) branch according to the C++ types.
+  source:
+    name: "Verified with g++ 15.2 -std=c++20 -O2 on x86-64 Linux"
+- id: arch-data-004
+  topic: computer-architecture
+  subtopic: Data representation
+  difficulty: medium
+  type: single
+  tags: [sign-extension, twos-complement]
+  prompt: |
+    A 16-bit signed value `int16_t h = -2;` (bit pattern `0xFFFE`) is converted to a 32-bit signed integer and then printed as an unsigned 32-bit hex value. What is printed?
+  choices:
+    - id: a
+      text: "0000fffe"
+    - id: b
+      text: "fffffffe"
+    - id: c
+      text: "8000fffe"
+    - id: d
+      text: "fffe0000"
+  answer: b
+  explanation: |
+    A widening signed conversion uses **sign extension**: the sign bit is copied into all the new high-order bits, so the value stays -2. 32-bit -2 is `0xFFFFFFFE`. On x86-64 this is done by `movsx` (or `movsxd` and `cwde`/`cdqe`).
+
+    - `0000fffe` is **zero extension** (`movzx`). It is what happens when the source is unsigned (`uint16_t`), and it would turn -2 into 65534. Confusing the two is a classic bug when bytes from a buffer are read as `char`, which is signed on x86-64.
+    - `8000fffe` copies only the sign bit to the top, which no instruction does.
+    - `fffe0000` is a left shift, not an extension.
+- id: arch-data-005
+  topic: computer-architecture
+  subtopic: Data representation
+  difficulty: medium
+  type: multiple
+  tags: [overflow, undefined-behavior, twos-complement]
+  prompt: |
+    Which statements about integer overflow are true for C++ on x86-64? Select all that apply.
+  choices:
+    - id: a
+      text: "The x86 `add` instruction simply wraps on signed overflow and sets the overflow flag (OF); it never traps."
+    - id: b
+      text: "Unsigned arithmetic in C++ is defined to wrap modulo 2^N."
+    - id: c
+      text: "Since C++20 mandates two's complement representation, signed integer overflow is now defined to wrap."
+    - id: d
+      text: "Because signed overflow is undefined behaviour, a compiler may fold `x + 1 > x` (with `int x`) to `true`."
+    - id: e
+      text: "Using `-fwrapv` with GCC or Clang makes signed overflow wrap, at the cost of some optimizations."
+  answer: [a, b, d, e]
+  explanation: |
+    - **(a) True.** The hardware does not distinguish signed from unsigned addition. It produces the low N bits of the sum and sets CF (unsigned carry-out) and OF (signed overflow). Nothing traps unless code checks the flags, for example with `jo` or `__builtin_add_overflow`.
+    - **(b) True.** Unsigned types are modular by definition.
+    - **(c) False, and a common misconception.** P1236/P0907 made two's complement the required *representation* in C++20, but signed arithmetic overflow is **still undefined behaviour**. Only conversions became well-defined (out-of-range conversion to a signed type now wraps).
+    - **(d) True.** The compiler may assume overflow never happens, which also lets it widen loop counters and drop overflow checks such as `if (x + 1 < x)`.
+    - **(e) True.** `-fwrapv` defines signed overflow as wrapping, so the compiler loses the reasoning in (d).
+- id: arch-data-006
+  topic: computer-architecture
+  subtopic: Data representation
+  difficulty: hard
+  type: short
+  tags: [twos-complement, division, signals, undefined-behavior]
+  prompt: |
+    A service crashes with `SIGFPE` on x86-64 Linux, but the code never divides by zero. The crashing line is `int q = a / b;`. What input could cause this, and why does the hardware fault?
+  reference: |
+    The input is `a == INT_MIN` and `b == -1`. The mathematical quotient is 2^31, which does not fit in a 32-bit signed integer (the maximum is 2^31 - 1). x86's `idiv` instruction raises the divide-error exception (#DE) both for a zero divisor and when the quotient overflows the destination, so the fault is the same one division by zero produces. The kernel turns #DE into `SIGFPE`, with `si_code` `FPE_INTDIV` in both cases. In C++ the expression is undefined behaviour anyway, because the result is not representable. `INT_MIN % -1` also faults on x86, because `idiv` computes the quotient and the remainder together, even though the mathematical remainder is 0. The same applies to `LLONG_MIN / -1` in 64 bits. The fix is to check for this case explicitly, or to widen the operands before dividing.
+  keyPoints:
+    - "Identifies INT_MIN / -1 as the overflowing case: 2^31 is not representable"
+    - "idiv raises the divide-error exception (#DE) on quotient overflow, the same exception as division by zero"
+    - "Linux delivers #DE to the process as SIGFPE"
+    - "It is undefined behaviour in C/C++ (and INT_MIN % -1 also faults on x86)"
+    - "Fix: guard the case or widen before dividing"
+  explanation: |
+    Asymmetric two's complement range means negation and division of the minimum value overflow. Wrapping instructions such as `add`, `neg` and `imul` just set flags, but `idiv` faults. ARM's `sdiv` does not trap: it returns INT_MIN for this case and 0 for division by zero. So this crash is x86-specific, while the undefined behaviour applies on every platform.
+- id: arch-data-007
+  topic: computer-architecture
+  subtopic: Data representation
+  difficulty: easy
+  type: single
+  tags: [ieee-754, floating-point]
+  prompt: |
+    In C++ on x86-64, `0.1 + 0.2 == 0.3` (all `double`) evaluates to `false`. What is the root cause?
+  choices:
+    - id: a
+      text: "0.1, 0.2 and 0.3 have no finite binary representation, so each literal is rounded to the nearest double, and the rounded sum is not the double nearest to 0.3."
+    - id: b
+      text: "The x87 FPU computes with 80-bit precision and the extra bits make the comparison fail."
+    - id: c
+      text: "Floating-point addition is non-deterministic across runs."
+    - id: d
+      text: "The comparison is done bitwise, and +0.0 and -0.0 differ."
+  answer: a
+  explanation: |
+    1/10 is a repeating fraction in base 2 (0.000110011…), just as 1/3 repeats in base 10. Each literal is rounded to 53 significant bits, and the sum of the rounded 0.1 and 0.2 rounds to `0.30000000000000004`, which is one ulp above the double nearest 0.3. The sum is correctly rounded; the inputs were already inexact.
+
+    - **(b)** On x86-64, `double` arithmetic uses SSE2 (`FLT_EVAL_METHOD == 0`), not x87, and the result is still false. The x87 caused other surprises on 32-bit x86.
+    - **(c)** IEEE 754 basic operations are deterministic: the same operations in the same order give the same result.
+    - **(d)** Floating-point `==` is not bitwise; +0.0 == -0.0 is true.
+
+    Compare with a tolerance suited to the magnitudes involved, or use decimal or integer fixed-point (for example, prices in integer ticks), when exact decimal values matter.
+- id: arch-data-008
+  topic: computer-architecture
+  subtopic: Data representation
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: "C++20"
+  tags: [ieee-754, floating-point, precision]
+  prompt: |
+    What does this program print on x86-64 Linux?
+  code: |
+    #include <iomanip>
+    #include <iostream>
+
+    int main() {
+        float f = 16777216.0f;   // 2^24
+        f += 1.0f;
+        double d = 16777216.0;
+        d += 1.0;
+        std::cout << std::fixed << std::setprecision(0) << f << ' ' << d << '\n';
+    }
+  answer:
+    kind: output
+    output: "16777216 16777217"
+  explanation: |
+    A `float` has a 24-bit significand (23 stored bits plus the implicit leading 1). In [2^24, 2^25) consecutive floats are 2 apart, so 2^24 + 1 lies exactly halfway between 2^24 and 2^24 + 2. Round-half-to-even picks 2^24, whose significand is even, so `f` is unchanged.
+
+    A `double` has a 53-bit significand, so every integer up to 2^53 is exact, and 16777217 is stored without error.
+
+    Two practical consequences: a `float` counter stops increasing at 16,777,216, and a `float` cannot hold every 32-bit integer (or nanosecond timestamps, or large prices). On x86-64, float arithmetic is done in single precision with SSE (`FLT_EVAL_METHOD == 0`), so there is no hidden extra precision to change the result.
+  source:
+    name: "Verified with g++ 15.2 -std=c++20 at -O0 and -O2 on x86-64 Linux"
+- id: arch-data-009
+  topic: computer-architecture
+  subtopic: Data representation
+  difficulty: medium
+  type: single
+  tags: [ieee-754, floating-point, precision]
+  prompt: |
+    What is the largest N such that **every** integer from 0 to N can be represented exactly in an IEEE 754 `double`?
+  choices:
+    - id: a
+      text: "2^52"
+    - id: b
+      text: "2^53"
+    - id: c
+      text: "2^63"
+    - id: d
+      text: "2^64 - 1"
+  answer: b
+  explanation: |
+    A double has 52 stored fraction bits plus an implicit leading 1, which gives 53 significant bits. Every integer with magnitude up to 2^53 fits. Past that the gap between neighbouring doubles is 2, so 2^53 + 1 is the first integer that cannot be represented. (2^53 itself is exact, being a power of two.)
+
+    - **2^52** forgets the implicit bit.
+    - **2^63 and 2^64 - 1** are integer-type limits. Doubles reach about 1.8e308, but they become sparse long before that.
+
+    This is why JavaScript's `Number.MAX_SAFE_INTEGER` is 2^53 - 1, and why storing 64-bit IDs or nanosecond timestamps in a double (for example via JSON) silently corrupts them. The `float` equivalent is 2^24.
+- id: arch-data-010
+  topic: computer-architecture
+  subtopic: Data representation
+  difficulty: medium
+  type: multiple
+  tags: [ieee-754, nan, floating-point]
+  prompt: |
+    Which statements about IEEE 754 NaN are true, assuming default floating-point settings (exceptions masked) on x86-64? Select all that apply.
+  choices:
+    - id: a
+      text: "For a NaN `x`, `x == x` is false and `x != x` is true."
+    - id: b
+      text: "`0.0 / 0.0` raises a hardware exception that terminates the program with SIGFPE."
+    - id: c
+      text: "A NaN is encoded with an all-ones exponent field and a non-zero fraction."
+    - id: d
+      text: "Sorting a `std::vector<double>` containing NaNs with `std::sort` and `operator<` is undefined behaviour, because `<` is no longer a strict weak ordering."
+    - id: e
+      text: "For a NaN `x`, exactly one of `x < 1.0` and `x >= 1.0` is true."
+  answer: [a, c, d]
+  explanation: |
+    - **(a) True.** NaN compares unordered with everything, itself included. `x != x` is the classic NaN test (`std::isnan` is clearer).
+    - **(b) False.** By default the IEEE invalid-operation exception is *masked* in MXCSR: the operation sets a sticky status flag and returns a quiet NaN. Only unmasking it (for example with `feenableexcept`) makes it trap. Integer division by zero, by contrast, always faults on x86.
+    - **(c) True.** An all-ones exponent with a zero fraction is ±infinity. With a non-zero fraction it is NaN, and the top fraction bit distinguishes quiet from signalling NaNs.
+    - **(d) True.** Every ordered comparison with NaN is false, so NaN is "equivalent" to every value, and equivalence stops being transitive. `std::sort` may then produce garbage or read out of bounds.
+    - **(e) False.** Both are false, so `!(x < y)` is not the same as `x >= y` for floats.
+- id: arch-data-011
+  topic: computer-architecture
+  subtopic: Data representation
+  difficulty: hard
+  type: single
+  tags: [ieee-754, denormals, performance]
+  prompt: |
+    An audio filter on x86-64 runs at normal speed while a signal plays, but becomes many times slower once the input goes silent and the filter state decays exponentially towards zero. Nothing else changes. What is the most likely cause?
+  choices:
+    - id: a
+      text: "Operations on subnormal (denormal) floating-point values take a slow microcode-assisted path on many x86 cores."
+    - id: b
+      text: "The branch predictor mispredicts more because the values are smaller."
+    - id: c
+      text: "Floating-point underflow raises SIGFPE, and the signal handler is slow."
+    - id: d
+      text: "Small values need more mantissa bits, so the FPU iterates longer."
+  answer: a
+  explanation: |
+    As the state decays it passes below the smallest normal number (about 1.18e-38 for `float`, 2.2e-308 for `double`) into the **subnormal** range. Subnormals have a zero exponent field and no implicit leading 1, which gives gradual underflow. On many Intel and AMD cores, an operation that consumes or produces a subnormal can need a microcode assist costing on the order of a hundred cycles or more instead of a few. The exact penalty depends on the core and the operation, and some cores handle certain cases (such as additions) without any assist; Agner Fog's microarchitecture guide lists the penalties per core.
+
+    Fixes: set **FTZ** (flush-to-zero) and **DAZ** (denormals-are-zero) in MXCSR, which `-ffast-math` does at program start on x86. Or add a tiny DC offset or noise so the values never decay that far.
+
+    - **(b)** Value magnitude does not affect branches in a filter loop.
+    - **(c)** The underflow exception is masked by default. It sets a status flag and does not trap.
+    - **(d)** Normal FP operations take a fixed number of cycles whatever their values. Only the subnormal assist is value-dependent.
+  source:
+    name: "Agner Fog, The microarchitecture of Intel, AMD and VIA CPUs (subnormal operand penalties)"
+    url: https://www.agner.org/optimize/
+- id: arch-data-012
+  topic: computer-architecture
+  subtopic: Data representation
+  difficulty: medium
+  type: short
+  tags: [ieee-754, floating-point]
+  prompt: |
+    Describe the bit layout of an IEEE 754 double-precision number, and explain how the value 1.0 is encoded.
+  reference: |
+    A double has 64 bits: 1 sign bit, an 11-bit biased exponent, and a 52-bit fraction. For a normal number the value is (-1)^s × 1.fraction × 2^(exponent - 1023): the bias is 1023 and the leading 1 is implicit, which gives 53 bits of precision. For 1.0 the sign is 0, the true exponent is 0 (so the stored exponent is 1023 = 0x3FF), and the fraction is 0. The bit pattern is therefore 0x3FF0000000000000. The exponent field has two special values. All zeros means zero or a subnormal: no implicit 1, and the exponent is fixed at 1 - 1023 = -1022. All ones means infinity (fraction zero) or NaN (fraction non-zero). For comparison, `float` has 1/8/23 bits with a bias of 127, so 1.0f is 0x3F800000.
+  keyPoints:
+    - "1 sign bit, 11 exponent bits, 52 fraction bits"
+    - "Exponent bias 1023, and an implicit leading 1 for normal numbers (53-bit precision)"
+    - "1.0 encodes as 0x3FF0000000000000 (stored exponent 1023, fraction 0)"
+    - "Exponent all zeros means zero/subnormal; all ones means infinity/NaN"
+  explanation: |
+    Knowing the layout explains most floating-point behaviour: precision limits (2^53), why NaN != NaN, why subnormals exist, and why positive IEEE doubles sort correctly when their bit patterns are compared as signed integers. That last property is a trick used in radix sorts and lock-free code.
+- id: arch-data-013
+  topic: computer-architecture
+  subtopic: Data representation
+  difficulty: easy
+  type: single
+  tags: [endianness]
+  prompt: |
+    On x86-64, the 32-bit value `0x12345678` is stored at address 0x1000. Which bytes are at addresses 0x1000, 0x1001, 0x1002 and 0x1003, in that order?
+  choices:
+    - id: a
+      text: "12 34 56 78"
+    - id: b
+      text: "78 56 34 12"
+    - id: c
+      text: "56 78 12 34"
+    - id: d
+      text: "87 65 43 21"
+  answer: b
+  explanation: |
+    x86 is **little-endian**: the least significant byte is stored at the lowest address, so the bytes are `78 56 34 12`.
+
+    - `12 34 56 78` is big-endian, the order used by network protocols ("network byte order") and many file formats.
+    - `56 78 12 34` swaps 16-bit halves (sometimes called middle-endian, as on the PDP-11).
+    - `87 65 43 21` reverses nibbles. Endianness is about byte order, never bit or nibble order within a byte.
+
+    AArch64 can run in either byte order, but Linux, Android, macOS and Windows on ARM all run it little-endian, so in practice almost all hardware you meet today is little-endian.
+- id: arch-data-014
+  topic: computer-architecture
+  subtopic: Data representation
+  difficulty: medium
+  type: short
+  tags: [endianness, networking, serialization]
+  prompt: |
+    Your little-endian x86 service parses a binary market-data protocol whose integer fields are big-endian. Where does endianness bite you, and how do you handle it correctly and efficiently in C++?
+  reference: |
+    Endianness matters whenever bytes cross a boundary between representations: network protocols (network byte order is big-endian), file formats, memory-mapped hardware, and reinterpreting a byte buffer as a wider integer. It does not matter for arithmetic on values already in registers. To parse correctly, copy the bytes out with `std::memcpy` into an integer of the right width. Avoid `reinterpret_cast` on the buffer: that breaks strict aliasing and may produce a misaligned access. Then convert from big-endian with `ntohl`/`be32toh`, `__builtin_bswap32`, or `std::byteswap` (C++23), choosing at compile time with `std::endian::native` (C++20). Compilers recognise these patterns: memcpy plus bswap becomes a single `mov` + `bswap`, or `movbe`. A portable shift-and-or loop over the bytes is also recognised and compiled to the same code. Getting it wrong typically shows up as wildly wrong values such as prices or lengths, not as a crash.
+  explanation: |
+    The detail that marks a strong answer is that the correct, portable code (memcpy plus a byte swap) is also the fast code: modern compilers emit one load and a `bswap`. Pointer-cast parsing is both undefined behaviour and unnecessary.
+  keyPoints:
+    - "Endianness matters at representation boundaries: wire formats, files, type-punning bytes; not for in-register arithmetic"
+    - "Use memcpy (or bit_cast) rather than pointer casts, to avoid aliasing and alignment problems"
+    - "Convert with ntohl/be32toh/__builtin_bswap/std::byteswap, guided by std::endian::native"
+    - "Compilers turn these into a single bswap or movbe, so correctness costs nothing"
+- id: arch-data-015
+  topic: computer-architecture
+  subtopic: Data representation
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: "C++20"
+  tags: [alignment, padding, struct-layout, abi]
+  prompt: |
+    What does this program print on x86-64 Linux (System V ABI)?
+  code: |
+    #include <iostream>
+
+    struct A { char c1; int i; char c2; };
+    struct B { int i; char c1; char c2; };
+    struct C { char c; double d; short s; };
+
+    int main() {
+        std::cout << sizeof(A) << ' ' << sizeof(B) << ' ' << sizeof(C) << '\n';
+    }
+  answer:
+    kind: output
+    output: "12 8 24"
+  explanation: |
+    Each member must sit at an offset that is a multiple of its alignment. The struct's alignment is its largest member's alignment, and its size is rounded up to a multiple of that alignment, so that elements of an array stay aligned.
+
+    - **A**: `c1`@0, 3 bytes padding, `i`@4..7, `c2`@8, then 3 bytes of tail padding up to a multiple of 4 = **12**.
+    - **B**: `i`@0..3, `c1`@4, `c2`@5, then 2 bytes of tail padding = **8**. Same members, a third smaller, just from reordering.
+    - **C**: `c`@0, 7 bytes padding, `d`@8..15, `s`@16..17, then 6 bytes of tail padding to reach a multiple of 8 = **24**.
+
+    Ordering members from largest to smallest alignment minimises padding. Struct sizes are implementation-defined in general; these values are fixed by the x86-64 SysV psABI (`int` 4/4, `double` 8/8, `short` 2/2). Note that 32-bit x86 Linux aligns `double` inside structs to only 4 bytes, which would make C 16. The reordering matters for cache footprint: a hot array of A uses 50% more cache lines than an array of B.
+  source:
+    name: "Verified with g++ 15.2 -std=c++20 -O2 on x86-64 Linux"
+- id: arch-data-016
+  topic: computer-architecture
+  subtopic: Data representation
+  difficulty: hard
+  type: short
+  tags: [alignment, atomics, cache-lines, undefined-behavior]
+  prompt: |
+    x86-64 hardware allows unaligned loads and stores. So why does alignment still matter, both for performance and for correctness?
+  reference: |
+    **Performance.** An access that crosses a 64-byte cache-line boundary is split into two cache accesses, and one that crosses a 4 KiB page boundary also needs two translations and can be much slower. Misaligned accesses that stay within one line are close to free on modern cores. **Atomicity.** x86 guarantees that an aligned load or store up to 8 bytes is atomic, but makes no such guarantee for one that is misaligned across a cache line. A `lock`-prefixed instruction on data split across two lines takes a "split lock", which on older hardware locks the bus and stalls every core. Linux can detect split locks on recent CPUs and warn about or penalise them. **Instructions that require alignment.** Some SSE instructions (`movaps`, and legacy-SSE memory operands) fault on misaligned addresses, so a compiler that assumes alignment from the type can crash on a misaligned pointer. **Language rules.** In C/C++, dereferencing a misaligned `T*` is undefined behaviour, which the optimiser and UBSan rely on. Other architectures may fault or be slow on unaligned access. Use `memcpy` for unaligned data, and `alignas(64)` for hot or contended data.
+  keyPoints:
+    - "Cache-line-crossing (and page-crossing) accesses are split and slower; misaligned within a line is nearly free"
+    - "Atomicity is guaranteed only for aligned accesses; a locked op across cache lines is a split lock (very expensive, may be detected and penalised by the kernel)"
+    - "Some SIMD instructions such as movaps fault on misaligned addresses"
+    - "Misaligned pointer dereference is UB in C/C++; use memcpy, and other ISAs may trap"
+  explanation: |
+    Interviewers use this to see whether a candidate separates the ISA's tolerance from language rules and from atomicity guarantees. "x86 handles it" is only a third of the answer.
+  source:
+    name: "Intel 64 and IA-32 Architectures SDM Vol. 3A §9.1.1 (guaranteed atomic operations); Linux kernel split-lock detection"
+    url: https://docs.kernel.org/arch/x86/buslock.html
+- id: arch-data-017
+  topic: computer-architecture
+  subtopic: Data representation
+  difficulty: hard
+  type: single
+  tags: [ieee-754, floating-point, associativity]
+  prompt: |
+    With `double b = 1e20;`, what are the values of `(b + -b) + 1.0` and `b + (-b + 1.0)` under IEEE 754 round-to-nearest?
+  choices:
+    - id: a
+      text: "1.0 and 1.0"
+    - id: b
+      text: "1.0 and 0.0"
+    - id: c
+      text: "0.0 and 1.0"
+    - id: d
+      text: "0.0 and 0.0"
+  answer: b
+  explanation: |
+    - `(b + -b) + 1.0`: the cancellation is exact, giving 0, then 0 + 1 = **1.0**.
+    - `b + (-b + 1.0)`: near 1e20, neighbouring doubles are 16384 apart (1e20 lies in [2^66, 2^67), and 2^(66-52) = 2^14). Adding 1.0 to -1e20 rounds straight back to -1e20, which is then cancelled to **0.0**.
+
+    Floating-point addition is commutative but **not associative**. For that reason compilers will not reorder or vectorise a floating-point sum reduction unless allowed to with `-ffast-math`/`-fassociative-math` or an OpenMP `reduction` clause. It also explains why a parallel sum can differ from a serial one, and why techniques such as Kahan summation exist.
+  source:
+    name: "Verified with gcc 15.2 -O2 on x86-64 Linux"
+- id: arch-data-018
+  topic: computer-architecture
+  subtopic: Data representation
+  difficulty: easy
+  type: short
+  tags: [twos-complement, integers]
+  prompt: |
+    Why do essentially all modern CPUs represent signed integers in two's complement rather than sign-magnitude or ones' complement?
+  reference: |
+    In two's complement, addition, subtraction and the low half of multiplication are bit-for-bit the same operations as for unsigned numbers, so one adder serves both signed and unsigned arithmetic, and subtraction is just adding the negation (invert and add one). There is a single zero, with no negative zero to special-case in comparisons. The sign is simply the top bit, and widening a value is a straightforward sign extension. Sign-magnitude and ones' complement both have two zeros and need extra logic for addition: end-around carry in ones' complement, separate magnitude comparison in sign-magnitude. The cost of two's complement is an asymmetric range (-2^(N-1) to 2^(N-1) - 1), so negating or taking the absolute value of the minimum value overflows.
+  keyPoints:
+    - "The same adder and instructions work for signed and unsigned add, subtract and the low half of multiply"
+    - "A single representation of zero"
+    - "Simple negation (invert and add 1) and sign extension"
+    - "Trade-off: asymmetric range, so -INT_MIN and abs(INT_MIN) overflow"
+  explanation: |
+    Sign-magnitude is still used inside floating-point formats (the IEEE 754 sign bit), which is why floats have both +0.0 and -0.0, but integer hardware settled on two's complement decades ago. C++20 and C23 now require it.

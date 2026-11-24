@@ -1,0 +1,16 @@
+slug: longest-consecutive-sequence
+title: Longest Consecutive Sequence
+difficulty: medium
+tags: [array, hash-table]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: longestConsecutive
+      params:
+        - { name: nums, type: { array: int } }
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (Blind 75; LeetCode 128)
+  url: https://leetcode.com/problems/longest-consecutive-sequence/

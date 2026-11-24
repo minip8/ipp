@@ -1,0 +1,17 @@
+slug: course-order
+title: Course Order
+difficulty: medium
+tags: [graph, topological-sort, heap]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: findOrder
+      params:
+        - { name: numCourses, type: int }
+        - { name: prerequisites, type: { array: { array: int } } }
+      returns: { array: int }
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (LeetCode 210, Course Schedule II), with a deterministic tie-break added
+  url: https://leetcode.com/problems/course-schedule-ii/

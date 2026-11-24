@@ -1,0 +1,17 @@
+VALUES = {"I": 1, "V": 5, "X": 10, "L": 50, "C": 100, "D": 500, "M": 1000}
+
+
+class Solution:
+    def romanToInt(self, s: str) -> int:
+        total = 0
+        for i, ch in enumerate(s):
+            v = VALUES[ch]
+            if i + 1 < len(s) and v < VALUES[s[i + 1]]:
+                total -= v
+            else:
+                total += v
+        return total
+
+
+if __name__ == "__main__":
+    print(Solution().romanToInt("CDXLIX"))  # 449

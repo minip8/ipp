@@ -1,0 +1,411 @@
+- id: os-ipc-001
+  topic: operating-systems
+  subtopic: IPC
+  type: single
+  difficulty: medium
+  prompt: |
+    Several processes write log records to the same pipe with single `write()` calls. On Linux, when are records from different writers guaranteed not to be interleaved?
+  choices:
+    - id: a
+      text: "Always, because each write() call is atomic"
+    - id: b
+      text: "When each write is at most PIPE_BUF bytes (4096 on Linux)"
+    - id: c
+      text: "When each write is at most the pipe capacity (64 KiB by default)"
+    - id: d
+      text: "Never, so writers must always use a lock"
+  answer: b
+  explanation: |
+    POSIX guarantees that a pipe write of at most `PIPE_BUF` bytes is atomic. Linux sets PIPE_BUF to 4096. Larger writes can be split and interleaved with other writers' data.
+
+    - (c) The capacity (65536 bytes by default since Linux 2.6.11, adjustable with `F_SETPIPE_SZ`) is how much the pipe buffers before writers block. It is not an atomicity limit.
+    - (a) Large writes are not atomic.
+    - (d) Small writes are atomic, so no lock is needed for them.
+  tags: [pipes, pipe-buf, atomicity]
+  source:
+    name: pipe(7) man page
+    url: https://man7.org/linux/man-pages/man7/pipe.7.html
+
+- id: os-ipc-002
+  topic: operating-systems
+  subtopic: IPC
+  type: single
+  difficulty: medium
+  prompt: |
+    A server writes to a TCP socket (or a pipe) whose reader has already gone away. The server has not changed any signal dispositions. What happens?
+  choices:
+    - id: a
+      text: "write() returns 0"
+    - id: b
+      text: "The process receives SIGPIPE, whose default action terminates it; if SIGPIPE is ignored or blocked, write fails with EPIPE"
+    - id: c
+      text: "The write blocks forever"
+    - id: d
+      text: "The data is silently discarded and write reports success"
+  answer: b
+  explanation: |
+    Writing to a pipe or socket that has no reader raises `SIGPIPE`, and the default action kills the process silently. That is a famous cause of servers that "just disappear". Network servers usually ignore SIGPIPE (`signal(SIGPIPE, SIG_IGN)`) or pass `MSG_NOSIGNAL` to `send`, and then handle `EPIPE`.
+
+    For TCP the details are worth knowing. The first write after the peer closes may succeed, because the data is only queued and the peer then answers with RST. A later write fails. On Linux, if the peer's FIN arrived first (the usual case after a normal `close`), the RST is reported as `EPIPE`, with SIGPIPE; if the connection was reset without a FIN, the first error is `ECONNRESET`, and writes after that get `EPIPE`.
+
+    - (a) write never returns 0 for this.
+    - (c) It does not block.
+    - (d) The failure is reported, not hidden.
+  tags: [sigpipe, epipe, sockets, pipes]
+
+- id: os-ipc-003
+  topic: operating-systems
+  subtopic: IPC
+  type: multiple
+  difficulty: medium
+  prompt: |
+    Which of these can Unix domain sockets do that TCP sockets over loopback cannot? Select all that apply.
+  choices:
+    - id: a
+      text: "Pass open file descriptors to another process (SCM_RIGHTS)"
+    - id: b
+      text: "Report the peer's pid, uid and gid as verified by the kernel (SO_PEERCRED)"
+    - id: c
+      text: "Be addressed by a path in the file system, controlled by file permissions"
+    - id: d
+      text: "Offer a reliable, message-boundary-preserving mode (SOCK_SEQPACKET)"
+    - id: e
+      text: "Talk to a process on another machine"
+  answer: [a, b, c, d]
+  explanation: |
+    - (a) True. `sendmsg` with an `SCM_RIGHTS` control message installs duplicates of the fds in the receiver. Each refers to the same open file description. This is how systemd socket activation, privilege-separation daemons and zero-downtime restarts hand over listening sockets.
+    - (b) True. SO_PEERCRED returns credentials checked by the kernel.
+    - (c) True. Path-bound sockets are protected by file permissions. Linux also has an abstract namespace.
+    - (d) True. AF_UNIX supports SOCK_SEQPACKET (and reliable SOCK_DGRAM). TCP is a byte stream.
+    - (e) False. Unix domain sockets are local only.
+
+    They are also usually faster than loopback TCP, because they skip the TCP/IP stack.
+  tags: [unix-domain-sockets, scm-rights, ipc]
+  source:
+    name: unix(7) man page
+    url: https://man7.org/linux/man-pages/man7/unix.7.html
+
+- id: os-ipc-004
+  topic: operating-systems
+  subtopic: IPC
+  type: short
+  difficulty: medium
+  prompt: |
+    Two processes on the same host must exchange market data at very high rates with the lowest possible latency. How would you set up POSIX shared memory for this, and what still has to be solved once the memory is shared?
+  reference: |
+    The producer creates a named object with `shm_open("/name", O_CREAT|O_RDWR, mode)`. On Linux this is a file in tmpfs (/dev/shm). It sizes it with `ftruncate` and maps it with `mmap(..., PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0)`. The consumer calls shm_open and mmap on the same name. Both now map the same physical pages, so data moves with no syscalls and no copies through the kernel. A related option is memfd_create plus passing the fd over a Unix socket. Shared memory gives no synchronisation, so you must still design: a protocol such as a single-producer single-consumer ring buffer with atomic head and tail indices and acquire/release ordering, or sequence locks; how a waiting reader waits (busy-spin on a pinned core for the lowest latency, or futex/eventfd to sleep); lock-free structures only, or process-shared mutexes (PTHREAD_PROCESS_SHARED, robust mutexes if a peer can die); keeping hot indices on separate cache lines to avoid false sharing; pointers are not valid across processes, so use offsets because the mapping addresses may differ; pre-fault or lock the pages, perhaps with huge pages; and cleanup with shm_unlink.
+  keyPoints:
+    - shm_open + ftruncate + mmap(MAP_SHARED) on both sides (tmpfs /dev/shm), and shm_unlink for cleanup
+    - Data moves with no syscalls or kernel copies once mapped
+    - Synchronisation is still needed, for example an SPSC ring with atomics and acquire/release ordering, or process-shared mutexes
+    - Choose between waking via futex/eventfd and busy-polling; consider false sharing
+    - Store offsets, not raw pointers, because mappings can be at different addresses
+  explanation: |
+    For trading and low-latency roles the follow-up questions concern the ring buffer design and memory ordering. A strong answer stresses that shared memory gives you no synchronisation.
+  tags: [shared-memory, shm-open, mmap, low-latency, ring-buffer]
+  source:
+    name: shm_overview(7) man page
+    url: https://man7.org/linux/man-pages/man7/shm_overview.7.html
+
+- id: os-ipc-005
+  topic: operating-systems
+  subtopic: Signals
+  type: single
+  difficulty: medium
+  prompt: |
+    Why is calling `printf` or `malloc` inside a signal handler dangerous?
+  choices:
+    - id: a
+      text: "Signal handlers run in kernel mode, where libc is unavailable"
+    - id: b
+      text: "They are not async-signal-safe: if the signal interrupts the same function while it holds an internal lock or has data structures half-updated, the handler can deadlock or corrupt state"
+    - id: c
+      text: "Signal handlers have a stack too small for any function call"
+    - id: d
+      text: "The kernel blocks all system calls during a signal handler"
+  answer: b
+  explanation: |
+    A signal can arrive between any two instructions, for example while the main code is inside `malloc` holding the arena lock. If the handler then calls `malloc`, it can deadlock on that lock or see a half-updated free list. Only the **async-signal-safe** functions listed in signal-safety(7) may be called. Examples are `write`, `_exit`, `sigaction` and `kill`, not `printf`, `malloc` or `exit`.
+
+    The usual pattern is to set a `volatile sig_atomic_t` flag, or write a byte to a self-pipe or eventfd, and do the real work in the main loop. Another is to receive signals synchronously with `signalfd` or `sigwaitinfo`.
+
+    - (a) Handlers run in user mode.
+    - (c) The stack is the normal thread stack, or a `sigaltstack`.
+    - (d) Syscalls work fine in a handler.
+  tags: [signals, async-signal-safety, reentrancy]
+  source:
+    name: signal-safety(7) man page
+    url: https://man7.org/linux/man-pages/man7/signal-safety.7.html
+
+- id: os-ipc-006
+  topic: operating-systems
+  subtopic: Signals
+  type: multiple
+  difficulty: hard
+  prompt: |
+    Which statements about signals on Linux are true? Select all that apply.
+  choices:
+    - id: a
+      text: "SIGKILL and SIGSTOP cannot be caught, blocked or ignored"
+    - id: b
+      text: "Standard (non-real-time) signals are not queued: if the same signal is raised several times while it is blocked, it is delivered once"
+    - id: c
+      text: "A process-directed signal (for example from kill(pid, ...)) is delivered to an arbitrary thread that does not have it blocked"
+    - id: d
+      text: "Signal dispositions (handlers) are per-thread"
+    - id: e
+      text: "Across execve, caught signals are reset to their default action, while ignored signals stay ignored"
+  answer: [a, b, c, e]
+  explanation: |
+    - (a) True. SIGKILL and SIGSTOP cannot be caught, blocked or ignored.
+    - (b) True. A pending standard signal is one bit. Real-time signals (SIGRTMIN..SIGRTMAX) are queued with data.
+    - (c) True. That is why multithreaded programs often block signals in every thread and handle them in one dedicated thread with `sigwait` or `signalfd`.
+    - (d) False. **Dispositions are process-wide.** Only the signal *mask* is per thread.
+    - (e) True. Handler addresses would be meaningless in the new program image, but SIG_IGN is preserved. This is how `nohup` works.
+  tags: [signals, threads, execve]
+  source:
+    name: signal(7) man page
+    url: https://man7.org/linux/man-pages/man7/signal.7.html
+
+- id: os-ipc-007
+  topic: operating-systems
+  subtopic: IPC
+  type: short
+  difficulty: hard
+  prompt: |
+    What is a futex, and how does a typical mutex built on it avoid system calls when there is no contention?
+  reference: |
+    A futex ("fast user-space mutex") is a 32-bit integer in user memory plus a kernel wait queue keyed by its address. The kernel offers two main operations: FUTEX_WAIT(addr, expected) puts the caller to sleep only if `*addr` still equals `expected`; the check and enqueue are atomic with respect to wakers, so no wake-up can be lost. FUTEX_WAKE(addr, n) wakes up to n waiters. A mutex keeps its state in the word, for example 0 = unlocked, 1 = locked, 2 = locked with waiters. To lock, do an atomic compare-and-swap from 0 to 1. On success there is no syscall at all. On failure, mark the word as contended (2) and call FUTEX_WAIT, retrying after waking. To unlock, atomically exchange the word with 0. Only if the old value showed waiters do you call FUTEX_WAKE. So in the uncontended case lock and unlock are each a single atomic instruction, and the kernel is involved only when a thread actually has to sleep or be woken. glibc's pthread mutexes, condition variables and semaphores, and C++ std::mutex on Linux, are built this way. Many implementations spin briefly before sleeping.
+  keyPoints:
+    - A user-space integer plus a kernel wait queue keyed by address
+    - FUTEX_WAIT sleeps only if the value still equals the expected value (no lost wake-ups)
+    - The uncontended lock and unlock path is an atomic CAS/exchange in user space with no syscall
+    - Syscalls happen only on contention (wait) and when there are waiters to wake
+    - pthread/std::mutex on Linux are built on futexes
+  explanation: |
+    Reference implementation and pitfalls are in Ulrich Drepper's "Futexes Are Tricky". Mentioning the three-state design (0/1/2), which avoids a needless FUTEX_WAKE, shows depth.
+  tags: [futex, mutex, syscalls, synchronization]
+  source:
+    name: Ulrich Drepper, "Futexes Are Tricky"
+    url: https://www.akkadia.org/drepper/futex.pdf
+
+- id: os-ipc-008
+  topic: operating-systems
+  subtopic: IPC
+  type: single
+  difficulty: easy
+  prompt: |
+    In a shell pipeline `producer | consumer`, what happens to `producer` when the 64 KiB pipe buffer is full because `consumer` reads slowly?
+  choices:
+    - id: a
+      text: "Its write() blocks until consumer reads and frees space (unless the pipe is non-blocking, in which case it gets EAGAIN)"
+    - id: b
+      text: "The oldest data in the pipe is overwritten"
+    - id: c
+      text: "The kernel grows the pipe buffer without limit"
+    - id: d
+      text: "producer is killed with SIGPIPE"
+  answer: a
+  explanation: |
+    A full pipe makes the writer wait. This **back-pressure** is how pipelines keep a fast producer in step with a slow consumer.
+
+    - (b) Pipes never drop or overwrite data.
+    - (c) The capacity is fixed unless the program changes it with `F_SETPIPE_SZ`, up to `/proc/sys/fs/pipe-max-size`.
+    - (d) SIGPIPE comes only when there are **no readers** left, not when the readers are slow.
+  tags: [pipes, back-pressure, blocking]
+
+- id: os-ipc-009
+  topic: operating-systems
+  subtopic: Signals
+  type: short
+  difficulty: medium
+  prompt: |
+    A process receives SIGTERM during shutdown. How should a well-behaved server handle it, and why is it better to handle it in the event loop than to do the cleanup inside the signal handler?
+  reference: |
+    SIGTERM is the polite request to terminate, sent by `kill`, systemd and Kubernetes before SIGKILL after a grace period. The server should catch it and shut down gracefully: stop accepting new connections, let requests in progress finish or drain them within a deadline, flush logs and buffers, fsync state, release resources, and exit with a defined status. The cleanup should not run inside the handler, because a handler runs asynchronously at an arbitrary point and may call only async-signal-safe functions. Locks, malloc, stdio and most library calls are unsafe there. Instead, the handler sets a `volatile sig_atomic_t` or atomic flag, or writes to a self-pipe or eventfd, or the signal is blocked and read synchronously through signalfd in the epoll loop or by a dedicated sigwait thread. The main loop sees it and runs the normal shutdown code in an ordinary context. Also note that SIGKILL cannot be caught, so the shutdown must finish within the orchestrator's grace period.
+  keyPoints:
+    - SIGTERM is a catchable request to terminate; SIGKILL follows if the grace period runs out
+    - Graceful shutdown means stop accepting, drain requests, flush and persist state, then exit
+    - The handler may call only async-signal-safe functions, so it should just set a flag or notify
+    - Do the work in the main loop through a flag, self-pipe or eventfd, signalfd, or a sigwait thread
+  explanation: |
+    This tests practical signal handling. Mentioning signalfd, the self-pipe trick, or the Kubernetes/systemd grace period is a plus.
+  tags: [signals, sigterm, graceful-shutdown, signalfd]
+
+- id: os-ipc-010
+  topic: operating-systems
+  subtopic: IPC
+  type: single
+  difficulty: medium
+  prompt: |
+    Which IPC mechanism gives the **lowest per-message latency** between two processes on the same machine once it is set up, assuming the receiver can busy-poll on a dedicated core?
+  choices:
+    - id: a
+      text: "TCP over loopback"
+    - id: b
+      text: "A Unix domain socket"
+    - id: c
+      text: "A shared-memory ring buffer"
+    - id: d
+      text: "A pipe"
+  answer: c
+  explanation: |
+    With a shared-memory ring and a busy-polling reader there are no syscalls, no kernel copies and no scheduler wake-ups on the data path. A message moves in roughly the time of a cache-line transfer between cores, typically around 100 ns or less.
+
+    Pipes, Unix sockets and loopback TCP each need at least a write and a read syscall, a copy into and out of the kernel, and usually a wake-up of the sleeping receiver, which adds microseconds. Loopback TCP is the slowest of the three because it also runs the TCP/IP stack. Shared memory's price is that you have to handle synchronisation and memory ordering yourself.
+  tags: [shared-memory, latency, ipc, low-latency]
+
+- id: os-sync-001
+  topic: operating-systems
+  subtopic: Kernel synchronization and deadlock
+  type: single
+  difficulty: medium
+  prompt: |
+    Inside the Linux kernel, why must code in an interrupt handler use a spinlock rather than a mutex?
+  choices:
+    - id: a
+      text: "Mutexes are slower than spinlocks in every case"
+    - id: b
+      text: "Interrupt context is not a schedulable task and must not sleep, but taking a contended mutex puts the caller to sleep"
+    - id: c
+      text: "Mutexes do not work on multiprocessor systems"
+    - id: d
+      text: "Interrupt handlers run in user mode"
+  answer: b
+  explanation: |
+    A mutex that is already held puts the caller to sleep and calls the scheduler. Interrupt handlers (and softirqs and tasklets) run in **atomic context**: they borrow whatever task was running and cannot be scheduled out and resumed. Sleeping there is a bug ("scheduling while atomic"). Spinlocks busy-wait instead.
+
+    The related rule: if process context shares a lock with an interrupt handler, it must take it with `spin_lock_irqsave` (disabling local interrupts). Otherwise the interrupt can arrive on the same CPU while the lock is held, and the handler spins forever on a lock that its own CPU holds.
+
+    - (a) For long waits, mutexes are better.
+    - (c) Mutexes work on multiprocessor systems.
+    - (d) Interrupt handlers run in kernel mode.
+  tags: [spinlock, mutex, interrupt-context, kernel]
+  source:
+    name: Linux kernel docs, "Unreliable Guide To Locking"
+    url: https://docs.kernel.org/kernel-hacking/locking.html
+
+- id: os-sync-002
+  topic: operating-systems
+  subtopic: Kernel synchronization and deadlock
+  type: multiple
+  difficulty: easy
+  prompt: |
+    Which are the four Coffman conditions that must all hold for a deadlock to occur? Select all that apply.
+  choices:
+    - id: a
+      text: "Mutual exclusion"
+    - id: b
+      text: "Hold and wait"
+    - id: c
+      text: "No preemption"
+    - id: d
+      text: "Circular wait"
+    - id: e
+      text: "Starvation"
+    - id: f
+      text: "Priority inversion"
+  answer: [a, b, c, d]
+  explanation: |
+    A deadlock needs all four: resources that cannot be shared (a), threads that hold one resource while waiting for another (b), resources that cannot be taken away (c), and a cycle in the wait-for graph (d). Breaking any one condition prevents deadlock. The most practical to break is circular wait, by acquiring locks in a fixed global order.
+
+    - (e) Starvation is a different liveness problem: a thread waits forever while others make progress.
+    - (f) Priority inversion is a scheduling problem in which a high-priority task waits on a lock held by a low-priority task that cannot run. It can cause long delays, but it is not a deadlock condition.
+  tags: [deadlock, coffman-conditions]
+
+- id: os-sync-003
+  topic: operating-systems
+  subtopic: Kernel synchronization and deadlock
+  type: short
+  difficulty: hard
+  prompt: |
+    Explain RCU (read-copy-update) as used in the Linux kernel. What makes reads so cheap, and what does an updater have to do?
+  reference: |
+    RCU is a synchronisation mechanism for data that is read often and updated rarely. Readers mark a read-side critical section with `rcu_read_lock()`/`rcu_read_unlock()`. In non-preemptible kernels these cost essentially nothing, just preemption disable/enable. Readers take no locks and write no shared cache lines, and they load the pointer with `rcu_dereference`. An updater does not change data in place. It makes a new copy, modifies it, and publishes it by switching the pointer atomically with `rcu_assign_pointer`, which includes the barrier that makes the initialised contents visible first. Readers see either the old version or the new one, never a half-written one. The old version cannot be freed at once, because readers may still hold it. The updater waits for a **grace period**, until every CPU has passed through a quiescent state such as a context switch, which proves that every reader that could have seen the old pointer has finished. It does this with `synchronize_rcu()` (blocking) or `call_rcu()` (a callback). Updaters must still serialise among themselves, for example with a spinlock. Trade-offs: readers may see slightly stale data, memory reclamation is deferred, and it suits read-mostly structures such as routing tables and module lists.
+  keyPoints:
+    - Readers take no lock and write no shared memory, so reads are nearly free and scale perfectly
+    - Updaters copy, modify, and publish with an atomic pointer swap (rcu_assign_pointer)
+    - Old versions are freed only after a grace period (synchronize_rcu or call_rcu)
+    - A grace period ends when every CPU has passed a quiescent state such as a context switch
+    - Updaters still need mutual exclusion among themselves; best for read-mostly data
+  explanation: |
+    A hard question for kernel and infrastructure roles. The grace period is the essential idea. User-space equivalents (liburcu, and hazard pointers or epoch-based reclamation in C++) are worth mentioning.
+  tags: [rcu, kernel, lock-free, synchronization]
+  source:
+    name: Linux kernel docs, "What is RCU?"
+    url: https://docs.kernel.org/RCU/whatisRCU.html
+
+- id: os-sync-004
+  topic: operating-systems
+  subtopic: Kernel synchronization and deadlock
+  type: single
+  difficulty: medium
+  prompt: |
+    Thread 1 locks A then B. Thread 2 locks B then A. Occasionally both hang. What is the standard fix?
+  choices:
+    - id: a
+      text: "Make both mutexes recursive"
+    - id: b
+      text: "Define a global lock order (for example always A before B) and acquire in that order everywhere, or acquire both together with a deadlock-avoiding helper such as std::scoped_lock"
+    - id: c
+      text: "Give thread 1 a higher scheduling priority"
+    - id: d
+      text: "Insert a sleep between the two lock calls"
+  answer: b
+  explanation: |
+    The hang is a circular wait. A fixed order removes the cycle. When the order cannot be known statically (for example locking two accounts in a transfer), order the locks by a key such as an id or address, or use `std::lock`/`std::scoped_lock`, which use a try-and-back-off algorithm to avoid deadlock. The Linux kernel's **lockdep** checks lock order at run time and warns about possible cycles before they ever deadlock.
+
+    - (a) Recursive mutexes only allow the *same* thread to re-acquire a lock.
+    - (c) Priority does not remove the cycle.
+    - (d) A sleep only changes the timing, so the bug becomes rarer and harder to reproduce.
+  tags: [deadlock, lock-ordering, lockdep]
+
+- id: os-sync-005
+  topic: operating-systems
+  subtopic: Kernel synchronization and deadlock
+  type: single
+  difficulty: hard
+  prompt: |
+    On a uniprocessor Linux kernel built **without** kernel preemption (CONFIG_PREEMPT_NONE), what does `spin_lock()` effectively compile down to?
+  choices:
+    - id: a
+      text: "A loop on an atomic test-and-set instruction"
+    - id: b
+      text: "Essentially nothing, since no other CPU exists and the holder cannot be preempted (apart from lock-debugging code)"
+    - id: c
+      text: "A call to schedule()"
+    - id: d
+      text: "Disabling interrupts on every CPU"
+  answer: b
+  explanation: |
+    A spinlock protects against code running at the same time on *another CPU* and, in preemptible kernels, against preemption. With one CPU and no kernel preemption neither can happen, so the kernel compiles spin_lock and spin_unlock to nothing. With CONFIG_PREEMPT they become preempt_disable/enable. Protection against interrupt handlers on the same CPU still needs the `_irqsave`/`_bh` variants, which disable interrupts or softirqs.
+
+    This question tests whether you understand what a spinlock actually protects against.
+  tags: [spinlock, kernel, preemption]
+  source:
+    name: Linux kernel docs, "Unreliable Guide To Locking"
+    url: https://docs.kernel.org/kernel-hacking/locking.html
+
+- id: os-ipc-011
+  topic: operating-systems
+  subtopic: Signals
+  type: single
+  difficulty: easy
+  prompt: |
+    What is the difference between `kill <pid>` and `kill -9 <pid>`?
+  choices:
+    - id: a
+      text: "There is none; -9 only prints more output"
+    - id: b
+      text: "kill sends SIGTERM, which the process can catch to shut down cleanly; kill -9 sends SIGKILL, which cannot be caught, so the process is terminated without running any cleanup code"
+    - id: c
+      text: "kill -9 kills the process and all of its children, while kill kills only the process"
+    - id: d
+      text: "kill -9 makes the process dump core"
+  answer: b
+  explanation: |
+    The default signal is SIGTERM (15). A program can handle it to flush data, close connections and exit gracefully. SIGKILL (9) cannot be caught, blocked or ignored. The kernel ends the process without running handlers, atexit functions or destructors, so buffered data can be lost and temporary files left behind. Use SIGTERM first and SIGKILL only after a timeout, as systemd and Kubernetes do.
+
+    - (c) Neither signal goes to the children. `kill -- -<pgid>` signals a whole process group.
+    - (d) Signals such as SIGQUIT and SIGABRT dump core by default. SIGKILL does not.
+  tags: [signals, sigkill, sigterm]

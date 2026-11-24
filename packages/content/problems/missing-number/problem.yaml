@@ -1,0 +1,16 @@
+slug: missing-number
+title: Missing Number
+difficulty: easy
+tags: [array, math, bit-manipulation]
+signature:
+  className: Solution
+  kind: function
+  methods:
+    - name: missingNumber
+      params:
+        - { name: nums, type: { array: int } }
+      returns: int
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic interview problem (Blind 75; LeetCode 268)
+  url: https://leetcode.com/problems/missing-number/

@@ -1,0 +1,41 @@
+[workspace]
+resolver = "3"
+members = ["apps/judge", "crates/*"]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.90"
+license = "UNLICENSED"
+publish = false
+
+[workspace.dependencies]
+ipp-judge-contracts = { path = "crates/judge-contracts" }
+ipp-judge-harness = { path = "crates/judge-harness" }
+ipp-judge-sandbox = { path = "crates/judge-sandbox" }
+anyhow = "1"
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+futures-util = "0.3"
+bytes = "1"
+bollard = "0.19"
+redis = { version = "0.32", features = ["tokio-comp", "streams", "connection-manager"] }
+tree-sitter = "0.25"
+tree-sitter-cpp = "0.23"
+tree-sitter-python = "0.25"
+tree-sitter-java = "0.23"
+tar = { version = "0.4", default-features = false }
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+dotenvy = "0.15"
+getrandom = "0.3"
+uuid = { version = "1", features = ["v4"] }
+
+[profile.dev]
+debug = 1
+
+[profile.dev.package."*"]
+opt-level = 1
+debug = false

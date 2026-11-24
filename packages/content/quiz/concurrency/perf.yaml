@@ -1,0 +1,193 @@
+# False sharing, cache-coherence costs, contention.
+
+- id: conc-perf-001
+  topic: concurrency
+  subtopic: False sharing
+  difficulty: easy
+  type: single
+  prompt: |
+    What is false sharing?
+  choices:
+    - { id: a, text: "Two threads accidentally sharing a variable they each thought was private, causing a data race" }
+    - { id: b, text: "Threads writing to *different* variables that happen to live on the same cache line, so the coherence protocol bounces the line between cores even though no data is logically shared" }
+    - { id: c, text: "A cache returning stale data to another core" }
+    - { id: d, text: "Two processes mapping the same physical page read-only" }
+  answer: b
+  explanation: |
+    Coherence is tracked per cache line (64 bytes on current x86), not per variable. If core 0 writes
+    `counts[0]` and core 1 writes `counts[1]` in the same line, each write must invalidate the other
+    core's copy, so the line ping-pongs and each access can cost a cross-core transfer (tens of
+    nanoseconds or more) instead of an L1 hit (about a nanosecond). The program is correct (no data
+    race, since the variables differ) but slow. Caches stay coherent, so there is no stale data (c).
+  tags: [false-sharing, cache-coherence, performance]
+
+- id: conc-perf-002
+  topic: concurrency
+  subtopic: False sharing
+  difficulty: medium
+  type: single
+  prompt: |
+    You have per-thread counters `struct Stat { std::atomic<long> n; }; Stat stats[16];` and profiling
+    shows heavy false sharing. Which change fixes it most directly in portable C++17?
+  choices:
+    - { id: a, text: "Change memory_order to relaxed on every increment" }
+    - { id: b, text: "Declare struct alignas(std::hardware_destructive_interference_size) Stat { ... }; so each element starts on its own cache line" }
+    - { id: c, text: "Make n volatile" }
+    - { id: d, text: "Use int instead of long so more counters fit in a cache line" }
+  answer: b
+  explanation: |
+    Aligning (and thereby padding) each element to the destructive-interference size, from `<new>`,
+    places each counter on its own line. On x86-64 with GCC and Clang/libstdc++ it is 64. GCC warns
+    with `-Winterference-size` when it is used in a header, because its value can vary with `-mtune` and
+    so is a potential ABI hazard; some code hard-codes 64 or 128 instead. (Intel's adjacent-line
+    prefetcher and Apple M-series' 128-byte lines are reasons people choose 128.)
+
+    Relaxed ordering (a) reduces fences but each increment is still an RMW needing the line exclusively.
+    `volatile` (c) does nothing for this. Packing more counters per line (d) makes it worse. Even better:
+    accumulate in a thread-local variable and publish occasionally.
+  tags: [false-sharing, alignas, hardware-destructive-interference-size]
+  source: { name: "cppreference — std::hardware_destructive_interference_size", url: "https://en.cppreference.com/w/cpp/thread/hardware_destructive_interference_size" }
+
+- id: conc-perf-003
+  topic: concurrency
+  subtopic: Contention
+  difficulty: hard
+  type: short
+  prompt: |
+    A global `std::atomic<uint64_t> requests` is incremented by every request on a 64-core server and
+    shows up as a hotspot. How would you reduce its cost while still being able to report a total?
+  reference: |
+    The cost is contention: every `fetch_add` needs exclusive ownership of the same cache line, so cores
+    serialise on it and the line bounces across cores and sockets (hundreds of cycles per op under
+    load), regardless of memory order.
+
+    Options:
+    1. **Sharded counters**: an array of per-thread or per-core counters, each padded to its own cache
+       line; increments are uncontended (could even be relaxed atomics or plain thread-local values).
+       The reader sums all shards (relaxed loads), accepting a slightly stale total.
+    2. **Batching**: count locally in a thread-local variable and flush to the global counter every N
+       requests or every X ms.
+    3. **Per-CPU counters with restartable sequences** (Linux rseq) or kernel-style per-CPU data for
+       the most extreme cases.
+    4. Library support: Java's `LongAdder` does exactly the sharding trick.
+
+    Trade-off: reads become O(shards) and are not an instantaneous snapshot, which is fine for metrics.
+  keyPoints:
+    - "Cost comes from cache-line contention on a single location, not from the memory order"
+    - "Shard the counter per thread/core, each shard on its own cache line"
+    - "Readers sum the shards; the total is approximate/non-instantaneous"
+    - "Or batch increments in thread-local storage and flush periodically"
+    - "Mentions an existing implementation such as Java LongAdder or per-CPU counters"
+  explanation: |
+    The insight is that the atomic is not slow because it is atomic but because it is shared. Making
+    it relaxed helps only marginally. The scalable fix removes sharing on the write path and pushes the
+    cost to the (rare) read path.
+  tags: [contention, sharded-counter, cache-coherence]
+
+- id: conc-perf-004
+  topic: concurrency
+  subtopic: Cache coherence
+  difficulty: hard
+  type: single
+  prompt: |
+    Under a MESI-style protocol, core A holds a cache line in **Modified** state. Core B executes a
+    store to a different byte in the same line. What happens?
+  choices:
+    - { id: a, text: "B writes its byte directly to memory; A's copy is unaffected" }
+    - { id: b, text: "B issues a read-for-ownership; A's dirty line is supplied to B (and/or written back) and A's copy is invalidated; B's copy becomes Modified" }
+    - { id: c, text: "Both cores keep Modified copies and merge them at eviction" }
+    - { id: d, text: "B's store stalls until A evicts the line naturally" }
+  answer: b
+  explanation: |
+    MESI permits only one core to hold a line in Modified (or Exclusive) state. To write, B needs
+    ownership: it sends a read-for-ownership (RFO) request. A, holding the only up-to-date copy,
+    forwards the data (directly cache-to-cache or via a write-back, depending on the protocol variant,
+    e.g. MESIF/MOESI) and invalidates its own copy. B then has the line in Modified. If A writes again
+    the reverse happens: this ping-pong is the mechanism behind both true and false sharing costs.
+    Coherence works at line granularity, so writing a different byte (a, c) does not avoid it.
+  tags: [mesi, cache-coherence, false-sharing]
+
+- id: conc-perf-005
+  topic: concurrency
+  subtopic: False sharing
+  difficulty: medium
+  type: short
+  prompt: |
+    How would you detect false sharing in a running C++ program on Linux, and what code patterns
+    commonly cause it?
+  reference: |
+    Detection:
+    - `perf c2c record` / `perf c2c report` (cache-to-cache) on Linux identifies cache lines with heavy
+      HITM (hit-modified) traffic and the offsets and code locations of loads and stores to them,
+      directly pointing at falsely shared lines.
+    - Symptoms: performance that drops as threads are added, high cache-miss rates on stores to
+      "thread-private" data. Confirm by padding the suspected fields to 64/128 bytes and re-measuring.
+    - Intel VTune's memory access analysis shows similar data.
+
+    Common causes:
+    - Arrays of per-thread counters/structs (`stats[thread_id]`).
+    - Adjacent fields written by different threads in the same struct, e.g. a queue's `head` and `tail`
+      indices, or a lock next to the data it protects being read by others.
+    - Heap allocations from different threads placed adjacently by the allocator.
+    - `std::vector<std::atomic<bool>>`-like flags arrays.
+
+    Fixes: `alignas(64)` / `hardware_destructive_interference_size`, padding, grouping fields by which
+    thread writes them, thread-local accumulation.
+  keyPoints:
+    - "Use perf c2c (HITM analysis) or VTune to find contended cache lines"
+    - "Confirm by padding/aligning suspect data and re-measuring"
+    - "Common culprits: per-thread arrays, adjacent head/tail indices, fields written by different threads in one struct"
+    - "Fix with alignment/padding, grouping fields by writer, or thread-local accumulation"
+  explanation: |
+    `perf c2c` is the specific tool most interviewers hope to hear for Linux. The rest of the answer
+    should connect the symptoms (bad scaling on independent data) to the remedy.
+  tags: [false-sharing, perf, profiling]
+
+- id: conc-perf-006
+  topic: concurrency
+  subtopic: Contention
+  difficulty: medium
+  type: multiple
+  prompt: |
+    A multithreaded C++ service scales poorly beyond 8 cores. Which of the following are plausible
+    causes? (Select all that apply.)
+  choices:
+    - { id: a, text: "A global mutex taken on every request" }
+    - { id: b, text: "A shared std::shared_ptr copied on every request (atomic refcount increments on one control block)" }
+    - { id: c, text: "Using memory_order_seq_cst on uncontended thread-local data" }
+    - { id: d, text: "The memory allocator's internal locks under heavy concurrent allocation" }
+    - { id: e, text: "Per-request logging through a mutex-protected stream" }
+  answer: [a, b, d, e]
+  explanation: |
+    (a), (b), (d) and (e) are all *shared* hotspots: each serialises threads or bounces one cache line.
+    Copying a `shared_ptr` is a hidden atomic RMW on the shared control block; pass by reference or
+    move instead. Allocator contention is mitigated by thread-caching allocators (tcmalloc, jemalloc,
+    and glibc's per-thread arenas and tcache). Synchronous logging under a lock is a classic serial
+    bottleneck.
+
+    (c) is not a scaling problem: thread-local data is not shared (and atomics on it are pointless but
+    cost the same at 1 or 64 cores). seq_cst costs per-operation latency, not contention.
+  tags: [scalability, contention, shared-ptr, allocator]
+
+- id: conc-perf-007
+  topic: concurrency
+  subtopic: Contention
+  difficulty: easy
+  type: single
+  prompt: |
+    Roughly how does the cost of an *uncontended* `std::mutex` lock/unlock pair compare with a
+    *contended* one where the thread must sleep and be woken, on a modern Linux x86 machine?
+  choices:
+    - { id: a, text: "They are about the same, around 1 microsecond each" }
+    - { id: b, text: "Uncontended is on the order of tens of nanoseconds (atomic ops in user space); contended involves futex syscalls and context switches costing microseconds or more" }
+    - { id: c, text: "Uncontended is about 1 millisecond; contended about 1 second" }
+    - { id: d, text: "Contended is cheaper because the kernel hands the lock over directly" }
+  answer: b
+  explanation: |
+    An uncontended futex-based mutex is one atomic RMW to lock and one to unlock, staying in user space:
+    typically ~10 to 50 ns depending on cache state. Once a thread has to sleep, you pay a
+    `futex(FUTEX_WAIT)` syscall, a context switch, a `FUTEX_WAKE` from the releaser, and a wake-up
+    latency that is usually microseconds and can be far longer under load. That is why "locks are slow"
+    really means "contention is slow". Exact numbers vary by CPU and kernel; the orders of magnitude are
+    what matters.
+  tags: [mutex, futex, latency, contention]

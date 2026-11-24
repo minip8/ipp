@@ -1,0 +1,610 @@
+# Object lifetime, construction/destruction order, temporaries, RAII, special member functions.
+- id: cpp-lifetime-001
+  topic: cpp
+  subtopic: Object lifetime and special member functions
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [construction-order, destruction-order, member-initialization]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    struct N {
+        char c;
+        explicit N(char c) : c(c) { std::cout << c; }
+        ~N() { std::cout << char(c - 'a' + 'A'); }
+    };
+
+    struct Base { N b{'b'}; };
+
+    struct Derived : Base {
+        N y;
+        N x;
+        Derived() : x('x'), y('y') {}
+    };
+
+    int main() {
+        Derived d;
+        std::cout << '|';
+    }
+  answer: { kind: output, output: "byx|XYB" }
+  explanation: |
+    Construction order is fixed by the class definition, not by the order of the mem-initializer list
+    ([class.base.init]): first base classes (in declaration order), then non-static data members in
+    *declaration* order, then the constructor body. So: `b`, then `y`, then `x`, even though the
+    initializer list names `x` first (GCC and Clang warn with `-Wreorder`).
+
+    Destruction runs in exactly the reverse order: `X`, `Y`, then the base's `B`.
+
+- id: cpp-lifetime-002
+  topic: cpp
+  subtopic: Object lifetime and special member functions
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [temporaries, lifetime-extension, references]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    struct N {
+        char c;
+        explicit N(char c) : c(c) { std::cout << c; }
+        ~N() { std::cout << char(c - 'a' + 'A'); }
+    };
+
+    const N& id(const N& n) { return n; }
+
+    int main() {
+        const N& a = N('a');
+        const N& b = id(N('b'));
+        (void)b;
+        std::cout << '|';
+    }
+  answer: { kind: output, output: "abB|A" }
+  explanation: |
+    Binding a temporary *directly* to a `const T&` (or `T&&`) local extends the temporary's lifetime to
+    that of the reference ([class.temporary]), so `N('a')` lives until the end of `main`.
+
+    `id(N('b'))` binds the temporary to the *parameter* `n`; a temporary bound to a reference parameter
+    lives only until the end of the full-expression. Returning that reference does not extend anything,
+    so `B` is printed before `|` and `b` is left dangling. The program is fine only because it never
+    reads `b`; any use of `b` would be undefined behaviour. This is the same trap as
+    `const auto& m = std::max(x, 1);`.
+
+- id: cpp-lifetime-003
+  topic: cpp
+  subtopic: Object lifetime and special member functions
+  difficulty: hard
+  type: output
+  language: cpp
+  standard: C++20
+  tags: [range-for, temporaries, dangling, cpp23]
+  prompt: What does this program do? (Note the standard.)
+  code: |
+    #include <iostream>
+    #include <vector>
+
+    struct Holder {
+        std::vector<int> v{1, 2, 3};
+        const std::vector<int>& get() const { return v; }
+    };
+
+    Holder make() { return {}; }
+
+    int main() {
+        for (int x : make().get())
+            std::cout << x;
+        std::cout << '\n';
+    }
+  answer: { kind: undefined }
+  explanation: |
+    A range-based for loop is specified as `auto&& __range = make().get();` followed by the loop.
+    Lifetime extension applies only to the object the reference binds to *directly*; here it binds to
+    the result of `get()`, a reference into the temporary `Holder`. The `Holder` temporary is destroyed
+    at the end of that initialization statement, so the loop iterates a destroyed vector: undefined
+    behaviour in C++20 and earlier (AddressSanitizer reports a stack-use-after-scope on the dead `Holder`).
+
+    C++23 (P2718R0) changed the rule: temporaries in the range-initializer of a range-for now live until
+    the end of the loop, so the same code is well-defined in C++23 and prints `123`.
+    A safe C++20 pattern is to keep the owner alive first: `auto h = make(); for (int x : h.get())`.
+  source: { name: "P2718R0 Wording for P2644R1 Fix for Range-based for Loop", url: "https://wg21.link/P2718R0" }
+
+- id: cpp-lifetime-004
+  topic: cpp
+  subtopic: Object lifetime and special member functions
+  difficulty: easy
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [copy-constructor, copy-assignment]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    struct S {
+        S() {}
+        S(const S&) { std::cout << 'C'; }
+        S& operator=(const S&) { std::cout << 'A'; return *this; }
+    };
+
+    int main() {
+        S a;
+        S b = a;
+        S c(a);
+        S d;
+        d = a;
+        S e{a};
+        std::cout << '\n';
+    }
+  answer: { kind: output, output: "CCAC" }
+  explanation: |
+    `S b = a;` looks like assignment but is a *declaration with copy-initialization*, so it calls the copy
+    constructor. `S c(a);` and `S e{a};` are direct-initialization, again the copy constructor. Only
+    `d = a;`, where `d` already exists, calls the copy assignment operator.
+    Rule of thumb: if the statement creates the object, it's a constructor.
+
+- id: cpp-lifetime-005
+  topic: cpp
+  subtopic: Object lifetime and special member functions
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [special-member-functions, move-constructor, deleted-functions]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    struct S {
+        S() = default;
+        S(S&&) = default;
+    };
+
+    int main() {
+        S a;
+        S b = a;
+        (void)b;
+        std::cout << "ok\n";
+    }
+  answer: { kind: compile_error }
+  explanation: |
+    If a class declares a move constructor or move assignment operator, the implicitly declared copy
+    constructor is defined as **deleted** ([class.copy.ctor]). `S b = a;` copies an lvalue, so it needs
+    the copy constructor → ill-formed. This is how move-only types like `std::unique_ptr` come about.
+    Add `S(const S&) = default;` if copying is intended.
+
+- id: cpp-lifetime-006
+  topic: cpp
+  subtopic: Object lifetime and special member functions
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [exceptions, constructors, destruction-order]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    struct N {
+        char c;
+        explicit N(char c) : c(c) { std::cout << c; }
+        ~N() { std::cout << char(c - 'a' + 'A'); }
+    };
+
+    struct W {
+        N a{'a'};
+        N b{'b'};
+        W() { throw 42; }
+        ~W() { std::cout << "~W"; }
+    };
+
+    int main() {
+        try {
+            W w;
+        } catch (int) {
+            std::cout << "|caught\n";
+        }
+    }
+  answer: { kind: output, output: "abBA|caught" }
+  explanation: |
+    An object's lifetime begins only when its constructor *completes*. Since `W()` throws, `w` never
+    became a `W`, so `~W` is not run. However, every fully constructed subobject is destroyed during
+    unwinding, in reverse order ([except.ctor]): `b` then `a`.
+
+    This is why RAII members are the right way to hold resources: if the constructor acquires two raw
+    resources and the second acquisition throws, nothing releases the first, because the destructor never runs.
+    Wrapping each one in its own RAII member makes the cleanup automatic.
+
+- id: cpp-lifetime-007
+  topic: cpp
+  subtopic: Object lifetime and special member functions
+  difficulty: easy
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [temporaries, destruction-order]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    struct N {
+        char c;
+        explicit N(char c) : c(c) { std::cout << c; }
+        ~N() { std::cout << char(c - 'a' + 'A'); }
+    };
+
+    N make(char c) { return N(c); }
+
+    int main() {
+        N a('a');
+        make('t');
+        std::cout << '|';
+    }
+  answer: { kind: output, output: "atT|A" }
+  explanation: |
+    `make('t')` returns a prvalue whose result is discarded. A temporary is materialized and then destroyed
+    at the end of the full-expression, i.e. at the `;` ([class.temporary]), so `T` is printed before `|`.
+    Guaranteed copy elision means `N(c)` inside `make` is that very temporary, so there's no extra
+    copy. `a` is a local and is destroyed at the end of `main`, after `|`.
+
+- id: cpp-lifetime-008
+  topic: cpp
+  subtopic: Object lifetime and special member functions
+  difficulty: easy
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [static-local, storage-duration]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    struct N {
+        char c;
+        explicit N(char c) : c(c) { std::cout << c; }
+        ~N() { std::cout << char(c - 'a' + 'A'); }
+    };
+
+    N& get() {
+        static N n('s');
+        return n;
+    }
+
+    int main() {
+        std::cout << '1';
+        get();
+        get();
+        std::cout << '2';
+    }
+  answer: { kind: output, output: "1s2S" }
+  explanation: |
+    A block-scope `static` is initialized the first time control passes through its declaration
+    ([stmt.dcl]), not at program start, so `s` appears after `1`, and only once. Since C++11 this
+    initialization is also thread-safe. Objects with static storage duration are destroyed after `main`
+    returns, in reverse order of construction completion ([basic.start.term]), so `S` comes after `2`.
+
+- id: cpp-lifetime-009
+  topic: cpp
+  subtopic: Object lifetime and special member functions
+  difficulty: easy
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [default-constructor, special-member-functions]
+  prompt: What does this program print?
+  code: |
+    #include <iostream>
+
+    struct Point {
+        int x, y;
+        Point(int x, int y) : x(x), y(y) {}
+    };
+
+    int main() {
+        Point p;
+        std::cout << p.x << '\n';
+    }
+  answer: { kind: compile_error }
+  explanation: |
+    A default constructor is implicitly declared only if the class declares *no* constructors at all
+    ([class.default.ctor]). `Point` declares `Point(int, int)`, so `Point p;` has nothing to call.
+    Fix it with `Point() = default;` (plus default member initializers, e.g. `int x = 0, y = 0;`, so the
+    members are not left indeterminate).
+
+- id: cpp-lifetime-010
+  topic: cpp
+  subtopic: Object lifetime and special member functions
+  difficulty: hard
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [copy-and-swap, self-assignment]
+  prompt: What does this program print?
+  code: |
+    #include <cstring>
+    #include <iostream>
+
+    class Buf {
+        char* p_;
+    public:
+        explicit Buf(const char* s) : p_(new char[std::strlen(s) + 1]) { std::strcpy(p_, s); }
+        Buf(const Buf& o) : Buf(o.p_) {}
+        ~Buf() { delete[] p_; }
+        Buf& operator=(const Buf& o) {
+            delete[] p_;
+            p_ = new char[std::strlen(o.p_) + 1];
+            std::strcpy(p_, o.p_);
+            return *this;
+        }
+        const char* get() const { return p_; }
+    };
+
+    int main() {
+        Buf b("hello");
+        Buf& alias = b;
+        b = alias;
+        std::cout << b.get() << '\n';
+    }
+  answer: { kind: undefined }
+  explanation: |
+    Self-assignment: `this == &o`, so `delete[] p_` frees the buffer that `o.p_` also points to, and then
+    `std::strlen(o.p_)` reads freed memory: heap-use-after-free, which is undefined behaviour.
+
+    A naive assignment operator has two classic bugs: it breaks on self-assignment, and it is not
+    exception safe (if `new` throws, `p_` is left dangling). The robust fixes are allocate-then-swap
+    (copy the source into a new buffer first, then release the old one) or the copy-and-swap idiom:
+    `Buf& operator=(Buf o) noexcept { std::swap(p_, o.p_); return *this; }`. Better still, hold the
+    buffer in a `std::string`/`std::vector` and follow the rule of zero.
+
+- id: cpp-lifetime-011
+  topic: cpp
+  subtopic: Object lifetime and special member functions
+  difficulty: medium
+  type: output
+  language: cpp
+  standard: C++17
+  tags: [shallow-copy, rule-of-three, double-free]
+  prompt: What does this program do?
+  code: |
+    #include <iostream>
+
+    struct Handle {
+        int* p = new int(7);
+        ~Handle() { delete p; }
+    };
+
+    int main() {
+        Handle a;
+        {
+            Handle b = a;
+            std::cout << *b.p << '\n';
+        }
+        std::cout << *a.p << '\n';
+    }
+  answer: { kind: undefined }
+  explanation: |
+    `Handle` violates the rule of three: it manages a resource in its destructor but uses the implicit
+    copy constructor, which copies the *pointer* (shallow copy). When `b` dies it deletes the shared `int`;
+    then `*a.p` reads freed memory, and `a`'s destructor deletes it a second time. Both are undefined
+    behaviour (AddressSanitizer: heap-use-after-free / double-free).
+
+    Fixes: delete copying (`Handle(const Handle&) = delete;`), implement a deep copy, or, best, use
+    `std::unique_ptr<int>` (copy becomes a compile error) and let the rule of zero apply.
+
+- id: cpp-lifetime-012
+  topic: cpp
+  subtopic: Object lifetime and special member functions
+  difficulty: medium
+  type: single
+  tags: [special-member-functions, rule-of-five]
+  prompt: |
+    A class declares only a user-provided copy constructor (no other constructors, no destructor,
+    no assignment operators). Which statement is true?
+  choices:
+    - { id: a, text: "There is no implicit default constructor, and `T b = std::move(a);` calls the copy constructor." }
+    - { id: b, text: "The move constructor is implicitly defaulted, so `std::move` still moves the members." }
+    - { id: c, text: "The copy assignment operator is implicitly deleted." }
+    - { id: d, text: "A default constructor is still implicitly declared, because a copy constructor is not a default constructor." }
+  answer: a
+  explanation: |
+    - Declaring *any* constructor (the copy constructor included) suppresses the implicit default
+      constructor ([class.default.ctor]).
+    - A user-declared copy constructor suppresses the implicit move constructor and move assignment
+      ([class.copy.ctor]). They are *not declared*, rather than deleted, so rvalues fall back to the
+      copy constructor.
+    - The copy assignment operator is still implicitly declared and defaulted (that generation is
+      deprecated, which is why the rule of three/five says to declare it explicitly). It is deleted
+      only when a *move* operation is user-declared.
+
+- id: cpp-lifetime-013
+  topic: cpp
+  subtopic: Object lifetime and special member functions
+  difficulty: hard
+  type: multiple
+  tags: [special-member-functions, move-constructor, rule-of-five]
+  prompt: |
+    Which user declarations prevent the compiler from implicitly declaring a **move constructor**?
+    Select all that apply.
+  choices:
+    - { id: a, text: "A user-declared copy constructor" }
+    - { id: b, text: "A user-declared copy assignment operator" }
+    - { id: c, text: "A user-declared move assignment operator" }
+    - { id: d, text: "A user-declared destructor (even `~T() = default;`)" }
+    - { id: e, text: "A user-declared default constructor" }
+    - { id: f, text: "A non-static data member with a default member initializer" }
+  answer: [a, b, c, d]
+  explanation: |
+    [class.copy.ctor]: the move constructor is implicitly declared as defaulted only if there is no
+    user-declared copy constructor, copy assignment operator, move assignment operator, or destructor.
+    "User-declared" includes `= default` and `= delete`, so even `~T() = default;` suppresses the
+    implicit moves (the class silently copies instead).
+
+    Default constructors and default member initializers have nothing to do with it.
+
+- id: cpp-lifetime-014
+  topic: cpp
+  subtopic: Object lifetime and special member functions
+  difficulty: medium
+  type: single
+  tags: [temporaries, lifetime-extension]
+  prompt: |
+    In which situation is the lifetime of a temporary extended beyond the end of the full-expression?
+  choices:
+    - { id: a, text: "`const std::string& s = std::string(\"x\");` at block scope" }
+    - { id: b, text: "`const std::string& s = pick(std::string(\"x\"));` where `pick` takes and returns `const std::string&`" }
+    - { id: c, text: "A temporary passed to a function parameter of type `const std::string&`, which stores the reference in a global" }
+    - { id: d, text: "`std::string_view sv = std::string(\"x\");`" }
+  answer: a
+  explanation: |
+    Lifetime extension happens only when a reference is bound *directly* to the temporary (or a subobject
+    of it) in its declaration ([class.temporary]).
+
+    - (b) the temporary binds to `pick`'s parameter; the returned reference is a different binding, so
+      the temporary dies at the `;` and `s` dangles.
+    - (c) a temporary bound to a reference parameter lives until the end of the full-expression
+      containing the call.
+    - (d) `string_view` is not a reference, but a class that copies a pointer. The temporary string dies
+      immediately and `sv` dangles.
+
+- id: cpp-lifetime-015
+  topic: cpp
+  subtopic: Object lifetime and special member functions
+  difficulty: easy
+  type: single
+  tags: [raii]
+  prompt: Why does RAII make resource management exception-safe?
+  choices:
+    - { id: a, text: "Because destructors of fully constructed automatic objects run during stack unwinding, so cleanup happens on every exit path, including exceptions." }
+    - { id: b, text: "Because RAII objects catch exceptions in their destructors and swallow them." }
+    - { id: c, text: "Because the compiler inserts `try`/`finally` blocks around heap allocations." }
+    - { id: d, text: "Because RAII forbids exceptions from being thrown while a resource is held." }
+  answer: a
+  explanation: |
+    RAII ties a resource to an object's lifetime: acquire it in the constructor, release it in the
+    destructor. C++ guarantees destructors of fully constructed automatic objects run when scope is
+    left, whether by `return`, `break`, or an exception unwinding the stack ([except.ctor]). So no
+    explicit cleanup code is needed on any path. C++ has no `finally`; RAII replaces it. Destructors
+    should *not* throw (they're implicitly `noexcept`), which is the opposite of (b).
+
+- id: cpp-lifetime-016
+  topic: cpp
+  subtopic: Object lifetime and special member functions
+  difficulty: medium
+  type: short
+  tags: [rule-of-zero, rule-of-five, special-member-functions]
+  prompt: |
+    Explain the rule of zero, the rule of three and the rule of five. Which would you recommend for a
+    typical class, and why?
+  reference: |
+    Rule of three (C++98): if a class needs a user-defined destructor, copy constructor or copy
+    assignment operator, it almost certainly needs all three, because it manages a resource and the
+    implicit versions would shallow-copy it. Rule of five (C++11): the same set plus the move constructor
+    and move assignment; declaring any of the copy operations or the destructor suppresses the implicit
+    moves, so a resource-owning class should declare (or `= default`/`= delete`) all five. Rule of zero:
+    ordinary classes should declare none of them, and hold resources through members that already manage
+    themselves (`std::string`, `std::vector`, `std::unique_ptr`, a custom RAII wrapper). The compiler
+    then generates correct, efficient copy/move/destroy operations. Recommend the rule of zero for almost
+    everything; confine the rule of five to small dedicated resource-owning wrapper classes.
+  explanation: |
+    A strong answer mentions the interaction rules (a user-declared destructor or copy operation
+    suppresses implicit moves, so types silently copy), and that `= default` still counts as
+    user-declared. See Core Guidelines C.20 ("If you can avoid defining default operations, do") and
+    C.21 ("If you define or =delete any copy, move, or destructor function, define or =delete them all").
+  keyPoints:
+    - "Rule of three: destructor, copy ctor, copy assignment go together because the class owns a resource"
+    - "Rule of five adds move ctor and move assignment; declaring copy ops or the destructor suppresses implicit moves"
+    - "Rule of zero: let members (string, vector, unique_ptr) manage resources and declare no special members"
+    - Prefer the rule of zero; isolate ownership in small RAII wrappers that follow the rule of five
+    - "= default / = delete count as user-declared"
+
+- id: cpp-lifetime-017
+  topic: cpp
+  subtopic: Object lifetime and special member functions
+  difficulty: hard
+  type: short
+  tags: [copy-and-swap, exception-safety]
+  prompt: |
+    Describe the copy-and-swap idiom for implementing assignment. What guarantees does it provide, and
+    what are its costs compared with a hand-written assignment operator?
+  reference: |
+    Write `T& operator=(T other) noexcept { swap(*this, other); return *this; }` together with a
+    non-throwing member/friend `swap`. Taking the parameter by value makes the copy (or a move, if the
+    argument is an rvalue) happen *before* the object is modified; if copying throws, `*this` is untouched.
+    The swap cannot throw, and the old state is released when `other` is destroyed. Benefits: the strong
+    exception guarantee, correct self-assignment without a special check, and one function serving as both
+    copy and move assignment. Costs: it always allocates a fresh copy even when the existing buffer could
+    have been reused (e.g. assigning a vector into one with enough capacity), and move assignment pays for
+    an extra move plus a swap. For performance-sensitive containers a hand-written assignment that reuses
+    storage, offering only the basic guarantee, can be faster, which is why `std::vector` does not
+    use copy-and-swap.
+  explanation: |
+    Look for: the by-value parameter performing the copy up front, a `noexcept` swap, strong guarantee,
+    self-assignment safety, and the cost (no reuse of existing capacity). See the isocpp FAQ and Herb
+    Sutter's *Exceptional C++*, Items 9–13 / GotW #59.
+  keyPoints:
+    - Parameter taken by value, so the copy (or move) happens before *this is modified
+    - "Swap with a noexcept swap; the old contents are destroyed with the parameter"
+    - Provides the strong exception guarantee and handles self-assignment automatically
+    - "Cost: cannot reuse existing storage/capacity, so it always allocates on copy"
+    - One operator can serve as both copy and move assignment
+
+- id: cpp-lifetime-018
+  topic: cpp
+  subtopic: Object lifetime and special member functions
+  difficulty: easy
+  type: short
+  tags: [raii, rule-of-three, shallow-copy]
+  prompt: |
+    A class holds a raw owning pointer `T* data_` and frees it in its destructor, but declares no copy
+    constructor. What goes wrong when an object is copied, and how would you fix it?
+  reference: |
+    The implicitly generated copy constructor copies members bitwise/memberwise, so both objects end up
+    holding the same pointer. When the first one is destroyed it frees the memory; the second then has a
+    dangling pointer (use-after-free) and frees it again in its destructor (double free). Both are
+    undefined behaviour. The same happens with the implicit copy assignment, which also leaks the target's
+    old buffer. Fixes: replace the raw pointer with `std::unique_ptr<T>` (copying then fails to compile,
+    making the class move-only) or a value type like `std::vector`; or implement a deep-copying copy
+    constructor/assignment (rule of three/five); or explicitly `= delete` copying.
+  explanation: |
+    This is the canonical motivation for the rule of three. Mention both the double free and the
+    use-after-free, and prefer the smart-pointer fix (rule of zero) over hand-written deep copies.
+  keyPoints:
+    - The implicit copy is shallow, so two objects own the same pointer
+    - Destroying both causes a double free; using the survivor is use-after-free (UB)
+    - Implicit copy assignment additionally leaks the old buffer
+    - Fix with unique_ptr / value members (rule of zero) or implement or delete the copy operations
+
+- id: cpp-lifetime-019
+  topic: cpp
+  subtopic: Object lifetime and special member functions
+  difficulty: easy
+  type: short
+  tags: [dangling-references, lifetime]
+  prompt: |
+    What is a dangling reference or pointer? Give three different ways to create one in modern C++ code
+    that compiles without errors.
+  reference: |
+    A dangling reference (or pointer, iterator, or view) refers to an object whose lifetime has ended;
+    using it is undefined behaviour. Common ways: (1) returning a reference or pointer to a local variable
+    or parameter from a function (`const std::string& name() { std::string s = ...; return s; }`); (2)
+    binding a reference or view to a temporary that dies at the end of the full-expression, such as
+    `std::string_view sv = get_string();`, `const auto& x = std::max(a, 1);`, or
+    `for (auto x : make().items())` before C++23; (3) keeping iterators, pointers or references into a
+    container across operations that reallocate or erase (`push_back` on a vector); (4) a lambda capturing
+    locals by reference (or `this`) that runs after the scope or object is gone, e.g. in an async callback;
+    (5) holding a raw pointer obtained from a `unique_ptr` (`.get()`) after the owner is reset or moved;
+    (6) storing `string_view`/`span` members that outlive their source. Mitigations: return by value, don't
+    store views, prefer owning types at boundaries, use compiler warnings (`-Wdangling-reference`,
+    `-Wreturn-local-addr`, `-Wdangling-gsl`), and run sanitizers.
+  explanation: |
+    Any three distinct, correct mechanisms earn full credit; bonus for mitigations.
+  keyPoints:
+    - A reference/pointer/view to an object whose lifetime ended; using it is UB
+    - Returning references to locals; binding views/references to temporaries
+    - Iterator/pointer invalidation after container modification
+    - Lambdas capturing by reference or this executed later
+    - Mitigate with owning types at boundaries, warnings, and sanitizers
