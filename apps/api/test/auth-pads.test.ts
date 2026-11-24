@@ -283,6 +283,21 @@ describe('pads', () => {
     void otherUser;
   });
 
+  it('the duration defaults to 45 minutes and may be none at all', async () => {
+    const owner = new Client(h.base);
+    await owner.signUp('Timeless');
+    const base = { problemSlug: 'two-sum', language: 'python' };
+    expect((await owner.post('/api/pads', base)).json.durationMin).toBe(45);
+    // null: no time limit, for practice pads and rooms alike.
+    const open = await owner.post('/api/pads', { ...base, durationMin: null });
+    expect(open.json.durationMin).toBeNull();
+    expect((await owner.get(`/api/pads/${open.json.id}`)).json.pad.durationMin).toBeNull();
+    const room = await owner.post('/api/pads', { ...base, kind: 'room', durationMin: null });
+    expect(room.json).toMatchObject({ kind: 'room', durationMin: null });
+    for (const durationMin of [0, 4, 181])
+      expect((await owner.post('/api/pads', { ...base, durationMin })).status).toBe(400);
+  });
+
   it('report without an interviewer has a null assessment', async () => {
     const owner = new Client(h.base, '198.51.100.3');
     await owner.signUp('NoAi');

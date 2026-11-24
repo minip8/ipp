@@ -177,7 +177,8 @@ export const pads = pgTable(
     problemSlug: text('problem_slug').references(() => problems.slug),
     language: text('language').$type<Language>().notNull(),
     status: text('status').$type<PadStatus>().notNull().default('active'),
-    durationMin: integer('duration_min').notNull(),
+    /** null: no time limit. */
+    durationMin: integer('duration_min'),
     interviewer: jsonb('interviewer').$type<InterviewerSettings>().notNull(),
     shareToken: text('share_token').notNull().unique(),
     /** Rooms: the host's private notes on the interview. Never sent to anyone else. */

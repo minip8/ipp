@@ -122,7 +122,8 @@ function defaultRespond(req: ModelRequest): Reply {
 
 export interface HarnessOptions {
   settings?: Partial<InterviewerSettings>;
-  durationMin?: number;
+  /** null: no time limit. */
+  durationMin?: number | null;
   model?: FakeModel;
   budget?: () => { ok: true } | { ok: false; reason: string };
   greeted?: boolean;
@@ -147,7 +148,7 @@ export function harness(opts: HarnessOptions = {}) {
     problemSlug: 'two-sum',
     language: 'python',
     status: 'active',
-    durationMin: opts.durationMin ?? 45,
+    durationMin: opts.durationMin === undefined ? 45 : opts.durationMin,
     interviewer: {
       enabled: true,
       style: 'neutral',

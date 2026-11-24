@@ -440,7 +440,8 @@ export function createInterviewer(
     const s = rt.policy;
     s.settings = { ...ctx.pad.interviewer };
     s.startedAt = Date.parse(ctx.pad.startedAt);
-    s.durationMs = ctx.pad.durationMin * 60_000;
+    // No time limit: the policy then raises no clock checkpoints and never calls time.
+    s.durationMs = ctx.pad.durationMin === null ? null : ctx.pad.durationMin * 60_000;
     if (ctx.pad.status !== 'active') s.ended = true;
   }
 

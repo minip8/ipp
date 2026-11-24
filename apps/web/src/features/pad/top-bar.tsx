@@ -8,12 +8,13 @@ import { Button } from '@/components/ui/button';
 import { Tooltip } from '@/components/ui/tooltip';
 import { Avatar } from '@/components/user-menu';
 import { hostOf } from '@/features/room/logic';
-import { formatClock, formatTimeOfDay } from '@/lib/format';
+import { formatTimeOfDay } from '@/lib/format';
 import { storage } from '@/lib/storage';
 import { cn } from '@/lib/utils';
 import { SharePopover } from './dialogs';
 import type { PresenceUser } from './editor/binding';
 import { usePad } from './session';
+import { timerView } from './timer';
 import { presenceUser } from './yjs-guards';
 
 export function useNow(intervalMs = 1000) {
@@ -31,12 +32,10 @@ function Timer() {
   const [hidden, setHidden] = useState(false);
   useEffect(() => setHidden(storage.get('ipp:timer-hidden', false)), []);
   const { pad } = state;
-  const end = Date.parse(pad.startedAt) + pad.durationMin * 60_000;
   const ended = pad.status === 'ended';
-  const left = Math.round((end - (ended && pad.endedAt ? Date.parse(pad.endedAt) : now)) / 1000);
-  const over = left < 0;
-  const warn = !over && left <= 5 * 60;
-  const label = ended ? 'Ended' : over ? `+${formatClock(-left)}` : formatClock(left);
+  const clock = timerView(pad, now);
+  const { over, warn } = clock;
+  const label = ended ? 'Ended' : clock.label;
   const toggle = () => {
     setHidden((h) => {
       storage.set('ipp:timer-hidden', !h);
@@ -45,13 +44,17 @@ function Timer() {
   };
   return (
     <Tooltip
-      label={`${pad.durationMin} min interview, started ${formatTimeOfDay(pad.startedAt)}. Click to ${hidden ? 'show' : 'hide'} the timer.`}
+      label={`${pad.durationMin === null ? 'No time limit' : `${pad.durationMin} min interview`}, started ${formatTimeOfDay(pad.startedAt)}. Click to ${hidden ? 'show' : 'hide'} the timer.`}
     >
       <button
         type="button"
         onClick={toggle}
         data-testid="timer"
-        aria-label={hidden ? 'Show timer' : `Time ${over ? 'over' : 'left'}: ${label}`}
+        aria-label={
+          hidden
+            ? 'Show timer'
+            : `Time ${clock.elapsed ? 'elapsed' : over ? 'over' : 'left'}: ${label}`
+        }
         className={cn(
           'inline-flex h-7 items-center gap-1.5 rounded-md px-2 font-mono text-sm tabular transition-colors hover:bg-surface-3',
           over

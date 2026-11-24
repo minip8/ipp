@@ -8,7 +8,8 @@ import { storage } from './storage';
  */
 export const StartPrefs = z.object({
   language: Language.catch('cpp'),
-  durationMin: z.int().min(5).max(180).catch(45),
+  /** null: no time limit. */
+  durationMin: z.int().min(5).max(180).nullable().catch(45),
   interviewer: InterviewerSettings.catch({
     enabled: true,
     style: 'neutral',

@@ -218,6 +218,21 @@ describe('proactive behaviour', () => {
     // a reply resets the cap
   });
 
+  it('with no time limit the clock never comes up, and the model is told there is none', async () => {
+    const model = new FakeModel((req) => (req.purpose === 'decision' ? silent() : 'Hello!'));
+    const h = harness({ model, durationMin: null });
+    await h.start();
+    // Keep the candidate talking so stalls do not interfere, for well over any normal session.
+    for (let i = 0; i < 20; i++) {
+      await h.say('Still working through the cases.');
+      await h.advance(10 * 60);
+    }
+    expect(model.decisionKinds().filter((k) => k.startsWith('time'))).toEqual([]);
+    const reply = model.byPurpose('reply').at(-1) as ModelRequest;
+    expect(lastSystem(reply)).toContain('This session has no time limit');
+    expect(lastSystem(reply)).not.toMatch(/elapsed of \d+ min/);
+  });
+
   it('proactivity levels change how often the interviewer considers speaking', async () => {
     const count = async (proactivity: 'low' | 'normal' | 'high') => {
       const h = harness({ settings: { proactivity }, durationMin: 60 });

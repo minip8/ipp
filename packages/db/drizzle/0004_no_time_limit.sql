@@ -1,0 +1,1 @@
+ALTER TABLE "pads" ALTER COLUMN "duration_min" DROP NOT NULL;

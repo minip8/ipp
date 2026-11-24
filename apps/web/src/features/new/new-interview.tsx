@@ -203,6 +203,7 @@ function randomHint(
 }
 
 const DURATIONS = [30, 45, 60, 90] as const;
+const NO_LIMIT = 'none';
 
 /**
  * Keeps a sticky side panel no taller than the room between its top edge and the bottom of the
@@ -696,10 +697,20 @@ export function NewInterview() {
               <Segmented
                 aria-label="Duration"
                 className="flex w-full"
-                value={String(prefs.durationMin)}
-                onValueChange={(v) => update({ durationMin: Number(v) })}
-                options={DURATIONS.map((d) => ({ value: String(d), label: `${d} min` }))}
+                value={prefs.durationMin === null ? NO_LIMIT : String(prefs.durationMin)}
+                onValueChange={(v) => update({ durationMin: v === NO_LIMIT ? null : Number(v) })}
+                options={[
+                  ...DURATIONS.map((d) => ({ value: String(d), label: `${d} min` })),
+                  { value: NO_LIMIT, label: 'No limit' },
+                ]}
               />
+              {prefs.durationMin === null && (
+                <p className="text-xs text-fg-muted" data-testid="duration-note">
+                  {host
+                    ? 'The clock shows the time elapsed and never counts down.'
+                    : 'The clock shows the time elapsed, and the interviewer never brings up the time.'}
+                </p>
+              )}
             </div>
 
             {host && (
