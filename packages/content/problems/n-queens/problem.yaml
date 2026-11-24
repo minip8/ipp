@@ -1,6 +1,7 @@
 slug: n-queens
 title: N-Queens
 difficulty: hard
+category: dsa
 tags: [backtracking]
 signature:
   className: Solution

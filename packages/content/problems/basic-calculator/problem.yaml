@@ -1,6 +1,7 @@
 slug: basic-calculator
 title: Basic Calculator
 difficulty: hard
+category: implementation
 tags: [string, stack, recursion, parsing, math]
 signature:
   className: Solution

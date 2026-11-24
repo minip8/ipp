@@ -1,6 +1,7 @@
 slug: shortest-path-binary-matrix
 title: Shortest Path in Binary Matrix
 difficulty: medium
+category: dsa
 tags: [graph, bfs, matrix]
 signature:
   className: Solution

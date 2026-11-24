@@ -1,6 +1,7 @@
 slug: multiply-strings
 title: Multiply Strings
 difficulty: medium
+category: implementation
 tags: [string, math, simulation]
 signature:
   className: Solution

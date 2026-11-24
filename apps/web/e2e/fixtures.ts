@@ -4,6 +4,8 @@
  */
 import {
   AiKeyStatus,
+  AiModelList,
+  type AiProvider,
   AnswerFeedback,
   generateScaffolds,
   type Language,
@@ -84,6 +86,7 @@ function toDetail(c: ProblemContent): ProblemDetail {
     slug: c.slug,
     title: c.title,
     difficulty: c.difficulty,
+    category: c.category,
     tags: c.tags,
     statement: c.statement,
     signature: c.signature,
@@ -98,61 +101,102 @@ export const TWO_SUM = toDetail(twoSumContent);
 export const LRU = toDetail(lruContent);
 
 export const PROBLEMS = ProblemSummary.array().parse([
-  { slug: 'two-sum', title: 'Two Sum', difficulty: 'easy', tags: ['array', 'hash-table'] },
+  {
+    slug: 'two-sum',
+    title: 'Two Sum',
+    difficulty: 'easy',
+    category: 'dsa',
+    tags: ['array', 'hash-table'],
+  },
   {
     slug: 'valid-parentheses',
     title: 'Valid Parentheses',
     difficulty: 'easy',
+    category: 'dsa',
     tags: ['stack', 'string'],
   },
-  { slug: 'min-stack', title: 'Min Stack', difficulty: 'easy', tags: ['design', 'stack'] },
+  {
+    slug: 'min-stack',
+    title: 'Min Stack',
+    difficulty: 'easy',
+    category: 'data-structure',
+    tags: ['design', 'stack'],
+  },
   {
     slug: 'lru-cache',
     title: 'LRU Cache',
     difficulty: 'medium',
+    category: 'data-structure',
     tags: ['design', 'hash-table', 'linked-list'],
   },
   {
     slug: 'merge-intervals',
     title: 'Merge Intervals',
     difficulty: 'medium',
-    tags: ['array', 'sorting'],
+    category: 'dsa',
+    tags: ['array', 'intervals', 'sorting'],
   },
   {
     slug: 'number-of-islands',
     title: 'Number of Islands',
     difficulty: 'medium',
-    tags: ['graph', 'bfs', 'dfs'],
+    category: 'dsa',
+    tags: ['graph', 'bfs', 'dfs', 'matrix'],
   },
   {
     slug: 'top-k-frequent-elements',
     title: 'Top K Frequent Elements',
     difficulty: 'medium',
+    category: 'dsa',
     tags: ['heap', 'hash-table'],
   },
   {
     slug: 'longest-substring-without-repeating',
     title: 'Longest Substring Without Repeating Characters',
     difficulty: 'medium',
+    category: 'dsa',
     tags: ['sliding-window', 'string'],
   },
   {
     slug: 'course-schedule',
     title: 'Course Schedule',
     difficulty: 'medium',
+    category: 'dsa',
     tags: ['graph', 'topological-sort'],
+  },
+  {
+    slug: 'kv-store-transactions',
+    title: 'Key-Value Store with Transactions',
+    difficulty: 'medium',
+    category: 'implementation',
+    tags: ['design', 'hash-table', 'stack'],
   },
   {
     slug: 'trapping-rain-water',
     title: 'Trapping Rain Water',
     difficulty: 'hard',
+    category: 'dsa',
     tags: ['array', 'two-pointers'],
   },
-  { slug: 'word-ladder', title: 'Word Ladder', difficulty: 'hard', tags: ['graph', 'bfs'] },
+  {
+    slug: 'word-ladder',
+    title: 'Word Ladder',
+    difficulty: 'hard',
+    category: 'dsa',
+    tags: ['graph', 'bfs'],
+  },
+  {
+    slug: 'text-justification',
+    title: 'Text Justification',
+    difficulty: 'hard',
+    category: 'implementation',
+    tags: ['array', 'string', 'simulation'],
+  },
   {
     slug: 'median-of-two-sorted-arrays',
     title: 'Median of Two Sorted Arrays',
     difficulty: 'hard',
+    category: 'dsa',
     tags: ['binary-search'],
   },
 ]);
@@ -166,6 +210,7 @@ export const PROBLEM_DETAILS: Record<string, ProblemDetail> = {
 
 export const ACTIVE_PAD_ID = uuid(1001);
 export const ENDED_PAD_ID = uuid(1002);
+export const COLLAB_PAD_ID = uuid(1005);
 
 export function makePad(over: Partial<Pad> = {}): Pad {
   return Pad.parse({
@@ -242,6 +287,15 @@ export function makePadDetail(
     runs: over.runs ?? [],
     interviewerAvailable: (over.interviewerKey ?? 'active') === 'active',
     interviewerKey: over.interviewerKey ?? 'active',
+    interviewerModel:
+      (over.interviewerKey ?? 'active') === 'active'
+        ? {
+            provider: 'anthropic',
+            id: 'claude-opus-5-5',
+            chosen: false,
+            defaultModel: 'claude-opus-5-5',
+          }
+        : null,
   });
 }
 
@@ -257,6 +311,7 @@ export const PAD_SUMMARIES = PadSummary.array().parse([
     problemTitle: 'Two Sum',
     difficulty: 'easy',
     accepted: false,
+    role: 'owner',
   },
   {
     id: ENDED_PAD_ID,
@@ -269,6 +324,7 @@ export const PAD_SUMMARIES = PadSummary.array().parse([
     problemTitle: 'LRU Cache',
     difficulty: 'medium',
     accepted: true,
+    role: 'owner',
   },
   {
     id: uuid(1003),
@@ -281,6 +337,7 @@ export const PAD_SUMMARIES = PadSummary.array().parse([
     problemTitle: 'Trapping Rain Water',
     difficulty: 'hard',
     accepted: false,
+    role: 'owner',
   },
   {
     id: uuid(1004),
@@ -293,6 +350,21 @@ export const PAD_SUMMARIES = PadSummary.array().parse([
     problemTitle: 'Merge Intervals',
     difficulty: 'medium',
     accepted: true,
+    role: 'owner',
+  },
+  {
+    // Joined through someone else's invite link: the user can only remove it from their history.
+    id: COLLAB_PAD_ID,
+    title: 'Number of Islands',
+    problemSlug: 'number-of-islands',
+    language: 'python',
+    status: 'ended',
+    startedAt: iso(-86400 * 12),
+    endedAt: iso(-86400 * 12 + 2400),
+    problemTitle: 'Number of Islands',
+    difficulty: 'medium',
+    accepted: false,
+    role: 'collaborator',
   },
 ]);
 
@@ -1032,14 +1104,51 @@ export const QUIZ_HISTORY = QuizAttemptSummary.array().parse([
 /** A saved key as the API reports it (only the last four characters). */
 export function aiKeyStatus(
   state: 'active' | 'missing' | 'rejected',
-  over: { last4?: string; problem?: 'invalid' | 'permission' | 'billing' | 'spend_limit' } = {},
+  over: {
+    last4?: string;
+    problem?: 'invalid' | 'permission' | 'billing' | 'spend_limit';
+    provider?: AiProvider;
+  } = {},
 ) {
+  const provider = state === 'missing' ? null : (over.provider ?? 'anthropic');
   return AiKeyStatus.parse({
     state,
+    provider,
     last4: state === 'missing' ? null : (over.last4 ?? 'Wx9Q'),
     expiresAt: state === 'active' ? new Date(Date.now() + 24 * 3600_000).toISOString() : null,
     problem: state === 'rejected' ? (over.problem ?? 'invalid') : null,
-    model: 'claude-opus-5-5',
+    model: DEFAULT_MODELS[provider ?? 'anthropic'],
     ttlHours: 24,
+  });
+}
+
+/** Provider defaults as the API reports them (fixtures only; the API owns the real values). */
+export const DEFAULT_MODELS: Record<AiProvider, string> = {
+  anthropic: 'claude-opus-5-5',
+  openai: 'gpt-6.2-astra',
+  gemini: 'gemini-4-hydrogen',
+  openrouter: 'openai/gpt-6.2-sol',
+};
+
+/** `GET /api/ai-key/models` for a key of `provider`. */
+export function aiModelList(provider: AiProvider = 'anthropic') {
+  const defaultModel = DEFAULT_MODELS[provider];
+  const models =
+    provider === 'anthropic'
+      ? [
+          { id: 'claude-fable-5-2', label: 'Claude Fable 5.2' },
+          { id: 'claude-opus-5-5', label: 'Claude Opus 5.5' },
+          { id: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5' },
+          { id: 'claude-haiku-5-5', label: 'Claude Haiku 5.5' },
+        ]
+      : [
+          { id: defaultModel, label: defaultModel },
+          { id: `${provider}-other-model`, label: `${provider}-other-model` },
+        ];
+  return AiModelList.parse({
+    provider,
+    defaultModel,
+    models: models.map((m) => ({ ...m, default: m.id === defaultModel })),
+    source: 'live',
   });
 }

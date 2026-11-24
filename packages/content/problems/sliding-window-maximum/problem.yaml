@@ -1,6 +1,7 @@
 slug: sliding-window-maximum
 title: Sliding Window Maximum
 difficulty: hard
+category: dsa
 tags: [array, sliding-window, monotonic-queue, deque]
 signature:
   className: Solution

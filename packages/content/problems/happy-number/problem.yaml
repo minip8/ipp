@@ -1,6 +1,7 @@
 slug: happy-number
 title: Happy Number
 difficulty: easy
+category: dsa
 tags: [math, hash-table, two-pointers]
 signature:
   className: Solution

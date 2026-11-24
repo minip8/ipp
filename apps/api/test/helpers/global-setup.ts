@@ -34,6 +34,7 @@ export default async function setup() {
         slug: p.slug,
         title: p.title,
         difficulty: p.difficulty,
+        category: p.category,
         tags: p.tags,
         statement: p.statement,
         signature: p.signature,

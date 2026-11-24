@@ -3,7 +3,8 @@
 A practice-interview site: CoderPad-style coding pads (C++, Python, Java) with an AI interviewer
 that watches and speaks up unprompted, plus knowledge quizzes. Strangers can sign up and run code,
 so untrusted-code execution is designed as a hostile-input problem. The operator pays for no model
-usage: the AI features run only on an Anthropic API key each user saves themselves (§7.1).
+usage: the AI features run only on an API key each user saves themselves, from Anthropic, OpenAI,
+Google Gemini or OpenRouter (§7.1).
 
 `packages/contracts` is the source of truth for every shape that crosses a process boundary.
 If this document and the contracts disagree, the contracts win; fix the document.
@@ -15,7 +16,7 @@ If this document and the contracts disagree, the contracts win; fix the document
     │                                                               ▼
     │  WS /ws/pads/:id  (events)        ┌──────────── apps/api (Node, Hono) ───────────┐
     └─ WS /collab (Yjs, Hocuspocus) ───▶│ REST · auth · WS gateway · Yjs server        │
-                                        │ interviewer orchestrator (packages/interviewer)│──▶ Claude API
+                                        │ interviewer orchestrator (packages/interviewer)│──▶ user's provider API
  apps/web (Next.js) ── SSR fetch ──────▶│ queue producer / result consumer             │
                                         └───────┬───────────────────────┬──────────────┘
                                                 │ Postgres (Drizzle)    │ Redis
@@ -34,7 +35,7 @@ If this document and the contracts disagree, the contracts win; fix the document
 | `apps/judge` | Rust (tokio, bollard, redis, tree-sitter, serde) | Class extraction, driver generation, sandboxed compile/run, verdicts. Only talks to Redis and the local Docker daemon. No database access, no secrets. |
 | `packages/contracts` | Zod | Shared schemas/types, limits, scaffold generator, cross-language fixtures. |
 | `packages/db` | Drizzle + postgres.js | Schema, migrations, seed (loads `packages/content`). |
-| `packages/interviewer` | `@anthropic-ai/sdk` | Prompts, speak/stay-silent policy, streaming replies, assessment, short-answer grading, key verification. Interface in `src/types.ts`. |
+| `packages/interviewer` | `@anthropic-ai/sdk`, `fetch` | Prompts, speak/stay-silent policy, streaming replies, assessment, short-answer grading, key verification, model listing. One `ModelClient` per provider family (`src/model.ts` Anthropic, `src/openai-compat.ts` OpenAI-compatible); provider table in `src/providers.ts`. Interface in `src/types.ts`. |
 | `packages/content` | YAML/Markdown/JSON | Coding problems and quiz bank, validated by contracts. |
 | `infra/sandbox` | Dockerfiles | One image per language. |
 
@@ -46,7 +47,7 @@ Ports in development: web 3000, api 4000, postgres 5432, redis 6379.
 
 - pnpm workspaces + Turborepo. Internal packages export TypeScript source (`"exports": "./src/index.ts"`); no build step. Apps: `tsx` for the API, `transpilePackages` in Next.
 - **Dependency installs race.** Several people/agents work in this tree at once. Wrap every install: `flock /home/matt/Documents/code/ipp/.pnpm-install.lock pnpm add --filter <pkg> <dep>`. pnpm blocks postinstall scripts by default; allow a package with `pnpm approve-builds <name>` (also under the flock).
-- One env file: `/.env` at the repo root (see `.env.example`). Each app loads it itself and validates with Zod at boot. Every variable has a development default except real secrets; in `NODE_ENV=production` missing values are fatal. There is no operator Anthropic key: the API never reads `ANTHROPIC_API_KEY` / `ANTHROPIC_KEY` (only the developer script `packages/interviewer/scripts/simulate.ts` does). Never log or print secrets, including users' API keys.
+- One env file: `/.env` at the repo root (see `.env.example`). Each app loads it itself and validates with Zod at boot. Every variable has a development default except real secrets; in `NODE_ENV=production` missing values are fatal. There is no operator provider key: the API never reads `ANTHROPIC_API_KEY` / `ANTHROPIC_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` or any other provider key (only the developer script `packages/interviewer/scripts/simulate.ts` reads an Anthropic one). Never log or print secrets, including users' API keys.
 - Biome for lint/format, Vitest for unit tests, Playwright for browser tests, `cargo test` + `cargo clippy` for Rust.
 - Every package has `typecheck` and `test` scripts. Keep them green.
 - The machine has ~7 GB RAM and other builds are running. Do not run several heavy builds at once; prefer `tsc --noEmit` and tests over `next build`; `cargo build -j 4`.
@@ -58,7 +59,7 @@ Better Auth owns `user`, `session`, `account`, `verification` (text ids). App ta
 
 | Table | Key columns |
 |---|---|
-| `problems` | `slug` pk, title, difficulty, tags text[], statement, signature jsonb, limits jsonb, interviewer_notes, reference_solutions jsonb, source jsonb |
+| `problems` | `slug` pk, title, difficulty, category, tags text[], statement, signature jsonb, limits jsonb, interviewer_notes, reference_solutions jsonb, source jsonb |
 | `problem_tests` | problem_slug, idx, hidden, data jsonb (`TestCase`) |
 | `pads` | id uuid, owner_id, title, problem_slug, language, status, duration_min, interviewer jsonb, share_token, started_at, ended_at |
 | `pad_members` | pad_id, user_id, role |
@@ -73,6 +74,7 @@ Better Auth owns `user`, `session`, `account`, `verification` (text ids). App ta
 | `quiz_questions` | id pk (slug), topic, subtopic, difficulty, type, data jsonb (`QuizQuestion`) |
 | `quiz_attempts` | id, user_id, mode, topics, question_ids, status, score, started_at, finished_at |
 | `quiz_answers` | attempt_id, question_id, response jsonb, score, correct, feedback, graded_by, answered_at |
+| `quiz_standalone_answers` | user_id, question_id (pk together), same grading columns — question-bank answers outside attempts, latest per question |
 | `ai_usage` | user_id, day, messages, input_tokens, output_tokens — spend guard |
 
 Seeding is idempotent upsert from `packages/content`; removing a question from content does not delete answers.
@@ -88,10 +90,11 @@ Every body is validated with the contracts schema named below.
 |---|---|---|
 | `ALL /api/auth/*` | Better Auth (email+password; Google and GitHub when configured) | |
 | `GET /api/me` | | `{ user: { id, name, email, image } }` |
-| `GET /api/config` | | `{ githubAuth, googleAuth, ai: { requiresUserKey: true, model, keyTtlHours } }` (server facts only; AI availability is per user) |
-| `GET /api/ai-key` | | `AiKeyStatus` (`state` active / missing / rejected, `last4`, `expiresAt`, `problem`, `model`, `ttlHours`) |
-| `PUT /api/ai-key` | `SaveAiKeyRequest` (`{ apiKey }`, ≤ 2 KB body) | `AiKeyStatus`; 422 `ai_key_rejected` when Anthropic refuses the key, 503 `ai_key_unverifiable` when Anthropic cannot be reached, 429 |
+| `GET /api/config` | | `{ githubAuth, googleAuth, ai: { requiresUserKey: true, model, keyTtlHours } }` (server facts only; `model` is the Anthropic default; AI availability is per user) |
+| `GET /api/ai-key` | | `AiKeyStatus` (`state` active / missing / rejected, `provider`, `last4`, `expiresAt`, `problem`, `model` = the provider's default model, `ttlHours`) |
+| `PUT /api/ai-key` | `SaveAiKeyRequest` (`{ provider?, apiKey }`, ≤ 2 KB body; provider inferred from the key shape when absent; a key that does not fit the provider is a 400 before any call) | `AiKeyStatus`; 422 `ai_key_rejected` when the provider refuses the key, 503 `ai_key_unverifiable` when it cannot be reached, 429 |
 | `DELETE /api/ai-key` | | `AiKeyStatus` (`missing`) |
+| `GET /api/ai-key/models` | | `AiModelList` (`provider`, `defaultModel`, `models[] {id, label, default}`, `source` live / fallback); 409 `ai_key_missing` without a usable key; 429 |
 | `GET /api/problems?difficulty=&tag=&q=` | | `ProblemSummary[]` |
 | `GET /api/problems/:slug` | | `ProblemDetail` |
 | `POST /api/pads` | `CreatePadRequest` | `Pad` |
@@ -99,6 +102,7 @@ Every body is validated with the contracts schema named below.
 | `GET /api/pads/:id` | | `PadDetail` |
 | `PATCH /api/pads/:id` | `UpdatePadRequest` | `Pad` |
 | `POST /api/pads/:id/end` | | `Pad` (starts report generation) |
+| `DELETE /api/pads/:id` | | `DeletePadResponse` (owner: deletes the pad and everything attached, closing its live sockets; collaborator: removes only their own membership) |
 | `POST /api/pads/join` | `{ shareToken }` | `{ padId }` |
 | `GET /api/pads/:id/report` | | `Report` (`assessmentUnavailable` says why there is no assessment) |
 | `POST /api/pads/:id/report/assessment` | | `Report` (owner only, after the pad ended, with a usable key; starts the assessment again) |
@@ -112,12 +116,16 @@ Every body is validated with the contracts schema named below.
 | `GET /api/quiz/attempts/:id` | | `QuizAttempt` |
 | `POST /api/quiz/attempts/:id/answers` | `SubmitAnswerRequest` | practice: `AnswerFeedback`; exam: `{ recorded: true }` |
 | `POST /api/quiz/attempts/:id/finish` | | `QuizAttempt` (all feedback present) |
+| `GET /api/quiz/topics/:slug/questions` | | `QuizBank` (active questions as `PublicQuizQuestion` + the caller's status per question) |
+| `GET /api/quiz/questions/:id` | | `QuizBankQuestion` (latest recorded response and its feedback, both null before answering) |
+| `POST /api/quiz/questions/:id/answers` | `SubmitStandaloneAnswerRequest` | `AnswerFeedback` (graded like attempt answers; same rate limit) |
 | `GET /healthz`, `GET /readyz` | | liveness / dependencies reachable |
 
 Authorization: a pad is visible to its members only. Runs and chat require membership and an active pad.
 The key endpoints act only on the signed-in user's own key and never return it (at most its last
 four characters). `PadDetail.interviewerAvailable` / `interviewerKey` describe the pad owner's key
-state; collaborators learn nothing else about it.
+state and `PadDetail.interviewerModel` the model the interviewer runs on (which implies the key's
+provider); collaborators learn nothing else about it.
 Problem responses never contain hidden tests, interviewer notes or reference solutions.
 Quiz responses never contain answers or explanations for questions the user has not answered
 (practice) or before the attempt is finished (exam).
@@ -241,12 +249,17 @@ the solution; when asked whether a solution looks right, reads the code and answ
 interviewer would (points at the failing case or the flawed step rather than rewriting it); reacts
 to run results; manages time; wraps up. Style and proactivity come from `InterviewerSettings`.
 
-Model: `claude-opus-5-5` by default (`INTERVIEWER_MODEL`), adaptive thinking, effort set explicitly
-per call type (low for speak/stay-silent decisions, medium for replies, high for the final
-assessment), prompt caching on the stable prefix (system prompt + problem + interviewer notes),
-structured outputs for decisions/assessment/grading, refusal fallbacks enabled. Candidate code and
-chat are untrusted input to the model and are delimited as data; platform events use the operator
-channel rather than being mixed into candidate text.
+Models: each provider has a default interviewer model, overridable by env (§7.2). Effort is set
+explicitly per call type (low for speak/stay-silent decisions, medium for replies, high for the
+final assessment); structured outputs (a strict JSON schema) for decisions/assessment/grading;
+every call streams under one overall deadline. On Anthropic: adaptive thinking, prompt caching on
+the stable prefix (system prompt + problem + interviewer notes), server-side refusal fallbacks
+(not for Haiku, which has none). On OpenAI-compatible APIs the system blocks become one leading
+system message, mid-conversation operator messages keep the system role (`developer` on OpenAI),
+effort is `reasoning_effort` (OpenAI, Gemini) or `reasoning.effort` (OpenRouter), and cached
+prompt tokens are reported as cache reads. Candidate code and chat are untrusted input to the model
+and are delimited as data; platform events use the operator channel rather than being mixed into
+candidate text.
 
 Spend guard: `ai_usage` per user per day (`AI_DAILY_MESSAGE_LIMIT`, `AI_DAILY_INPUT_TOKEN_LIMIT`,
 `AI_DAILY_OUTPUT_TOKEN_LIMIT`), the per-user chat rate limits, a per-pad cap on interviewer
@@ -259,8 +272,9 @@ page also offers playback of the editor history with run and chat markers.
 ### 7.1 Bring your own key
 
 The site is public and the operator pays for no model usage. The interviewer, the end-of-interview
-assessment and AI grading of quiz short answers run only on an Anthropic API key the user saved
-(account menu → AI key, `/settings/ai-key`). Without one those features are unavailable and say so
+assessment and AI grading of quiz short answers run only on an API key the user saved (account
+menu → AI key, `/settings/ai-key`), from one of the providers in §7.2. One key per user; saving a
+key of another provider replaces it. Without one those features are unavailable and say so
 where it matters (starting an interview, the pad's interviewer panel, the report, quiz short
 answers, each with a one-click "add key" dialog that keeps the page as it is); short answers fall
 back to self-grading; everything else works. The API has no code path that builds a model client
@@ -270,39 +284,86 @@ Because the interviewer runs server-side (it watches the live editor and speaks 
 key has to reach the server, which makes the operator a custodian of strangers' secrets:
 
 - **Storage** (`apps/api/src/ai/keys.ts`): Redis only (`<prefix>aikey:<userId>`), never Postgres.
-  The record holds the key encrypted with AES-256-GCM (fresh 96-bit IV per save, the user id as
-  associated data) under a key derived with HKDF-SHA256 and a purpose label from
-  `AI_KEY_ENCRYPTION_SECRET`, or `BETTER_AUTH_SECRET` when that is unset. A record that no longer
-  decrypts (secret rotated) is deleted and counts as no key. Only the last four characters are
-  stored in the clear. With Redis AOF on, the ciphertext also reaches the Redis volume on disk.
-  The judge's Redis user cannot read these keys (`~judge:*`).
+  The record holds the provider and the key encrypted with AES-256-GCM (fresh 96-bit IV per save;
+  the user id and the provider as associated data, so a record can neither be moved to another
+  user nor relabelled to send the key to another provider) under a key derived with HKDF-SHA256
+  and a purpose label from `AI_KEY_ENCRYPTION_SECRET`, or `BETTER_AUTH_SECRET` when that is unset.
+  Records written before there were providers (`v: 1`, user-only associated data) are Anthropic
+  keys and keep working. A record that no longer decrypts (secret rotated, tampered) is deleted
+  and counts as no key. Only the provider and the last four characters are stored in the clear.
+  With Redis AOF on, the ciphertext also reaches the Redis volume on disk. The judge's Redis user
+  cannot read these keys (`~judge:*`).
 - **Expiry**: sliding, `AI_KEY_TTL_HOURS` (default 24) after the last use; every model call is a
   use. Also removed on `DELETE /api/ai-key` and on sign-out (the API wraps Better Auth's sign-out).
-- **Saving** checks the key with one real call (a one-token message to the interviewer model,
-  no retries) before storing it, and is rate limited per user (5 / 10 min, 15 / day) and per
-  client address (10 / hour, 30 / day) so it is not a free key-checking oracle. Malformed input
-  is refused locally without calling Anthropic.
+- **Saving** checks the key with one cheap real call before storing it (no retries): a tiny
+  message to the provider's default model (Anthropic, OpenAI, Gemini) or OpenRouter's key endpoint
+  (`GET /key`, which generates nothing). It is rate limited per user (5 / 10 min, 15 / day) and per
+  client address (10 / hour, 30 / day) so it is not a free key-checking oracle. The request names
+  the provider chosen in the UI; malformed input, or a key whose shape belongs to another provider,
+  is refused locally without calling anyone.
+- **Fixed endpoints**: every provider's base URL is a constant in `packages/interviewer/src/providers.ts`
+  (`api.anthropic.com`, `api.openai.com/v1`, `generativelanguage.googleapis.com/v1beta[/openai]`,
+  `openrouter.ai/api/v1`). Nothing a user sends (key, provider, model id) can change where a key is
+  sent; the model id only goes into the request body and is validated as a plain id.
 - **Never echoed**: no endpoint, WebSocket event, log line or error message contains the key;
   responses carry at most the last four characters. Request bodies are never logged, the logger
-  redacts `apiKey`, and model errors are scrubbed of anything shaped like a key.
+  redacts `apiKey`, and model errors are scrubbed of anything shaped like a key (`sk-ant-…`,
+  `sk-or-…`, `sk-…`, `AIza…`, `AQ.…`, bearer tokens). Listing models sends no key where the
+  catalogue is public (OpenRouter) and returns only ids and names.
 - **Whose key**: a pad runs on its owner's key (collaborators talk to the interviewer on it and
   see only whether it is usable); quiz grading runs on the quiz taker's key.
 - **Resolution** (`InterviewerDeps.resolveKey(scope)`): the interviewer asks for the key before
   every model call, so deleting or replacing it takes effect at once. Plaintext is held only in a
-  small LRU cache of SDK clients per key id (32 clients, dropped after 10 min idle, and at once
-  when the key is refused or replaced). Backoff after failures is per key, so one user's broken
-  or rate-limited key never slows anyone else.
-- **Runtime refusals**: 401 / 402 / 403, a "credit balance" 400, a model 404 or a spend-limit
-  429 mark the key `rejected` (the ciphertext is replaced by last four + reason), post one notice
-  in the pad chat telling the owner to update it, broadcast `interviewer.status`, and the
-  interviewer stays silent until a new key is saved. An ordinary 429 is transient: the reply says
-  Anthropic is rate-limiting the key and proactive turns back off. The UI distinguishes "no key"
-  from "key rejected" everywhere.
+  small LRU cache of model clients per key id and model (32 clients, dropped after 10 min idle,
+  and every client of a key at once when the key is refused or replaced). Backoff after failures
+  is per key, so one user's broken or rate-limited key never slows anyone else. There is no code
+  path that builds a client from the environment: the Anthropic SDK is always given the key
+  explicitly, and the OpenAI-compatible client is plain `fetch` with an explicit bearer key.
+- **Runtime refusals**: each provider's errors map to the same problems (`invalid` / `permission`
+  / `billing` / `spend_limit`, plus transient `rate_limited`), see §7.2. A key problem marks the
+  key `rejected` (the ciphertext is replaced by provider + last four + reason), posts one notice
+  in the pad chat naming the provider and telling the owner to update it, broadcasts
+  `interviewer.status`, and the interviewer stays silent until a new key is saved. An ordinary 429
+  is transient: the reply says the provider is rate-limiting the key and proactive turns back off.
+  The UI distinguishes "no key" from "key rejected" everywhere.
+- **Chosen model refused ≠ key refused**: a 404 "model not found" (or an "unsupported parameter"
+  400) for a model the user *chose* does not reject the key. The interviewer switches that pad to
+  the provider default, retries the call on it at once, posts one notice, and the host clears the
+  pad's choice (`pad.updated` + `interviewer.status` with the model now used). Only when the
+  provider's *default* model is refused does it count as a key problem (`permission`).
 - **Live availability**: `PadDetail.interviewerAvailable` is true when the owner's key is usable;
   saving or removing a key broadcasts `interviewer.status` to the owner's open pads (and the web
   app also updates locally on save), and a newly usable key lets the interviewer greet if it had
   not yet. A report without an assessment says why (`assessmentUnavailable`); the owner can add a
   key and ask for it (`POST /api/pads/:id/report/assessment`).
+
+### 7.2 Providers and models
+
+| Provider | Client | Key shape | Default model (env) | Effort | Model list |
+|---|---|---|---|---|---|
+| Anthropic | `@anthropic-ai/sdk` (`AnthropicModelClient`) | `sk-ant-…` | `claude-opus-5-5` (`INTERVIEWER_MODEL`) | `output_config.effort` + adaptive thinking | `GET /v1/models`, models with adaptive thinking, effort and structured outputs; curated order Fable 5.2, Opus 5.5, Sonnet 5.5, Haiku 5.5 (also the fallback list) |
+| OpenAI | `OpenAICompatModelClient` | `sk-…` (not `sk-admin-`) | `gpt-6.2-astra` (`INTERVIEWER_MODEL_OPENAI`) | `reasoning_effort` | `GET /v1/models` filtered by id (gpt-/o-series chat models, no audio/realtime/image/embedding/dated snapshots) |
+| Google Gemini | same, OpenAI-compatible endpoint | `AIza…` or `AQ.…` | `gemini-4-hydrogen` (`INTERVIEWER_MODEL_GEMINI`) | `reasoning_effort` | native `GET /v1beta/models`, `generateContent` text models |
+| OpenRouter | same | `sk-or-…` | `openai/gpt-6.2-sol` (`INTERVIEWER_MODEL_OPENROUTER`) | `reasoning.effort` | public `GET /api/v1/models?supported_parameters=structured_outputs`, text-output models |
+
+Error mapping: 401 → `invalid` everywhere (Gemini also `API_KEY_INVALID`); 403 → `permission`
+(OpenRouter: a moderation block, not a key problem); 402 → `billing` (OpenRouter: `spend_limit`
+when the key's own limit is hit); OpenAI 429 with `insufficient_quota` / `credit_balance_*` →
+`billing`, `*_spend_limit_exceeded` / `usage_limit` → `spend_limit`, other 429 → `rate_limited`;
+Gemini 429 → `rate_limited` (quotas reset), `FAILED_PRECONDITION` → `permission`; 404 → model
+unavailable (plus `permission` for Anthropic, OpenAI and Gemini, which matters only for the
+default model); 408/409/5xx are transient and retried twice before any output.
+
+The user's choice is stored per interview as `InterviewerSettings.model` (`{ provider, id }`),
+remembered by the new-interview preferences and changeable mid-interview (PATCH, owner only).
+A pad call uses it only while the owner's key is from that provider, otherwise the provider
+default (`effectiveModel` in contracts); quiz grading and key verification always use the
+default. `GET /api/ai-key/models` lists the models live with the user's key (cached 10 min per
+key, 30 s after a failure, rate limited, not "use" of the key); when listing fails it returns the
+curated list (Anthropic) or just the default with `source: "fallback"`, so choosing a model never
+blocks starting an interview. Adding a provider is one entry in `PROVIDERS` (base URL, default
+model, client options, list, verify, error classifier) and one in contracts `AI_PROVIDERS` (label,
+key shape, console links).
 
 ### Voice
 
@@ -321,6 +382,11 @@ free-form answers graded by the model against key points, on the quiz taker's ow
 (self-graded without one).
 Practice mode gives feedback after each answer; exam mode at the end. Selection favours questions
 the user has missed or not seen. Stats per topic.
+The question bank (`/quiz/topics/:slug`) lists a topic's whole bank by subtopic, filterable by
+difficulty, type and status, and answers any question in place with no attempt; answering again
+replaces the previous standalone answer. Status, stats and selection all use the latest
+*countable* answer per question across standalone answers, practice-attempt answers and finished
+exams (a running exam never shows up).
 
 ## 9. Security checklist
 
@@ -374,6 +440,9 @@ a regression test.
   API process's memory inside the client cache). Anyone with both the Redis data and the
   encryption secret, or control of the API process, can read them; the UI tells users to create
   a dedicated key with a spend limit.
+- The OpenAI, Gemini and OpenRouter request/response and error shapes follow the providers'
+  documentation and are tested against fakes only; Gemini's OpenAI-compatible error bodies and
+  strict JSON-schema handling are not documented and are parsed defensively.
 - The key's expiry restarts on every model call, so a key used daily never expires on its own.
 - A rejected key is not re-checked: after topping up credit the user saves the key again.
 - CSP styles still allow `'unsafe-inline'` (Monaco and React inline styles).

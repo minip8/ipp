@@ -1,6 +1,7 @@
 slug: split-array-largest-sum
 title: Split Array Largest Sum
 difficulty: hard
+category: dsa
 tags: [array, binary-search, greedy, dynamic-programming]
 signature:
   className: Solution

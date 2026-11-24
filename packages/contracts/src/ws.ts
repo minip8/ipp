@@ -4,7 +4,7 @@
  * The collaborative editor uses a separate Hocuspocus socket at <WS_URL>/collab.
  */
 import { z } from 'zod';
-import { AiKeyState } from './ai';
+import { AiKeyState, InterviewerModel } from './ai';
 import { Id, Language } from './common';
 import { JudgeProgress } from './judge';
 import { Message, Pad } from './pad';
@@ -19,8 +19,13 @@ export const ServerEvent = z.discriminatedUnion('type', [
   /** Streaming interviewer reply: zero or more deltas, then message.created with the same id. */
   z.object({ type: z.literal('message.delta'), messageId: Id, delta: z.string() }),
   z.object({ type: z.literal('interviewer.thinking'), active: z.boolean() }),
-  /** The pad owner's API key changed state (saved, deleted, expired, rejected by Anthropic). */
-  z.object({ type: z.literal('interviewer.status'), key: AiKeyState }),
+  /** The pad owner's API key changed state (saved, deleted, expired, rejected by its provider). */
+  z.object({
+    type: z.literal('interviewer.status'),
+    key: AiKeyState,
+    /** The model the interviewer now runs on (absent from older servers). */
+    model: InterviewerModel.nullable().optional(),
+  }),
   z.object({ type: z.literal('pad.updated'), pad: Pad }),
   z.object({ type: z.literal('error'), code: z.string(), message: z.string() }),
   z.object({ type: z.literal('pong') }),

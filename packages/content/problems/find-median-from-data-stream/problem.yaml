@@ -1,6 +1,7 @@
 slug: find-median-from-data-stream
 title: Find Median from Data Stream
 difficulty: hard
+category: dsa
 tags: [design, heap]
 signature:
   className: MedianFinder

@@ -1,6 +1,7 @@
 slug: sort-colors
 title: Sort Colors (Dutch National Flag)
 difficulty: medium
+category: dsa
 tags: [array, two-pointers, sorting]
 signature:
   className: Solution

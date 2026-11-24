@@ -1,6 +1,7 @@
 slug: circular-queue
 title: Circular Queue (Ring Buffer)
 difficulty: easy
+category: data-structure
 tags: [design, queue, array]
 signature:
   className: CircularQueue

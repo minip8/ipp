@@ -1,6 +1,7 @@
 slug: asteroid-collision
 title: Asteroid Collision
 difficulty: medium
+category: dsa
 tags: [array, stack, simulation]
 signature:
   className: Solution

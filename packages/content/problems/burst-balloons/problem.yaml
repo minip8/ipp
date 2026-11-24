@@ -1,6 +1,7 @@
 slug: burst-balloons
 title: Burst Balloons
 difficulty: hard
+category: dsa
 tags: [dynamic-programming, interval-dp]
 signature:
   className: Solution

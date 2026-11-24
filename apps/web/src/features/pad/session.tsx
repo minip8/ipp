@@ -23,9 +23,10 @@ import {
 import { toast } from 'sonner';
 import { ApiRequestError, api, errorMessage, formatRetry } from '@/lib/api';
 import { wsBaseUrl } from '@/lib/env';
+import { qk } from '@/lib/queries';
 import type { Me } from '@/lib/schemas';
 import { type Collab, type CollabStatus, colorFor, createCollab } from './collab';
-import { PadSocket, type SocketStatus } from './socket';
+import { PadSocket, SocketRefused, type SocketStatus } from './socket';
 import { activeRun, initPadState, type PadState, padReducer } from './state';
 
 export type RunOptions = { stdin?: string; customTests?: CustomTest[] };
@@ -68,6 +69,11 @@ export function usePad(): PadSession {
 
 const isFatalTicketError = (e: unknown) =>
   e instanceof ApiRequestError && [401, 403, 404].includes(e.status);
+
+/** The pad was deleted, or this user left it: the page should show it is gone. */
+const isPadGone = (e: unknown) =>
+  (e instanceof SocketRefused && (e.code === 4404 || e.code === 4403)) ||
+  (e instanceof ApiRequestError && (e.status === 404 || e.status === 403));
 
 function runErrorToast(e: unknown) {
   if (e instanceof ApiRequestError) {
@@ -141,6 +147,10 @@ export function PadSessionProvider({
         setSocketRetryInMs(d?.retryInMs ?? null);
       },
       isFatal: isFatalTicketError,
+      // Refetching the pad 404s, and the page swaps the workspace for "not available".
+      onFatal: (e) => {
+        if (isPadGone(e)) void qc.invalidateQueries({ queryKey: qk.pad(padId) });
+      },
     });
     socketRef.current = s;
     s.connect();
@@ -154,7 +164,7 @@ export function PadSessionProvider({
       s.close();
       socketRef.current = null;
     };
-  }, [padId, getTicket]);
+  }, [padId, getTicket, qc]);
 
   // Collaborative document.
   useEffect(() => {

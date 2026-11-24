@@ -1,6 +1,7 @@
 slug: find-all-anagrams-in-a-string
 title: Find All Anagrams in a String
 difficulty: medium
+category: dsa
 tags: [string, hash-table, sliding-window]
 signature:
   className: Solution

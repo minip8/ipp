@@ -190,7 +190,7 @@ export function createHttpApp(ctx: Ctx): Hono<Env> {
       if (wait > 0) throw rateLimited(wait);
     }
     if (c.req.method === 'POST' && c.req.path === '/api/auth/sign-out') {
-      // Signing out also removes the user's stored Anthropic API key.
+      // Signing out also removes the user's stored AI provider API key.
       const session = await ctx.auth.api
         .getSession({ headers: c.req.raw.headers })
         .catch(() => null);

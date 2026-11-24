@@ -4,7 +4,7 @@ import { HocuspocusProvider, HocuspocusProviderWebsocket } from '@hocuspocus/pro
 import { generateScaffold, Playback, ProblemContent, YDOC } from '@ipp/contracts';
 import { aiUsage, padDocs, padUpdates, timelineEvents } from '@ipp/db';
 import { eq } from '@ipp/db/orm';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { WebSocket } from 'ws';
 import * as Y from 'yjs';
 import {
@@ -58,7 +58,8 @@ async function openCollab(base: string, c: Client, padId: string): Promise<Colla
     websocketProvider: socket,
     name: YDOC.name(padId),
     document: doc,
-    token: () => c.ticket(padId),
+    // No ticket once the pad is gone for this user: reconnects then fail authentication.
+    token: () => c.ticket(padId).catch(() => 'gone'),
   });
   provider.attach();
   await new Promise<void>((resolve, reject) => {
@@ -501,5 +502,95 @@ describe('abuse controls (security review)', () => {
     } finally {
       h.api.ctx.config.aiDailyOutputTokenLimit = saved;
     }
+  });
+});
+
+describe('deleting a live pad', () => {
+  const closeCode = (s: EventSocket) =>
+    new Promise<number>((resolve) => s.ws.once('close', (code) => resolve(code)));
+  const docLoaded = (padId: string) => h.api.ctx.collab.hocuspocus.documents.has(YDOC.name(padId));
+
+  it('closes sockets and collab sessions, releases the interviewer, and persists nothing after', async () => {
+    const errors = vi.spyOn(console, 'error');
+    try {
+      const { c, pad } = await setup('LiveDel');
+      const other = new Client(h.base, '100.64.1.9');
+      await other.signUp('LiveDelGuest');
+      await other.post('/api/pads/join', { shareToken: pad.shareToken });
+      const mine = await EventSocket.open(
+        `${h.wsBase}/ws/pads/${pad.id}?ticket=${await c.ticket(pad.id)}`,
+      );
+      const theirs = await EventSocket.open(
+        `${h.wsBase}/ws/pads/${pad.id}?ticket=${await other.ticket(pad.id)}`,
+      );
+      const a = await openCollab(h.wsBase, c, pad.id);
+      await until(
+        async () =>
+          (await h.api.ctx.db.select().from(padDocs).where(eq(padDocs.padId, pad.id))).length === 1,
+      );
+      // Keep typing through the delete, so a debounced save is always pending when the
+      // connections drop (Hocuspocus then stores once more, after the row is gone).
+      const py = a.doc.getText(YDOC.code('python'));
+      const typing = setInterval(() => py.insert(py.length, 'x'), 10);
+      await sleep(50);
+
+      const closedMine = closeCode(mine);
+      const closedTheirs = closeCode(theirs);
+      const res = await c.del(`/api/pads/${pad.id}`);
+      expect(res.json).toEqual({ padId: pad.id, removed: 'pad' });
+      expect(await closedMine).toBe(4404);
+      expect(await closedTheirs).toBe(4404);
+      await until(() => !docLoaded(pad.id));
+      clearInterval(typing);
+      await until(() => h.api.ctx.rooms.count(pad.id) === 0);
+      expect(fake.released).toContain(pad.id);
+
+      // Past the debounce and coalescing windows: nothing was written back for the pad.
+      await sleep(800);
+      const { db } = h.api.ctx;
+      expect(await db.select().from(padDocs).where(eq(padDocs.padId, pad.id))).toEqual([]);
+      expect(await db.select().from(padUpdates).where(eq(padUpdates.padId, pad.id))).toEqual([]);
+      // The provider's reconnect is refused and does not load the document again.
+      expect(docLoaded(pad.id)).toBe(false);
+      expect((await c.post('/api/ws-ticket', { padId: pad.id })).status).toBe(404);
+      a.close();
+      const noisy = errors.mock.calls.flat().map(String).join('\n');
+      expect(noisy).not.toMatch(/foreign key|storeDocument|pad_docs|pad_updates/i);
+    } finally {
+      errors.mockRestore();
+    }
+  });
+
+  it('a collaborator leaving closes only their own sockets', async () => {
+    const { c, pad } = await setup('LeaveOwner');
+    const other = new Client(h.base, '100.64.1.10');
+    await other.signUp('LeaveGuest');
+    await other.post('/api/pads/join', { shareToken: pad.shareToken });
+    const mine = await EventSocket.open(
+      `${h.wsBase}/ws/pads/${pad.id}?ticket=${await c.ticket(pad.id)}`,
+    );
+    const theirs = await EventSocket.open(
+      `${h.wsBase}/ws/pads/${pad.id}?ticket=${await other.ticket(pad.id)}`,
+    );
+    const a = await openCollab(h.wsBase, c, pad.id);
+    const b = await openCollab(h.wsBase, other, pad.id);
+    expect(h.api.ctx.collab.connectionCount(pad.id)).toBe(2);
+
+    const closedTheirs = closeCode(theirs);
+    const res = await other.del(`/api/pads/${pad.id}`);
+    expect(res.json).toEqual({ padId: pad.id, removed: 'membership' });
+    expect(await closedTheirs).toBe(4404);
+    await until(() => h.api.ctx.collab.connectionCount(pad.id) === 1);
+    // Their edits no longer reach the document; the owner carries on.
+    b.doc.getText(YDOC.notes).insert(0, 'after leaving');
+    a.doc.getText(YDOC.notes).insert(0, 'owner here');
+    await sleep(300);
+    expect(a.doc.getText(YDOC.notes).toString()).toBe('owner here');
+    mine.send({ type: 'ping' });
+    await mine.waitFor('pong');
+    expect(h.api.ctx.collab.connectionCount(pad.id)).toBe(1);
+    a.close();
+    b.close();
+    mine.close();
   });
 });

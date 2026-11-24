@@ -1,6 +1,7 @@
 slug: valid-anagram
 title: Valid Anagram
 difficulty: easy
+category: dsa
 tags: [string, hash-table, sorting, counting]
 signature:
   className: Solution

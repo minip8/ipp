@@ -1,6 +1,7 @@
 slug: fraction-to-recurring-decimal
 title: Fraction to Recurring Decimal
 difficulty: medium
+category: implementation
 tags: [math, hash-table, string]
 signature:
   className: Solution

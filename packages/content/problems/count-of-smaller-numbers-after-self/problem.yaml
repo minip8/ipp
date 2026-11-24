@@ -1,6 +1,7 @@
 slug: count-of-smaller-numbers-after-self
 title: Count of Smaller Numbers After Self
 difficulty: hard
+category: dsa
 tags: [array, sorting, merge-sort, binary-indexed-tree, divide-and-conquer]
 signature:
   className: Solution

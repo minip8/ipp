@@ -2,6 +2,7 @@ import type { AnswerFeedback, PublicQuizQuestion } from '@ipp/contracts';
 import { describe, expect, it } from 'vitest';
 import {
   choiceIndexForKey,
+  draftForKey,
   draftFromResponse,
   emptyDraft,
   formatCorrect,
@@ -146,5 +147,22 @@ describe('outcomes and navigation', () => {
         'practice',
       ),
     ).toBe(0);
+  });
+});
+
+describe('choice shortcuts', () => {
+  it('picks, toggles and ignores keys', () => {
+    expect(draftForKey(single, emptyDraft(single), 'b')).toEqual({ type: 'single', choice: 'b' });
+    expect(draftForKey(single, emptyDraft(single), '1')).toEqual({ type: 'single', choice: 'a' });
+    expect(draftForKey(single, emptyDraft(single), 'c')).toBeNull();
+    const picked = draftForKey(multiple, emptyDraft(multiple), 'a');
+    expect(picked).toEqual({ type: 'multiple', choices: ['a'] });
+    expect(draftForKey(multiple, picked ?? emptyDraft(multiple), 'a')).toEqual({
+      type: 'multiple',
+      choices: [],
+    });
+    expect(draftForKey(output, emptyDraft(output), '3')).toMatchObject({ kind: 'undefined' });
+    expect(draftForKey(output, emptyDraft(output), '9')).toBeNull();
+    expect(draftForKey(short, emptyDraft(short), 'a')).toBeNull();
   });
 });

@@ -1,8 +1,10 @@
 'use client';
 import {
+  CATEGORY_INFO,
   type Difficulty,
   LANGUAGE_LABELS,
   type Language,
+  type ProblemCategory,
   type RunVerdict,
   type TestVerdict,
 } from '@ipp/contracts';
@@ -47,6 +49,27 @@ export function DifficultyBadge({
       )}
     >
       {DIFFICULTY_LABEL[difficulty]}
+    </span>
+  );
+}
+
+/** Neutral outline: the category is context, not a rating like difficulty. */
+export function CategoryBadge({
+  category,
+  className,
+}: {
+  category: ProblemCategory;
+  className?: string;
+}) {
+  return (
+    <span
+      title={CATEGORY_INFO[category].label}
+      className={cn(
+        'inline-flex h-5 items-center rounded-[4px] border border-border px-1.5 text-2xs font-medium whitespace-nowrap text-fg-muted',
+        className,
+      )}
+    >
+      {CATEGORY_INFO[category].short}
     </span>
   );
 }

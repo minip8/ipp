@@ -1,6 +1,7 @@
 slug: bank-system
 title: Simple Bank System
 difficulty: easy
+category: implementation
 tags: [design, array, simulation]
 signature:
   className: Bank

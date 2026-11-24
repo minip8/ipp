@@ -1,6 +1,7 @@
 slug: swim-in-rising-water
 title: Swim in Rising Water
 difficulty: hard
+category: dsa
 tags: [graph, heap, dijkstra, binary-search, union-find, matrix]
 signature:
   className: Solution

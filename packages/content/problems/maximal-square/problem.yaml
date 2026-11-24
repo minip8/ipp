@@ -1,6 +1,7 @@
 slug: maximal-square
 title: Maximal Square
 difficulty: medium
+category: dsa
 tags: [dynamic-programming, matrix]
 signature:
   className: Solution

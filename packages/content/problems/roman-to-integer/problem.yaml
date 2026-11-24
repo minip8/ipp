@@ -1,6 +1,7 @@
 slug: roman-to-integer
 title: Roman to Integer
 difficulty: easy
+category: implementation
 tags: [string, hash-table, math]
 signature:
   className: Solution

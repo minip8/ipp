@@ -1,6 +1,7 @@
 slug: kv-store-transactions
 title: Key-Value Store with Transactions
 difficulty: medium
+category: implementation
 tags: [design, hash-table, stack]
 signature:
   className: KVStore

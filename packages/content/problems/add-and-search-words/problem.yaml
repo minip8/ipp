@@ -1,6 +1,7 @@
 slug: add-and-search-words
 title: Word Dictionary with Wildcards
 difficulty: medium
+category: data-structure
 tags: [design, trie, dfs, string]
 signature:
   className: WordDictionary

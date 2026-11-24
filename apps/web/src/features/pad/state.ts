@@ -3,7 +3,15 @@
  * the event-ordering rules (deltas before created, finished before the POST returns, echoes of
  * our own optimistic messages) are unit-tested.
  */
-import type { JudgeProgress, Message, Pad, PadDetail, Run, ServerEvent } from '@ipp/contracts';
+import {
+  effectiveModel,
+  type JudgeProgress,
+  type Message,
+  type Pad,
+  type PadDetail,
+  type Run,
+  type ServerEvent,
+} from '@ipp/contracts';
 
 export type RunProgress = {
   phase: 'queued' | 'started' | 'compiling' | 'running';
@@ -30,6 +38,8 @@ export type PadState = {
   /** The pad owner's API key: the interviewer speaks only when this is `active`. */
   interviewerKey: PadDetail['interviewerKey'];
   interviewerAvailable: boolean;
+  /** The model the interviewer runs on (the owner's key provider); null without a usable key. */
+  interviewerModel: PadDetail['interviewerModel'];
   messages: Message[];
   pending: PendingMessage[];
   /** messageId -> text received so far, plus when the stream started (for ordering). */
@@ -58,6 +68,13 @@ export type PadAction =
 
 const OUTPUT_CAP = 64 * 1024;
 
+/** The interviewer model after the pad's choice changed (same key provider and default). */
+function modelFor(pad: Pad, current: PadState['interviewerModel']): PadState['interviewerModel'] {
+  return current
+    ? effectiveModel(pad.interviewer.model, current.provider, current.defaultModel)
+    : null;
+}
+
 export function initPadState(detail: PadDetail, me: string): PadState {
   return {
     me,
@@ -66,6 +83,7 @@ export function initPadState(detail: PadDetail, me: string): PadState {
     problem: detail.problem,
     interviewerKey: detail.interviewerKey,
     interviewerAvailable: detail.interviewerAvailable,
+    interviewerModel: detail.interviewerModel ?? null,
     messages: sortMessages(detail.messages),
     order: sortMessages(detail.messages).map((m) => `m:${m.id}`),
     pending: [],
@@ -153,7 +171,11 @@ export function padReducer(state: PadState, action: PadAction): PadState {
       return { ...state, runs, progress };
     }
     case 'pad.set':
-      return { ...state, pad: action.pad };
+      return {
+        ...state,
+        pad: action.pad,
+        interviewerModel: modelFor(action.pad, state.interviewerModel),
+      };
     case 'thinking.reset':
       return { ...state, thinking: false };
     case 'event':
@@ -228,12 +250,19 @@ function applyEvent(state: PadState, ev: ServerEvent): PadState {
     case 'interviewer.thinking':
       return { ...markSent(state), thinking: ev.active };
     case 'pad.updated':
-      return { ...state, pad: ev.pad };
+      return {
+        ...state,
+        pad: ev.pad,
+        interviewerModel: modelFor(ev.pad, state.interviewerModel),
+      };
     case 'interviewer.status':
       return {
         ...state,
         interviewerKey: ev.key,
         interviewerAvailable: ev.key === 'active',
+        // Older servers send no model: keep what we know while the key stays usable.
+        interviewerModel:
+          ev.model !== undefined ? ev.model : ev.key === 'active' ? state.interviewerModel : null,
         thinking: ev.key === 'active' ? state.thinking : false,
       };
     case 'error': {

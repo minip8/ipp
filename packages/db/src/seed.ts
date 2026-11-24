@@ -130,6 +130,7 @@ export async function seed(db: Db, opts: SeedOptions = {}): Promise<SeedReport> 
         slug: p.slug,
         title: p.title,
         difficulty: p.difficulty,
+        category: p.category,
         tags: p.tags,
         statement: p.statement,
         signature: p.signature,

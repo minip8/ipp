@@ -1,6 +1,7 @@
 slug: bus-routes
 title: Bus Routes
 difficulty: hard
+category: dsa
 tags: [graph, bfs, hash-table]
 signature:
   className: Solution

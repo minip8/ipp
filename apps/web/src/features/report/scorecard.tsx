@@ -298,8 +298,8 @@ function NoAssessment({ report, pad }: { report: Report; pad: PadDetail }) {
     return (
       <Notice icon={<BotOffIcon className="size-4" />} title="No AI assessment yet">
         {rejected
-          ? 'Anthropic rejected the pad owner’s API key, so the assessment could not be written.'
-          : 'The assessment runs on the pad owner’s Anthropic API key, and they have not added one.'}{' '}
+          ? 'The AI provider rejected the pad owner’s API key, so the assessment could not be written.'
+          : 'The assessment runs on the pad owner’s own AI API key, and they have not added one.'}{' '}
         {below}
       </Notice>
     );
@@ -309,16 +309,16 @@ function NoAssessment({ report, pad }: { report: Report; pad: PadDetail }) {
       state={rejected ? 'rejected' : 'missing'}
       title={
         rejected
-          ? 'Anthropic rejected your API key, so there is no assessment yet'
+          ? 'Your API key was rejected, so there is no assessment yet'
           : 'Get a written assessment of this interview'
       }
       action={rejected ? 'Update key' : 'Add API key'}
-      dialogTitle={rejected ? 'Update your Anthropic API key' : undefined}
+      dialogTitle={rejected ? 'Update your API key' : undefined}
       onSaved={() => ask.mutate()}
       className="bg-surface px-5 py-5"
     >
-      The assessment runs on your own Anthropic API key. Add it and the interviewer reviews this
-      session right away. {below}
+      The assessment runs on your own AI API key (Anthropic, OpenAI, Google Gemini or OpenRouter).
+      Add it and the interviewer reviews this session right away. {below}
     </AiKeyPrompt>
   );
 }

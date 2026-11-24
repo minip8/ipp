@@ -209,6 +209,30 @@ export function choiceIndexForKey(key: string, count: number): number | null {
   return i !== null && i < count ? i : null;
 }
 
+/**
+ * The draft after a choice shortcut: 1-9 / A-Z pick a choice (toggle for multiple), 1-9 pick an
+ * output kind. Null when the key does nothing for this question.
+ */
+export function draftForKey(q: PublicQuizQuestion, draft: Draft, key: string): Draft | null {
+  if ((draft.type === 'single' || draft.type === 'multiple') && q.choices) {
+    const i = choiceIndexForKey(key, q.choices.length);
+    const c = i === null ? undefined : q.choices[i];
+    if (!c) return null;
+    if (draft.type === 'single') return { type: 'single', choice: c.id };
+    return {
+      type: 'multiple',
+      choices: draft.choices.includes(c.id)
+        ? draft.choices.filter((x) => x !== c.id)
+        : [...draft.choices, c.id],
+    };
+  }
+  if (draft.type === 'output' && /^[1-9]$/.test(key)) {
+    const k = outputKindsFor(q.code?.language ?? 'cpp')[Number(key) - 1];
+    return k ? { ...draft, kind: k.kind } : null;
+  }
+  return null;
+}
+
 /** Where to resume: the first question without a response (practice: without settled feedback). */
 export function resumeIndex(
   questions: PublicQuizQuestion[],

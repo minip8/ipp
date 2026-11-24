@@ -1,6 +1,7 @@
 slug: rate-limiter
 title: Sliding Window Rate Limiter
 difficulty: medium
+category: implementation
 tags: [design, queue, hash-table]
 signature:
   className: RateLimiter

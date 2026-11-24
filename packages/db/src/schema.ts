@@ -8,6 +8,7 @@ import type {
   InterviewerSettings,
   JudgeResult,
   Language,
+  ProblemCategory,
   ProblemLimits,
   ProblemSignature,
   QuizQuestion,
@@ -112,6 +113,8 @@ export const problems = pgTable('problems', {
   slug: text('slug').primaryKey(),
   title: text('title').notNull(),
   difficulty: text('difficulty').$type<'easy' | 'medium' | 'hard'>().notNull(),
+  /** Default only so the column can be added to a populated table; the seed writes the real one. */
+  category: text('category').$type<ProblemCategory>().notNull().default('dsa'),
   tags: text('tags').array().notNull().default(sql`'{}'::text[]`),
   statement: text('statement').notNull(),
   signature: jsonb('signature').$type<ProblemSignature>().notNull(),
@@ -361,6 +364,34 @@ export const quizAnswers = pgTable(
   (t) => [
     primaryKey({ columns: [t.attemptId, t.questionId] }),
     index('quiz_answers_question_idx').on(t.questionId),
+  ],
+);
+
+/**
+ * Answers given in the question bank, outside any attempt: the latest one per user and question
+ * (answering again replaces it). Same grading columns as `quiz_answers`.
+ */
+export const quizStandaloneAnswers = pgTable(
+  'quiz_standalone_answers',
+  {
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    questionId: text('question_id')
+      .notNull()
+      .references(() => quizQuestions.id),
+    response: jsonb('response').$type<QuizResponse>().notNull(),
+    score: real('score').notNull(),
+    correct: boolean('correct').notNull(),
+    feedback: text('feedback'),
+    gradedBy: text('graded_by').$type<'auto' | 'ai' | 'self'>().notNull(),
+    /** Short answer recorded without a model and without a self-grade yet. */
+    needsSelfGrade: boolean('needs_self_grade').notNull().default(false),
+    answeredAt: tsz('answered_at').notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.userId, t.questionId] }),
+    index('quiz_standalone_answers_question_idx').on(t.questionId),
   ],
 );
 

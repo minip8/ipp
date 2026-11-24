@@ -1,6 +1,7 @@
 slug: valid-parentheses
 title: Valid Parentheses
 difficulty: easy
+category: dsa
 tags: [string, stack]
 signature:
   className: Solution

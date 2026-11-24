@@ -1,6 +1,7 @@
 slug: alien-dictionary
 title: Alien Dictionary
 difficulty: hard
+category: dsa
 tags: [graph, topological-sort, heap, string]
 signature:
   className: Solution

@@ -1,6 +1,7 @@
 slug: evaluate-division
 title: Evaluate Division
 difficulty: medium
+category: dsa
 tags: [graph, union-find, bfs, dfs]
 signature:
   className: Solution

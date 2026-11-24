@@ -1,6 +1,7 @@
 slug: word-search
 title: Word Search
 difficulty: medium
+category: dsa
 tags: [backtracking, matrix, dfs]
 signature:
   className: Solution

@@ -1,6 +1,7 @@
 slug: text-justification
 title: Text Justification
 difficulty: hard
+category: implementation
 tags: [array, string, simulation, greedy]
 signature:
   className: Solution

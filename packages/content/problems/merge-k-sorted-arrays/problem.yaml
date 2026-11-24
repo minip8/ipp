@@ -1,6 +1,7 @@
 slug: merge-k-sorted-arrays
 title: Merge K Sorted Arrays
 difficulty: medium
+category: dsa
 tags: [heap, divide-and-conquer, merge]
 signature:
   className: Solution

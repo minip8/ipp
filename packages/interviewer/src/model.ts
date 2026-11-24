@@ -47,9 +47,19 @@ export type ModelErrorKind = 'aborted' | 'transient' | 'permanent';
  */
 export type KeyFailure = AiKeyProblem | 'rate_limited';
 
-/** Anthropic error messages never contain the key, but make sure nothing that looks like one is logged. */
+/**
+ * Provider error messages do not contain the key, but make sure nothing that looks like one is
+ * logged: Anthropic (`sk-ant-`), OpenRouter (`sk-or-`), OpenAI (`sk-proj-`, `sk-svcacct-`,
+ * `sk-…`) and Google (`AIza…`) keys, and bearer tokens.
+ */
 export function scrubSecrets(text: string): string {
-  return text.replace(/sk-ant-[A-Za-z0-9_-]*/g, 'sk-ant-[redacted]');
+  return text
+    .replace(/sk-ant-[A-Za-z0-9_-]*/g, 'sk-ant-[redacted]')
+    .replace(/sk-or-[A-Za-z0-9_-]*/g, 'sk-or-[redacted]')
+    .replace(/sk-[A-Za-z0-9_-]{8,}/g, 'sk-[redacted]')
+    .replace(/AIza[A-Za-z0-9_-]{10,}/g, 'AIza[redacted]')
+    .replace(/\bAQ\.[A-Za-z0-9._-]{10,}/g, 'AQ.[redacted]')
+    .replace(/(Bearer\s+)[A-Za-z0-9._~+/=-]{8,}/gi, '$1[redacted]');
 }
 
 export class ModelError extends Error {
@@ -58,6 +68,11 @@ export class ModelError extends Error {
     message: string,
     readonly status?: number,
     readonly keyFailure?: KeyFailure,
+    /**
+     * The model id is unknown, not available to this key, or cannot serve the request. For a
+     * model the user chose this means "fall back to the provider default", not "the key is bad".
+     */
+    readonly modelUnavailable?: boolean,
   ) {
     super(scrubSecrets(message));
     this.name = 'ModelError';
@@ -70,6 +85,9 @@ export interface ModelClient {
 }
 
 const FALLBACK_BETA = 'server-side-fallback-2026-07-01';
+
+/** Server-side refusal fallbacks exist for the Fable, Opus and Sonnet lines, not for Haiku. */
+export const anthropicFallbacks = (model: string) => !/haiku/i.test(model);
 
 /** The `error` object of an Anthropic error body, when the SDK parsed one. */
 function errorBody(err: InstanceType<typeof Anthropic.APIError>): {
@@ -126,6 +144,8 @@ export function classifyError(err: unknown): ModelError {
       `key refused (${keyFailure}, ${status})`,
       status,
       keyFailure,
+      // The 404 that names a model: the key may well work with the default model.
+      status === 404,
     );
   }
   if (err instanceof Anthropic.RateLimitError)
@@ -184,8 +204,9 @@ export class AnthropicModelClient implements ModelClient {
             effort: req.effort,
             ...(format ? { format: { type: 'json_schema' as const, schema: format.schema } } : {}),
           },
-          betas: [FALLBACK_BETA],
-          fallbacks: 'default',
+          ...(anthropicFallbacks(this.model)
+            ? { betas: [FALLBACK_BETA], fallbacks: 'default' as const }
+            : {}),
         },
         { signal: controller.signal, timeout: req.timeoutMs },
       );

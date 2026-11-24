@@ -1,6 +1,7 @@
 slug: distinct-subsequences
 title: Distinct Subsequences
 difficulty: hard
+category: dsa
 tags: [dynamic-programming, string]
 signature:
   className: Solution

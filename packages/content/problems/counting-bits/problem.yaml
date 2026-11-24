@@ -1,6 +1,7 @@
 slug: counting-bits
 title: Counting Bits
 difficulty: easy
+category: dsa
 tags: [bit-manipulation, dynamic-programming]
 signature:
   className: Solution

@@ -1,6 +1,7 @@
 slug: insert-interval
 title: Insert Interval
 difficulty: medium
+category: implementation
 tags: [array, intervals]
 signature:
   className: Solution

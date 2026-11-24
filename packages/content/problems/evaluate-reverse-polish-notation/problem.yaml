@@ -1,6 +1,7 @@
 slug: evaluate-reverse-polish-notation
 title: Evaluate Reverse Polish Notation
 difficulty: medium
+category: implementation
 tags: [array, stack, math, parsing]
 signature:
   className: Solution

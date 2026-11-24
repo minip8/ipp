@@ -1,6 +1,7 @@
 slug: median-of-two-sorted-arrays
 title: Median of Two Sorted Arrays
 difficulty: hard
+category: dsa
 tags: [array, binary-search, divide-and-conquer]
 signature:
   className: Solution

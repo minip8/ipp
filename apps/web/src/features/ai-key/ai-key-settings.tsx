@@ -1,11 +1,34 @@
 'use client';
+import { AI_PROVIDERS } from '@ipp/contracts';
 import { BotIcon, ClipboardCheckIcon, ListChecksIcon } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { ErrorState } from '@/components/states';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { loadStartPrefs, saveStartPrefs } from '@/lib/prefs';
 import { useAiKey } from '@/lib/queries';
 import { KeyFacts } from './ai-key-dialog';
 import { AiKeyForm, ConsoleLink } from './ai-key-form';
+import { PROVIDER_ORDER, providerLabel } from './logic';
+import { ModelPicker } from './model-picker';
+
+/** The model new interviews start with (the start preferences; each pad can change it). */
+function NewInterviewModel() {
+  const [prefs, setPrefs] = useState<ReturnType<typeof loadStartPrefs> | null>(null);
+  useEffect(() => setPrefs(loadStartPrefs()), []);
+  if (!prefs) return null;
+  return (
+    <ModelPicker
+      label="Model for new interviews"
+      value={prefs.interviewer.model}
+      onChange={(model) => {
+        const next = { ...prefs, interviewer: { ...prefs.interviewer, model } };
+        setPrefs(next);
+        saveStartPrefs(next);
+      }}
+    />
+  );
+}
 
 const USES = [
   { icon: BotIcon, text: 'The AI interviewer in your pads (collaborators you invite use it too)' },
@@ -19,8 +42,9 @@ export function AiKeySettings() {
     <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6">
       <h1 className="text-xl font-semibold tracking-tight">AI key</h1>
       <p className="mt-1 text-sm text-fg-muted">
-        interview++ runs its AI features on your own Anthropic API key and never pays for model
-        usage itself. Everything else (the editor, running code, quizzes) works without one.
+        interview++ runs its AI features on your own API key from Anthropic, OpenAI, Google Gemini
+        or OpenRouter, and never pays for model usage itself. Everything else (the editor, running
+        code, quizzes) works without one.
       </p>
 
       <Card className="mt-6" aria-labelledby="key-heading">
@@ -28,7 +52,8 @@ export function AiKeySettings() {
           <CardTitle id="key-heading">Your key</CardTitle>
           {status.data && (
             <span className="text-xs text-fg-muted">
-              Model: <span className="font-mono">{status.data.model}</span>
+              {status.data.provider ? `${providerLabel(status.data.provider)} default` : 'Default'}:{' '}
+              <span className="font-mono">{status.data.model}</span>
             </span>
           )}
         </CardHeader>
@@ -43,9 +68,16 @@ export function AiKeySettings() {
           ) : (
             <AiKeyForm status={status.data} />
           )}
+          {status.data?.state === 'active' && <NewInterviewModel />}
           <p className="text-sm text-fg-muted">
-            Don’t have one? Create a key in the <ConsoleLink />: Settings → API keys. It starts with{' '}
-            <span className="font-mono text-fg">sk-ant-</span>.
+            Don’t have one? Create a key with your provider:{' '}
+            {PROVIDER_ORDER.map((p, i) => (
+              <span key={p}>
+                {i > 0 ? (i === PROVIDER_ORDER.length - 1 ? ' or ' : ', ') : ''}
+                <ConsoleLink provider={p}>{AI_PROVIDERS[p].consoleName}</ConsoleLink>
+              </span>
+            ))}
+            .
           </p>
         </div>
       </Card>
@@ -72,7 +104,11 @@ export function AiKeySettings() {
             The interviewer runs on our server (it watches the editor and speaks up on its own), so
             the key has to be kept there while you use it.
           </p>
-          <KeyFacts ttlHours={status.data?.ttlHours} className="mt-2.5 space-y-2" />
+          <KeyFacts
+            ttlHours={status.data?.ttlHours}
+            provider={status.data?.provider}
+            className="mt-2.5 space-y-2"
+          />
         </section>
       </div>
     </div>

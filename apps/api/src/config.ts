@@ -4,6 +4,7 @@
  * production missing values are fatal.
  */
 import { hostname } from 'node:os';
+import type { AiProvider } from '@ipp/contracts';
 import { loadRootEnv } from '@ipp/db';
 import { interviewerConfigFromEnv } from '@ipp/interviewer';
 import { z } from 'zod';
@@ -29,7 +30,7 @@ const Env = z.object({
   GOOGLE_CLIENT_ID: opt(z.string()),
   GOOGLE_CLIENT_SECRET: opt(z.string()),
   /**
-   * Secret the users' Anthropic API keys are encrypted under (HKDF-derived AES-256-GCM key).
+   * Secret the users' AI provider API keys are encrypted under (HKDF-derived AES-256-GCM key).
    * Optional: without it the key is derived from BETTER_AUTH_SECRET. Rotating whichever secret
    * is used makes every stored key unreadable; users then add their key again.
    */
@@ -84,10 +85,12 @@ export interface Limits {
   /** Telemetry and language events on the pad event channel (each writes a timeline row). */
   padEvents: { userBurst: RateLimit };
   /**
-   * Saving an API key makes one real call to Anthropic, so it must not become a free
+   * Saving an API key makes one real call to the provider, so it must not become a free
    * key-checking service: tight limits per user and per client address.
    */
   aiKeySave: { userBurst: RateLimit; userDaily: RateLimit; ipBurst: RateLimit; ipDaily: RateLimit };
+  /** Listing the models a key can use (one provider call per cache miss). */
+  aiModels: { userBurst: RateLimit };
   /** Asking for a report assessment again (after adding a key). */
   assessmentRetry: { userBurst: RateLimit };
   /** Hard cap on interviewer messages per pad (spend guard). */
@@ -124,6 +127,7 @@ export const DEFAULT_LIMITS: Limits = {
     ipBurst: { limit: 10, windowSec: 3600 },
     ipDaily: { limit: 30, windowSec: 86_400 },
   },
+  aiModels: { userBurst: { limit: 30, windowSec: 600 } },
   assessmentRetry: { userBurst: { limit: 5, windowSec: 3600 } },
   interviewerMessagesPerPad: 200,
   collab: { docBytes: 16 * 1024 * 1024, preAuthBytes: 64 * 1024, authTimeoutMs: 15_000 },
@@ -142,11 +146,14 @@ export interface Config {
   google: { clientId: string; clientSecret: string } | null;
   /**
    * Input keying material for encrypting users' API keys: AI_KEY_ENCRYPTION_SECRET, else
-   * BETTER_AUTH_SECRET. Never log this. (There is deliberately no operator Anthropic key.)
+   * BETTER_AUTH_SECRET. Never log this. (There is deliberately no operator provider key.)
    */
   aiKeySecret: string;
   aiKeyTtlHours: number;
+  /** The Anthropic default model (INTERVIEWER_MODEL). */
   interviewerModel: string;
+  /** Other providers' default models from INTERVIEWER_MODEL_OPENAI / _GEMINI / _OPENROUTER. */
+  interviewerModels: Partial<Record<AiProvider, string>>;
   aiDailyMessageLimit: number;
   /** 0 = no limit. */
   aiDailyInputTokenLimit: number;
@@ -187,8 +194,9 @@ export function loadConfig(overrides: Partial<Config> = {}): Config {
     throw new Error(`invalid environment: ${issues}`);
   }
   const e = parsed.data;
-  // INTERVIEWER_MODEL (owned by the interviewer package). ANTHROPIC_API_KEY / ANTHROPIC_KEY are
-  // deliberately not read: model calls run only on the keys users save themselves.
+  // INTERVIEWER_MODEL[_OPENAI|_GEMINI|_OPENROUTER] (owned by the interviewer package). No
+  // provider key (ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, …) is ever read: model calls
+  // run only on the keys users save themselves.
   const ai = interviewerConfigFromEnv(process.env);
   const prod = e.NODE_ENV === 'production';
   const required = <T>(name: string, value: T | undefined, devDefault: T): T => {
@@ -216,6 +224,7 @@ export function loadConfig(overrides: Partial<Config> = {}): Config {
     aiKeySecret: '',
     aiKeyTtlHours: e.AI_KEY_TTL_HOURS,
     interviewerModel: ai.model,
+    interviewerModels: ai.models ?? {},
     aiDailyMessageLimit: e.AI_DAILY_MESSAGE_LIMIT,
     aiDailyInputTokenLimit: e.AI_DAILY_INPUT_TOKEN_LIMIT,
     aiDailyOutputTokenLimit: e.AI_DAILY_OUTPUT_TOKEN_LIMIT,

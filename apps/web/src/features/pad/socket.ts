@@ -22,7 +22,10 @@ export type PadSocketOptions = {
   getTicket: () => Promise<string>;
   onEvent: (ev: ServerEvent) => void;
   onStatus: (s: SocketStatus, detail?: { retryInMs?: number; reason?: string }) => void;
-  /** Called when a ticket request fails with a permanent error (401/403/404). */
+  /**
+   * Called when a ticket request fails with a permanent error (401/403/404), with that error, or
+   * when the server closes with 4403/4404 (e.g. the pad was deleted), with a `SocketRefused`.
+   */
   onFatal?: (err: unknown) => void;
   isFatal?: (err: unknown) => boolean;
   WebSocketImpl?: new (url: string) => WsLike;
@@ -35,6 +38,17 @@ export type PadSocketOptions = {
 };
 
 const OPEN = 1;
+
+/** The server closed the channel for good: 4403 no longer a member, 4404 the pad is gone. */
+export class SocketRefused extends Error {
+  constructor(
+    readonly code: number,
+    readonly reason: string,
+  ) {
+    super(reason || `closed with ${code}`);
+    this.name = 'SocketRefused';
+  }
+}
 
 export class PadSocket {
   private ws: WsLike | null = null;
@@ -131,6 +145,7 @@ export class PadSocket {
       if (ev.code === 4403 || ev.code === 4404) {
         this.closed = true;
         this.setStatus('offline', { reason: 'denied' });
+        this.o.onFatal?.(new SocketRefused(ev.code, ev.reason));
         return;
       }
       this.scheduleRetry();

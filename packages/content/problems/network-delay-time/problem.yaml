@@ -1,6 +1,7 @@
 slug: network-delay-time
 title: Network Delay Time
 difficulty: medium
+category: dsa
 tags: [graph, shortest-path, dijkstra, heap]
 signature:
   className: Solution

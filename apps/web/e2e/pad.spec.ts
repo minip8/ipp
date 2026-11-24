@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { ACTIVE_PAD_ID, aiKeyStatus, RUNS } from './fixtures';
+import { ACTIVE_PAD_ID, aiKeyStatus, PROBLEMS, RUNS } from './fixtures';
 import { setup } from './helpers';
 import type { MockBackend } from './mock-api';
 
@@ -32,14 +32,30 @@ test('create a pad from the library with the chosen settings', async ({ page }) 
   });
 });
 
-test('quick start picks a random problem by difficulty', async ({ page }) => {
+test('quick start picks a random problem by difficulty and waits for Start', async ({ page }) => {
   const backend = await setup(page);
+  const medium = PROBLEMS.filter((p) => p.difficulty === 'medium');
   await page.goto('/dashboard');
-  await page.getByRole('button', { name: /Random medium problem/ }).click();
-  await expect(page).toHaveURL(/\/pads\//);
-  expect(
-    backend.requests.find((r) => r.method === 'POST' && r.path === '/api/pads')?.body,
-  ).toMatchObject({ random: { difficulty: 'medium' } });
+  await page.getByRole('link', { name: /Random medium problem/ }).click();
+  // The pick lands in the setup panel (and the URL) without creating a pad.
+  await expect(page).toHaveURL(/\/new\?difficulty=medium&problem=[a-z0-9-]+$/);
+  const first = new URL(page.url()).searchParams.get('problem');
+  const title = page.getByTestId('selected-problem');
+  await expect(title).toHaveText(medium.find((p) => p.slug === first)?.title ?? '?');
+  expect(backend.requests.some((r) => r.method === 'POST' && r.path === '/api/pads')).toBe(false);
+
+  // Re-roll: another medium problem.
+  await page.getByRole('button', { name: 'Pick another random problem' }).click();
+  await expect(title).not.toHaveText(medium.find((p) => p.slug === first)?.title ?? '?');
+  const rerolledTitle = await title.textContent();
+  const rerolled = medium.find((p) => p.title === rerolledTitle);
+  expect(rerolled).toBeDefined();
+
+  await page.getByRole('button', { name: 'Start interview' }).click();
+  await expect(page).toHaveURL(/\/pads\/[0-9a-f-]{36}$/);
+  const create = backend.requests.find((r) => r.method === 'POST' && r.path === '/api/pads');
+  expect(create?.body).toMatchObject({ problemSlug: rerolled?.slug });
+  expect(create?.body).not.toHaveProperty('random');
 });
 
 test('run tests: progress, then a wrong answer with a readable diff', async ({ page }) => {

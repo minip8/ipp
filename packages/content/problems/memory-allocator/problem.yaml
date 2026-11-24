@@ -1,6 +1,7 @@
 slug: memory-allocator
 title: Memory Allocator
 difficulty: medium
+category: implementation
 tags: [design, array, simulation, ordered-map]
 signature:
   className: Allocator

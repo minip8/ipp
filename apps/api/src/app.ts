@@ -15,7 +15,7 @@ import type { Config } from './config';
 import type { Ctx } from './context';
 import { createHttpApp, originAllowed } from './http/app';
 import { type InterviewerFactory, InterviewerHost } from './interviewer/host';
-import type { KeyVerifier } from './interviewer/wiring';
+import { defaultModelLister, type KeyVerifier, type ModelLister } from './interviewer/wiring';
 import { RateLimiter } from './ratelimit';
 import { Collab } from './realtime/collab';
 import { EventsGateway } from './realtime/events';
@@ -27,8 +27,10 @@ export interface ApiOptions {
   config: Config;
   log: Logger;
   interviewerFactory: InterviewerFactory;
-  /** Checks a key with Anthropic before it is stored (tests pass a fake). */
+  /** Checks a key with its provider before it is stored (tests pass a fake). */
   verifyAiKey: KeyVerifier;
+  /** Lists the models a key can use (tests pass a fake; default: the provider's list). */
+  listAiModels?: ModelLister;
 }
 
 export interface Api {
@@ -65,6 +67,7 @@ export async function createApi(opts: ApiOptions): Promise<Api> {
       (userId) => log.warn({ userId }, 'stored AI key could not be decrypted; discarded'),
     ),
     verifyAiKey: opts.verifyAiKey,
+    listAiModels: opts.listAiModels ?? defaultModelLister(config),
   } as Ctx;
   ctx.collab = new Collab(ctx);
   ctx.runs = new RunService(ctx);

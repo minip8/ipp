@@ -1,6 +1,7 @@
 slug: max-points-on-a-line
 title: Max Points on a Line
 difficulty: hard
+category: dsa
 tags: [array, hash-table, math, geometry]
 signature:
   className: Solution

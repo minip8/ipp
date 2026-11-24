@@ -25,7 +25,8 @@ import { problems, problemTests, runs, timelineEvents } from '@ipp/db';
 import { and, asc, eq, lt, ne } from '@ipp/db/orm';
 import { Redis } from 'ioredis';
 import type { Ctx } from '../context';
-import { badRequest, rateLimited, tooLarge, unavailable } from '../http/errors';
+import { badRequest, notFound, rateLimited, tooLarge, unavailable } from '../http/errors';
+import { isForeignKeyViolation } from '../pg';
 import { storedRun } from '../views';
 import { hiddenFailures, publicProgress, toInterviewerRun, toPublicRun } from './redact';
 
@@ -214,7 +215,20 @@ export class RunService {
       return run;
     } catch (err) {
       await this.releaseInflight(userId, runId);
+      // The pad was deleted between the membership check and the insert.
+      if (isForeignKeyViolation(err)) throw notFound('Pad');
       throw err;
+    }
+  }
+
+  /**
+   * Unfinished runs of a deleted pad (their rows are gone with it): forget them and give their
+   * users back the in-flight slot. A result the judge still sends finds no row and is dropped.
+   */
+  async forget(unfinished: { id: string; userId: string }[]): Promise<void> {
+    for (const r of unfinished) {
+      this.live.delete(r.id);
+      await this.releaseInflight(r.userId, r.id);
     }
   }
 
@@ -277,17 +291,23 @@ export class RunService {
     await this.releaseInflight(row.userId, row.id);
     const stored = storedRun(row);
     const pub = toPublicRun(stored);
-    await ctx.db.insert(timelineEvents).values({
-      padId: row.padId,
-      event: {
-        type: 'run',
-        runId: row.id,
-        mode: row.mode,
-        verdict: row.verdict,
-        passed: pub.passed,
-        total: pub.total,
-      },
-    });
+    try {
+      await ctx.db.insert(timelineEvents).values({
+        padId: row.padId,
+        event: {
+          type: 'run',
+          runId: row.id,
+          mode: row.mode,
+          verdict: row.verdict,
+          passed: pub.passed,
+          total: pub.total,
+        },
+      });
+    } catch (err) {
+      // The pad was deleted between the update above and this insert: nobody to tell.
+      if (isForeignKeyViolation(err)) return false;
+      throw err;
+    }
     ctx.rooms.broadcast(row.padId, { type: 'run.finished', run: pub });
     ctx.ai.trigger(row.padId, {
       type: 'run_finished',

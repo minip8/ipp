@@ -1,6 +1,7 @@
 slug: text-editor
 title: Text Editor with a Cursor
 difficulty: hard
+category: implementation
 tags: [design, stack, linked-list, string]
 signature:
   className: TextEditor

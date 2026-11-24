@@ -1,12 +1,16 @@
 'use client';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeftIcon, CodeIcon, FileQuestionIcon, PlayIcon } from 'lucide-react';
+import { ArrowLeftIcon, CodeIcon, FileQuestionIcon, PlayIcon, Trash2Icon } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useState } from 'react';
 import { DifficultyBadge, LanguageTag } from '@/components/domain';
 import { EmptyState, ErrorState } from '@/components/states';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { DeletePadDialog } from '@/features/delete-pad/delete-pad-dialog';
+import { type DeleteTarget, deleteCopy } from '@/features/delete-pad/logic';
 import { ApiRequestError, api } from '@/lib/api';
 import { qk, useMe } from '@/lib/queries';
 import { Player } from './player';
@@ -58,8 +62,20 @@ function SectionSkeleton({ className }: { className: string }) {
 
 export function ReportPage({ id }: { id: string }) {
   const me = useMe();
-  const pad = useQuery({ queryKey: qk.pad(id), queryFn: () => api.pad(id) });
-  const ended = pad.data?.pad.status === 'ended';
+  const router = useRouter();
+  // Once deleted, nothing here may refetch (it would 404) while the dashboard loads.
+  const [deleted, setDeleted] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const pad = useQuery({ queryKey: qk.pad(id), queryFn: () => api.pad(id), enabled: !deleted });
+  const ended = pad.data?.pad.status === 'ended' && !deleted;
+  const target: DeleteTarget | null = pad.data
+    ? {
+        id,
+        problemTitle: pad.data.problem.title,
+        status: pad.data.pad.status,
+        role: pad.data.role,
+      }
+    : null;
   const report = useQuery({
     queryKey: qk.report(id),
     queryFn: () => api.report(id),
@@ -75,7 +91,11 @@ export function ReportPage({ id }: { id: string }) {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
-      {pad.isPending ? (
+      {deleted ? (
+        <p role="status" className="text-sm text-fg-muted">
+          Returning to your interviews…
+        </p>
+      ) : pad.isPending ? (
         <ReportSkeleton />
       ) : pad.isError ? (
         <>
@@ -120,13 +140,20 @@ export function ReportPage({ id }: { id: string }) {
                 <time dateTime={pad.data.pad.startedAt}>{formatDate(pad.data.pad.startedAt)}</time>
               </p>
             </div>
-            {ended ? (
-              <Button asChild size="sm">
-                <Link href={`/pads/${id}`}>
-                  <CodeIcon /> Open pad
-                </Link>
-              </Button>
-            ) : null}
+            <div className="flex items-center gap-2">
+              {target && (
+                <Button variant="danger-ghost" size="sm" onClick={() => setConfirming(true)}>
+                  <Trash2Icon /> {deleteCopy(target).action}
+                </Button>
+              )}
+              {ended ? (
+                <Button asChild size="sm">
+                  <Link href={`/pads/${id}`}>
+                    <CodeIcon /> Open pad
+                  </Link>
+                </Button>
+              ) : null}
+            </div>
           </header>
 
           {!ended ? (
@@ -190,6 +217,14 @@ export function ReportPage({ id }: { id: string }) {
           )}
         </>
       )}
+      <DeletePadDialog
+        target={confirming ? target : null}
+        onClose={() => setConfirming(false)}
+        onDeleted={() => {
+          setDeleted(true);
+          router.replace('/dashboard');
+        }}
+      />
     </div>
   );
 }

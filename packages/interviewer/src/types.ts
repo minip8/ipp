@@ -5,6 +5,8 @@
  */
 import type {
   AiKeyProblem,
+  AiModelChoice,
+  AiProvider,
   Language,
   Message,
   MessageIntent,
@@ -56,7 +58,7 @@ export interface NewMessage {
 }
 
 /**
- * Whose Anthropic API key (and daily allowance) a model call uses: a pad runs on its owner's key
+ * Whose API key (and daily allowance) a model call uses: a pad runs on its owner's key
  * (collaborators included), short-answer grading on the quiz taker's. There is no operator key.
  */
 export type AiScope = { padId: string } | { userId: string };
@@ -66,7 +68,7 @@ export type AiScope = { padId: string } | { userId: string };
  * the interviewer can tell "the same key again" from "a new key" without comparing secrets.
  */
 export type ResolvedKey =
-  | { ok: true; keyId: string; apiKey: string }
+  | { ok: true; keyId: string; provider: AiProvider; apiKey: string }
   | { ok: false; state: 'missing' | 'rejected' };
 
 export interface InterviewerDeps {
@@ -78,10 +80,17 @@ export interface InterviewerDeps {
    */
   resolveKey(scope: AiScope): Promise<ResolvedKey>;
   /**
-   * Anthropic refused the key while it was in use (revoked, out of credit, spend limit, no access
-   * to the model). The host discards it; until a new key is saved `resolveKey` returns `rejected`.
+   * The provider refused the key while it was in use (revoked, out of credit, spend limit, no
+   * access to the provider's default model). The host discards it; until a new key is saved
+   * `resolveKey` returns `rejected`.
    */
   keyRejected(scope: AiScope, keyId: string, problem: AiKeyProblem): Promise<void>;
+  /**
+   * Optional: the model chosen for the pad is unknown to the provider or not available to the
+   * key (the key itself is fine). The interviewer has switched the pad to the provider default;
+   * the host can forget the choice so the UI shows what is used.
+   */
+  modelUnavailable?(padId: string, model: AiModelChoice): Promise<void>;
   loadContext(padId: string): Promise<InterviewContext>;
   /** Persists an interviewer message and broadcasts message.created. */
   saveMessage(padId: string, message: NewMessage): Promise<Message>;
@@ -110,7 +119,10 @@ export interface ModelUsage {
 
 /** Keys are not configuration: they are resolved per call through `InterviewerDeps.resolveKey`. */
 export interface InterviewerConfig {
+  /** The Anthropic default model (INTERVIEWER_MODEL). */
   model: string;
+  /** Default models of the other providers; missing ones use the built-in defaults. */
+  models?: Partial<Record<AiProvider, string>>;
 }
 
 export interface ShortAnswerGrade {

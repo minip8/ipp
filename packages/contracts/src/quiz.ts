@@ -165,3 +165,48 @@ export const QuizTopicStats = QuizTopic.extend({
   accuracy: z.number().nullable(),
 });
 export type QuizTopicStats = z.infer<typeof QuizTopicStats>;
+
+// ---------------------------------------------------------------- question bank (browse and answer)
+
+/**
+ * Where the user stands on one question, from their latest countable answer: a standalone answer
+ * given in the question bank, a practice-attempt answer, or an answer in a finished exam.
+ * `pending` = a short answer recorded without a model that still waits for a self-grade.
+ */
+export const QuizQuestionStatus = z.enum([
+  'unanswered',
+  'correct',
+  'partial',
+  'incorrect',
+  'pending',
+]);
+export type QuizQuestionStatus = z.infer<typeof QuizQuestionStatus>;
+
+export const QuizBankItem = z.object({
+  question: PublicQuizQuestion,
+  status: QuizQuestionStatus,
+  /** 0..1 of the latest answer; null when unanswered or waiting for a self-grade */
+  score: z.number().nullable(),
+  answeredAt: IsoDate.nullable(),
+});
+export type QuizBankItem = z.infer<typeof QuizBankItem>;
+
+/** `GET /api/quiz/topics/:slug/questions`: a topic's active questions, never with answers. */
+export const QuizBank = z.object({ topic: QuizTopic, items: z.array(QuizBankItem) });
+export type QuizBank = z.infer<typeof QuizBank>;
+
+/**
+ * `GET /api/quiz/questions/:id`: one question with the user's latest recorded response and its
+ * feedback. Both are null until a response is recorded, so nothing is revealed before answering.
+ */
+export const QuizBankQuestion = QuizBankItem.extend({
+  response: QuizResponse.nullable(),
+  feedback: AnswerFeedback.nullable(),
+}).refine((q) => (q.response === null) === (q.feedback === null), {
+  message: 'feedback is present exactly when a response is',
+});
+export type QuizBankQuestion = z.infer<typeof QuizBankQuestion>;
+
+/** `POST /api/quiz/questions/:id/answers`: answer outside any attempt; returns `AnswerFeedback`. */
+export const SubmitStandaloneAnswerRequest = z.object({ response: QuizResponse });
+export type SubmitStandaloneAnswerRequest = z.infer<typeof SubmitStandaloneAnswerRequest>;

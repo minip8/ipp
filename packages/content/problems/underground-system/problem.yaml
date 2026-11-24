@@ -1,6 +1,7 @@
 slug: underground-system
 title: Underground Journey Times
 difficulty: medium
+category: implementation
 tags: [design, hash-table, string]
 signature:
   className: UndergroundSystem

@@ -1,6 +1,7 @@
 slug: coin-change-ii
 title: Coin Change (Count the Ways)
 difficulty: medium
+category: dsa
 tags: [dynamic-programming, knapsack]
 signature:
   className: Solution

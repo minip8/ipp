@@ -1,6 +1,7 @@
 slug: stock-price-fluctuation
 title: Stock Price Fluctuation
 difficulty: medium
+category: implementation
 tags: [design, heap, hash-table, ordered-set]
 signature:
   className: StockPrice

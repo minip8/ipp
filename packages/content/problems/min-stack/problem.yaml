@@ -1,6 +1,7 @@
 slug: min-stack
 title: Min Stack
 difficulty: easy
+category: data-structure
 tags: [design, stack]
 signature:
   className: MinStack

@@ -64,8 +64,8 @@ function PadLoader({ id }: { id: string }) {
             <div className="max-w-sm text-center">
               <h1 className="text-lg font-semibold">This pad is not available</h1>
               <p className="mt-1 text-sm text-fg-muted">
-                It does not exist, or you are not a member. If someone invited you, open their
-                invite link again.
+                It was deleted, it does not exist, or you are not a member. If someone invited you,
+                open their invite link again.
               </p>
               <Button asChild className="mt-5" variant="primary">
                 <Link href="/dashboard">Go to your interviews</Link>

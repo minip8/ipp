@@ -1,6 +1,7 @@
 slug: trapping-rain-water
 title: Trapping Rain Water
 difficulty: hard
+category: dsa
 tags: [array, two-pointers, stack, monotonic-stack, prefix-sum]
 signature:
   className: Solution

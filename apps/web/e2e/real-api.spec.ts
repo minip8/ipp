@@ -77,16 +77,13 @@ test('sign up, no-key states, add a key, interview, edit, run, end, report; quiz
     .getByRole('button', { name: /Two Sum/ })
     .first()
     .click();
-  await expect(page.getByTestId('ai-key-prompt')).toContainText(
-    'Runs on your own Anthropic API key',
-  );
+  await expect(page.getByTestId('ai-key-prompt')).toContainText('Runs on your own AI API key');
   await shot(page, 'new');
   await page.getByRole('button', { name: 'Start interview' }).click();
   await expect(page.getByRole('dialog', { name: 'Add your API key to start' })).toBeVisible();
   await page.keyboard.press('Escape');
 
-  // A pad whose owner has no key (as after a quick start, or once a key expired): created
-  // through the API like the dashboard's quick start does.
+  // A pad whose owner has no key (as once a key expired): created directly through the API.
   const padId = await page.evaluate(async () => {
     const r = await fetch('/api/pads', {
       method: 'POST',
@@ -105,7 +102,7 @@ test('sign up, no-key states, add a key, interview, edit, run, end, report; quiz
   // No key: the interviewer panel says why it is quiet, and nothing answers.
   const chat = page.getByRole('region', { name: 'Interviewer chat' });
   const prompt = chat.getByTestId('ai-key-prompt');
-  await expect(prompt).toContainText('The interviewer runs on your Anthropic API key');
+  await expect(prompt).toContainText('The interviewer runs on your own AI API key');
   await page.getByLabel('Message', { exact: true }).fill('Is anyone there?');
   await page.keyboard.press('Enter');
   await page.waitForTimeout(4000);

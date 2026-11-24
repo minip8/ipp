@@ -1,6 +1,7 @@
 slug: first-missing-positive
 title: First Missing Positive
 difficulty: hard
+category: dsa
 tags: [array, hash-table, cyclic-sort]
 signature:
   className: Solution

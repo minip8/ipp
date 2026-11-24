@@ -1,6 +1,7 @@
 slug: time-based-key-value-store
 title: Time-Based Key-Value Store
 difficulty: medium
+category: implementation
 tags: [design, hash-table, binary-search]
 signature:
   className: TimeMap

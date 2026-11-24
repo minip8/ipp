@@ -14,13 +14,18 @@ import { Hono } from 'hono';
 import type { Ctx } from '../context';
 import { type Env, parseBody, requireUser } from '../http/app';
 import { badRequest, conflict, notFound, rateLimited } from '../http/errors';
-import { CORRECT_THRESHOLD, correctAnswer, gradeAuto, publicQuestion } from '../quiz/grade';
+import {
+  type AnswerRow,
+  applySelfGrade,
+  feedbackOf,
+  gradeResponse,
+  latestAnswerMap,
+  latestAnswers,
+} from '../quiz/answers';
+import { publicQuestion } from '../quiz/grade';
+import { quizBankRoutes } from './quiz-bank';
 
 type AttemptRow = typeof quizAttempts.$inferSelect;
-type AnswerRow = typeof quizAnswers.$inferSelect;
-
-/** Answers that may influence stats and selection: practice answers, and exam answers once finished. */
-const COUNTABLE = sql`(${quizAttempts.mode} = 'practice' or ${quizAttempts.status} = 'finished')`;
 
 function shuffle<T>(xs: T[]): T[] {
   const a = [...xs];
@@ -31,22 +36,11 @@ function shuffle<T>(xs: T[]): T[] {
   return a;
 }
 
-function feedbackOf(q: QuizQuestion, a: AnswerRow | undefined): AnswerFeedback {
-  return {
-    questionId: q.id,
-    score: a?.score ?? 0,
-    correct: a?.correct ?? false,
-    correctAnswer: correctAnswer(q),
-    explanation: q.explanation,
-    feedback: a ? (a.feedback ?? null) : 'Not answered.',
-    gradedBy: a?.gradedBy ?? 'auto',
-    needsSelfGrade: a?.needsSelfGrade ?? false,
-  };
-}
-
 export function quizRoutes(ctx: Ctx) {
   const r = new Hono<Env>();
   const { db } = ctx;
+  // The question bank: browse a topic and answer questions outside any attempt.
+  r.route('/', quizBankRoutes(ctx));
 
   async function loadAttempt(id: string, userId: string): Promise<AttemptRow> {
     if (!/^[0-9a-f-]{36}$/i.test(id)) throw notFound('Attempt');
@@ -107,61 +101,10 @@ export function quizRoutes(ctx: Ctx) {
     return attempt.questionIds.length ? total / attempt.questionIds.length : 0;
   }
 
-  async function grade(
-    userId: string,
-    q: QuizQuestion,
-    response: QuizResponse,
-  ): Promise<Pick<AnswerRow, 'score' | 'correct' | 'feedback' | 'gradedBy' | 'needsSelfGrade'>> {
-    const auto = gradeAuto(q, response);
-    if (auto) return { ...auto, feedback: null, gradedBy: 'auto', needsSelfGrade: false };
-    if (q.type !== 'short' || response.type !== 'short')
-      throw badRequest('Response type does not match the question');
-    // On the quiz taker's own key; without one (or if it fails) the user grades themselves.
-    try {
-      const g = await ctx.ai.gradeShortAnswer(userId, q, response.text);
-      if (g) {
-        const score = Math.max(0, Math.min(1, g.score));
-        return {
-          score,
-          correct: score >= CORRECT_THRESHOLD,
-          feedback: g.feedback,
-          gradedBy: 'ai',
-          needsSelfGrade: false,
-        };
-      }
-    } catch (err) {
-      ctx.log.warn(
-        { err: String(err), questionId: q.id },
-        'short-answer grading failed; falling back to self-grade',
-      );
-    }
-    if (response.selfGrade !== undefined) {
-      return {
-        score: response.selfGrade,
-        correct: response.selfGrade >= CORRECT_THRESHOLD,
-        feedback: null,
-        gradedBy: 'self',
-        needsSelfGrade: false,
-      };
-    }
-    return { score: 0, correct: false, feedback: null, gradedBy: 'self', needsSelfGrade: true };
-  }
-
   r.get('/quiz/topics', async (c) => {
     const user = requireUser(c);
-    const latest = db.$with('latest').as(
-      db
-        .selectDistinctOn([quizAnswers.questionId], {
-          questionId: quizAnswers.questionId,
-          score: quizAnswers.score,
-        })
-        .from(quizAnswers)
-        .innerJoin(quizAttempts, eq(quizAttempts.id, quizAnswers.attemptId))
-        .where(
-          and(eq(quizAttempts.userId, user.id), eq(quizAnswers.needsSelfGrade, false), COUNTABLE),
-        )
-        .orderBy(quizAnswers.questionId, desc(quizAnswers.answeredAt)),
-    );
+    // Latest graded answer per question, from attempts and the question bank.
+    const latest = db.$with('latest').as(latestAnswers(db, user.id, { graded: true }));
     const rows = await db
       .with(latest)
       .select({
@@ -213,33 +156,17 @@ export function quizRoutes(ctx: Ctx) {
     let chosen: string[];
     if (!body.focusWeak) chosen = shuffle(pool.map((p) => p.id)).slice(0, body.count);
     else {
-      // Latest countable answer per question for this user.
-      const history = await db
-        .selectDistinctOn([quizAnswers.questionId], {
-          questionId: quizAnswers.questionId,
-          correct: quizAnswers.correct,
-          at: quizAnswers.answeredAt,
-        })
-        .from(quizAnswers)
-        .innerJoin(quizAttempts, eq(quizAttempts.id, quizAnswers.attemptId))
-        .where(
-          and(
-            eq(quizAttempts.userId, user.id),
-            inArray(
-              quizAnswers.questionId,
-              pool.map((p) => p.id),
-            ),
-            COUNTABLE,
-          ),
-        )
-        .orderBy(quizAnswers.questionId, desc(quizAnswers.answeredAt));
-      const seen = new Map(history.map((h) => [h.questionId, h]));
+      // Latest countable answer per question for this user (attempts and question bank).
+      const seen = await latestAnswerMap(db, user.id, { questionIds: pool.map((p) => p.id) });
       // Missed or never seen first (mixed), then ones answered correctly, least recently first.
       const weak = shuffle(pool.filter((p) => !seen.get(p.id)?.correct).map((p) => p.id));
       const strong = pool
         .filter((p) => seen.get(p.id)?.correct)
         .map((p) => p.id)
-        .sort((a, b) => (seen.get(a)?.at.getTime() ?? 0) - (seen.get(b)?.at.getTime() ?? 0));
+        .sort(
+          (a, b) =>
+            (seen.get(a)?.answeredAt.getTime() ?? 0) - (seen.get(b)?.answeredAt.getTime() ?? 0),
+        );
       chosen = [...weak, ...strong].slice(0, body.count);
       chosen = shuffle(chosen);
     }
@@ -297,32 +224,16 @@ export function quizRoutes(ctx: Ctx) {
       .where(and(eq(quizAnswers.attemptId, attempt.id), eq(quizAnswers.questionId, q.id)));
 
     // A self-grade for a short answer recorded without a model; allowed after an exam is finished.
-    const isSelfGrade =
-      existing?.needsSelfGrade === true &&
-      body.response.type === 'short' &&
-      body.response.selfGrade !== undefined;
-    if (attempt.status === 'finished' && !isSelfGrade)
+    const selfGrade = applySelfGrade(existing, body.response);
+    if (attempt.status === 'finished' && !selfGrade)
       throw conflict('attempt_finished', 'This attempt is finished');
-    if (existing && attempt.mode === 'practice' && !isSelfGrade) {
+    if (existing && attempt.mode === 'practice' && !selfGrade) {
       throw conflict('already_answered', 'This question has already been answered');
     }
 
-    let graded: Awaited<ReturnType<typeof grade>>;
-    let response = body.response;
-    if (isSelfGrade && body.response.type === 'short' && existing?.response.type === 'short') {
-      const s = body.response.selfGrade ?? 0;
-      // Keep the originally submitted text; only the grade changes.
-      response = { type: 'short', text: existing.response.text, selfGrade: s };
-      graded = {
-        score: s,
-        correct: s >= CORRECT_THRESHOLD,
-        feedback: null,
-        gradedBy: 'self',
-        needsSelfGrade: false,
-      };
-    } else {
-      graded = await grade(user.id, q, body.response);
-    }
+    // A self-grade keeps the originally submitted text; only the grade changes.
+    const response = selfGrade?.response ?? body.response;
+    const graded = selfGrade?.graded ?? (await gradeResponse(ctx, user.id, q, body.response));
     const values = {
       attemptId: attempt.id,
       questionId: q.id,

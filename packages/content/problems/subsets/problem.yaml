@@ -1,6 +1,7 @@
 slug: subsets
 title: Subsets
 difficulty: easy
+category: dsa
 tags: [backtracking, bit-manipulation, array]
 signature:
   className: Solution

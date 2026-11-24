@@ -1,6 +1,7 @@
 slug: accounts-merge
 title: Accounts Merge
 difficulty: medium
+category: dsa
 tags: [graph, union-find, dfs, hash-table, string]
 signature:
   className: Solution

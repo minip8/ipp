@@ -1,6 +1,7 @@
 slug: design-twitter
 title: Design Twitter Feed
 difficulty: medium
+category: implementation
 tags: [design, heap, hash-table]
 signature:
   className: Twitter

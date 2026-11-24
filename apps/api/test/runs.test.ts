@@ -2,7 +2,7 @@ import { request } from 'node:http';
 import { JUDGE_KEYS, Run } from '@ipp/contracts';
 import { runs } from '@ipp/db';
 import { eq } from '@ipp/db/orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_LIMITS } from '../src/config';
 import { MAX_RESULT_BYTES } from '../src/runs/service';
 import { TEST_WEB_ORIGIN } from './helpers/env';
@@ -443,6 +443,70 @@ describe('run pipeline', () => {
     );
     // Results stream is drained.
     expect(await h.api.ctx.redis.xlen(JUDGE_KEYS.resultsStream)).toBe(0);
+    ws.close();
+  });
+
+  it('a result that arrives after its pad was deleted is dropped quietly', async () => {
+    judge.behaviour = 'silent';
+    const { c, pad } = await userWithPad('LateResult');
+    const r = await c.post(`/api/pads/${pad.id}/runs`, {
+      mode: 'file',
+      language: 'python',
+      source: 'print(1)',
+    });
+    expect(r.status).toBe(201);
+    await until(() => judge.jobs.some((j) => j.runId === r.json.id));
+    const inflight = `${h.api.ctx.config.redisPrefix}inflight:${(await c.get('/api/me')).json.user.id}`;
+    expect(await h.api.ctx.redis.exists(inflight)).toBe(1);
+
+    expect((await c.del(`/api/pads/${pad.id}`)).json).toEqual({ padId: pad.id, removed: 'pad' });
+    // The user's in-flight slot is given back at once, not after the run's deadline.
+    expect(await h.api.ctx.redis.exists(inflight)).toBe(0);
+    expect((await c.get(`/api/runs/${r.json.id}`)).status).toBe(404);
+
+    const finish = vi.spyOn(h.api.ctx.runs, 'finish');
+    try {
+      const late = {
+        v: 1,
+        runId: r.json.id,
+        verdict: 'ok',
+        compile: null,
+        file: null,
+        tests: [],
+        message: null,
+        timing: { queueMs: 0, totalMs: 5 },
+        sandbox: { runtime: 'runc', image: 'x' },
+      };
+      await h.api.ctx.redis.xadd(JUDGE_KEYS.resultsStream, '*', 'payload', JSON.stringify(late));
+      await until(async () => (await h.api.ctx.redis.xlen(JUDGE_KEYS.resultsStream)) === 0);
+      await until(() => finish.mock.results.length > 0);
+      await expect(finish.mock.results[0]?.value).resolves.toBe(false);
+    } finally {
+      finish.mockRestore();
+    }
+    const pending = (await h.api.ctx.redis.xpending(
+      JUDGE_KEYS.jobsStream,
+      JUDGE_KEYS.jobsGroup,
+      '-',
+      '+',
+      100,
+    )) as [string][];
+    for (const [id] of pending)
+      await h.api.ctx.redis.xack(JUDGE_KEYS.jobsStream, JUDGE_KEYS.jobsGroup, id);
+
+    // The pipeline carries on for the user's next pad.
+    judge.behaviour = 'normal';
+    const next = (await c.post('/api/pads', { problemSlug: 'two-sum', language: 'python' })).json;
+    const ws = await EventSocket.open(
+      `${h.wsBase}/ws/pads/${next.id}?ticket=${await c.ticket(next.id)}`,
+    );
+    const again = await c.post(`/api/pads/${next.id}/runs`, {
+      mode: 'samples',
+      language: 'python',
+      source: SOURCE,
+    });
+    expect(again.status).toBe(201);
+    await ws.waitFor('run.finished', (e) => e.run.id === again.json.id);
     ws.close();
   });
 

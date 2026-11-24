@@ -6,6 +6,7 @@ export const qk = {
   me: ['me'] as const,
   config: ['config'] as const,
   aiKey: ['ai-key'] as const,
+  aiModels: ['ai-models'] as const,
   problems: (f: object) => ['problems', f] as const,
   problem: (slug: string) => ['problem', slug] as const,
   pads: ['pads'] as const,
@@ -15,6 +16,8 @@ export const qk = {
   quizTopics: ['quiz', 'topics'] as const,
   attempts: ['quiz', 'attempts'] as const,
   attempt: (id: string) => ['quiz', 'attempt', id] as const,
+  quizBank: (topic: string) => ['quiz', 'bank', topic] as const,
+  quizBankQuestion: (id: string) => ['quiz', 'question', id] as const,
 };
 
 export function useMe() {
@@ -39,4 +42,15 @@ export function useConfig() {
 /** The signed-in user's AI key status (state, last four, expiry). */
 export function useAiKey(enabled = true) {
   return useQuery({ queryKey: qk.aiKey, queryFn: api.aiKey, staleTime: 60_000, enabled });
+}
+
+/** The models the saved key can use; only while there is an active key. */
+export function useAiModels(enabled = true) {
+  return useQuery({
+    queryKey: qk.aiModels,
+    queryFn: api.aiModels,
+    staleTime: 5 * 60_000,
+    retry: 1,
+    enabled,
+  });
 }

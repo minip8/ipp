@@ -1,6 +1,7 @@
 slug: number-of-connected-components
 title: Number of Connected Components
 difficulty: easy
+category: dsa
 tags: [graph, union-find, dfs, bfs]
 signature:
   className: Solution

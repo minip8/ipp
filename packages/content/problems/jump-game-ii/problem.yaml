@@ -1,6 +1,7 @@
 slug: jump-game-ii
 title: Jump Game II
 difficulty: medium
+category: dsa
 tags: [array, greedy]
 signature:
   className: Solution

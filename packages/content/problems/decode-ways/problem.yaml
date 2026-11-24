@@ -1,6 +1,7 @@
 slug: decode-ways
 title: Decode Ways
 difficulty: medium
+category: dsa
 tags: [dynamic-programming, string]
 signature:
   className: Solution

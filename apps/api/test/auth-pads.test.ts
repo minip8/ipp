@@ -1,3 +1,15 @@
+import {
+  interviewerNotes,
+  messages,
+  padDocs,
+  padMembers,
+  pads,
+  padUpdates,
+  reports,
+  runs,
+  timelineEvents,
+} from '@ipp/db';
+import { eq } from '@ipp/db/orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { TEST_WEB_ORIGIN } from './helpers/env';
 import { Client, flushRedis, type Harness, startApi } from './helpers/harness';
@@ -104,9 +116,21 @@ describe('problems', () => {
     ).toEqual(['two-sum']);
     expect((await c.get('/api/problems?q=LRU')).json).toHaveLength(1);
     expect((await c.get('/api/problems?difficulty=impossible')).status).toBe(400);
+    expect(
+      Object.fromEntries(
+        list.json.map((p: { slug: string; category: string }) => [p.slug, p.category]),
+      ),
+    ).toEqual({ 'two-sum': 'dsa', 'lru-cache': 'data-structure' });
+    expect(
+      (await c.get('/api/problems?category=data-structure')).json.map(
+        (p: { slug: string }) => p.slug,
+      ),
+    ).toEqual(['lru-cache']);
+    expect((await c.get('/api/problems?category=puzzles')).status).toBe(400);
     const d = await c.get('/api/problems/two-sum');
     expect(d.status).toBe(200);
     expect(d.json.hiddenTestCount).toBe(1);
+    expect(d.json.category).toBe('dsa');
     expect(d.json.sampleTests.map((t: { id: string }) => t.id)).toEqual(['s1', 's2']);
     expect(Object.keys(d.json.scaffolds).sort()).toEqual(['cpp', 'java', 'python']);
     expect(d.json).not.toHaveProperty('interviewerNotes');
@@ -277,6 +301,135 @@ describe('pads', () => {
       assessmentUnavailable: 'interviewer_off',
     });
     expect(h.fake.triggers.filter((t) => t.padId === pad.id)).toEqual([]);
+  });
+});
+
+describe('deleting pads', () => {
+  /** Row counts per pad-scoped table (everything that cascades from pads). */
+  async function rowsFor(padId: string) {
+    const { db } = h.api.ctx;
+    return {
+      pads: (await db.select().from(pads).where(eq(pads.id, padId))).length,
+      members: (await db.select().from(padMembers).where(eq(padMembers.padId, padId))).length,
+      docs: (await db.select().from(padDocs).where(eq(padDocs.padId, padId))).length,
+      updates: (await db.select().from(padUpdates).where(eq(padUpdates.padId, padId))).length,
+      messages: (await db.select().from(messages).where(eq(messages.padId, padId))).length,
+      notes: (await db.select().from(interviewerNotes).where(eq(interviewerNotes.padId, padId)))
+        .length,
+      timeline: (await db.select().from(timelineEvents).where(eq(timelineEvents.padId, padId)))
+        .length,
+      runs: (await db.select().from(runs).where(eq(runs.padId, padId))).length,
+      reports: (await db.select().from(reports).where(eq(reports.padId, padId))).length,
+    };
+  }
+
+  async function endedPadWithEverything() {
+    const owner = new Client(h.base, '198.51.100.21');
+    const collab = new Client(h.base, '198.51.100.22');
+    const owned = await owner.signUp('DelOwner');
+    await collab.signUp('DelCollab');
+    const pad = (await owner.post('/api/pads', { problemSlug: 'two-sum', language: 'python' }))
+      .json;
+    await collab.post('/api/pads/join', { shareToken: pad.shareToken });
+    const { db } = h.api.ctx;
+    await db.insert(padDocs).values({ padId: pad.id, state: new Uint8Array([0, 0]) });
+    await db.insert(padUpdates).values({ padId: pad.id, seq: 1, update: new Uint8Array([0, 0]) });
+    await db.insert(messages).values({
+      padId: pad.id,
+      role: 'candidate',
+      kind: 'chat',
+      intent: null,
+      text: 'hello',
+      via: 'text',
+      userId: owned.id,
+    });
+    await db.insert(interviewerNotes).values({ padId: pad.id, note: 'private' });
+    await db.insert(runs).values({
+      padId: pad.id,
+      userId: owned.id,
+      mode: 'file',
+      language: 'python',
+      source: 'print(1)',
+      status: 'finished',
+      hiddenIds: [],
+      testCount: 0,
+      deadlineAt: new Date(),
+    });
+    expect((await owner.post(`/api/pads/${pad.id}/end`)).status).toBe(200);
+    await new Promise((r) => setTimeout(r, 100)); // let the report settle
+    return { owner, collab, pad };
+  }
+
+  it('the owner deletes the pad and everything attached to it, for everyone', async () => {
+    const { owner, collab, pad } = await endedPadWithEverything();
+    const before = await rowsFor(pad.id);
+    for (const [table, n] of Object.entries(before)) expect(n, table).toBeGreaterThan(0);
+    expect(before.members).toBe(2);
+    expect((await owner.get('/api/pads')).json[0]).toMatchObject({ id: pad.id, role: 'owner' });
+    expect((await collab.get('/api/pads')).json[0]).toMatchObject({
+      id: pad.id,
+      role: 'collaborator',
+    });
+
+    const res = await owner.del(`/api/pads/${pad.id}`);
+    expect(res.status).toBe(200);
+    expect(res.json).toEqual({ padId: pad.id, removed: 'pad' });
+    const after = await rowsFor(pad.id);
+    for (const [table, n] of Object.entries(after)) expect(n, table).toBe(0);
+
+    for (const c of [owner, collab]) {
+      expect((await c.get(`/api/pads/${pad.id}`)).status).toBe(404);
+      expect((await c.get(`/api/pads/${pad.id}/report`)).status).toBe(404);
+      expect((await c.get(`/api/pads/${pad.id}/playback`)).status).toBe(404);
+      expect((await c.get('/api/pads')).json).toEqual([]);
+    }
+    // A repeat (double click) is the plain not-found every pad route gives; nothing breaks.
+    const again = await owner.del(`/api/pads/${pad.id}`);
+    expect(again.status).toBe(404);
+    expect(again.json.error.code).toBe('not_found');
+    // The share token no longer leads anywhere.
+    expect((await collab.post('/api/pads/join', { shareToken: pad.shareToken })).status).toBe(404);
+    expect(h.fake.released).toContain(pad.id);
+  });
+
+  it('a collaborator only removes it from their own history', async () => {
+    const { owner, collab, pad } = await endedPadWithEverything();
+    const before = await rowsFor(pad.id);
+    const res = await collab.del(`/api/pads/${pad.id}`);
+    expect(res.status).toBe(200);
+    expect(res.json).toEqual({ padId: pad.id, removed: 'membership' });
+    expect(await rowsFor(pad.id)).toEqual({ ...before, members: 1 });
+    expect((await collab.get(`/api/pads/${pad.id}`)).status).toBe(404);
+    expect((await collab.get('/api/pads')).json).toEqual([]);
+    expect((await collab.del(`/api/pads/${pad.id}`)).status).toBe(404);
+    // The owner keeps everything.
+    expect((await owner.get(`/api/pads/${pad.id}`)).json.role).toBe('owner');
+    expect((await owner.get(`/api/pads/${pad.id}/report`)).status).toBe(200);
+    expect((await owner.get('/api/pads')).json.map((p: { id: string }) => p.id)).toEqual([pad.id]);
+    // The invite link still works if they want it back.
+    expect((await collab.post('/api/pads/join', { shareToken: pad.shareToken })).status).toBe(200);
+    expect((await collab.get(`/api/pads/${pad.id}`)).json.role).toBe('collaborator');
+  });
+
+  it('non-members get the same not-found as the other pad routes, and nothing changes', async () => {
+    const { owner, pad } = await endedPadWithEverything();
+    const stranger = new Client(h.base, '198.51.100.23');
+    await stranger.signUp('Stranger');
+    const before = await rowsFor(pad.id);
+    const res = await stranger.del(`/api/pads/${pad.id}`);
+    expect(res.status).toBe(404);
+    expect(res.json).toEqual((await stranger.get(`/api/pads/${pad.id}`)).json);
+    expect((await stranger.del('/api/pads/not-a-uuid')).status).toBe(404);
+    expect((await new Client(h.base).del(`/api/pads/${pad.id}`)).status).toBe(401);
+    // State-changing: a foreign origin is refused like any other.
+    expect(
+      (
+        await owner.req('DELETE', `/api/pads/${pad.id}`, undefined, {
+          origin: 'https://evil.example',
+        })
+      ).status,
+    ).toBe(403);
+    expect(await rowsFor(pad.id)).toEqual(before);
   });
 });
 

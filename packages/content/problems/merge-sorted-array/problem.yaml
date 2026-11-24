@@ -1,6 +1,7 @@
 slug: merge-sorted-array
 title: Merge Sorted Array
 difficulty: easy
+category: dsa
 tags: [array, two-pointers, sorting]
 signature:
   className: Solution

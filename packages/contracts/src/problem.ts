@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { Identifier, Json, Language, Slug } from './common';
+import { ProblemCategory } from './taxonomy';
 
 /**
  * Language-neutral value types for method signatures.
@@ -87,6 +88,9 @@ export const ProblemContent = z.object({
   slug: Slug,
   title: z.string().max(120),
   difficulty: Difficulty,
+  /** What kind of interview this is; see CATEGORY_INFO. */
+  category: ProblemCategory,
+  /** Fine-grained topics; each is in a TOPIC_GROUPS group or in EXCLUDED_TAGS. */
   tags: z.array(Slug),
   /** Markdown shown to the candidate. */
   statement: z.string(),
@@ -118,6 +122,7 @@ export const ProblemSummary = z.object({
   slug: Slug,
   title: z.string(),
   difficulty: Difficulty,
+  category: ProblemCategory,
   tags: z.array(z.string()),
 });
 export type ProblemSummary = z.infer<typeof ProblemSummary>;

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { ReportAssessment, ServerEvent } from '@ipp/contracts';
+import type { AiModelOption, AiProvider, ReportAssessment, ServerEvent } from '@ipp/contracts';
 import { Redis } from 'ioredis';
 import { WebSocket } from 'ws';
 import { type Api, createApi } from '../../src/app';
@@ -11,7 +11,7 @@ import type {
   ShortAnswerGrade,
   Trigger,
 } from '../../src/interviewer/types';
-import type { KeyVerifier } from '../../src/interviewer/wiring';
+import type { KeyVerifier, ModelLister } from '../../src/interviewer/wiring';
 import { createLogger } from '../../src/log';
 import { TEST_DATABASE_URL, TEST_REDIS_URL, TEST_WEB_ORIGIN } from './env';
 
@@ -52,11 +52,13 @@ export async function flushRedis(): Promise<void> {
 export const TEST_AI_KEY = 'sk-ant-api03-good-TESTKEY-4f9c2d1e8b7a6c5d4e3f2a1b0c9d8e7f-QWER';
 export const TEST_AI_KEY_2 = 'sk-ant-api03-good-SECONDKEY-0a1b2c3d4e5f6a7b8c9d0e1f2a3b-ZXCV';
 
-/** Stand-in for the one real Anthropic call made when a key is saved. */
+/** Stand-in for the one real provider call made when a key is saved. */
 export class FakeVerifier {
   calls: string[] = [];
-  verify: KeyVerifier = async (apiKey) => {
+  providers: AiProvider[] = [];
+  verify: KeyVerifier = async (apiKey, provider) => {
     this.calls.push(apiKey);
+    this.providers.push(provider);
     if (apiKey.includes('good')) return { ok: true };
     if (apiKey.includes('broke')) return { ok: false, problem: 'billing' };
     if (apiKey.includes('down')) return { ok: false, problem: 'unverifiable' };
@@ -155,8 +157,24 @@ export class FakeInterviewer implements Interviewer {
   };
 }
 
+/** Stand-in for the provider's list-models endpoint; `fail` makes it throw like an outage. */
+export class FakeLister {
+  calls: { apiKey: string; provider: AiProvider }[] = [];
+  fail = false;
+  list: ModelLister = async (apiKey, provider) => {
+    this.calls.push({ apiKey, provider });
+    if (this.fail) throw Object.assign(new Error('listing failed'), { status: 503 });
+    const models: AiModelOption[] = [
+      { id: `${provider}-big`, label: 'Big', default: false },
+      { id: `${provider}-small`, label: 'Small', default: false },
+    ];
+    return models;
+  };
+}
+
 export interface Harness {
   api: Api;
+  lister: FakeLister;
   base: string;
   wsBase: string;
   fake: FakeInterviewer;
@@ -172,6 +190,7 @@ export async function startApi(
   const config = testConfig(opts.captureLogs ? { logLevel: 'trace', ...opts.config } : opts.config);
   const fake = opts.fake ?? new FakeInterviewer();
   const verifier = new FakeVerifier();
+  const lister = new FakeLister();
   const logs: string[] = [];
   const log = opts.captureLogs
     ? createLogger(config.logLevel, false, { write: (line: string) => void logs.push(line) })
@@ -181,10 +200,12 @@ export async function startApi(
     log,
     interviewerFactory: fake.factory,
     verifyAiKey: verifier.verify,
+    listAiModels: lister.list,
   });
   const port = await api.listen(0);
   return {
     api,
+    lister,
     base: `http://127.0.0.1:${port}`,
     wsBase: `ws://127.0.0.1:${port}`,
     fake,
@@ -238,9 +259,9 @@ export class Client {
   put = (p: string, b: unknown) => this.req('PUT', p, b);
   del = (p: string) => this.req('DELETE', p);
 
-  /** Saves an Anthropic API key for the signed-in user (through the fake verifier). */
-  async saveKey(apiKey = TEST_AI_KEY) {
-    const res = await this.put('/api/ai-key', { apiKey });
+  /** Saves an API key for the signed-in user (through the fake verifier). */
+  async saveKey(apiKey = TEST_AI_KEY, provider?: AiProvider) {
+    const res = await this.put('/api/ai-key', provider ? { apiKey, provider } : { apiKey });
     if (res.status !== 200) throw new Error(`saving key failed: ${res.status} ${res.text}`);
     return res.json;
   }

@@ -1,6 +1,7 @@
 slug: letter-combinations-of-a-phone-number
 title: Letter Combinations of a Phone Number
 difficulty: easy
+category: dsa
 tags: [backtracking, string]
 signature:
   className: Solution

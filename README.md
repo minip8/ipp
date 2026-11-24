@@ -16,7 +16,7 @@ Design and security model: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Deploym
 | `infra/sandbox` | One Docker image per language |
 | `packages/contracts` | Shared Zod schemas and cross-language fixtures |
 | `packages/db` | Drizzle schema, migrations, seed |
-| `packages/interviewer` | Claude prompts and the speak / stay-silent policy |
+| `packages/interviewer` | Interviewer prompts, the speak / stay-silent policy, model clients per provider |
 | `packages/content` | Coding problems and quiz questions |
 
 ## Running locally
@@ -24,7 +24,7 @@ Design and security model: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Deploym
 Needs Node 22+, pnpm, Docker, and a Rust toolchain.
 
 ```sh
-cp .env.example .env            # AI features use each user's own key, saved in the app
+cp .env.example .env            # AI features use each user's own key (Anthropic, OpenAI, Gemini, OpenRouter)
 pnpm install
 pnpm infra:up                   # Postgres and Redis
 pnpm db:migrate && pnpm db:seed # loads packages/content
@@ -58,5 +58,7 @@ pnpm --filter @ipp/interviewer exec tsx scripts/simulate.ts  # scripted intervie
 ## Adding content
 
 - A coding problem is a directory under `packages/content/problems/` (see `two-sum` for the shape).
+  Give it a `category` (`dsa`, `implementation` or `data-structure`) and tags from the topic
+  groups in `packages/contracts/src/taxonomy.ts`; the content checks fail on a tag in no group.
 - Quiz questions are YAML arrays under `packages/content/quiz/<topic>/`.
 - Run the content checks above, then `pnpm db:seed` (idempotent).

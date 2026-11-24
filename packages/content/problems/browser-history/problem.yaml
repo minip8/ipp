@@ -1,6 +1,7 @@
 slug: browser-history
 title: Browser History
 difficulty: easy
+category: implementation
 tags: [design, array, stack]
 signature:
   className: BrowserHistory

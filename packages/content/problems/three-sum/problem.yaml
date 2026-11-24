@@ -1,6 +1,7 @@
 slug: three-sum
 title: 3Sum
 difficulty: medium
+category: dsa
 tags: [array, two-pointers, sorting]
 signature:
   className: Solution

@@ -1,6 +1,7 @@
 slug: decode-string
 title: Decode String
 difficulty: medium
+category: implementation
 tags: [string, stack, recursion, parsing]
 signature:
   className: Solution

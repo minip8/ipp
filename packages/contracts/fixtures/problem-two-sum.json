@@ -2,6 +2,7 @@
   "slug": "two-sum",
   "title": "Two Sum",
   "difficulty": "easy",
+  "category": "dsa",
   "tags": ["array", "hash-table"],
   "statement": "Given an array of integers `nums` and an integer `target`, return the indices of the two numbers that add up to `target`. Exactly one answer exists and an element may not be used twice. Return the indices in any order.",
   "signature": {

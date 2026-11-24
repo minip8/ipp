@@ -1,6 +1,7 @@
 slug: word-search-ii
 title: Word Search II
 difficulty: hard
+category: dsa
 tags: [backtracking, trie, matrix, dfs]
 signature:
   className: Solution

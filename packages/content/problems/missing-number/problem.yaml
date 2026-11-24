@@ -1,6 +1,7 @@
 slug: missing-number
 title: Missing Number
 difficulty: easy
+category: dsa
 tags: [array, math, bit-manipulation]
 signature:
   className: Solution

@@ -8,6 +8,10 @@
  */
 import { randomUUID } from 'node:crypto';
 import {
+  AI_PROVIDERS,
+  type AiModelChoice,
+  type AiProvider,
+  effectiveModel,
   generateScaffold,
   type Message,
   MessageIntent,
@@ -16,13 +20,7 @@ import {
   ReportAssessment,
 } from '@ipp/contracts';
 import { z } from 'zod';
-import {
-  AnthropicModelClient,
-  type ModelClient,
-  ModelError,
-  type ModelRequest,
-  type ModelResponse,
-} from './model';
+import { type ModelClient, ModelError, type ModelRequest, type ModelResponse } from './model';
 import * as policy from './policy';
 import {
   assessmentMessages,
@@ -37,6 +35,7 @@ import {
   stateText,
   systemBlocks,
 } from './prompts';
+import { createModelClient, defaultModelFor } from './providers';
 import type {
   AiScope,
   InterviewContext,
@@ -102,10 +101,12 @@ const MESSAGES = {
   refused: "Let's keep our focus on the problem. Where are you with it right now?",
   budget: (reason: string) =>
     `I've hit the AI usage limit for now (${reason}), so I'll stay quiet from here on. The editor, runs and tests all keep working.`,
-  keyRejected:
-    "Anthropic rejected the API key this pad runs on (it may have been revoked, run out of credit or hit its spend limit), so I'll stay quiet for now. The pad owner can update it under **AI key** in the account menu, and I'll pick up again as soon as they do.",
-  rateLimited:
-    "Anthropic is rate-limiting the API key this pad runs on, so I couldn't answer just now. Give it a minute and ask again.",
+  keyRejected: (provider: AiProvider) =>
+    `${AI_PROVIDERS[provider].label} rejected the API key this pad runs on (it may have been revoked, run out of credit or hit its spend limit), so I'll stay quiet for now. The pad owner can update it under **AI key** in the account menu, and I'll pick up again as soon as they do.`,
+  rateLimited: (provider: AiProvider) =>
+    `${AI_PROVIDERS[provider].label} is rate-limiting the API key this pad runs on, so I couldn't answer just now. Give it a minute and ask again.`,
+  modelUnavailable: (provider: AiProvider, chosen: string, fallback: string) =>
+    `The model chosen for this interview (\`${chosen}\`) isn't available with this ${AI_PROVIDERS[provider].label} key, so I'm switching to the default, \`${fallback}\`. The pad owner can pick another model in the interviewer options.`,
 };
 
 // ---------------------------------------------------------------- tracing (for the simulator / debugging)
@@ -138,8 +139,11 @@ export type TraceEvent =
   | { type: 'key'; state: 'active' | 'missing' | 'rejected' };
 
 export interface InterviewerOptions {
-  /** Build the model client for a key (tests inject a fake). Defaults to the Anthropic client. */
-  clientFor?: (apiKey: string) => ModelClient;
+  /**
+   * Build the model client for a key and model (tests inject a fake). Defaults to the client of
+   * the key's provider (providers.ts).
+   */
+  clientFor?: (key: { provider: AiProvider; apiKey: string }, model: string) => ModelClient;
   /** Shorthand for tests: use this client whatever the key. */
   modelClient?: ModelClient;
   /** Bounds of the per-key client cache. */
@@ -156,40 +160,42 @@ export interface InterviewerRuntime extends Interviewer {
 }
 
 /**
- * SDK clients per key id, least recently used first. A client holds a decrypted key, so the
- * cache is small, drops clients unused for `idleMs`, and drops a client as soon as its key is
- * refused, replaced or removed.
+ * Model clients per key id and model, least recently used first. A client holds a decrypted
+ * key, so the cache is small, drops clients unused for `idleMs`, and drops every client of a key
+ * as soon as that key is refused, replaced or removed.
  */
 export class ClientCache {
-  private readonly entries = new Map<string, { client: ModelClient; at: number }>();
+  private readonly entries = new Map<string, { keyId: string; client: ModelClient; at: number }>();
   private readonly timer: ReturnType<typeof setInterval>;
   constructor(
-    private readonly make: (apiKey: string) => ModelClient,
+    private readonly make: (key: UsableKey, model: string) => ModelClient,
     private readonly max = 32,
     private readonly idleMs = 10 * 60_000,
   ) {
     this.timer = setInterval(() => this.sweep(), Math.min(60_000, idleMs));
     this.timer.unref?.();
   }
-  get(key: UsableKey): ModelClient {
+  get(key: UsableKey, model: string): ModelClient {
     this.sweep();
-    const hit = this.entries.get(key.keyId);
+    const id = `${key.keyId}\u0000${model}`;
+    const hit = this.entries.get(id);
     if (hit) {
-      this.entries.delete(key.keyId);
+      this.entries.delete(id);
       hit.at = Date.now();
-      this.entries.set(key.keyId, hit);
+      this.entries.set(id, hit);
       return hit.client;
     }
-    const client = this.make(key.apiKey);
-    this.entries.set(key.keyId, { client, at: Date.now() });
+    const client = this.make(key, model);
+    this.entries.set(id, { keyId: key.keyId, client, at: Date.now() });
     while (this.entries.size > this.max) {
       const oldest = this.entries.keys().next().value as string;
       this.entries.delete(oldest);
     }
     return client;
   }
+  /** Every client of this key (all models). */
   drop(keyId: string): void {
-    this.entries.delete(keyId);
+    for (const [id, e] of this.entries) if (e.keyId === keyId) this.entries.delete(id);
   }
   sweep(): void {
     const cutoff = Date.now() - this.idleMs;
@@ -217,6 +223,8 @@ interface PadRuntime {
   keyState: 'active' | 'missing' | 'rejected' | null;
   /** Key id for which the "your key was rejected" notice was already posted here. */
   keyNoticeFor: string | null;
+  /** A chosen model the provider would not serve: this pad uses the provider default instead. */
+  unavailableModel: string | null;
   silentDecisions: { at: number; kind: string; reason: string }[];
   runs: number;
   released: boolean;
@@ -229,10 +237,21 @@ export function createInterviewer(
 ): InterviewerRuntime {
   const fixed = options.modelClient;
   const clients = new ClientCache(
-    options.clientFor ?? (fixed ? () => fixed : (k) => new AnthropicModelClient(k, config.model)),
+    options.clientFor ??
+      (fixed ? () => fixed : (k, model) => createModelClient(k.provider, k.apiKey, model)),
     options.clientCache?.max,
     options.clientCache?.idleMs,
   );
+  const defaultModel = (provider: AiProvider) => defaultModelFor(config, provider);
+
+  /**
+   * The model a pad call runs on: the pad's choice while it is for the key's provider (and the
+   * provider has not refused it in this session), otherwise the provider default.
+   */
+  function padModel(rt: PadRuntime | undefined, ctx: InterviewContext, key: UsableKey): string {
+    const m = effectiveModel(ctx.pad.interviewer.model, key.provider, defaultModel(key.provider));
+    return m.chosen && rt?.unavailableModel === m.id ? defaultModel(key.provider) : m.id;
+  }
 
   const pads = new Map<string, PadRuntime>();
   /** Backoff after failures, per key: one user's broken or rate-limited key never slows others. */
@@ -257,6 +276,7 @@ export function createInterviewer(
         keyId: null,
         keyState: null,
         keyNoticeFor: null,
+        unavailableModel: null,
         silentDecisions: [],
         runs: 0,
         released: false,
@@ -275,9 +295,10 @@ export function createInterviewer(
     scope: AiScope,
     key: UsableKey,
     req: ModelRequest,
+    model: string = defaultModel(key.provider),
   ): Promise<ModelResponse> {
     try {
-      const res = await clients.get(key).call(req);
+      const res = await clients.get(key, model).call(req);
       breakers.delete(key.keyId);
       const usage: ModelUsage = { purpose: req.purpose, model: res.model, ...res.usage };
       deps.recordUsage?.(scope, usage);
@@ -297,6 +318,17 @@ export function createInterviewer(
     } catch (err) {
       const e = err instanceof ModelError ? err : new ModelError('transient', String(err));
       if (e.kind === 'aborted') throw e;
+      const fallback = defaultModel(key.provider);
+      if (e.modelUnavailable && model !== fallback) {
+        // The chosen model, not the key, is the problem: keep the key, switch this pad to the
+        // provider default, say so once, and answer with the default right away.
+        deps.log.warn(
+          { ...scopeLog(scope), purpose: req.purpose, status: e.status, model, fallback },
+          'chosen model unavailable; using the provider default',
+        );
+        if ('padId' in scope) await chosenModelUnavailable(scope.padId, key.provider, model);
+        return callModel(scope, key, req, fallback);
+      }
       if (e.keyFailure && e.keyFailure !== 'rate_limited') {
         // The key is no good: forget its client and let the host discard it. Every later call
         // resolves to "rejected" and stays silent until a new key is saved.
@@ -304,7 +336,7 @@ export function createInterviewer(
         breakers.delete(key.keyId);
         deps.log.warn(
           { ...scopeLog(scope), purpose: req.purpose, status: e.status, problem: e.keyFailure },
-          'user API key refused by Anthropic',
+          'user API key refused by the provider',
         );
         try {
           await deps.keyRejected(scope, key.keyId, e.keyFailure);
@@ -331,7 +363,7 @@ export function createInterviewer(
     }
   }
 
-  /** The pad owner's key, or null (silence) when there is none or Anthropic rejected it. */
+  /** The pad owner's key, or null (silence) when there is none or the provider rejected it. */
   async function padKey(rt: PadRuntime): Promise<UsableKey | null> {
     let r: ResolvedKey;
     try {
@@ -347,15 +379,42 @@ export function createInterviewer(
     return r.ok ? r : null;
   }
 
+  /** The pad's chosen model was refused: remember, tell the host, post one notice. */
+  async function chosenModelUnavailable(
+    padId: string,
+    provider: AiProvider,
+    model: string,
+  ): Promise<void> {
+    const rt = pads.get(padId);
+    if (rt?.unavailableModel === model) return;
+    if (rt) rt.unavailableModel = model;
+    try {
+      await deps.modelUnavailable?.(padId, { provider, id: model } satisfies AiModelChoice);
+    } catch (err) {
+      deps.log.warn({ padId, err: String(err) }, 'modelUnavailable failed');
+    }
+    // No runtime: an assessment after the pad ended; nobody is there to read a notice.
+    if (!rt || rt.released) return;
+    try {
+      await deps.saveMessage(padId, {
+        kind: 'chat',
+        intent: 'answer',
+        text: MESSAGES.modelUnavailable(provider, model, defaultModel(provider)),
+      });
+    } catch (err) {
+      deps.log.warn({ padId, err: String(err) }, 'saveMessage (model notice) failed');
+    }
+  }
+
   /** One notice per pad and key, then silence (the key now resolves as rejected). */
-  async function keyRejectedNotice(rt: PadRuntime, keyId: string): Promise<void> {
-    if (rt.keyNoticeFor === keyId || rt.released) return;
-    rt.keyNoticeFor = keyId;
+  async function keyRejectedNotice(rt: PadRuntime, key: UsableKey): Promise<void> {
+    if (rt.keyNoticeFor === key.keyId || rt.released) return;
+    rt.keyNoticeFor = key.keyId;
     try {
       await deps.saveMessage(rt.padId, {
         kind: 'chat',
         intent: 'answer',
-        text: MESSAGES.keyRejected,
+        text: MESSAGES.keyRejected(key.provider),
       });
     } catch (err) {
       deps.log.warn({ padId: rt.padId, err: String(err) }, 'saveMessage (key notice) failed');
@@ -605,24 +664,29 @@ export function createInterviewer(
     rt.inflightKind = 'reply';
     let text: string;
     try {
-      const res = await callModel({ padId: rt.padId }, key, {
-        purpose: 'reply',
-        system: systemBlocks(ctx.problem),
-        messages: buildMessages(ctx, rt.events, {
-          state: stateText(ctx, facts(rt)),
-          task: opts.task,
-          includeRunOutput: true,
-          extraCandidateTexts: opts.extra,
-        }),
-        ...CALLS.reply,
-        signal: abort.signal,
-        onText: (delta) => {
-          // Skip leading whitespace-only deltas so the first visible delta starts the text.
-          if (!streamed && /^\s*$/.test(delta)) return;
-          streamed += delta;
-          deps.emit(rt.padId, { type: 'message.delta', messageId, delta });
+      const res = await callModel(
+        { padId: rt.padId },
+        key,
+        {
+          purpose: 'reply',
+          system: systemBlocks(ctx.problem),
+          messages: buildMessages(ctx, rt.events, {
+            state: stateText(ctx, facts(rt)),
+            task: opts.task,
+            includeRunOutput: true,
+            extraCandidateTexts: opts.extra,
+          }),
+          ...CALLS.reply,
+          signal: abort.signal,
+          onText: (delta) => {
+            // Skip leading whitespace-only deltas so the first visible delta starts the text.
+            if (!streamed && /^\s*$/.test(delta)) return;
+            streamed += delta;
+            deps.emit(rt.padId, { type: 'message.delta', messageId, delta });
+          },
         },
-      });
+        padModel(rt, ctx, key),
+      );
       text = res.refused ? MESSAGES.refused : clean(res.text);
       if (!text) text = MESSAGES.refused;
       trace(rt.padId, {
@@ -639,12 +703,16 @@ export function createInterviewer(
       trace(rt.padId, { type: 'error', purpose: 'reply', kind: e.kind, message: e.message });
       if (e.kind === 'aborted' || rt.released) return;
       if (e.keyFailure && e.keyFailure !== 'rate_limited') {
-        await keyRejectedNotice(rt, key.keyId);
+        await keyRejectedNotice(rt, key);
         return;
       }
       if (streamed.trim().length >= 40) text = `${streamed.trim()} …`;
       else if (opts.kind === 'proactive') return;
-      else text = e.keyFailure === 'rate_limited' ? MESSAGES.rateLimited : MESSAGES.replyFailed;
+      else
+        text =
+          e.keyFailure === 'rate_limited'
+            ? MESSAGES.rateLimited(key.provider)
+            : MESSAGES.replyFailed;
     } finally {
       rt.inflight = null;
       rt.inflightKind = null;
@@ -746,22 +814,27 @@ export function createInterviewer(
     rt.inflightKind = 'decision';
     let res: ModelResponse;
     try {
-      res = await callModel({ padId: rt.padId }, key, {
-        purpose: 'decision',
-        system: systemBlocks(ctx.problem),
-        messages: buildMessages(ctx, rt.events, {
-          state: stateText(ctx, facts(rt)),
-          task: decisionTask(refined),
-          includeRunOutput: refined.kind.startsWith('run_') || refined.kind === 'samples_passed',
-        }),
-        ...CALLS.decision,
-        schema: DecisionSchema,
-        signal: abort.signal,
-      });
+      res = await callModel(
+        { padId: rt.padId },
+        key,
+        {
+          purpose: 'decision',
+          system: systemBlocks(ctx.problem),
+          messages: buildMessages(ctx, rt.events, {
+            state: stateText(ctx, facts(rt)),
+            task: decisionTask(refined),
+            includeRunOutput: refined.kind.startsWith('run_') || refined.kind === 'samples_passed',
+          }),
+          ...CALLS.decision,
+          schema: DecisionSchema,
+          signal: abort.signal,
+        },
+        padModel(rt, ctx, key),
+      );
     } catch (err) {
       const e = err as ModelError;
       trace(rt.padId, { type: 'error', purpose: 'decision', kind: e.kind, message: e.message });
-      if (e.keyFailure && e.keyFailure !== 'rate_limited') await keyRejectedNotice(rt, key.keyId);
+      if (e.keyFailure && e.keyFailure !== 'rate_limited') await keyRejectedNotice(rt, key);
       return;
     } finally {
       rt.inflight = null;
@@ -847,13 +920,18 @@ export function createInterviewer(
         return null;
       }
       const ctx = await deps.loadContext(padId);
-      const res = await callModel({ padId }, key, {
-        purpose: 'assessment',
-        system: systemBlocks(ctx.problem),
-        messages: assessmentMessages(ctx, rt?.events ?? []),
-        ...CALLS.assessment,
-        schema: AssessmentSchema,
-      });
+      const res = await callModel(
+        { padId },
+        key,
+        {
+          purpose: 'assessment',
+          system: systemBlocks(ctx.problem),
+          messages: assessmentMessages(ctx, rt?.events ?? []),
+          ...CALLS.assessment,
+          schema: AssessmentSchema,
+        },
+        padModel(rt, ctx, key),
+      );
       if (res.refused) return null;
       const out = AssessmentSchema.parse(JSON.parse(res.text));
       const assessment: ReportAssessment = {

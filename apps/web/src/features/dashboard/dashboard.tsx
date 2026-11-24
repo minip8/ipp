@@ -1,6 +1,6 @@
 'use client';
 import type { Difficulty, PadSummary } from '@ipp/contracts';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import {
   ArrowRightIcon,
   CircleCheckIcon,
@@ -13,17 +13,16 @@ import {
   ShuffleIcon,
 } from 'lucide-react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { toast } from 'sonner';
+import { useState } from 'react';
 import { DifficultyBadge, LanguageTag } from '@/components/domain';
 import { EmptyState, ErrorState } from '@/components/states';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Spinner } from '@/components/ui/spinner';
-import { api, errorMessage } from '@/lib/api';
+import { DeletePadButton, DeletePadDialog } from '@/features/delete-pad/delete-pad-dialog';
+import type { DeleteTarget } from '@/features/delete-pad/logic';
+import { api } from '@/lib/api';
 import { DIFFICULTY_LABEL, formatDuration, formatPercent, formatRelative } from '@/lib/format';
-import { loadStartPrefs } from '@/lib/prefs';
 import { qk, useMe } from '@/lib/queries';
 import { cn } from '@/lib/utils';
 
@@ -32,21 +31,8 @@ function greeting() {
   return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
 }
 
+/** Picks a random problem on the setup page; nothing starts until the user confirms there. */
 function QuickStart() {
-  const router = useRouter();
-  const create = useMutation({
-    mutationFn: (difficulty: Difficulty) => {
-      const prefs = loadStartPrefs();
-      return api.createPad({
-        random: { difficulty },
-        language: prefs.language,
-        durationMin: prefs.durationMin,
-        interviewer: prefs.interviewer,
-      });
-    },
-    onSuccess: (pad) => router.push(`/pads/${pad.id}`),
-    onError: (e) => toast.error('Could not start the interview', { description: errorMessage(e) }),
-  });
   const items: { d: Difficulty; blurb: string }[] = [
     { d: 'easy', blurb: 'Warm up. About 20 minutes.' },
     { d: 'medium', blurb: 'The typical phone screen.' },
@@ -54,36 +40,32 @@ function QuickStart() {
   ];
   return (
     <div className="grid gap-3 sm:grid-cols-3">
-      {items.map(({ d, blurb }) => {
-        const busy = create.isPending && create.variables === d;
-        return (
-          <button
-            key={d}
-            type="button"
-            disabled={create.isPending}
-            onClick={() => create.mutate(d)}
-            className="group flex flex-col items-start rounded-lg border border-border bg-surface p-4 text-left transition-[border-color,box-shadow] hover:border-border-strong hover:shadow-pop disabled:opacity-60"
-          >
-            <span className="flex w-full items-center justify-between">
-              <DifficultyBadge difficulty={d} />
-              {busy ? (
-                <Spinner className="text-fg-subtle" />
-              ) : (
-                <ShuffleIcon className="size-4 text-fg-subtle transition-colors group-hover:text-accent-text" />
-              )}
-            </span>
-            <span className="mt-3 text-base font-medium">
-              Random {DIFFICULTY_LABEL[d].toLowerCase()} problem
-            </span>
-            <span className="mt-0.5 text-sm text-fg-muted">{blurb}</span>
-          </button>
-        );
-      })}
+      {items.map(({ d, blurb }) => (
+        <Link
+          key={d}
+          href={`/new?difficulty=${d}&random=1`}
+          className="group flex flex-col items-start rounded-lg border border-border bg-surface p-4 text-left transition-[border-color,box-shadow] hover:border-border-strong hover:shadow-pop"
+        >
+          <span className="flex w-full items-center justify-between">
+            <DifficultyBadge difficulty={d} />
+            <ShuffleIcon
+              className="size-4 text-fg-subtle transition-colors group-hover:text-accent-text"
+              aria-hidden
+            />
+          </span>
+          <span className="mt-3 text-base font-medium">
+            Random {DIFFICULTY_LABEL[d].toLowerCase()} problem
+          </span>
+          <span className="mt-0.5 text-sm text-fg-muted">{blurb}</span>
+        </Link>
+      ))}
     </div>
   );
 }
 
-function ActivePads({ pads }: { pads: PadSummary[] }) {
+type OnDelete = (t: DeleteTarget) => void;
+
+function ActivePads({ pads, onDelete }: { pads: PadSummary[]; onDelete: OnDelete }) {
   if (pads.length === 0) return null;
   return (
     <section aria-labelledby="active-heading" className="mt-8">
@@ -108,11 +90,14 @@ function ActivePads({ pads }: { pads: PadSummary[] }) {
                 <span>Started {formatRelative(p.startedAt)}</span>
               </p>
             </div>
-            <Button asChild variant="primary" size="sm">
-              <Link href={`/pads/${p.id}`}>
-                <PlayIcon /> Resume
-              </Link>
-            </Button>
+            <div className="flex shrink-0 items-center gap-1">
+              <Button asChild variant="primary" size="sm">
+                <Link href={`/pads/${p.id}`}>
+                  <PlayIcon /> Resume
+                </Link>
+              </Button>
+              <DeletePadButton target={p} onClick={() => onDelete(p)} />
+            </div>
           </li>
         ))}
       </ul>
@@ -120,7 +105,7 @@ function ActivePads({ pads }: { pads: PadSummary[] }) {
   );
 }
 
-function History({ pads }: { pads: PadSummary[] }) {
+function History({ pads, onDelete }: { pads: PadSummary[]; onDelete: OnDelete }) {
   return (
     <Card className="mt-8" aria-labelledby="history-heading">
       <CardHeader>
@@ -144,7 +129,7 @@ function History({ pads }: { pads: PadSummary[] }) {
                 <th className="hidden px-4 py-2 font-medium lg:table-cell">Length</th>
                 <th className="px-4 py-2 font-medium">Outcome</th>
                 <th className="px-4 py-2">
-                  <span className="sr-only">Report</span>
+                  <span className="sr-only">Actions</span>
                 </th>
               </tr>
             </thead>
@@ -191,14 +176,17 @@ function History({ pads }: { pads: PadSummary[] }) {
                       )}
                     </td>
                     <td className="px-4 py-2.5 text-right">
-                      <Button asChild variant="ghost" size="xs">
-                        <Link
-                          href={`/pads/${p.id}/report`}
-                          aria-label={`Report for ${p.problemTitle}`}
-                        >
-                          <FileTextIcon /> <span className="hidden sm:inline">Report</span>
-                        </Link>
-                      </Button>
+                      <div className="inline-flex items-center gap-1">
+                        <Button asChild variant="ghost" size="xs">
+                          <Link
+                            href={`/pads/${p.id}/report`}
+                            aria-label={`Report for ${p.problemTitle}`}
+                          >
+                            <FileTextIcon /> <span className="hidden sm:inline">Report</span>
+                          </Link>
+                        </Button>
+                        <DeletePadButton target={p} onClick={() => onDelete(p)} />
+                      </div>
                     </td>
                   </tr>
                 );
@@ -292,6 +280,7 @@ export function Dashboard() {
   const active = pads.data?.filter((p) => p.status === 'active') ?? [];
   const ended = pads.data?.filter((p) => p.status === 'ended') ?? [];
   const firstName = me.data?.name.split(' ')[0];
+  const [toDelete, setToDelete] = useState<DeleteTarget | null>(null);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
@@ -332,8 +321,9 @@ export function Dashboard() {
             </Card>
           ) : (
             <>
-              <ActivePads pads={active} />
-              <History pads={ended} />
+              <ActivePads pads={active} onDelete={setToDelete} />
+              <History pads={ended} onDelete={setToDelete} />
+              <DeletePadDialog target={toDelete} onClose={() => setToDelete(null)} />
             </>
           )}
         </div>

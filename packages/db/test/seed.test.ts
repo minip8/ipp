@@ -2,7 +2,7 @@ import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CONTENT_ROOT } from '@ipp/content';
-import { count, eq } from 'drizzle-orm';
+import { count, eq, inArray } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createDb, type DbHandle, ensureDatabase, runMigrations } from '../src/client';
 import {
@@ -71,6 +71,8 @@ describe('seed', () => {
     await seed(h.db, { root });
     expect(await counts()).toEqual(before);
     expect(before.problems).toBe(1);
+    const [row] = await h.db.select().from(problems).where(eq(problems.slug, 'two-sum'));
+    expect(row?.category).toBe('dsa');
   });
 
   it('removing a question keeps its answers and deactivates it', async () => {
@@ -111,5 +113,18 @@ describe('seed', () => {
     rmSync(snap, { recursive: true, force: true });
     expect(b.problems).toBe(a.problems);
     expect(await counts()).toEqual(before);
+    const cats = Object.fromEntries(
+      (
+        await h.db
+          .select({ slug: problems.slug, category: problems.category })
+          .from(problems)
+          .where(inArray(problems.slug, ['lru-cache', 'text-justification', 'two-sum']))
+      ).map((r) => [r.slug, r.category]),
+    );
+    expect(cats).toEqual({
+      'lru-cache': 'data-structure',
+      'text-justification': 'implementation',
+      'two-sum': 'dsa',
+    });
   });
 });

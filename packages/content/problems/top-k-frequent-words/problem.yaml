@@ -1,6 +1,7 @@
 slug: top-k-frequent-words
 title: Top K Frequent Words
 difficulty: medium
+category: dsa
 tags: [heap, hash-table, sorting, string]
 signature:
   className: Solution

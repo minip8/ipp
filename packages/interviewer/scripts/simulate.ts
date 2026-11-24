@@ -174,7 +174,7 @@ const interviewer = createInterviewer(
   config,
   {
     now: () => new Date(clock),
-    resolveKey: async () => ({ ok: true, keyId: 'dev', apiKey: devKey }),
+    resolveKey: async () => ({ ok: true, keyId: 'dev', provider: 'anthropic', apiKey: devKey }),
     keyRejected: async (_scope, _id, problem) => {
       console.error(`The key was refused by Anthropic (${problem}).`);
     },

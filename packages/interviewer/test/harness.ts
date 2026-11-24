@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import {
+  type AiModelChoice,
   type InterviewerSettings,
   type Message,
   type Pad,
@@ -12,7 +13,12 @@ import {
   type RunVerdict,
   type ServerEvent,
 } from '@ipp/contracts';
-import { createInterviewer, type InterviewerRuntime, type TraceEvent } from '../src/interviewer';
+import {
+  createInterviewer,
+  type InterviewerOptions,
+  type InterviewerRuntime,
+  type TraceEvent,
+} from '../src/interviewer';
 import {
   type KeyFailure,
   type ModelClient,
@@ -122,6 +128,9 @@ export interface HarnessOptions {
   greeted?: boolean;
   /** The pad owner's key; defaults to a usable test key. Mutable through `h.key`. */
   key?: ResolvedKey;
+  /** Model-aware clients instead of the single fake `model`. */
+  clientFor?: InterviewerOptions['clientFor'];
+  modelUnavailable?: (padId: string, model: AiModelChoice) => void;
 }
 
 export const TEST_KEY = 'sk-ant-api03-TEST-harness-key-0000000000000000';
@@ -161,7 +170,7 @@ export function harness(opts: HarnessOptions = {}) {
   const keyLookups: AiScope[] = [];
   const rejected: { scope: AiScope; keyId: string; problem: string }[] = [];
   const keyState: { current: ResolvedKey } = {
-    current: opts.key ?? { ok: true, keyId: 'k1', apiKey: TEST_KEY },
+    current: opts.key ?? { ok: true, keyId: 'k1', provider: 'anthropic', apiKey: TEST_KEY },
   };
   let code = SCAFFOLD;
 
@@ -207,6 +216,9 @@ export function harness(opts: HarnessOptions = {}) {
         transcript.push(msg);
         return msg;
       },
+      async modelUnavailable(id, m) {
+        opts.modelUnavailable?.(id, m);
+      },
       async appendPrivateNote(_id, note) {
         notes.push(note);
       },
@@ -225,7 +237,9 @@ export function harness(opts: HarnessOptions = {}) {
         error: (obj, msg) => logs.push({ level: 'error', obj, msg }),
       },
     },
-    { modelClient: model, trace: (_p, e) => traces.push(e) },
+    opts.clientFor
+      ? { clientFor: opts.clientFor, trace: (_p, e) => traces.push(e) }
+      : { modelClient: model, trace: (_p, e) => traces.push(e) },
   );
 
   const h = {

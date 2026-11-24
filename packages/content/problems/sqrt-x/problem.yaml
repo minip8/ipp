@@ -1,6 +1,7 @@
 slug: sqrt-x
 title: Integer Square Root
 difficulty: easy
+category: dsa
 tags: [math, binary-search]
 signature:
   className: Solution

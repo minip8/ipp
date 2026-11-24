@@ -1,6 +1,7 @@
 slug: daily-temperatures
 title: Daily Temperatures
 difficulty: medium
+category: dsa
 tags: [array, stack, monotonic-stack]
 signature:
   className: Solution

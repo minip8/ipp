@@ -1,6 +1,7 @@
 slug: largest-number
 title: Largest Number
 difficulty: medium
+category: dsa
 tags: [array, string, sorting, greedy]
 signature:
   className: Solution

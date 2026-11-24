@@ -1,7 +1,7 @@
 /**
  * Loads and validates everything under packages/content. Layout:
  *
- *   problems/<slug>/problem.yaml    slug, title, difficulty, tags, signature, limits?, source?
+ *   problems/<slug>/problem.yaml    slug, title, difficulty, category, tags, signature, limits?, source?
  *                   statement.md    shown to the candidate
  *                   notes.md        interviewer notes (server-only)
  *                   tests.json      TestCase[]
@@ -12,7 +12,15 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { type Language, ProblemContent, QuizQuestion, QuizTopic, TestCase } from '@ipp/contracts';
+import {
+  EXCLUDED_TAGS,
+  groupOfTag,
+  type Language,
+  ProblemContent,
+  QuizQuestion,
+  QuizTopic,
+  TestCase,
+} from '@ipp/contracts';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 
@@ -94,6 +102,17 @@ function validateTests(problem: ProblemContent): void {
 
 export function loadProblems(root = CONTENT_ROOT): ProblemContent[] {
   return listProblemSlugs(root).map((slug) => loadProblem(slug, root));
+}
+
+/**
+ * Tags that are neither in a topic group nor deliberately excluded (see @ipp/contracts taxonomy),
+ * as "slug: tag" strings. Not part of loadProblem: the seed must not hide a problem over a new tag,
+ * but `check` and the tests fail on any.
+ */
+export function untaxonomizedTags(problems: readonly ProblemContent[]): string[] {
+  return problems.flatMap((p) =>
+    p.tags.filter((t) => !groupOfTag(t) && !(t in EXCLUDED_TAGS)).map((t) => `${p.slug}: ${t}`),
+  );
 }
 
 export function loadQuizTopics(root = CONTENT_ROOT): QuizTopic[] {

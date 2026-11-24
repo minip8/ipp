@@ -17,7 +17,7 @@ log.info(
     port,
     webOrigin: config.webOrigin,
     // Runs only on keys users save themselves; there is no operator key.
-    interviewer: `user keys (${config.interviewerModel}, unused keys expire after ${config.aiKeyTtlHours} h)`,
+    interviewer: `user keys (Anthropic default ${config.interviewerModel}, unused keys expire after ${config.aiKeyTtlHours} h)`,
     githubAuth: config.github !== null,
     googleAuth: config.google !== null,
   },

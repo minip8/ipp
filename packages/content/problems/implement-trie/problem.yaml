@@ -1,6 +1,7 @@
 slug: implement-trie
 title: Implement a Trie (Prefix Tree)
 difficulty: medium
+category: data-structure
 tags: [design, trie, string]
 signature:
   className: Trie

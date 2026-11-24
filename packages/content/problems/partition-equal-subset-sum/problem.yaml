@@ -1,6 +1,7 @@
 slug: partition-equal-subset-sum
 title: Partition Equal Subset Sum
 difficulty: medium
+category: dsa
 tags: [dynamic-programming, knapsack, bit-manipulation]
 signature:
   className: Solution

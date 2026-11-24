@@ -1,6 +1,7 @@
 slug: last-stone-weight
 title: Last Stone Weight
 difficulty: easy
+category: dsa
 tags: [heap, simulation]
 signature:
   className: Solution

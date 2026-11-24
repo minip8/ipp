@@ -1,6 +1,7 @@
 slug: add-binary
 title: Add Binary
 difficulty: easy
+category: implementation
 tags: [string, math, simulation]
 signature:
   className: Solution

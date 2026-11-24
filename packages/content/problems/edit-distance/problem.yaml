@@ -1,6 +1,7 @@
 slug: edit-distance
 title: Edit Distance
 difficulty: medium
+category: dsa
 tags: [dynamic-programming, string]
 signature:
   className: Solution

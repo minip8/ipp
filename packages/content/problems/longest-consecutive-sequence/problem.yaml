@@ -1,6 +1,7 @@
 slug: longest-consecutive-sequence
 title: Longest Consecutive Sequence
 difficulty: medium
+category: dsa
 tags: [array, hash-table]
 signature:
   className: Solution

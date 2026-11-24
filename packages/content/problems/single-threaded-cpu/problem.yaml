@@ -1,6 +1,7 @@
 slug: single-threaded-cpu
 title: Single-Threaded CPU
 difficulty: medium
+category: implementation
 tags: [heap, sorting, simulation]
 signature:
   className: Solution

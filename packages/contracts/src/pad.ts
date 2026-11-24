@@ -1,6 +1,6 @@
 /** A pad is one interview session: a shared editor, a problem, a transcript and a timeline. */
 import { z } from 'zod';
-import { AiKeyState } from './ai';
+import { AiKeyState, AiModelChoice, InterviewerModel } from './ai';
 import { Id, IsoDate, Language, Slug } from './common';
 import { Difficulty, ProblemDetail } from './problem';
 import { Run } from './run';
@@ -11,6 +11,11 @@ export const InterviewerSettings = z.object({
   /** How readily the interviewer speaks without being addressed. */
   proactivity: z.enum(['low', 'normal', 'high']).default('normal'),
   voice: z.boolean().default(false),
+  /**
+   * The model the user chose for this interview; null/absent = the provider default. Used only
+   * while the pad owner's key is from the same provider (`effectiveModel`).
+   */
+  model: AiModelChoice.nullable().optional(),
 });
 export type InterviewerSettings = z.infer<typeof InterviewerSettings>;
 
@@ -159,10 +164,12 @@ export const PadDetail = z.object({
   problem: ProblemDetail,
   messages: z.array(Message),
   runs: z.array(Run),
-  /** true when the pad owner has a usable Anthropic API key (the interviewer runs on it). */
+  /** true when the pad owner has a usable AI provider API key (the interviewer runs on it). */
   interviewerAvailable: z.boolean(),
   /** The pad owner's key state; collaborators see this, never anything about the key itself. */
   interviewerKey: AiKeyState,
+  /** The model the interviewer runs on now (null without a usable owner key). */
+  interviewerModel: InterviewerModel.nullable().default(null),
 });
 export type PadDetail = z.infer<typeof PadDetail>;
 
@@ -178,8 +185,14 @@ export const PadSummary = Pad.pick({
   problemTitle: z.string(),
   difficulty: Difficulty,
   accepted: z.boolean(),
+  /** The viewer's role: deleting an owned pad deletes it; a collaborator only leaves it. */
+  role: PadRole,
 });
 export type PadSummary = z.infer<typeof PadSummary>;
+
+/** DELETE /api/pads/:id. `pad`: the owner deleted it for everyone; `membership`: a collaborator left. */
+export const DeletePadResponse = z.object({ padId: Id, removed: z.enum(['pad', 'membership']) });
+export type DeletePadResponse = z.infer<typeof DeletePadResponse>;
 
 /** Editor history for replay: Yjs updates in order, applied to an empty doc. */
 export const Playback = z.object({

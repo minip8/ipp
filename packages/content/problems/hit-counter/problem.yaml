@@ -1,6 +1,7 @@
 slug: hit-counter
 title: Hit Counter
 difficulty: medium
+category: implementation
 tags: [design, queue]
 signature:
   className: HitCounter

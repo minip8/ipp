@@ -48,7 +48,7 @@ describe('no key', () => {
     await h.start();
     await h.advance(120);
     expect(h.saved).toHaveLength(0);
-    h.key = { ok: true, keyId: 'k2', apiKey: TEST_KEY };
+    h.key = { ok: true, keyId: 'k2', provider: 'anthropic', apiKey: TEST_KEY };
     await h.advance(5);
     expect(h.saved).toHaveLength(1);
     expect(h.saved[0]).toMatchObject({ kind: 'proactive', intent: 'greeting' });
@@ -109,7 +109,7 @@ describe('key rejected while in use', () => {
     await h.say('hi');
     expect(h.saved.map((m) => m.text)).toEqual([expect.stringMatching(/rejected/)]);
     fail = false;
-    h.key = { ok: true, keyId: 'k2', apiKey: `${TEST_KEY}-2` };
+    h.key = { ok: true, keyId: 'k2', provider: 'anthropic', apiKey: `${TEST_KEY}-2` };
     await h.say('hi again');
     expect(h.replies().at(-1)?.text).toBe('Back again.');
     fail = true;
@@ -132,7 +132,7 @@ describe('key rejected while in use', () => {
     const h = harness({ model: new FakeModel(refuse) });
     expect(await h.iv.generateAssessment(h.padId)).toBeNull();
     expect(h.rejected).toEqual([{ scope: { padId: h.padId }, keyId: 'k1', problem: 'invalid' }]);
-    h.key = { ok: true, keyId: 'k9', apiKey: TEST_KEY };
+    h.key = { ok: true, keyId: 'k9', provider: 'anthropic', apiKey: TEST_KEY };
     expect(await h.iv.gradeShortAnswer('quiz-user', SHORT_Q, 'x')).toBeNull();
     expect(h.rejected[1]).toEqual({
       scope: { userId: 'quiz-user' },
@@ -165,25 +165,32 @@ describe('rate limits on the user key', () => {
 describe('client cache', () => {
   const fake = (): ModelClient => new FakeModel();
 
-  it('one client per key id, LRU-bounded, dropped when idle or on request', async () => {
+  it('one client per key id and model, LRU-bounded, dropped when idle or on request', async () => {
     const made: string[] = [];
     const cache = new ClientCache(
-      (k) => {
-        made.push(k);
+      (k, model) => {
+        made.push(`${k.apiKey}/${model}`);
         return fake();
       },
-      2,
+      3,
       50,
     );
-    const a = cache.get({ ok: true, keyId: 'a', apiKey: 'ka' });
-    expect(cache.get({ ok: true, keyId: 'a', apiKey: 'ka' })).toBe(a);
-    cache.get({ ok: true, keyId: 'b', apiKey: 'kb' });
-    cache.get({ ok: true, keyId: 'c', apiKey: 'kc' });
+    const key = (id: string) => ({
+      ok: true as const,
+      keyId: id,
+      provider: 'anthropic' as const,
+      apiKey: `k${id}`,
+    });
+    const a = cache.get(key('a'), 'm');
+    expect(cache.get(key('a'), 'm')).toBe(a);
+    expect(cache.get(key('a'), 'other')).not.toBe(a); // another model: another client
+    cache.get(key('b'), 'm');
+    cache.get(key('c'), 'm');
+    expect(cache.size).toBe(3);
+    cache.get(key('a'), 'm'); // a/m was evicted
+    expect(made).toEqual(['ka/m', 'ka/other', 'kb/m', 'kc/m', 'ka/m']);
+    cache.drop('a'); // every model of key a
     expect(cache.size).toBe(2);
-    cache.get({ ok: true, keyId: 'a', apiKey: 'ka' }); // a was evicted
-    expect(made).toEqual(['ka', 'kb', 'kc', 'ka']);
-    cache.drop('a');
-    expect(cache.size).toBe(1);
     await new Promise((r) => setTimeout(r, 80));
     cache.sweep();
     expect(cache.size).toBe(0);
@@ -193,7 +200,7 @@ describe('client cache', () => {
     const h = harness({ greeted: true });
     await h.say('one');
     expect(h.iv.cachedClients()).toBe(1);
-    h.key = { ok: true, keyId: 'k2', apiKey: `${TEST_KEY}-2` };
+    h.key = { ok: true, keyId: 'k2', provider: 'anthropic', apiKey: `${TEST_KEY}-2` };
     await h.say('two');
     expect(h.iv.cachedClients()).toBe(2);
   });

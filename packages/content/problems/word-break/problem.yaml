@@ -1,6 +1,7 @@
 slug: word-break
 title: Word Break
 difficulty: medium
+category: dsa
 tags: [dynamic-programming, string, hash-table, trie]
 signature:
   className: Solution

@@ -1,9 +1,16 @@
 'use client';
 import type { QuizAttemptSummary, QuizTopicStats } from '@ipp/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowRightIcon, CheckIcon, HistoryIcon, ListChecksIcon, PlayIcon } from 'lucide-react';
+import {
+  ArrowRightIcon,
+  CheckIcon,
+  HistoryIcon,
+  LibraryIcon,
+  ListChecksIcon,
+  PlayIcon,
+} from 'lucide-react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { EmptyState, ErrorState, InlineError, useRetryCountdown } from '@/components/states';
 import { Badge } from '@/components/ui/badge';
@@ -18,6 +25,7 @@ import { api } from '@/lib/api';
 import { formatPercent, formatRelative, plural } from '@/lib/format';
 import { qk } from '@/lib/queries';
 import { cn } from '@/lib/utils';
+import { bankHref } from './bank-logic';
 
 type Mode = 'practice' | 'exam';
 type Diff = 'any' | 'easy' | 'medium' | 'hard';
@@ -49,58 +57,116 @@ function TopicCard({
 }) {
   const coverage = t.questionCount ? t.answered / t.questionCount : 0;
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      aria-pressed={selected}
+    <div
       className={cn(
-        'group relative flex flex-col rounded-lg border bg-surface p-4 text-left transition-[border-color,box-shadow,background-color]',
+        'group relative flex flex-col rounded-lg border bg-surface transition-[border-color,box-shadow,background-color]',
         selected
           ? 'border-accent bg-accent-soft/30 ring-1 ring-accent'
           : 'border-border hover:border-border-strong hover:shadow-pop',
       )}
     >
-      <span className="flex items-start gap-3">
-        <span className="min-w-0 flex-1">
-          <span className="block font-medium">{t.title}</span>
-          <span className="mt-1 line-clamp-2 block text-sm text-fg-muted">{t.description}</span>
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-pressed={selected}
+        className="flex flex-1 flex-col rounded-t-lg p-4 text-left focus-visible:outline-offset-[-2px]"
+      >
+        <span className="flex items-start gap-3">
+          <span className="min-w-0 flex-1">
+            <span className="block font-medium">{t.title}</span>
+            <span className="mt-1 line-clamp-2 block text-sm text-fg-muted">{t.description}</span>
+          </span>
+          <span
+            aria-hidden
+            className={cn(
+              'mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-[4px] border transition-colors',
+              selected
+                ? 'border-accent bg-accent text-accent-fg'
+                : 'border-border-strong bg-surface',
+            )}
+          >
+            {selected && <CheckIcon className="size-3" strokeWidth={3} />}
+          </span>
         </span>
+        <span className="mt-4 flex items-end justify-between gap-3 text-xs text-fg-muted">
+          <span className="tabular">
+            {t.answered} of {plural(t.questionCount, 'question')} answered
+          </span>
+          {t.accuracy === null ? (
+            <span className="text-fg-subtle">Not started</span>
+          ) : (
+            <span className="font-medium text-fg tabular">{formatPercent(t.accuracy)} correct</span>
+          )}
+        </span>
+        <span className="mt-2 block">
+          {t.accuracy === null ? (
+            <span
+              className="block h-1.5 rounded-full border border-dashed border-border-strong"
+              aria-hidden
+            />
+          ) : (
+            <AccuracyBar value={t.accuracy} />
+          )}
+        </span>
+        <span className="sr-only">
+          {t.accuracy === null
+            ? 'Not started.'
+            : `${formatPercent(t.accuracy)} accuracy, ${formatPercent(coverage)} of the bank seen.`}
+        </span>
+      </button>
+      <Link
+        href={bankHref(t.slug)}
+        aria-label={`Browse ${t.title} questions`}
+        className="flex items-center gap-1.5 rounded-b-lg border-t border-border px-4 py-2 text-sm font-medium text-accent-text transition-colors hover:bg-surface-2 focus-visible:outline-offset-[-2px]"
+      >
+        <LibraryIcon className="size-3.5" />
+        Browse {plural(t.questionCount, 'question')}
+        <ArrowRightIcon className="ml-auto size-3.5" />
+      </Link>
+    </div>
+  );
+}
+
+/** The question bank as a first-class way in: any question, answered right away. */
+function BrowsePanel({ topics }: { topics: QuizTopicStats[] }) {
+  return (
+    <section
+      aria-labelledby="browse-heading"
+      className="rounded-lg border border-border bg-surface p-4"
+    >
+      <div className="flex items-start gap-3">
         <span
           aria-hidden
-          className={cn(
-            'mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-[4px] border transition-colors',
-            selected ? 'border-accent bg-accent text-accent-fg' : 'border-border-strong bg-surface',
-          )}
+          className="flex size-8 shrink-0 items-center justify-center rounded-md bg-accent-soft text-accent-text"
         >
-          {selected && <CheckIcon className="size-3" strokeWidth={3} />}
+          <LibraryIcon className="size-4" />
         </span>
-      </span>
-      <span className="mt-4 flex items-end justify-between gap-3 text-xs text-fg-muted">
-        <span className="tabular">
-          {t.answered} of {plural(t.questionCount, 'question')} answered
-        </span>
-        {t.accuracy === null ? (
-          <span className="text-fg-subtle">Not started</span>
-        ) : (
-          <span className="font-medium text-fg tabular">{formatPercent(t.accuracy)} correct</span>
-        )}
-      </span>
-      <span className="mt-2 block">
-        {t.accuracy === null ? (
-          <span
-            className="block h-1.5 rounded-full border border-dashed border-border-strong"
-            aria-hidden
-          />
-        ) : (
-          <AccuracyBar value={t.accuracy} />
-        )}
-      </span>
-      <span className="sr-only">
-        {t.accuracy === null
-          ? 'Not started.'
-          : `${formatPercent(t.accuracy)} accuracy, ${formatPercent(coverage)} of the bank seen.`}
-      </span>
-    </button>
+        <div className="min-w-0 flex-1">
+          <h2 id="browse-heading" className="font-medium">
+            Browse the question bank
+          </h2>
+          <p className="mt-0.5 text-sm text-fg-muted">
+            Open any question in a topic and answer it straight away, with the explanation right
+            after. Nothing to set up or finish; your answers count toward your stats.
+          </p>
+          <ul className="mt-3 flex flex-wrap gap-1.5" aria-label="Browse a topic">
+            {topics.map((t) => (
+              <li key={t.slug}>
+                <Link
+                  href={bankHref(t.slug)}
+                  className="inline-flex h-7 items-center gap-1 rounded-md border border-border-strong bg-surface px-2.5 text-sm font-medium transition-colors hover:bg-surface-3"
+                >
+                  {t.title}
+                  <span className="text-xs font-normal text-fg-subtle tabular">
+                    {t.questionCount}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -329,7 +395,16 @@ function HistoryList({ topics }: { topics: QuizTopicStats[] }) {
 
 export function QuizHub() {
   const topics = useQuery({ queryKey: qk.quizTopics, queryFn: api.quizTopics });
-  const [selected, setSelected] = useState<string[]>([]);
+  const params = useSearchParams();
+  // "Take a quiz instead" in the question bank links here with its topic preselected.
+  const [selected, setSelected] = useState<string[]>(() => {
+    const t = params.get('topic');
+    return t ? [t] : [];
+  });
+  // Ignore a preselected slug that is not a topic.
+  const known = topics.data;
+  if (known && selected.some((s) => !known.some((t) => t.slug === s)))
+    setSelected(selected.filter((s) => known.some((t) => t.slug === s)));
   const toggle = (slug: string) =>
     setSelected((s) => (s.includes(slug) ? s.filter((x) => x !== slug) : [...s, slug]));
   const totals = useMemo(() => {
@@ -367,7 +442,8 @@ export function QuizHub() {
       </div>
 
       <div className="mt-6 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-x-6 lg:gap-y-8">
-        <div className="min-w-0 lg:col-start-1 lg:row-start-1">
+        <div className="min-w-0 space-y-3 lg:col-start-1 lg:row-start-1">
+          {topics.data && topics.data.length > 0 && <BrowsePanel topics={topics.data} />}
           <h2 className="sr-only">Topics</h2>
           {topics.isPending ? (
             <TopicGridSkeleton />

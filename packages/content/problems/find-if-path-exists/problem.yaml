@@ -1,6 +1,7 @@
 slug: find-if-path-exists
 title: Find if Path Exists in Graph
 difficulty: easy
+category: dsa
 tags: [graph, bfs, dfs, union-find]
 signature:
   className: Solution

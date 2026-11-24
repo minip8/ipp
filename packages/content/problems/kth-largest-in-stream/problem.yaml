@@ -1,6 +1,7 @@
 slug: kth-largest-in-stream
 title: Kth Largest Element in a Stream
 difficulty: easy
+category: dsa
 tags: [design, heap]
 signature:
   className: KthLargest

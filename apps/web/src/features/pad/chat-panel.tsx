@@ -6,6 +6,7 @@ import {
   ArrowUpIcon,
   BotOffIcon,
   ClockIcon,
+  CpuIcon,
   MicIcon,
   MicOffIcon,
   MoreHorizontalIcon,
@@ -25,6 +26,14 @@ import {
 } from 'react';
 import { Markdown } from '@/components/markdown';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Kbd } from '@/components/ui/kbd';
 import {
   Menu,
@@ -38,7 +47,10 @@ import {
 } from '@/components/ui/menu';
 import { Tooltip } from '@/components/ui/tooltip';
 import { AiKeyPrompt } from '@/features/ai-key/ai-key-prompt';
+import { providerLabel, rejectedTitle } from '@/features/ai-key/logic';
+import { ModelPicker } from '@/features/ai-key/model-picker';
 import { formatTimeOfDay, humanize } from '@/lib/format';
+import { useAiKey } from '@/lib/queries';
 import { cn } from '@/lib/utils';
 import { usePad } from './session';
 import { type ChatItem, chatItems, type PendingMessage } from './state';
@@ -303,10 +315,43 @@ function VoiceBar({ voice }: { voice: ReturnType<typeof useVoice> }) {
   );
 }
 
+/** Changing the interviewer's model mid-interview (owner only; stored on the pad). */
+function ModelDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+}) {
+  const { state, updateInterviewer } = usePad();
+  const m = state.interviewerModel;
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md" onKeyDown={(e) => e.stopPropagation()}>
+        <DialogHeader>
+          <DialogTitle>Interviewer model</DialogTitle>
+          <DialogDescription>
+            {m
+              ? `Now: ${m.id} (${providerLabel(m.provider)}${m.chosen ? '' : ', default'}). The next message uses the new choice.`
+              : 'The interviewer runs on your own API key.'}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogBody className="pb-5">
+          <ModelPicker
+            value={state.pad.interviewer.model}
+            onChange={(model) => updateInterviewer({ model })}
+          />
+        </DialogBody>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 /** Shown instead of the interviewer while the pad owner has no usable API key. */
 function KeyNeeded() {
   const { state, setInterviewerKey } = usePad();
   const rejected = state.interviewerKey === 'rejected';
+  const own = useAiKey(state.role === 'owner');
   if (state.role !== 'owner')
     return (
       <p
@@ -318,8 +363,8 @@ function KeyNeeded() {
         <BotOffIcon className="mt-px size-4 shrink-0" aria-hidden />
         <span>
           {rejected
-            ? 'The interviewer is paused: Anthropic rejected the pad owner’s API key.'
-            : 'The interviewer joins once the pad owner adds their Anthropic API key.'}{' '}
+            ? 'The interviewer is paused: the AI provider rejected the pad owner’s API key.'
+            : 'The interviewer joins once the pad owner adds their AI API key.'}{' '}
           You can still code, run tests and chat.
         </span>
       </p>
@@ -330,11 +375,9 @@ function KeyNeeded() {
       size="sm"
       state={rejected ? 'rejected' : 'missing'}
       title={
-        rejected
-          ? 'Anthropic rejected your API key'
-          : 'The interviewer runs on your Anthropic API key'
+        rejected ? rejectedTitle(own.data?.provider) : 'The interviewer runs on your own AI API key'
       }
-      dialogTitle={rejected ? 'Update your Anthropic API key' : undefined}
+      dialogTitle={rejected ? 'Update your API key' : undefined}
       onSaved={() => setInterviewerKey('active')}
     >
       {rejected
@@ -350,6 +393,7 @@ export const ChatPanel = forwardRef<ChatHandle, { className?: string }>(function
 ) {
   const { state, sendChat, readOnly, updateInterviewer, socketStatus } = usePad();
   const [draft, setDraft] = useState('');
+  const [modelDialog, setModelDialog] = useState(false);
   const input = useRef<HTMLTextAreaElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const [stuck, setStuck] = useState(true);
@@ -480,11 +524,32 @@ export const ChatPanel = forwardRef<ChatHandle, { className?: string }>(function
                   <MenuRadioItem value="handsfree">Hands-free</MenuRadioItem>
                 </MenuRadioGroup>
                 <MenuSeparator />
+                <MenuLabel>Model</MenuLabel>
+                {state.role === 'owner' ? (
+                  <MenuItem onSelect={() => setModelDialog(true)} data-testid="interviewer-model">
+                    <CpuIcon />
+                    <span className="min-w-0 flex-1 truncate font-mono text-xs">
+                      {state.interviewerModel?.id ?? 'Provider default'}
+                    </span>
+                    <span className="text-xs text-fg-subtle">Change…</span>
+                  </MenuItem>
+                ) : (
+                  <p
+                    className="truncate px-2 pb-1.5 font-mono text-xs text-fg-muted"
+                    data-testid="interviewer-model"
+                  >
+                    {state.interviewerModel?.id ?? 'Provider default'}
+                  </p>
+                )}
+                <MenuSeparator />
                 <MenuItem onSelect={() => updateInterviewer({ enabled: false })}>
                   <BotOffIcon /> Turn the interviewer off
                 </MenuItem>
               </MenuContent>
             </Menu>
+          )}
+          {state.role === 'owner' && !readOnly && (
+            <ModelDialog open={modelDialog} onOpenChange={setModelDialog} />
           )}
         </div>
       </header>

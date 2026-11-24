@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import {
   CreatePadRequest,
+  type DeletePadResponse,
   type PadDetail,
   type PadSummary,
   type Playback,
@@ -28,8 +29,10 @@ import type { PadRow } from '../pads/service';
 import {
   changeLanguage,
   computeStats,
+  deletePad,
   endPad,
   generateAssessment,
+  leavePad,
   padForMember,
 } from '../pads/service';
 import { toPublicRun } from '../runs/redact';
@@ -106,13 +109,14 @@ export function padRoutes(ctx: Ctx) {
         problemTitle: problems.title,
         difficulty: problems.difficulty,
         accepted,
+        role: padMembers.role,
       })
       .from(pads)
       .innerJoin(padMembers, and(eq(padMembers.padId, pads.id), eq(padMembers.userId, user.id)))
       .innerJoin(problems, eq(problems.slug, pads.problemSlug))
       .orderBy(desc(pads.startedAt))
       .limit(200);
-    const out: PadSummary[] = rows.map(({ pad, problemTitle, difficulty, accepted }) => ({
+    const out: PadSummary[] = rows.map(({ pad, problemTitle, difficulty, accepted, role }) => ({
       id: pad.id,
       title: pad.title,
       problemSlug: pad.problemSlug,
@@ -123,6 +127,7 @@ export function padRoutes(ctx: Ctx) {
       problemTitle,
       difficulty,
       accepted: Boolean(accepted),
+      role,
     }));
     return c.json(out);
   });
@@ -157,7 +162,7 @@ export function padRoutes(ctx: Ctx) {
       db.select().from(problemTests).where(eq(problemTests.problemSlug, problem.slug)),
       db.select().from(messages).where(eq(messages.padId, pad.id)).orderBy(asc(messages.createdAt)),
       db.select().from(runs).where(eq(runs.padId, pad.id)).orderBy(asc(runs.createdAt)),
-      ctx.ai.keyState(pad.ownerId),
+      ctx.ai.padModel(pad.ownerId, pad.interviewer),
     ]);
     const detail: PadDetail = {
       pad: padView(pad, user.id),
@@ -165,8 +170,9 @@ export function padRoutes(ctx: Ctx) {
       problem: problemDetail(problem, tests),
       messages: msgs.map(messageView),
       runs: runRows.map((row) => toPublicRun(storedRun(row))),
-      interviewerAvailable: key === 'active',
-      interviewerKey: key,
+      interviewerAvailable: key.key === 'active',
+      interviewerKey: key.key,
+      interviewerModel: key.model,
     };
     return c.json(detail);
   });
@@ -212,6 +218,20 @@ export function padRoutes(ctx: Ctx) {
     if (role !== 'owner') throw forbidden('Only the owner can end the pad');
     const ended = pad.status === 'active' ? await endPad(ctx, pad.id) : null;
     return c.json(padView(ended ?? pad, user.id));
+  });
+
+  // Owner: deletes the pad for everyone. Collaborator: removes it from their own history only.
+  // Active pads may be deleted too (that ends the session). A repeat after success is a 404.
+  r.delete('/pads/:id', async (c) => {
+    const user = requireUser(c);
+    const { pad, role } = await padForMember(ctx, c.req.param('id'), user.id);
+    if (role === 'owner') await deletePad(ctx, pad.id);
+    else await leavePad(ctx, pad.id, user.id);
+    const res: DeletePadResponse = {
+      padId: pad.id,
+      removed: role === 'owner' ? 'pad' : 'membership',
+    };
+    return c.json(res);
   });
 
   r.get('/pads/:id/report', async (c) => {
@@ -270,7 +290,7 @@ export function padRoutes(ctx: Ctx) {
     if (!row) throw notFound('Report');
     if (row.assessment || row.status === 'pending') return c.json(await reportView(pad, row));
     if ((await ctx.ai.keyState(user.id)) !== 'active')
-      throw conflict('ai_key_missing', 'Add your Anthropic API key first');
+      throw conflict('ai_key_missing', 'Add your AI API key first');
     const wait = await ctx.limiter.hit([
       { key: `assess:u:${user.id}`, ...ctx.config.limits.assessmentRetry.userBurst },
     ]);

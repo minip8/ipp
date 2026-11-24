@@ -1,6 +1,7 @@
 slug: pow-x-n
 title: Pow(x, n)
 difficulty: medium
+category: dsa
 tags: [math, recursion, bit-manipulation]
 signature:
   className: Solution

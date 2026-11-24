@@ -1,6 +1,7 @@
 slug: merge-intervals
 title: Merge Intervals
 difficulty: medium
+category: dsa
 tags: [array, intervals, sorting]
 signature:
   className: Solution

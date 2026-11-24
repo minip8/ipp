@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { PadSocket, type SocketStatus } from './socket';
+import { PadSocket, SocketRefused, type SocketStatus } from './socket';
 
 class FakeWs {
   static instances: FakeWs[] = [];
@@ -111,6 +111,20 @@ describe('PadSocket', () => {
     await flush();
     expect(statuses.at(-1)).toBe('offline');
     expect(fatal).toHaveBeenCalled();
+  });
+
+  it('stops for good when the server refuses the pad (4404: deleted)', async () => {
+    const fatal = vi.fn();
+    const { s, statuses } = make({ onFatal: fatal });
+    s.connect();
+    await flush();
+    FakeWs.instances[0]?.open();
+    FakeWs.instances[0]?.close(4404);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(statuses.at(-1)).toBe('offline');
+    expect(FakeWs.instances).toHaveLength(1);
+    expect(fatal).toHaveBeenCalledWith(expect.any(SocketRefused));
+    expect(fatal.mock.calls[0]?.[0].code).toBe(4404);
   });
 
   it('pings and reconnects when the server goes silent', async () => {

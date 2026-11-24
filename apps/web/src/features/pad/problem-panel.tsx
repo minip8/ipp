@@ -1,9 +1,16 @@
 'use client';
 import { CAPS, YDOC } from '@ipp/contracts';
-import { ClockIcon, CpuIcon, EyeOffIcon, FileTextIcon, NotebookPenIcon } from 'lucide-react';
+import {
+  ClockIcon,
+  CpuIcon,
+  EyeIcon,
+  EyeOffIcon,
+  FileTextIcon,
+  NotebookPenIcon,
+} from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type * as Y from 'yjs';
-import { DifficultyBadge } from '@/components/domain';
+import { CategoryBadge, DifficultyBadge } from '@/components/domain';
 import { Markdown } from '@/components/markdown';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { formatMs, humanize, plural } from '@/lib/format';
@@ -104,20 +111,34 @@ function SampleTests() {
 
 function ProblemTab() {
   const { problem } = usePad().state;
+  // Topics can give the approach away; they stay hidden until asked for.
+  const [showTopics, setShowTopics] = useState(false);
   return (
     <div className="space-y-5 px-4 py-4">
       <div>
         <h2 className="text-lg font-semibold tracking-tight">{problem.title}</h2>
         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
           <DifficultyBadge difficulty={problem.difficulty} />
-          {problem.tags.map((t) => (
-            <span
-              key={t}
-              className="inline-flex h-5 items-center rounded-[4px] border border-border px-1.5 text-2xs text-fg-muted"
-            >
-              {humanize(t)}
-            </span>
-          ))}
+          <CategoryBadge category={problem.category} />
+          {showTopics
+            ? problem.tags.map((t) => (
+                <span
+                  key={t}
+                  className="inline-flex h-5 items-center rounded-[4px] border border-border px-1.5 text-2xs text-fg-muted"
+                >
+                  {humanize(t)}
+                </span>
+              ))
+            : problem.tags.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowTopics(true)}
+                  title="Topics can give away the intended approach"
+                  className="inline-flex h-5 items-center gap-1 rounded-[4px] px-1.5 text-2xs text-fg-subtle transition-colors hover:bg-surface-3 hover:text-fg"
+                >
+                  <EyeIcon className="size-3" aria-hidden /> Show topics
+                </button>
+              )}
         </div>
       </div>
       <Markdown className="text-[13.5px]">{problem.statement}</Markdown>

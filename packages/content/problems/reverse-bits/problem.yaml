@@ -1,6 +1,7 @@
 slug: reverse-bits
 title: Reverse Bits
 difficulty: easy
+category: dsa
 tags: [bit-manipulation]
 signature:
   className: Solution

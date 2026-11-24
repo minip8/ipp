@@ -3,6 +3,7 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { aiKeyStatus, QUIZ_ATTEMPT_ID } from './fixtures';
+import { QUIZ_BANK_TOPIC } from './fixtures-quiz-bank';
 import { shoot as rawShoot, setup } from './helpers';
 
 async function shoot(page: Page, name: string, opts?: { fullPage?: boolean }) {
@@ -81,6 +82,30 @@ for (const width of WIDTHS) {
       await page.getByTestId('quiz-primary').click();
       await expect(page.getByText('How did you do?')).toBeVisible();
       await shoot(page, 'quiz-self-grade', { fullPage: true });
+    });
+
+    test('question bank', async ({ page }) => {
+      await setup(page);
+      const bank = `/quiz/topics/${QUIZ_BANK_TOPIC}`;
+      await page.goto(bank);
+      await expect(page.getByTestId('bank-list')).toBeVisible();
+      await shoot(page, 'quiz-bank-list', { fullPage: true });
+
+      await page.goto(`${bank}?question=os-virtual-memory-002`);
+      await page.getByRole('radio', { name: /page fault/ }).click();
+      await shoot(page, 'quiz-bank-question', { fullPage: true });
+      await page.getByTestId('bank-primary').click();
+      await expect(page.getByRole('region', { name: 'Feedback' })).toBeVisible();
+      await shoot(page, 'quiz-bank-feedback', { fullPage: true });
+
+      // A previous answer, as a deep link opens it.
+      await page.goto(`${bank}?question=concurrency-primitives-004`);
+      await expect(page.getByRole('region', { name: 'Feedback' })).toContainText('Partly correct');
+      await shoot(page, 'quiz-bank-previous', { fullPage: true });
+
+      await page.goto(`${bank}?status=correct&type=short`);
+      await expect(page.getByText('No questions match')).toBeVisible();
+      await shoot(page, 'quiz-bank-empty');
     });
   });
 }

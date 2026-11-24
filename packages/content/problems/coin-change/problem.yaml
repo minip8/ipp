@@ -1,7 +1,8 @@
 slug: coin-change
 title: Coin Change (Fewest Coins)
 difficulty: medium
-tags: [dynamic-programming, breadth-first-search]
+category: dsa
+tags: [dynamic-programming, bfs]
 signature:
   className: Solution
   kind: function

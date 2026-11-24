@@ -1,6 +1,7 @@
 slug: flood-fill
 title: Flood Fill
 difficulty: easy
+category: dsa
 tags: [graph, bfs, dfs, matrix]
 signature:
   className: Solution

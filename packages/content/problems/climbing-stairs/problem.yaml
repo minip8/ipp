@@ -1,6 +1,7 @@
 slug: climbing-stairs
 title: Climbing Stairs
 difficulty: easy
+category: dsa
 tags: [dynamic-programming, math]
 signature:
   className: Solution

@@ -1,6 +1,7 @@
 slug: longest-increasing-subsequence
 title: Longest Increasing Subsequence
 difficulty: medium
+category: dsa
 tags: [dynamic-programming, binary-search]
 signature:
   className: Solution

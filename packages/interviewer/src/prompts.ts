@@ -21,6 +21,7 @@ import {
   LANGUAGE_LABELS,
   type Language,
   type Message,
+  type ProblemCategory,
   type ProblemSignature,
   type Run,
   type Ty,
@@ -141,13 +142,23 @@ const at = (iso: string, startedAt: number) => clock(Date.parse(iso) - startedAt
 
 // ---------------------------------------------------------------- problem block
 
+/** Problems without an insight to find are judged on how carefully they are built. */
+const CATEGORY_FOCUS: Partial<Record<ProblemCategory, string>> = {
+  implementation:
+    'Category: implementation. There is no clever insight to find here; while interviewing and in the assessment, weigh carefulness, complete edge-case handling and clean, correct code rather than a clever idea.',
+  'data-structure':
+    'Category: data structure implementation. The candidate builds the structure themselves; while interviewing and in the assessment, weigh correct invariants, edge cases (empty, full, repeated keys) and clean, well-encapsulated code rather than a clever idea.',
+};
+
 export function problemPrompt(problem: InterviewContext['problem']): string {
   const refLang = (['python', 'cpp', 'java'] as Language[]).find(
     (l) => problem.referenceSolutions[l],
   );
   const ref = refLang ? problem.referenceSolutions[refLang] : undefined;
+  const focus = CATEGORY_FOCUS[problem.category];
   return [
     `# The problem for this session: ${problem.title} (${problem.difficulty}; ${problem.tags.join(', ')})`,
+    ...(focus ? [focus] : []),
     '## Statement (the candidate sees this)',
     problem.statement.trim(),
     '## Required signature',

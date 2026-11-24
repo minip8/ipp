@@ -1,6 +1,7 @@
 /**
- * Bring-your-own Anthropic key: the settings page and every place a missing key matters
- * (starting an interview, the pad's interviewer panel, the report, quiz short answers).
+ * Bring-your-own key (Anthropic, OpenAI, Google Gemini, OpenRouter): the settings page, choosing
+ * the interviewer model, and every place a missing key matters (starting an interview, the pad's
+ * interviewer panel, the report, quiz short answers).
  */
 import { expect, type Page, test } from '@playwright/test';
 import {
@@ -15,6 +16,7 @@ import { setup } from './helpers';
 import type { MockBackend } from './mock-api';
 
 const KEY = 'sk-ant-api03-e2eTESTkey-0123456789abcdefghijklmnop-Zk7Q';
+const OPENAI_KEY = 'sk-proj-e2eOPENAIkey-0123456789abcdefghijklm-OpAi';
 const REVOKED = 'sk-ant-api03-revoked-0123456789abcdefghijklmnopqr-AAAA';
 
 async function openPad(page: Page, configure?: (b: MockBackend) => void) {
@@ -72,7 +74,9 @@ test.describe('key management', () => {
     await expect(page.locator('form [role=alert]')).toContainText('Paste your API key.');
     await input.fill('sk-proj-abcdefghijklmnopqrstuvwxyz0123');
     await page.getByRole('button', { name: 'Save key' }).click();
-    await expect(page.locator('form [role=alert]')).toContainText('another provider');
+    await expect(page.locator('form [role=alert]')).toContainText(
+      'looks like an OpenAI key, but Anthropic is selected',
+    );
     await expect(input).toHaveAttribute('aria-invalid', 'true');
     expect(backend.savedKeys).toEqual([]);
 
@@ -112,7 +116,7 @@ test.describe('key management', () => {
     await page.reload();
     await expect(page.getByTestId('ai-key-saved')).toContainText('Zk7Q');
     await page.getByRole('button', { name: 'Replace' }).click();
-    await expect(page.getByRole('textbox', { name: 'New API key' })).toHaveValue('');
+    await expect(page.getByRole('textbox', { name: 'New Anthropic API key' })).toHaveValue('');
     await page.getByRole('button', { name: 'Cancel' }).click();
 
     await page.getByRole('button', { name: 'Remove' }).click();
@@ -128,7 +132,129 @@ test.describe('key management', () => {
     const notice = page.getByTestId('ai-key-rejected');
     await expect(notice).toContainText('Anthropic rejected sk-ant-…r3J9');
     await expect(notice).toContainText('ran out of credit');
-    await expect(page.getByRole('textbox', { name: 'New API key' })).toHaveValue('');
+    await expect(page.getByRole('textbox', { name: 'New Anthropic API key' })).toHaveValue('');
+  });
+
+  test('another provider: choose it, its key shape and console; a mismatch offers to switch', async ({
+    page,
+  }) => {
+    const backend = await setup(page, (b) => {
+      b.aiKey = aiKeyStatus('missing');
+    });
+    await page.goto('/settings/ai-key');
+    const input = page.getByRole('textbox', { name: 'Anthropic API key' });
+    // An OpenAI key with Anthropic selected: refused locally, with a one-click switch.
+    await input.fill(OPENAI_KEY);
+    await page.getByRole('button', { name: 'Save key' }).click();
+    const alert = page.locator('form [role=alert]');
+    await expect(alert).toContainText('looks like an OpenAI key');
+    await alert.getByRole('button', { name: 'Use OpenAI' }).click();
+    await expect(page.getByRole('combobox', { name: 'Provider' })).toContainText('OpenAI');
+    const openaiInput = page.getByRole('textbox', { name: 'OpenAI API key' });
+    await expect(openaiInput).toHaveAttribute('placeholder', 'sk-…');
+    await expect(
+      page.locator('form').getByRole('link', { name: 'OpenAI Platform' }),
+    ).toHaveAttribute('href', /^https:\/\/platform\.openai\.com\//);
+    expect(backend.savedKeys).toEqual([]);
+    await page.getByRole('button', { name: 'Save key' }).click();
+    const saved = page.getByTestId('ai-key-saved');
+    await expect(saved).toContainText('OpenAI key saved');
+    await expect(saved).toContainText('sk-…OpAi');
+    expect(backend.savedKeys).toEqual([OPENAI_KEY]);
+    expect(backend.savedProviders).toEqual(['openai']);
+    await expect(page.getByText('OpenAI default:')).toBeVisible();
+
+    // Choosing Gemini by hand changes the expected shape.
+    await page.getByRole('button', { name: 'Replace' }).click();
+    await page.getByRole('combobox', { name: 'Provider' }).click();
+    await page.getByRole('option', { name: 'Google Gemini' }).click();
+    const gemini = page.getByRole('textbox', { name: 'New Google Gemini API key' });
+    await gemini.fill('hello-not-a-key');
+    await page.getByRole('button', { name: 'Save key' }).click();
+    await expect(page.locator('form [role=alert]')).toContainText('start with “AIza” or “AQ.”');
+  });
+
+  test('the settings page lists the models of the saved key for new interviews', async ({
+    page,
+  }) => {
+    await setup(page);
+    await page.goto('/settings/ai-key');
+    const picker = page.getByRole('combobox', { name: 'Model for new interviews' });
+    await expect(picker).toContainText('Default: Claude Opus 5.5');
+    await picker.click();
+    await expect(page.getByRole('option', { name: 'Claude Fable 5.2' })).toBeVisible();
+    await page.getByRole('option', { name: 'Claude Haiku 5.5' }).click();
+    await expect(picker).toContainText('Claude Haiku 5.5');
+    // It is the start preference: the new-interview form starts with it.
+    await page.goto('/new');
+    await expect(page.getByRole('combobox', { name: 'Model' })).toContainText('Claude Haiku 5.5');
+  });
+});
+
+test.describe('choosing the interviewer model', () => {
+  test('the model picked when starting is sent with the pad and remembered', async ({ page }) => {
+    const backend = await setup(page);
+    await page.goto('/new');
+    const picker = page.getByRole('combobox', { name: 'Model' });
+    await expect(picker).toContainText('Default: Claude Opus 5.5');
+    await picker.click();
+    await page.getByRole('option', { name: 'Claude Sonnet 5.5' }).click();
+    await page.getByRole('button', { name: /Two Sum/ }).click();
+    await page.getByRole('button', { name: 'Start interview' }).click();
+    await expect(page).toHaveURL(/\/pads\/[0-9a-f-]{36}$/);
+    const create = backend.requests.find((r) => r.method === 'POST' && r.path === '/api/pads');
+    expect(create?.body).toMatchObject({
+      interviewer: { model: { provider: 'anthropic', id: 'claude-sonnet-5-5' } },
+    });
+    await page.goto('/new');
+    await expect(page.getByRole('combobox', { name: 'Model' })).toContainText('Claude Sonnet 5.5');
+  });
+
+  test('a list that cannot be loaded never blocks starting', async ({ page }) => {
+    const backend = await setup(page, (b) => {
+      b.modelsFail = true;
+    });
+    await page.goto('/new');
+    await expect(page.getByTestId('model-picker')).toContainText('Could not get the model list');
+    await page.getByRole('button', { name: /Two Sum/ }).click();
+    await page.getByRole('button', { name: 'Start interview' }).click();
+    await expect(page).toHaveURL(/\/pads\/[0-9a-f-]{36}$/);
+    const create = backend.requests.find((r) => r.method === 'POST' && r.path === '/api/pads');
+    const body = create?.body as { interviewer?: { model?: unknown } } | undefined;
+    expect(body?.interviewer).toBeTruthy();
+    expect(body?.interviewer?.model ?? null).toBeNull();
+  });
+
+  test('without a key the picker is off and says why', async ({ page }) => {
+    const noKey = await setup(page, (b) => {
+      b.aiKey = aiKeyStatus('missing');
+    });
+    await page.goto('/new');
+    await expect(page.getByRole('combobox', { name: 'Model' })).toBeDisabled();
+    await expect(page.getByTestId('model-picker')).toContainText(
+      'Add an API key to choose a model',
+    );
+    expect(noKey.modelListCalls).toBe(0);
+  });
+
+  test('the owner changes the model mid-interview from the interviewer options', async ({
+    page,
+  }) => {
+    const backend = await openPad(page);
+    const chat = page.getByRole('region', { name: 'Interviewer chat' });
+    await chat.getByRole('button', { name: 'Interviewer options' }).click();
+    const item = page.getByTestId('interviewer-model');
+    await expect(item).toContainText('claude-opus-5-5');
+    await item.click();
+    const dialog = page.getByRole('dialog', { name: 'Interviewer model' });
+    await expect(dialog).toContainText('Now: claude-opus-5-5');
+    await dialog.getByRole('combobox', { name: 'Model' }).click();
+    await page.getByRole('option', { name: 'Claude Fable 5.2' }).click();
+    await expect(dialog).toContainText('Now: claude-fable-5-2');
+    const patch = backend.requests.find((r) => r.method === 'PATCH');
+    expect(patch?.body).toEqual({
+      interviewer: { model: { provider: 'anthropic', id: 'claude-fable-5-2' } },
+    });
   });
 });
 
@@ -138,9 +264,8 @@ test.describe('starting an interview', () => {
       b.aiKey = aiKeyStatus('missing');
     });
     await page.goto('/new');
-    await expect(page.getByTestId('ai-key-prompt')).toContainText(
-      'Runs on your own Anthropic API key',
-    );
+    await page.getByRole('button', { name: /Two Sum/ }).click();
+    await expect(page.getByTestId('ai-key-prompt')).toContainText('Runs on your own AI API key');
     // Turning the interviewer off removes the prompt.
     await page.getByLabel('AI interviewer').click();
     await expect(page.getByTestId('ai-key-prompt')).toHaveCount(0);
@@ -162,6 +287,7 @@ test.describe('starting an interview', () => {
       b.aiKey = aiKeyStatus('missing');
     });
     await page.goto('/new');
+    await page.getByRole('button', { name: /Two Sum/ }).click();
     await page.getByRole('radio', { name: 'Tough' }).click();
     await page.getByRole('button', { name: 'Start interview' }).click();
     await addKeyInDialog(page, 'Save key and start');
@@ -175,6 +301,9 @@ test.describe('starting an interview', () => {
     await setup(page);
     await page.goto('/new');
     await expect(page.getByTestId('ai-key-prompt')).toHaveCount(0);
+    // Nothing is selected by default, so Start waits for a problem.
+    await expect(page.getByRole('button', { name: 'Start interview' })).toBeDisabled();
+    await page.getByRole('button', { name: /Two Sum/ }).click();
     await page.getByRole('button', { name: 'Start interview' }).click();
     await expect(page).toHaveURL(/\/pads\/[0-9a-f-]{36}$/);
   });
@@ -189,7 +318,7 @@ test.describe('pad interviewer panel', () => {
     });
     const chat = page.getByRole('region', { name: 'Interviewer chat' });
     const prompt = chat.getByTestId('ai-key-prompt');
-    await expect(prompt).toContainText('The interviewer runs on your Anthropic API key');
+    await expect(prompt).toContainText('The interviewer runs on your own AI API key');
     await expect(chat.getByText('needs a key')).toBeVisible();
     // Something in progress: a half-written message.
     const composer = page.getByLabel('Message', { exact: true });
@@ -237,7 +366,7 @@ test.describe('pad interviewer panel', () => {
     const prompt = page
       .getByRole('region', { name: 'Interviewer chat' })
       .getByTestId('ai-key-prompt');
-    await expect(prompt).toContainText('joins once the pad owner adds their Anthropic API key');
+    await expect(prompt).toContainText('joins once the pad owner adds their AI API key');
     await expect(prompt.getByRole('button')).toHaveCount(0);
   });
 });
@@ -273,7 +402,7 @@ test.describe('report', () => {
       if (d) b.pads.set(ENDED_PAD_ID, { ...d, role: 'collaborator' });
     });
     await page.goto(url);
-    await expect(page.getByText(/runs on the pad owner’s Anthropic API key/)).toBeVisible();
+    await expect(page.getByText(/runs on the pad owner’s own AI API key/)).toBeVisible();
     await expect(page.getByRole('button', { name: 'Add API key' })).toHaveCount(0);
   });
 });
@@ -289,7 +418,7 @@ test.describe('quiz short answers', () => {
     await expect(page.getByTestId('quiz-key-prompt')).toHaveCount(0); // a choice question
     await page.getByRole('button', { name: 'Question 4: Not answered' }).click();
     const prompt = page.getByTestId('quiz-key-prompt');
-    await expect(prompt).toContainText('AI grading runs on your own Anthropic API key');
+    await expect(prompt).toContainText('AI grading runs on your own AI API key');
     const answer = 'So the final ACK can be retransmitted if the peer resends its FIN.';
     await page.getByLabel('Your answer').fill(answer);
     await prompt.getByRole('button', { name: 'Add API key' }).click();

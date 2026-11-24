@@ -1,6 +1,7 @@
 slug: valid-palindrome
 title: Valid Palindrome
 difficulty: easy
+category: dsa
 tags: [string, two-pointers]
 signature:
   className: Solution

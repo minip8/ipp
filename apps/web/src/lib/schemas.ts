@@ -15,7 +15,7 @@ export const MeResponse = z.object({
 export type Me = z.infer<typeof MeResponse>['user'];
 
 /**
- * Server facts. The AI features run only on each user's own Anthropic key, so whether they work
+ * Server facts. The AI features run only on each user's own provider key, so whether they work
  * is per user (`GET /api/ai-key`) or per pad (`PadDetail.interviewerAvailable`), not here.
  */
 export const ConfigResponse = z.object({

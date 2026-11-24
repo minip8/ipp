@@ -1,6 +1,7 @@
 slug: find-minimum-in-rotated-sorted-array
 title: Find Minimum in Rotated Sorted Array
 difficulty: medium
+category: dsa
 tags: [array, binary-search]
 signature:
   className: Solution

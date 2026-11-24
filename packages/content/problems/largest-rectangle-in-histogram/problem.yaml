@@ -1,6 +1,7 @@
 slug: largest-rectangle-in-histogram
 title: Largest Rectangle in Histogram
 difficulty: hard
+category: dsa
 tags: [array, stack, monotonic-stack]
 signature:
   className: Solution

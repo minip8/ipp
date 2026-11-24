@@ -1,6 +1,7 @@
 slug: task-scheduler
 title: Task Scheduler
 difficulty: medium
+category: dsa
 tags: [array, greedy, counting, math]
 signature:
   className: Solution

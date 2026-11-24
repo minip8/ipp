@@ -1,6 +1,7 @@
 slug: palindrome-partitioning
 title: Palindrome Partitioning
 difficulty: medium
+category: dsa
 tags: [backtracking, dynamic-programming, string]
 signature:
   className: Solution

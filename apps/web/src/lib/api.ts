@@ -4,11 +4,14 @@
  */
 import {
   AiKeyStatus,
+  AiModelList,
+  type AiProvider,
   AnswerFeedback,
   ApiError,
   type CreateAttemptRequest,
   type CreatePadRequest,
   type CreateRunRequest,
+  DeletePadResponse,
   Pad,
   PadDetail,
   PadSummary,
@@ -17,6 +20,8 @@ import {
   ProblemSummary,
   QuizAttempt,
   QuizAttemptSummary,
+  QuizBank,
+  QuizBankQuestion,
   type QuizResponse,
   QuizTopicStats,
   Report,
@@ -133,10 +138,12 @@ const qs = (params: Record<string, string | undefined>) => {
 
 export const api = {
   me: () => request('/me', MeResponse),
-  /** The signed-in user's own Anthropic API key: status only, never the key. */
+  /** The signed-in user's own AI provider API key: status only, never the key. */
   aiKey: () => request('/ai-key', AiKeyStatus),
-  saveAiKey: (apiKey: string) =>
-    request('/ai-key', AiKeyStatus, { method: 'PUT', body: { apiKey } }),
+  saveAiKey: (provider: AiProvider, apiKey: string) =>
+    request('/ai-key', AiKeyStatus, { method: 'PUT', body: { provider, apiKey } }),
+  /** Models the saved key can use (live from its provider). */
+  aiModels: () => request('/ai-key/models', AiModelList),
   deleteAiKey: () => request('/ai-key', AiKeyStatus, { method: 'DELETE' }),
   config: () => request('/config', ConfigResponse),
   problems: (f: { difficulty?: string; tag?: string; q?: string } = {}) =>
@@ -148,6 +155,8 @@ export const api = {
   updatePad: (id: string, body: UpdatePadRequest) =>
     request(`/pads/${id}`, Pad, { method: 'PATCH', body }),
   endPad: (id: string) => request(`/pads/${id}/end`, Pad, { method: 'POST' }),
+  /** Owner: deletes the pad for everyone. Collaborator: removes it from their own history. */
+  deletePad: (id: string) => request(`/pads/${id}`, DeletePadResponse, { method: 'DELETE' }),
   joinPad: (shareToken: string) =>
     request('/pads/join', JoinResponse, { method: 'POST', body: { shareToken } }),
   report: (id: string) => request(`/pads/${id}/report`, Report),
@@ -171,6 +180,16 @@ export const api = {
     }),
   finishAttempt: (id: string) =>
     request(`/quiz/attempts/${id}/finish`, QuizAttempt, { method: 'POST' }),
+  /** Question bank: a topic's questions with the user's status, answered outside any attempt. */
+  quizBank: (topic: string) =>
+    request(`/quiz/topics/${encodeURIComponent(topic)}/questions`, QuizBank),
+  quizBankQuestion: (id: string) =>
+    request(`/quiz/questions/${encodeURIComponent(id)}`, QuizBankQuestion),
+  answerQuestion: (id: string, response: QuizResponse) =>
+    request(`/quiz/questions/${encodeURIComponent(id)}/answers`, AnswerFeedback, {
+      method: 'POST',
+      body: { response },
+    }),
 };
 
 /** Human message for any error, with rate-limit timing when known. */

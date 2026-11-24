@@ -1,6 +1,7 @@
 slug: subarray-sum-equals-k
 title: Subarray Sum Equals K
 difficulty: medium
+category: dsa
 tags: [array, hash-table, prefix-sum]
 signature:
   className: Solution

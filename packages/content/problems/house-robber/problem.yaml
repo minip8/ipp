@@ -1,6 +1,7 @@
 slug: house-robber
 title: House Robber
 difficulty: easy
+category: dsa
 tags: [dynamic-programming, array]
 signature:
   className: Solution

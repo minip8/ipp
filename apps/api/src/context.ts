@@ -6,7 +6,7 @@ import type { AiKeyStore } from './ai/keys';
 import type { Auth } from './auth';
 import type { Config } from './config';
 import type { InterviewerHost } from './interviewer/host';
-import type { KeyVerifier } from './interviewer/wiring';
+import type { KeyVerifier, ModelLister } from './interviewer/wiring';
 import type { RateLimiter } from './ratelimit';
 import type { Collab } from './realtime/collab';
 import type { Rooms } from './realtime/rooms';
@@ -27,8 +27,9 @@ export interface Ctx {
   tickets: Tickets;
   collab: Collab;
   ai: InterviewerHost;
-  /** Users' encrypted Anthropic API keys (Redis only). */
+  /** Users' encrypted AI provider API keys (Redis only). */
   aiKeys: AiKeyStore;
   verifyAiKey: KeyVerifier;
+  listAiModels: ModelLister;
   runs: RunService;
 }

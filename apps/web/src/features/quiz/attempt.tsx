@@ -28,18 +28,18 @@ import { Kbd } from '@/components/ui/kbd';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
 import { AiKeyPrompt } from '@/features/ai-key/ai-key-prompt';
+import { rejectedTitle } from '@/features/ai-key/logic';
 import { ApiRequestError, api } from '@/lib/api';
 import { humanize, plural } from '@/lib/format';
 import { qk, useAiKey } from '@/lib/queries';
 import { cn } from '@/lib/utils';
 import {
-  choiceIndexForKey,
   type Draft,
+  draftForKey,
   draftFromResponse,
   OUTCOME_LABEL,
   type Outcome,
   outcomeOf,
-  outputKindsFor,
   resumeIndex,
   toResponse,
 } from './logic';
@@ -163,7 +163,7 @@ function ProgressSegments({
   );
 }
 
-function isTyping(el: EventTarget | null) {
+export function isTyping(el: EventTarget | null) {
   if (!(el instanceof HTMLElement)) return false;
   return (
     el.isContentEditable ||
@@ -332,27 +332,10 @@ function QuizFlow({ attempt }: { attempt: QuizAttempt }) {
         return;
       }
       if (locked) return;
-      if ((draft.type === 'single' || draft.type === 'multiple') && q.choices) {
-        if (e.key === 'j' || e.key === 'k') return;
-        const i = choiceIndexForKey(e.key, q.choices.length);
-        const c = i === null ? undefined : q.choices[i];
-        if (!c) return;
+      const next = draftForKey(q, draft, e.key);
+      if (next) {
         e.preventDefault();
-        if (draft.type === 'single') setDraft({ type: 'single', choice: c.id });
-        else
-          setDraft({
-            type: 'multiple',
-            choices: draft.choices.includes(c.id)
-              ? draft.choices.filter((x) => x !== c.id)
-              : [...draft.choices, c.id],
-          });
-      } else if (draft.type === 'output' && /^[1-9]$/.test(e.key)) {
-        const kinds = outputKindsFor(q.code?.language ?? 'cpp');
-        const k = kinds[Number(e.key) - 1];
-        if (k) {
-          e.preventDefault();
-          setDraft({ ...draft, kind: k.kind });
-        }
+        setDraft(next);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -445,8 +428,8 @@ function QuizFlow({ attempt }: { attempt: QuizAttempt }) {
             state={aiKey.data.state}
             title={
               aiKey.data.state === 'rejected'
-                ? 'Anthropic rejected your API key, so you will grade this answer yourself'
-                : 'AI grading runs on your own Anthropic API key'
+                ? `${rejectedTitle(aiKey.data.provider)}, so you will grade this answer yourself`
+                : 'AI grading runs on your own AI API key'
             }
           >
             Without one you compare your answer with the reference and grade it yourself. Your

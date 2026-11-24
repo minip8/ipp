@@ -1,4 +1,4 @@
-import { Difficulty, Slug, WsTicketRequest } from '@ipp/contracts';
+import { Difficulty, ProblemCategory, Slug, WsTicketRequest } from '@ipp/contracts';
 import { problems, problemTests } from '@ipp/db';
 import { and, arrayContains, asc, eq, ilike, or, type SQL } from '@ipp/db/orm';
 import { Hono } from 'hono';
@@ -37,6 +37,12 @@ export function miscRoutes(ctx: Ctx) {
       const d = Difficulty.safeParse(difficulty);
       if (!d.success) throw badRequest('Unknown difficulty', 'validation_error');
       where.push(eq(problems.difficulty, d.data));
+    }
+    const category = c.req.query('category');
+    if (category) {
+      const k = ProblemCategory.safeParse(category);
+      if (!k.success) throw badRequest('Unknown category', 'validation_error');
+      where.push(eq(problems.category, k.data));
     }
     const tag = c.req.query('tag');
     if (tag) {

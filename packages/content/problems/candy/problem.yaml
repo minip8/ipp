@@ -1,6 +1,7 @@
 slug: candy
 title: Candy
 difficulty: hard
+category: dsa
 tags: [array, greedy]
 signature:
   className: Solution

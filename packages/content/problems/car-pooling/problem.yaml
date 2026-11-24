@@ -1,6 +1,7 @@
 slug: car-pooling
 title: Car Pooling
 difficulty: medium
+category: dsa
 tags: [array, prefix-sum, sorting, sweep-line]
 signature:
   className: Solution

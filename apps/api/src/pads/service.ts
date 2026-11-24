@@ -1,8 +1,9 @@
 import type { Language, PadRole, Report } from '@ipp/contracts';
 import { messages, padMembers, pads, reports, runs, timelineEvents } from '@ipp/db';
-import { and, count, eq, sql } from '@ipp/db/orm';
+import { and, count, eq, ne, sql } from '@ipp/db/orm';
 import type { Ctx } from '../context';
 import { notFound } from '../http/errors';
+import { isForeignKeyViolation } from '../pg';
 import { padView } from '../views';
 
 export type PadRow = typeof pads.$inferSelect;
@@ -111,12 +112,64 @@ export async function generateAssessment(ctx: Ctx, pad: PadRow): Promise<void> {
       status = 'failed';
     }
   }
-  await ctx.db
-    .insert(reports)
-    .values({ padId: pad.id, status, stats, assessment, generatedAt: new Date() })
-    .onConflictDoUpdate({
-      target: reports.padId,
-      set: { status, stats, assessment, generatedAt: new Date() },
-    });
+  try {
+    await ctx.db
+      .insert(reports)
+      .values({ padId: pad.id, status, stats, assessment, generatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: reports.padId,
+        set: { status, stats, assessment, generatedAt: new Date() },
+      });
+  } catch (err) {
+    // The pad was deleted while the assessment was being written.
+    if (!isForeignKeyViolation(err)) throw err;
+  }
   ctx.ai.release(pad.id);
+}
+
+/** Close codes for live sockets of a pad that is gone for that user (the web treats 4404 as final). */
+export const PAD_GONE = { code: 4404, reason: 'pad-deleted' } as const;
+
+/**
+ * The owner deletes a pad: the row goes, and the FK cascades take its members, editor state and
+ * history, transcript, notes, timeline, runs and report. Then its live state is let go: open
+ * sockets are closed (clients see 4404 and stop reconnecting; tickets and collab auth fail as
+ * for any non-member), buffered history is dropped, the interviewer releases the pad, and
+ * unfinished runs give back their owners' in-flight slot. Writes still in flight for the pad
+ * (a judge result, a debounced editor save, an assessment) find no row and are dropped where
+ * they land. Returns false if the pad was already gone.
+ */
+export async function deletePad(ctx: Ctx, padId: string): Promise<boolean> {
+  const unfinished = await ctx.db
+    .select({ id: runs.id, userId: runs.userId })
+    .from(runs)
+    .where(and(eq(runs.padId, padId), ne(runs.status, 'finished')));
+  const deleted = await ctx.db.delete(pads).where(eq(pads.id, padId)).returning({ id: pads.id });
+  if (deleted.length === 0) return false;
+  ctx.rooms.close(padId, PAD_GONE.code, PAD_GONE.reason);
+  ctx.collab.deletePad(padId);
+  ctx.ai.forget(padId);
+  await ctx.runs
+    .forget(unfinished)
+    .catch((err) => ctx.log.warn({ err, padId }, 'releasing runs of a deleted pad failed'));
+  ctx.log.info({ padId, unfinishedRuns: unfinished.length }, 'pad deleted');
+  return true;
+}
+
+/**
+ * A collaborator removes a pad from their own history: only their membership goes. Their open
+ * sockets for the pad are closed, since membership is what let them in.
+ */
+export async function leavePad(ctx: Ctx, padId: string, userId: string): Promise<void> {
+  await ctx.db
+    .delete(padMembers)
+    .where(
+      and(
+        eq(padMembers.padId, padId),
+        eq(padMembers.userId, userId),
+        eq(padMembers.role, 'collaborator'),
+      ),
+    );
+  ctx.rooms.close(padId, PAD_GONE.code, PAD_GONE.reason, userId);
+  ctx.collab.closeUser(padId, userId);
 }

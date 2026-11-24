@@ -1,6 +1,7 @@
 slug: order-book
 title: Limit Order Book
 difficulty: hard
+category: implementation
 tags: [design, heap, ordered-map, simulation, trading]
 signature:
   className: OrderBook

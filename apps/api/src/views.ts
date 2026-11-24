@@ -35,7 +35,13 @@ export function padView(row: PadRow, viewerId: string | null): Pad {
 }
 
 export function problemSummary(row: ProblemRow): ProblemSummary {
-  return { slug: row.slug, title: row.title, difficulty: row.difficulty, tags: row.tags };
+  return {
+    slug: row.slug,
+    title: row.title,
+    difficulty: row.difficulty,
+    category: row.category,
+    tags: row.tags,
+  };
 }
 
 /** Visible tests only; hidden tests are counted, never included. */

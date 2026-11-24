@@ -1,6 +1,7 @@
 slug: cheapest-flights-within-k-stops
 title: Cheapest Flights Within K Stops
 difficulty: medium
+category: dsa
 tags: [graph, shortest-path, bellman-ford, dynamic-programming]
 signature:
   className: Solution

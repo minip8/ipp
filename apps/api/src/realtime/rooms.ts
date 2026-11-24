@@ -15,6 +15,8 @@ export interface Rooms {
   leave(padId: string, client: RoomClient): void;
   broadcast(padId: string, event: ServerEvent): void;
   count(padId: string): number;
+  /** Closes the pad's sockets (only `userId`'s when given); their close handlers leave the room. */
+  close(padId: string, code: number, reason: string, userId?: string): void;
   pads(): string[];
   closeAll(): void;
 }
@@ -49,6 +51,18 @@ export function createRooms(): Rooms {
       }
     },
     count: (padId) => rooms.get(padId)?.size ?? 0,
+    close(padId, code, reason, userId) {
+      const set = rooms.get(padId);
+      if (!set) return;
+      for (const c of [...set]) {
+        if (userId !== undefined && c.userId !== userId) continue;
+        try {
+          c.close(code, reason);
+        } catch {
+          // already closing
+        }
+      }
+    },
     pads: () => [...rooms.keys()],
     closeAll() {
       for (const set of rooms.values()) for (const c of set) c.close(1001, 'server shutting down');

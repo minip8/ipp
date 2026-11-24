@@ -1,6 +1,7 @@
 slug: product-of-array-except-self
 title: Product of Array Except Self
 difficulty: medium
+category: dsa
 tags: [array, prefix-sum]
 signature:
   className: Solution

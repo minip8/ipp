@@ -1,6 +1,7 @@
 slug: course-schedule
 title: Course Schedule
 difficulty: medium
+category: dsa
 tags: [graph, topological-sort, dfs, bfs]
 signature:
   className: Solution

@@ -1,6 +1,7 @@
 slug: word-ladder
 title: Word Ladder
 difficulty: hard
+category: dsa
 tags: [graph, bfs, hash-table, string]
 signature:
   className: Solution

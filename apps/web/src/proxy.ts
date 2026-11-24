@@ -24,8 +24,8 @@ export function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     {
-      // Pages only: not the API rewrite, build assets or Monaco's static files.
-      source: '/((?!api/|_next/static|_next/image|monaco/|favicon.ico).*)',
+      // Pages only: not the API rewrite, build assets, icons or Monaco's static files.
+      source: '/((?!api/|_next/static|_next/image|monaco/|favicon.ico|icon.svg|apple-icon.png).*)',
       missing: [
         { type: 'header', key: 'next-router-prefetch' },
         { type: 'header', key: 'purpose', value: 'prefetch' },

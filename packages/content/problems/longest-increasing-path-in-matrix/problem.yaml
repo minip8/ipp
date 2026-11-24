@@ -1,7 +1,8 @@
 slug: longest-increasing-path-in-matrix
 title: Longest Increasing Path in a Matrix
 difficulty: hard
-tags: [dynamic-programming, depth-first-search, memoization, topological-sort, matrix]
+category: dsa
+tags: [dynamic-programming, dfs, memoization, topological-sort, matrix]
 signature:
   className: Solution
   kind: function

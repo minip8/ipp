@@ -1,6 +1,7 @@
 slug: permutations
 title: Permutations
 difficulty: medium
+category: dsa
 tags: [backtracking, array]
 signature:
   className: Solution

@@ -1,6 +1,7 @@
 slug: snapshot-array
 title: Snapshot Array
 difficulty: medium
+category: dsa
 tags: [design, binary-search, array]
 signature:
   className: SnapshotArray

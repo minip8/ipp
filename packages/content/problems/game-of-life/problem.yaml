@@ -1,6 +1,7 @@
 slug: game-of-life
 title: Game of Life
 difficulty: medium
+category: implementation
 tags: [array, matrix, simulation]
 signature:
   className: Solution

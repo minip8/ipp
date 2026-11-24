@@ -2,13 +2,17 @@
  * Hosts the interviewer: implements InterviewerDeps over the database, the live Y.Doc and the
  * pad rooms, and is the only place Triggers are sent from.
  */
-import type {
-  AiKeyProblem,
-  AiKeyState,
-  Language,
-  Message,
-  ProblemContent,
-  ServerEvent,
+import {
+  type AiKeyProblem,
+  type AiKeyState,
+  type AiModelChoice,
+  effectiveModel,
+  type InterviewerModel,
+  type InterviewerSettings,
+  type Language,
+  type Message,
+  type ProblemContent,
+  type ServerEvent,
 } from '@ipp/contracts';
 import { aiUsage, interviewerNotes, messages, pads, problems, runs } from '@ipp/db';
 import { and, count, desc, eq, inArray, sql } from '@ipp/db/orm';
@@ -27,6 +31,7 @@ import type {
   ShortAnswerGrade,
   Trigger,
 } from './types';
+import { defaultModel } from './wiring';
 
 export type InterviewerFactory = (deps: InterviewerDeps) => Interviewer;
 
@@ -59,6 +64,22 @@ export class InterviewerHost {
   /** The state of a user's own key (a pad runs on its owner's). */
   keyState(userId: string): Promise<AiKeyState> {
     return this.ctx.aiKeys.state(userId);
+  }
+
+  /**
+   * A pad's key state and the model its interviewer runs on: the pad's choice while it is for
+   * the owner's key provider, else that provider's default; null without a usable key.
+   */
+  async padModel(
+    ownerId: string,
+    settings: InterviewerSettings,
+  ): Promise<{ key: AiKeyState; model: InterviewerModel | null }> {
+    const s = await this.ctx.aiKeys.status(ownerId);
+    if (s.state !== 'active' || !s.provider) return { key: s.state, model: null };
+    return {
+      key: s.state,
+      model: effectiveModel(settings.model, s.provider, defaultModel(this.ctx.config, s.provider)),
+    };
   }
 
   async ownerOf(padId: string): Promise<string | null> {
@@ -99,16 +120,39 @@ export class InterviewerHost {
   async keyChanged(userId: string): Promise<void> {
     const live = this.ctx.rooms.pads();
     if (live.length === 0) return;
-    const state = await this.keyState(userId);
     const owned = await this.ctx.db
       .select({ id: pads.id, status: pads.status, interviewer: pads.interviewer })
       .from(pads)
       .where(and(eq(pads.ownerId, userId), inArray(pads.id, live)));
     for (const p of owned) {
-      this.ctx.rooms.broadcast(p.id, { type: 'interviewer.status', key: state });
+      const { key: state, model } = await this.padModel(userId, p.interviewer);
+      this.ctx.rooms.broadcast(p.id, { type: 'interviewer.status', key: state, model });
       if (state === 'active' && p.status === 'active' && p.interviewer.enabled)
         this.interviewer.handle(p.id, { type: 'session_started' });
     }
+  }
+
+  /**
+   * The provider would not serve the model chosen for this pad (the key is fine): forget the
+   * choice so the pad, and everyone looking at it, shows the default that is used now.
+   */
+  async modelUnavailable(padId: string, model: AiModelChoice): Promise<void> {
+    const [row] = await this.ctx.db
+      .select({ interviewer: pads.interviewer, ownerId: pads.ownerId })
+      .from(pads)
+      .where(eq(pads.id, padId));
+    const chosen = row?.interviewer.model;
+    if (!row || chosen?.provider !== model.provider || chosen.id !== model.id) return;
+    const [updated] = await this.ctx.db
+      .update(pads)
+      .set({ interviewer: { ...row.interviewer, model: null } })
+      .where(eq(pads.id, padId))
+      .returning();
+    this.invalidate(padId);
+    if (!updated) return;
+    this.ctx.rooms.broadcast(padId, { type: 'pad.updated', pad: padView(updated, null) });
+    const { key, model: now } = await this.padModel(row.ownerId, updated.interviewer);
+    this.ctx.rooms.broadcast(padId, { type: 'interviewer.status', key, model: now });
   }
 
   /** Call after a pad's status or interviewer settings change. */
@@ -146,6 +190,13 @@ export class InterviewerHost {
       );
   }
 
+  /** The pad was deleted: drop everything held for it. */
+  forget(padId: string): void {
+    this.gates.delete(padId);
+    this.owners.delete(padId);
+    this.release(padId);
+  }
+
   release(padId: string): void {
     try {
       this.interviewer.release(padId);
@@ -161,6 +212,7 @@ export class InterviewerHost {
       now: () => new Date(),
       resolveKey: (scope) => this.resolveKey(scope),
       keyRejected: (scope, keyId, problem) => this.keyRejected(scope, keyId, problem),
+      modelUnavailable: (padId, model) => this.modelUnavailable(padId, model),
       loadContext: (padId) => this.loadContext(padId),
       saveMessage: (padId, message) => this.saveMessage(padId, message),
       appendPrivateNote: async (padId, note) => {
@@ -207,6 +259,7 @@ export class InterviewerHost {
       slug: problem.slug,
       title: problem.title,
       difficulty: problem.difficulty,
+      category: problem.category,
       tags: problem.tags,
       statement: problem.statement,
       signature: problem.signature,

@@ -28,6 +28,7 @@ const detail: PadDetail = {
     slug: 'two-sum',
     title: 'Two Sum',
     difficulty: 'easy',
+    category: 'dsa',
     tags: [],
     statement: '',
     signature: sig,
@@ -40,6 +41,7 @@ const detail: PadDetail = {
   runs: [],
   interviewerAvailable: true,
   interviewerKey: 'active',
+  interviewerModel: null,
 };
 const msg = (over: Partial<Message>): Message => ({
   id: '00000000-0000-4000-8000-0000000000aa',
@@ -88,6 +90,42 @@ describe('padReducer', () => {
       interviewerAvailable: false,
       thinking: false,
     });
+  });
+
+  it('follows the interviewer model: status events and changes of the pad choice', () => {
+    const model = {
+      provider: 'openai' as const,
+      id: 'gpt-d',
+      chosen: false,
+      defaultModel: 'gpt-d',
+    };
+    let s = initPadState({ ...detail, interviewerModel: model }, 'me');
+    expect(s.interviewerModel).toEqual(model);
+    const pad = s.pad;
+    s = padReducer(s, {
+      type: 'event',
+      event: {
+        type: 'pad.updated',
+        pad: {
+          ...pad,
+          interviewer: { ...pad.interviewer, model: { provider: 'openai', id: 'gpt-x' } },
+        },
+      },
+    });
+    expect(s.interviewerModel).toMatchObject({ id: 'gpt-x', chosen: true });
+    // A choice for another provider: the key provider's default.
+    s = padReducer(s, {
+      type: 'pad.set',
+      pad: { ...pad, interviewer: { ...pad.interviewer, model: { provider: 'gemini', id: 'g' } } },
+    });
+    expect(s.interviewerModel).toMatchObject({ id: 'gpt-d', chosen: false });
+    s = padReducer(s, { type: 'event', event: { type: 'interviewer.status', key: 'missing' } });
+    expect(s.interviewerModel).toBeNull();
+    s = padReducer(s, {
+      type: 'event',
+      event: { type: 'interviewer.status', key: 'active', model: { ...model, provider: 'gemini' } },
+    });
+    expect(s.interviewerModel?.provider).toBe('gemini');
   });
 
   it('accumulates deltas and finalizes on message.created with the same id', () => {

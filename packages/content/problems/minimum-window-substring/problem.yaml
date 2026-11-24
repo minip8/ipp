@@ -1,6 +1,7 @@
 slug: minimum-window-substring
 title: Minimum Window Substring
 difficulty: hard
+category: dsa
 tags: [string, hash-table, sliding-window]
 signature:
   className: Solution

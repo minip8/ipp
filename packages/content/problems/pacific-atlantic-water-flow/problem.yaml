@@ -1,6 +1,7 @@
 slug: pacific-atlantic-water-flow
 title: Pacific Atlantic Water Flow
 difficulty: medium
+category: dsa
 tags: [graph, bfs, dfs, matrix]
 signature:
   className: Solution

@@ -19,6 +19,7 @@ import {
   loadQuizQuestions,
   loadQuizTopics,
   resultsEqual,
+  untaxonomizedTags,
 } from '../src';
 
 const HARNESS = `
@@ -47,6 +48,8 @@ const bad = (msg: string) => {
 for (const slug of slugs) {
   try {
     const p = loadProblem(slug);
+    for (const t of untaxonomizedTags([p]))
+      bad(`${t} is in no topic group (add it to TOPIC_GROUPS or EXCLUDED_TAGS in @ipp/contracts)`);
     const dir = join(CONTENT_ROOT, 'problems', slug);
     const input = join(tmp, `${slug}.json`);
     writeFileSync(input, JSON.stringify({ className: p.signature.className, tests: p.tests }));

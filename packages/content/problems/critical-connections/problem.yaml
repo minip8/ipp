@@ -1,6 +1,7 @@
 slug: critical-connections
 title: Critical Connections in a Network
 difficulty: hard
+category: dsa
 tags: [graph, dfs, bridges, tarjan]
 signature:
   className: Solution

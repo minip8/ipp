@@ -1,30 +1,36 @@
 /**
- * Custody of users' Anthropic API keys (docs/ARCHITECTURE.md §7, "Bring your own key").
+ * Custody of users' AI provider API keys (docs/ARCHITECTURE.md §7, "Bring your own key").
  *
  * - Stored only in Redis, one record per user, never in Postgres. The record holds the key
- *   encrypted with AES-256-GCM (random 96-bit IV per save, the user id as associated data so a
- *   record cannot be moved to another user) under a key derived with HKDF-SHA256 from
+ *   encrypted with AES-256-GCM (random 96-bit IV per save; the user id, and since v2 the
+ *   provider, as associated data, so a record can be neither moved to another user nor
+ *   relabelled to send the key to another provider) under a key derived with HKDF-SHA256 from
  *   AI_KEY_ENCRYPTION_SECRET, or BETTER_AUTH_SECRET when that is not set.
+ * - v1 records (written before there was more than one provider) have no provider and are
+ *   Anthropic keys; they keep working unchanged.
  * - Sliding expiry: the record expires `ttlHours` after it was last used; `resolve` (every model
  *   call) restarts the clock.
  * - Plaintext exists only while a model client is being built (`resolve` returns it to the
  *   interviewer, which keeps it inside a small, bounded client cache). It is never logged, never
  *   returned by an endpoint, never part of an error message. Only the last four characters are
  *   stored in the clear, for the UI.
- * - When Anthropic refuses the key in use, the ciphertext is replaced by a small "rejected"
- *   marker (last four + reason) so the UI can say what happened.
+ * - When the provider refuses the key in use, the ciphertext is replaced by a small "rejected"
+ *   marker (provider, last four, reason) so the UI can say what happened.
  */
 import { createCipheriv, createDecipheriv, hkdfSync, randomBytes, randomUUID } from 'node:crypto';
-import type { AiKeyProblem, AiKeyState } from '@ipp/contracts';
+import type { AiKeyProblem, AiKeyState, AiProvider } from '@ipp/contracts';
 import type { ResolvedKey } from '@ipp/interviewer';
 import type { Redis } from 'ioredis';
 
 /** HKDF purpose label: a key derived for anything else from the same secret differs. */
+// Unchanged since keys were Anthropic-only: changing it would make every stored key unreadable.
 export const AI_KEY_HKDF_INFO = 'interview++/user-anthropic-api-key/aes-256-gcm/v1';
 const HKDF_SALT = 'interview++ ai key encryption';
 
 interface ActiveRecord {
-  v: 1;
+  /** 1: Anthropic, no provider field, user-only AAD. 2: provider field, bound into the AAD. */
+  v: 1 | 2;
+  provider?: AiProvider;
   state: 'active';
   /** Changes on every save; lets the interviewer reuse a client for the same key. */
   id: string;
@@ -35,7 +41,8 @@ interface ActiveRecord {
   savedAt: string;
 }
 interface RejectedRecord {
-  v: 1;
+  v: 1 | 2;
+  provider?: AiProvider;
   state: 'rejected';
   id: string;
   last4: string;
@@ -46,6 +53,7 @@ type KeyRecord = ActiveRecord | RejectedRecord;
 
 export interface KeyStatus {
   state: AiKeyState;
+  provider: AiProvider | null;
   last4: string | null;
   expiresAt: string | null;
   problem: AiKeyProblem | null;
@@ -55,16 +63,25 @@ export function deriveKeyEncryptionKey(secret: string): Buffer {
   return Buffer.from(hkdfSync('sha256', secret, HKDF_SALT, AI_KEY_HKDF_INFO, 32));
 }
 
-const aad = (userId: string) => Buffer.from(`ipp-ai-key:v1:${userId}`, 'utf8');
+const aad = (userId: string, provider?: AiProvider) =>
+  Buffer.from(provider ? `ipp-ai-key:v2:${userId}:${provider}` : `ipp-ai-key:v1:${userId}`, 'utf8');
 
+const PROVIDERS = new Set<string>(['anthropic', 'openai', 'gemini', 'openrouter']);
+
+/** The provider of a record: v1 records are Anthropic keys. */
+const providerOf = (rec: KeyRecord): AiProvider =>
+  rec.v === 1 ? 'anthropic' : (rec.provider as AiProvider);
+
+/** `provider` omitted = the v1 (Anthropic, user-only AAD) format. */
 export function encryptKey(
   kek: Buffer,
   userId: string,
   plaintext: string,
+  provider?: AiProvider,
 ): { iv: string; ct: string; tag: string } {
   const iv = randomBytes(12);
   const cipher = createCipheriv('aes-256-gcm', kek, iv);
-  cipher.setAAD(aad(userId));
+  cipher.setAAD(aad(userId, provider));
   const ct = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
   return {
     iv: iv.toString('base64'),
@@ -78,9 +95,10 @@ export function decryptKey(
   kek: Buffer,
   userId: string,
   rec: { iv: string; ct: string; tag: string },
+  provider?: AiProvider,
 ): string {
   const decipher = createDecipheriv('aes-256-gcm', kek, Buffer.from(rec.iv, 'base64'));
-  decipher.setAAD(aad(userId));
+  decipher.setAAD(aad(userId, provider));
   decipher.setAuthTag(Buffer.from(rec.tag, 'base64'));
   return Buffer.concat([decipher.update(Buffer.from(rec.ct, 'base64')), decipher.final()]).toString(
     'utf8',
@@ -125,8 +143,9 @@ export class AiKeyStore {
     if (!raw) return { rec: null, pttl: -2 };
     try {
       const rec = JSON.parse(raw) as KeyRecord;
-      if (rec?.v !== 1 || (rec.state !== 'active' && rec.state !== 'rejected'))
-        return { rec: null, pttl };
+      if (rec?.v !== 1 && rec?.v !== 2) return { rec: null, pttl };
+      if (rec.state !== 'active' && rec.state !== 'rejected') return { rec: null, pttl };
+      if (rec.v === 2 && !PROVIDERS.has(String(rec.provider))) return { rec: null, pttl };
       return { rec, pttl };
     } catch {
       return { rec: null, pttl };
@@ -135,11 +154,19 @@ export class AiKeyStore {
 
   async status(userId: string): Promise<KeyStatus> {
     const { rec, pttl } = await this.read(userId);
-    if (!rec) return { state: 'missing', last4: null, expiresAt: null, problem: null };
+    if (!rec)
+      return { state: 'missing', provider: null, last4: null, expiresAt: null, problem: null };
     const expiresAt = pttl > 0 ? new Date(Date.now() + pttl).toISOString() : null;
+    const provider = providerOf(rec);
     if (rec.state === 'rejected')
-      return { state: 'rejected', last4: rec.last4, expiresAt: null, problem: rec.problem };
-    return { state: 'active', last4: rec.last4, expiresAt, problem: null };
+      return {
+        state: 'rejected',
+        provider,
+        last4: rec.last4,
+        expiresAt: null,
+        problem: rec.problem,
+      };
+    return { state: 'active', provider, last4: rec.last4, expiresAt, problem: null };
   }
 
   async state(userId: string): Promise<AiKeyState> {
@@ -147,12 +174,13 @@ export class AiKeyStore {
   }
 
   /** Encrypts and stores the key (a fresh IV and id every time). The caller has verified it. */
-  async save(userId: string, apiKey: string): Promise<KeyStatus> {
+  async save(userId: string, provider: AiProvider, apiKey: string): Promise<KeyStatus> {
     const rec: ActiveRecord = {
-      v: 1,
+      v: 2,
+      provider,
       state: 'active',
       id: randomUUID(),
-      ...encryptKey(this.kek, userId, apiKey),
+      ...encryptKey(this.kek, userId, apiKey, provider),
       last4: apiKey.slice(-4),
       savedAt: new Date().toISOString(),
     };
@@ -165,31 +193,34 @@ export class AiKeyStore {
   }
 
   /**
-   * The plaintext key for a model call, refreshing its expiry (this is "use"). A record that
-   * cannot be decrypted (the secret was rotated, or it was tampered with) is deleted.
+   * The plaintext key for a model call, refreshing its expiry (this is "use"; `touch: false`
+   * for a free provider call such as listing models, which is not). A record that cannot be
+   * decrypted (the secret was rotated, or it was tampered with) is deleted.
    */
-  async resolve(userId: string): Promise<ResolvedKey> {
+  async resolve(userId: string, opts: { touch?: boolean } = {}): Promise<ResolvedKey> {
     const { rec } = await this.read(userId);
     if (!rec) return { ok: false, state: 'missing' };
     if (rec.state === 'rejected') return { ok: false, state: 'rejected' };
+    const provider = providerOf(rec);
     let apiKey: string;
     try {
-      apiKey = decryptKey(this.kek, userId, rec);
+      apiKey = decryptKey(this.kek, userId, rec, rec.v === 1 ? undefined : provider);
     } catch {
       await this.redis.del(this.redisKey(userId));
       this.onUnreadable(userId);
       return { ok: false, state: 'missing' };
     }
-    await this.redis.pexpire(this.redisKey(userId), this.ttlMs);
-    return { ok: true, keyId: rec.id, apiKey };
+    if (opts.touch !== false) await this.redis.pexpire(this.redisKey(userId), this.ttlMs);
+    return { ok: true, keyId: rec.id, provider, apiKey };
   }
 
-  /** Anthropic refused key `keyId`: drop the ciphertext, keep last four and the reason. */
+  /** The provider refused key `keyId`: drop the ciphertext, keep provider, last four and the reason. */
   async reject(userId: string, keyId: string, problem: AiKeyProblem): Promise<boolean> {
     const { rec } = await this.read(userId);
     if (rec?.state !== 'active' || rec.id !== keyId) return false;
     const marker: RejectedRecord = {
-      v: 1,
+      v: 2,
+      provider: providerOf(rec),
       state: 'rejected',
       id: keyId,
       last4: rec.last4,

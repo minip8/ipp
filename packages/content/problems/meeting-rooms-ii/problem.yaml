@@ -1,6 +1,7 @@
 slug: meeting-rooms-ii
 title: Meeting Rooms II
 difficulty: medium
+category: dsa
 tags: [array, intervals, sorting, sweep-line]
 signature:
   className: Solution

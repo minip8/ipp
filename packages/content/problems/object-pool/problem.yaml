@@ -1,6 +1,7 @@
 slug: object-pool
 title: Object Pool with Generational Handles
 difficulty: medium
+category: data-structure
 tags: [design, array, stack]
 signature:
   className: ObjectPool

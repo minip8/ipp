@@ -6,6 +6,7 @@
  *  - state persisted to pad_docs (debounced by Hocuspocus)
  *  - incremental updates coalesced into pad_updates rows, at most one per historyCoalesceMs
  *  - ended pads are read-only
+ *  - deleted pads: connections are dropped, and writes that land after the delete are ignored
  *  - raises code_changed at most once per codeChangedMinGapMs per pad
  *  - socket guard: one document per socket, a byte cap and a deadline before authentication
  *    (Hocuspocus queues unauthenticated messages without bound), a per-pad cap on accumulated
@@ -20,6 +21,7 @@ import { and, eq, max, sql } from '@ipp/db/orm';
 import { type RawData, WebSocketServer } from 'ws';
 import * as Y from 'yjs';
 import type { Ctx } from '../context';
+import { isForeignKeyViolation } from '../pg';
 import {
   type AwarenessEntry,
   isDocWrite,
@@ -272,6 +274,31 @@ export class Collab {
     this.hocuspocus.closeConnections(name);
   }
 
+  /**
+   * After the pad row is gone: forget buffered history and drop every connection. The last
+   * connection closing makes Hocuspocus store the doc once more; that write finds no pad and is
+   * ignored (persistState), so nothing is resurrected. Reconnects fail authentication.
+   */
+  deletePad(padId: string): void {
+    const buf = this.history.get(padId);
+    if (buf) clearTimeout(buf.timer);
+    this.history.delete(padId);
+    const cc = this.codeChanged.get(padId);
+    if (cc?.timer) clearTimeout(cc.timer);
+    this.codeChanged.delete(padId);
+    this.hocuspocus.closeConnections(YDOC.name(padId));
+  }
+
+  /** Drops one user's connections to a pad (they left it); they cannot authenticate again. */
+  closeUser(padId: string, userId: string): void {
+    const doc = this.hocuspocus.documents.get(YDOC.name(padId));
+    if (!doc) return;
+    for (const { connection } of doc.connections.values()) {
+      const context = connection.context as { userId?: string } | undefined;
+      if (context?.userId === userId) connection.close();
+    }
+  }
+
   async stop(): Promise<void> {
     for (const [name, doc] of this.hocuspocus.documents) {
       const padId = padIdOf(name);
@@ -333,10 +360,15 @@ export class Collab {
 
   private async persistState(padId: string, doc: Y.Doc): Promise<void> {
     const state = Y.encodeStateAsUpdate(doc);
-    await this.ctx.db
-      .insert(padDocs)
-      .values({ padId, state, updatedAt: new Date() })
-      .onConflictDoUpdate({ target: padDocs.padId, set: { state, updatedAt: new Date() } });
+    try {
+      await this.ctx.db
+        .insert(padDocs)
+        .values({ padId, state, updatedAt: new Date() })
+        .onConflictDoUpdate({ target: padDocs.padId, set: { state, updatedAt: new Date() } });
+    } catch (err) {
+      // The pad was deleted; its document goes with it.
+      if (!isForeignKeyViolation(err)) throw err;
+    }
   }
 
   private recordHistory(padId: string, update: Uint8Array): void {
@@ -374,7 +406,11 @@ export class Collab {
       }
       seq += 1;
       this.seqs.set(padId, seq);
-      await this.ctx.db.insert(padUpdates).values({ padId, seq, at: buf.first, update });
+      try {
+        await this.ctx.db.insert(padUpdates).values({ padId, seq, at: buf.first, update });
+      } catch (err) {
+        if (!isForeignKeyViolation(err)) throw err; // the pad was deleted
+      }
     });
     const settled = next.catch(() => {});
     this.flushChains.set(padId, settled);

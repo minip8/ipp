@@ -1,6 +1,7 @@
 slug: k-closest-points
 title: K Closest Points to Origin
 difficulty: medium
+category: dsa
 tags: [heap, quickselect, sorting, geometry]
 signature:
   className: Solution

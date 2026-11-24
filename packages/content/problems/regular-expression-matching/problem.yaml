@@ -1,6 +1,7 @@
 slug: regular-expression-matching
 title: Regular Expression Matching
 difficulty: hard
+category: dsa
 tags: [dynamic-programming, string, recursion]
 signature:
   className: Solution

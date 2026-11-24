@@ -5,7 +5,7 @@
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { AiKeyStatus, PadDetail, QuizAttempt, Report } from '@ipp/contracts';
+import { AiKeyStatus, AiModelList, PadDetail, QuizAttempt, Report } from '@ipp/contracts';
 import { sql } from '@ipp/db/orm';
 import { Redis } from 'ioredis';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -130,12 +130,17 @@ describe('key endpoints', () => {
     const { c, id } = await user('Keeper');
     const empty = AiKeyStatus.parse((await c.get('/api/ai-key')).json);
     expect(empty).toMatchObject({ state: 'missing', last4: null, expiresAt: null, problem: null });
-    expect(empty).toMatchObject({ model: 'claude-opus-5-5', ttlHours: 24 });
+    expect(empty).toMatchObject({ model: 'claude-opus-5-5', ttlHours: 24, provider: null });
 
     const saved = await c.put('/api/ai-key', { apiKey: `  ${TEST_AI_KEY}\n` });
     expect(saved.status).toBe(200);
     const st = AiKeyStatus.parse(saved.json);
-    expect(st).toMatchObject({ state: 'active', last4: 'QWER', problem: null });
+    expect(st).toMatchObject({
+      state: 'active',
+      provider: 'anthropic',
+      last4: 'QWER',
+      problem: null,
+    });
     const ttl = Date.parse(st.expiresAt ?? '') - Date.now();
     expect(ttl).toBeGreaterThan(23.9 * 3600_000);
     expect(ttl).toBeLessThanOrEqual(24 * 3600_000);
@@ -488,9 +493,263 @@ describe('without a key, and when Anthropic rejects it', () => {
   });
 });
 
+describe('providers', () => {
+  const OPENAI_KEY = 'sk-proj-good-OPENAIKEY-0123456789abcdefghijklmn-OPAI';
+  const GEMINI_KEY = 'AIzaSy-good-GEMINIKEY_0123456789abcdGEMI';
+  const OPENROUTER_KEY = 'sk-or-v1-good-ROUTERKEY-0123456789abcdef0123456789-ORTR';
+
+  it('saves a key for the chosen provider; status names it and its default model', async () => {
+    const { c, id } = await user('Multi');
+    const res = await c.put('/api/ai-key', { provider: 'openai', apiKey: OPENAI_KEY });
+    expect(res.status).toBe(200);
+    expect(AiKeyStatus.parse(res.json)).toMatchObject({
+      state: 'active',
+      provider: 'openai',
+      last4: 'OPAI',
+      model: 'gpt-6.2-astra',
+    });
+    expect(h.verifier.providers.at(-1)).toBe('openai');
+    const rec = JSON.parse((await rawRecord(id)) ?? '{}');
+    expect(rec).toMatchObject({ v: 2, provider: 'openai', state: 'active' });
+    expect(JSON.stringify(rec)).not.toContain('OPENAIKEY');
+    expect(await fake.deps.resolveKey({ userId: id })).toMatchObject({
+      ok: true,
+      provider: 'openai',
+      apiKey: OPENAI_KEY,
+    });
+
+    // Without an explicit provider the key's shape decides (older clients).
+    expect((await c.put('/api/ai-key', { apiKey: GEMINI_KEY })).json).toMatchObject({
+      provider: 'gemini',
+      model: 'gemini-4-hydrogen',
+    });
+    expect(
+      (await c.put('/api/ai-key', { provider: 'openrouter', apiKey: OPENROUTER_KEY })).json,
+    ).toMatchObject({ provider: 'openrouter' });
+    expect((await c.get('/api/ai-key')).json.provider).toBe('openrouter');
+    await c.del('/api/ai-key');
+    expect((await c.get('/api/ai-key')).json).toMatchObject({
+      provider: null,
+      model: 'claude-opus-5-5',
+    });
+  });
+
+  it('a key that does not fit the chosen provider is refused before any call', async () => {
+    const { c } = await user('Mismatch');
+    const before = h.verifier.calls.length;
+    const res = await c.put('/api/ai-key', { provider: 'anthropic', apiKey: OPENAI_KEY });
+    expect(res.status).toBe(400);
+    expect(res.json.error.code).toBe('validation_error');
+    expect(res.json.error.message).toMatch(/looks like an OpenAI key, but Anthropic is selected/);
+    expect(res.text).not.toContain(OPENAI_KEY);
+    const odd = await c.put('/api/ai-key', {
+      provider: 'gemini',
+      apiKey: 'hello-there-1234567890',
+    });
+    expect(odd.status).toBe(400);
+    expect((await c.put('/api/ai-key', { provider: 'mistral', apiKey: OPENAI_KEY })).status).toBe(
+      400,
+    );
+    expect(h.verifier.calls.length).toBe(before);
+  });
+
+  it('refusals are worded for the provider', async () => {
+    const { c } = await user('OpenAIRefused');
+    const bad = await c.put('/api/ai-key', {
+      provider: 'openai',
+      apiKey: 'sk-proj-broke-0000000000000000000000000000-BBBB',
+    });
+    expect(bad.status).toBe(422);
+    expect(bad.json.error.message).toMatch(
+      /^OpenAI accepted the key but its account has no credit/,
+    );
+    expect(bad.json.error.message).toMatch(/OpenAI Platform/);
+    const down = await c.put('/api/ai-key', {
+      provider: 'gemini',
+      apiKey: 'AIzaSy-down-00000000000000000000000000CC',
+    });
+    expect(down.status).toBe(503);
+    expect(down.json.error.message).toMatch(/^Google Gemini could not be reached/);
+  });
+
+  it('a v1 record (saved before providers existed) keeps working as an Anthropic key', async () => {
+    const { c, id } = await user('Legacy');
+    const kek = deriveKeyEncryptionKey(h.api.ctx.config.aiKeySecret);
+    const legacy = {
+      v: 1,
+      state: 'active',
+      id: 'legacy-key-id',
+      ...encryptKey(kek, id, TEST_AI_KEY),
+      last4: 'QWER',
+      savedAt: new Date().toISOString(),
+    };
+    await redis.set(`ipptest:aikey:${id}`, JSON.stringify(legacy), 'PX', 60_000);
+    expect(AiKeyStatus.parse((await c.get('/api/ai-key')).json)).toMatchObject({
+      state: 'active',
+      provider: 'anthropic',
+      last4: 'QWER',
+    });
+    expect(await fake.deps.resolveKey({ userId: id })).toEqual({
+      ok: true,
+      keyId: 'legacy-key-id',
+      provider: 'anthropic',
+      apiKey: TEST_AI_KEY,
+    });
+    // Rejection keeps it Anthropic's.
+    await fake.deps.keyRejected({ userId: id }, 'legacy-key-id', 'billing');
+    expect((await c.get('/api/ai-key')).json).toMatchObject({
+      state: 'rejected',
+      provider: 'anthropic',
+      problem: 'billing',
+    });
+  });
+
+  it('a v2 record relabelled to another provider no longer decrypts (the provider is bound)', async () => {
+    const { c, id } = await user('Relabel');
+    await c.saveKey(OPENAI_KEY, 'openai');
+    const rec = JSON.parse((await rawRecord(id)) ?? '{}');
+    await redis.set(
+      `ipptest:aikey:${id}`,
+      JSON.stringify({ ...rec, provider: 'openrouter' }),
+      'PX',
+      60_000,
+    );
+    expect(await fake.deps.resolveKey({ userId: id })).toEqual({ ok: false, state: 'missing' });
+    expect(await rawRecord(id)).toBeNull();
+  });
+
+  it('models: live list for the key, cached, provider default marked; never the key', async () => {
+    const { c, id } = await user('Models');
+    const none = await c.get('/api/ai-key/models');
+    expect(none.status).toBe(409);
+    expect(none.json.error.code).toBe('ai_key_missing');
+
+    await c.saveKey(OPENAI_KEY, 'openai');
+    const k = `ipptest:aikey:${id}`;
+    await redis.pexpire(k, 5000);
+    h.lister.calls = [];
+    const res = await c.get('/api/ai-key/models');
+    expect(res.status).toBe(200);
+    const list = AiModelList.parse(res.json);
+    expect(list).toMatchObject({
+      provider: 'openai',
+      defaultModel: 'gpt-6.2-astra',
+      source: 'live',
+    });
+    expect(list.models.map((m) => m.id)).toEqual(['openai-big', 'openai-small']);
+    expect(res.text).not.toContain(OPENAI_KEY);
+    expect(h.lister.calls).toEqual([{ apiKey: OPENAI_KEY, provider: 'openai' }]);
+    // Listing is not "use": the expiry was not refreshed.
+    expect(await redis.pttl(k)).toBeLessThanOrEqual(5000);
+    // Cached per key.
+    await c.get('/api/ai-key/models');
+    expect(h.lister.calls).toHaveLength(1);
+    // A new key, a new list.
+    await c.saveKey(TEST_AI_KEY);
+    expect(AiModelList.parse((await c.get('/api/ai-key/models')).json).provider).toBe('anthropic');
+    expect(h.lister.calls).toHaveLength(2);
+  });
+
+  it('models: when the provider cannot list them, the built-in list comes back', async () => {
+    const { c } = await user('ModelsDown');
+    await c.saveKey();
+    h.lister.fail = true;
+    try {
+      const list = AiModelList.parse((await c.get('/api/ai-key/models')).json);
+      expect(list.source).toBe('fallback');
+      expect(list.models.map((m) => m.id)).toEqual([
+        'claude-fable-5-2',
+        'claude-opus-5-5',
+        'claude-sonnet-5-5',
+        'claude-haiku-5-5',
+      ]);
+      expect(list.models.find((m) => m.default)?.id).toBe('claude-opus-5-5');
+    } finally {
+      h.lister.fail = false;
+    }
+  });
+
+  it('a pad remembers its model; it is used only with a key of the same provider', async () => {
+    const owner = await user('Chooser');
+    await owner.c.saveKey();
+    const pad = await newPad(owner.c, {
+      model: { provider: 'anthropic', id: 'claude-sonnet-5-5' },
+    });
+    const detail = PadDetail.parse((await owner.c.get(`/api/pads/${pad.id}`)).json);
+    expect(detail.pad.interviewer.model).toEqual({
+      provider: 'anthropic',
+      id: 'claude-sonnet-5-5',
+    });
+    expect(detail.interviewerModel).toEqual({
+      provider: 'anthropic',
+      id: 'claude-sonnet-5-5',
+      chosen: true,
+      defaultModel: 'claude-opus-5-5',
+    });
+    // Changed mid-interview through PATCH, and cleared with null.
+    const patched = await owner.c.patch(`/api/pads/${pad.id}`, {
+      interviewer: { model: { provider: 'anthropic', id: 'claude-haiku-5-5' } },
+    });
+    expect(patched.json.interviewer.model.id).toBe('claude-haiku-5-5');
+    expect(
+      (await owner.c.patch(`/api/pads/${pad.id}`, { interviewer: { model: { provider: 'x' } } }))
+        .status,
+    ).toBe(400);
+    // Another provider's key: that provider's default.
+    await owner.c.saveKey(OPENAI_KEY, 'openai');
+    expect((await owner.c.get(`/api/pads/${pad.id}`)).json.interviewerModel).toEqual({
+      provider: 'openai',
+      id: 'gpt-6.2-astra',
+      chosen: false,
+      defaultModel: 'gpt-6.2-astra',
+    });
+    await owner.c.patch(`/api/pads/${pad.id}`, { interviewer: { model: null } });
+    await owner.c.saveKey();
+    expect((await owner.c.get(`/api/pads/${pad.id}`)).json.interviewerModel).toEqual({
+      provider: 'anthropic',
+      id: 'claude-opus-5-5',
+      chosen: false,
+      defaultModel: 'claude-opus-5-5',
+    });
+    await owner.c.del('/api/ai-key');
+    expect((await owner.c.get(`/api/pads/${pad.id}`)).json.interviewerModel).toBeNull();
+  });
+
+  it('a chosen model the provider refuses is forgotten for the pad; the key stays', async () => {
+    const owner = await user('Unavailable');
+    await owner.c.saveKey();
+    const pad = await newPad(owner.c, { model: { provider: 'anthropic', id: 'claude-gone-1' } });
+    const ws = await openEvents(owner.c, pad.id);
+    await fake.deps.modelUnavailable?.(pad.id, { provider: 'anthropic', id: 'claude-gone-1' });
+    const updated = await ws.waitFor('pad.updated');
+    expect(updated.pad.interviewer.model).toBeNull();
+    const st = await ws.waitFor('interviewer.status');
+    expect(st).toMatchObject({ key: 'active', model: { id: 'claude-opus-5-5', chosen: false } });
+    expect((await owner.c.get('/api/ai-key')).json.state).toBe('active');
+    // A stale report for a model no longer chosen changes nothing.
+    await owner.c.patch(`/api/pads/${pad.id}`, {
+      interviewer: { model: { provider: 'anthropic', id: 'claude-sonnet-5-5' } },
+    });
+    await fake.deps.modelUnavailable?.(pad.id, { provider: 'anthropic', id: 'claude-gone-1' });
+    expect((await owner.c.get(`/api/pads/${pad.id}`)).json.pad.interviewer.model.id).toBe(
+      'claude-sonnet-5-5',
+    );
+    seen.push(...ws.raw);
+    ws.close();
+  });
+});
+
 describe('the key never leaks', () => {
   it('not in any response, WebSocket frame, log line or Postgres row', async () => {
-    const needles = [TEST_AI_KEY, TEST_AI_KEY_2, 'TESTKEY', 'SECONDKEY'];
+    const needles = [
+      TEST_AI_KEY,
+      TEST_AI_KEY_2,
+      'TESTKEY',
+      'SECONDKEY',
+      'OPENAIKEY',
+      'GEMINIKEY',
+      'ROUTERKEY',
+    ];
     expect(seen.length).toBeGreaterThan(50);
     expect(h.logs.length).toBeGreaterThan(50);
     const haystacks: [string, string][] = [
@@ -513,7 +772,7 @@ describe('the key never leaks', () => {
 });
 
 describe('no operator key', () => {
-  it('the API source never reads an Anthropic key from the environment', () => {
+  it('the API source never reads a provider key from the environment', () => {
     const root = join(import.meta.dirname, '../src');
     const files: string[] = [];
     const walk = (d: string) => {
@@ -526,7 +785,7 @@ describe('no operator key', () => {
     walk(root);
     for (const f of files) {
       const src = readFileSync(f, 'utf8');
-      expect(src, f).not.toMatch(/env(\.|\[['"])ANTHROPIC/);
+      expect(src, f).not.toMatch(/env(\.|\[['"])(ANTHROPIC|OPENAI|GEMINI|GOOGLE|OPENROUTER)/);
       expect(src, f).not.toMatch(/anthropicApiKey|apiKey:\s*config/);
     }
   });
@@ -547,7 +806,9 @@ describe('no operator key', () => {
           { status: 529, headers: { 'content-type': 'application/json' } },
         );
       });
-      let key: { ok: true; keyId: string; apiKey: string } | { ok: false; state: 'missing' } = {
+      let key:
+        | { ok: true; keyId: string; provider: 'anthropic'; apiKey: string }
+        | { ok: false; state: 'missing' } = {
         ok: false,
         state: 'missing',
       };
@@ -584,7 +845,7 @@ describe('no operator key', () => {
       await sleep(50);
       expect(calls).toEqual([]);
 
-      key = { ok: true, keyId: 'k', apiKey: TEST_AI_KEY };
+      key = { ok: true, keyId: 'k', provider: 'anthropic', apiKey: TEST_AI_KEY };
       expect(await iv.gradeShortAnswer('u', q, 'a')).toBeNull(); // 529 from the stub
       expect(calls.length).toBeGreaterThan(0);
       for (const c of calls) {

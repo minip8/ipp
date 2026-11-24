@@ -109,6 +109,22 @@ describe('AnthropicModelClient', () => {
     ).toContain('server-side-fallback-2026-07-01');
   });
 
+  it('sends no refusal fallbacks for Haiku (it has none)', async () => {
+    let body: Record<string, unknown> = {};
+    const url = await serve((_req, b, res) => {
+      body = JSON.parse(b);
+      sse(res, 'hi');
+    });
+    const client = new AnthropicModelClient('k', 'claude-haiku-5-5', {
+      baseURL: url,
+      maxRetries: 0,
+    });
+    await client.call(request());
+    expect(body.model).toBe('claude-haiku-5-5');
+    expect(body).not.toHaveProperty('fallbacks');
+    expect(body.thinking).toEqual({ type: 'adaptive' });
+  });
+
   it('reports refusals', async () => {
     const url = await serve((_r, _b, res) => sse(res, '', 'refusal'));
     const client = new AnthropicModelClient('k', 'm', { baseURL: url, maxRetries: 0 });

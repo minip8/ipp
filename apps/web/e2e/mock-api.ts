@@ -8,15 +8,19 @@
  */
 
 import {
+  AI_PROVIDERS,
   type AiKeyStatus,
+  type AiProvider,
   type AnswerFeedback,
   ClientEvent,
   CreateAttemptRequest,
   CreatePadRequest,
   CreateRunRequest,
+  effectiveModel,
   type Message,
   type Pad,
   type PadDetail,
+  type PadSummary,
   QuizAttempt,
   type Run,
   ServerEvent,
@@ -27,6 +31,8 @@ import type { Page, WebSocketRoute } from '@playwright/test';
 import {
   ACTIVE_PAD_ID,
   aiKeyStatus,
+  aiModelList,
+  DEFAULT_MODELS,
   ENDED_PAD_ID,
   iso,
   makeAttempt,
@@ -46,6 +52,7 @@ import {
   USER,
   uuid,
 } from './fixtures';
+import { MockQuizBank } from './mock-quiz-bank';
 
 type RunScript = (id: string, mode: Run['mode']) => Run;
 
@@ -53,10 +60,15 @@ export class MockBackend {
   signedIn = true;
   githubAuth = true;
   googleAuth = true;
-  /** The signed-in user's own Anthropic key. Pads they own run on it. */
+  /** The signed-in user's own provider key. Pads they own run on it. */
   aiKey: AiKeyStatus = aiKeyStatus('active');
   /** Bodies of PUT /api/ai-key (the tests assert the UI sent exactly what was pasted). */
   savedKeys: string[] = [];
+  /** The provider sent with each PUT /api/ai-key. */
+  savedProviders: (AiProvider | undefined)[] = [];
+  /** GET /api/ai-key/models: the provider could not list them (a built-in list comes back). */
+  modelsFail = false;
+  modelListCalls = 0;
   pads = new Map<string, PadDetail>();
   attempts = new Map<string, QuizAttempt>();
   runs = new Map<string, Run>();
@@ -73,7 +85,13 @@ export class MockBackend {
   received: ClientEvent[] = [];
   requests: { method: string; path: string; body: unknown }[] = [];
   report = REPORT_READY;
+  /** GET /api/pads; DELETE /api/pads/:id removes from it. */
+  summaries: PadSummary[] = structuredClone(PAD_SUMMARIES);
+  /** Pad ids deleted (owner) or left (collaborator), in order. */
+  deleted: string[] = [];
   quizMode: 'practice' | 'exam' = 'practice';
+  /** Question bank state (answers given outside attempts). */
+  quizBank = new MockQuizBank();
 
   constructor() {
     this.pads.set(ACTIVE_PAD_ID, makePadDetail());
@@ -186,11 +204,31 @@ export class MockBackend {
   /** Pad detail as GET returns it: an owned pad follows the user's own key. */
   detail(d: PadDetail): PadDetail {
     if (d.role !== 'owner') return d;
+    const provider = this.aiKey.state === 'active' ? this.aiKey.provider : null;
     return {
       ...d,
       interviewerKey: this.aiKey.state,
       interviewerAvailable: this.aiKey.state === 'active',
+      interviewerModel: provider
+        ? effectiveModel(d.pad.interviewer.model, provider, DEFAULT_MODELS[provider])
+        : null,
     };
+  }
+
+  /**
+   * The pad is gone for this user (deleted, or left as a collaborator): out of the list, its
+   * detail 404s, and its open event sockets close with 4404 like the API's. Null if unknown.
+   */
+  removePad(id: string): PadSummary['role'] | null {
+    const summary = this.summaries.find((p) => p.id === id);
+    const detail = this.pads.get(id);
+    if (!summary && !detail) return null;
+    this.summaries = this.summaries.filter((p) => p.id !== id);
+    this.pads.delete(id);
+    this.deleted.push(id);
+    for (const ws of this.sockets)
+      if (ws.url().includes(id)) void ws.close({ code: 4404, reason: 'pad-deleted' });
+    return summary?.role ?? detail?.role ?? 'owner';
   }
 
   setKey(next: AiKeyStatus) {
@@ -250,18 +288,37 @@ export class MockBackend {
         return this.aiKey;
       }
       if (method === 'PUT') {
-        const apiKey = String((body as { apiKey?: unknown })?.apiKey ?? '');
+        const b = body as { apiKey?: unknown; provider?: AiProvider };
+        const apiKey = String(b?.apiKey ?? '');
+        const provider = b?.provider ?? 'anthropic';
         this.savedKeys.push(apiKey);
+        this.savedProviders.push(b?.provider);
         if (apiKey.includes('revoked'))
           return this.status(
             422,
             'ai_key_rejected',
-            'Anthropic did not accept this key. Check that you copied all of it and that it has not been revoked.',
+            `${AI_PROVIDERS[provider].label} did not accept this key. Check that you copied all of it and that it has not been revoked.`,
           );
-        await sleep(250); // the real API makes one call to Anthropic here
-        this.setKey(aiKeyStatus('active', { last4: apiKey.slice(-4) }));
+        await sleep(250); // the real API makes one call to the provider here
+        this.setKey(aiKeyStatus('active', { last4: apiKey.slice(-4), provider }));
         return this.aiKey;
       }
+    }
+    if (path === '/api/ai-key/models' && method === 'GET') {
+      this.modelListCalls++;
+      if (this.aiKey.state !== 'active')
+        return this.status(409, 'ai_key_missing', 'Add an API key to choose a model.');
+      const provider = this.aiKey.provider ?? 'anthropic';
+      if (this.modelsFail) {
+        const defaultModel = DEFAULT_MODELS[provider];
+        return {
+          provider,
+          defaultModel,
+          models: [{ id: defaultModel, label: defaultModel, default: true }],
+          source: 'fallback',
+        };
+      }
+      return aiModelList(provider);
     }
 
     if (path === '/api/problems') {
@@ -269,6 +326,7 @@ export class MockBackend {
       return PROBLEMS.filter(
         (p) =>
           (!q.get('difficulty') || p.difficulty === q.get('difficulty')) &&
+          (!q.get('category') || p.category === q.get('category')) &&
           (!q.get('tag') || p.tags.includes(q.get('tag') ?? '')) &&
           (!text || p.title.toLowerCase().includes(text)),
       );
@@ -285,7 +343,15 @@ export class MockBackend {
 
     if (path === '/api/pads' && method === 'POST') {
       const req = CreatePadRequest.parse(body);
-      const slug = req.problemSlug ?? 'two-sum';
+      // A random pick (API compatibility; the web UI always sends a slug) takes the first match.
+      const slug =
+        req.problemSlug ??
+        PROBLEMS.find(
+          (p) =>
+            (!req.random?.difficulty || p.difficulty === req.random.difficulty) &&
+            (!req.random?.tag || p.tags.includes(req.random.tag)),
+        )?.slug ??
+        'two-sum';
       const id = uuid();
       const detail = makePadDetail({
         pad: {
@@ -302,7 +368,7 @@ export class MockBackend {
       this.pads.set(id, detail);
       return detail.pad;
     }
-    if (path === '/api/pads' && method === 'GET') return PAD_SUMMARIES;
+    if (path === '/api/pads' && method === 'GET') return this.summaries;
     if (path === '/api/pads/join' && method === 'POST') return { padId: ACTIVE_PAD_ID };
 
     r = m(/^\/api\/pads\/([0-9a-f-]{36})(\/.*)?$/);
@@ -310,6 +376,14 @@ export class MockBackend {
       const id = r[1] ?? '';
       const rest = r[2] ?? '';
       const pad = this.pads.get(id);
+      if (rest === '' && method === 'DELETE') {
+        // Like the API: owner deletes, collaborator leaves; either way it is gone for this user,
+        // and a repeat is a 404. Open pad sockets are closed as deleted.
+        const role = this.removePad(id);
+        if (!role)
+          return this.status(404, 'not_found', 'This pad does not exist or you are not a member.');
+        return { padId: id, removed: role === 'owner' ? 'pad' : 'membership' };
+      }
       if (!pad)
         return this.status(404, 'not_found', 'This pad does not exist or you are not a member.');
       if (rest === '' && method === 'GET') return this.detail(pad);
@@ -332,7 +406,7 @@ export class MockBackend {
       if (rest === '/report') return { ...this.report, padId: id };
       if (rest === '/report/assessment' && method === 'POST') {
         if (this.aiKey.state !== 'active')
-          return this.status(409, 'ai_key_missing', 'Add your Anthropic API key first');
+          return this.status(409, 'ai_key_missing', 'Add your AI API key first');
         this.report = REPORT_PENDING;
         setTimeout(() => {
           this.report = REPORT_READY;
@@ -358,6 +432,8 @@ export class MockBackend {
 
     // quizzes
     if (path === '/api/quiz/topics') return QUIZ_TOPICS;
+    const bank = this.quizBank.handle(method, path, body, this.aiKey.state === 'active');
+    if (bank !== undefined) return bank;
     if (path === '/api/quiz/attempts' && method === 'GET') return QUIZ_HISTORY;
     if (path === '/api/quiz/attempts' && method === 'POST') {
       const req = CreateAttemptRequest.parse(body);

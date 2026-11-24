@@ -3,7 +3,7 @@
  * "Add your API key" without leaving the page: used by every prompt (new interview, pad chat,
  * report, quiz). Whatever the user was doing stays as it was underneath.
  */
-import type { AiKeyStatus } from '@ipp/contracts';
+import type { AiKeyStatus, AiProvider } from '@ipp/contracts';
 import { LockKeyholeIcon, TimerResetIcon, WalletIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import {
@@ -16,9 +16,19 @@ import {
 } from '@/components/ui/dialog';
 import { useAiKey } from '@/lib/queries';
 import { AiKeyForm, ConsoleLink } from './ai-key-form';
+import { providerLabel } from './logic';
 
 /** The three things to know before pasting a key here. */
-export function KeyFacts({ ttlHours = 24, className }: { ttlHours?: number; className?: string }) {
+export function KeyFacts({
+  ttlHours = 24,
+  className,
+  provider,
+}: {
+  ttlHours?: number;
+  className?: string;
+  /** The saved key's provider, when there is one: its console is linked. */
+  provider?: AiProvider | null;
+}) {
   const facts: [ReactNode, ReactNode][] = [
     [
       <LockKeyholeIcon key="i" className="size-4" />,
@@ -36,10 +46,17 @@ export function KeyFacts({ ttlHours = 24, className }: { ttlHours?: number; clas
     ],
     [
       <WalletIcon key="i" className="size-4" />,
-      <>
-        Usage is billed to your Anthropic account. Create a dedicated key with a spend limit in the{' '}
-        <ConsoleLink />.
-      </>,
+      provider ? (
+        <>
+          Usage is billed to your {providerLabel(provider)} account. Create a dedicated key with a
+          spend limit in the <ConsoleLink provider={provider} />.
+        </>
+      ) : (
+        <>
+          Usage is billed to your own account with the provider (Anthropic, OpenAI, Google or
+          OpenRouter). Create a dedicated key with a spend limit.
+        </>
+      ),
     ],
   ];
   return (
@@ -61,7 +78,7 @@ export function AiKeyDialog({
   open,
   onOpenChange,
   onSaved,
-  title = 'Add your Anthropic API key',
+  title = 'Add your AI API key',
   description = 'The AI interviewer, the written assessment and AI grading run on your own key; interview++ does not pay for model usage.',
   submitLabel,
   secondary,
@@ -88,7 +105,7 @@ export function AiKeyDialog({
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         <DialogBody className="space-y-4 pb-5">
-          <KeyFacts ttlHours={status.data?.ttlHours} />
+          <KeyFacts ttlHours={status.data?.ttlHours} provider={status.data?.provider} />
           <AiKeyForm
             status={status.data?.state === 'active' ? undefined : status.data}
             compact

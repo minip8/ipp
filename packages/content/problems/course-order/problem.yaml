@@ -1,6 +1,7 @@
 slug: course-order
 title: Course Order
 difficulty: medium
+category: dsa
 tags: [graph, topological-sort, heap]
 signature:
   className: Solution
