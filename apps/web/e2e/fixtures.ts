@@ -7,7 +7,6 @@ import {
   AiModelList,
   type AiProvider,
   AnswerFeedback,
-  generateScaffolds,
   type Language,
   Message,
   Pad,
@@ -17,6 +16,7 @@ import {
   ProblemContent,
   ProblemDetail,
   ProblemSummary,
+  problemScaffolds,
   QuizAttempt,
   QuizAttemptSummary,
   type QuizResponse,
@@ -25,6 +25,7 @@ import {
   Run,
   YDOC,
 } from '@ipp/contracts';
+import boxJson from '@ipp/contracts/fixtures/problem-box-cpp.json' with { type: 'json' };
 import lruJson from '@ipp/contracts/fixtures/problem-lru-cache.json' with { type: 'json' };
 import twoSumJson from '@ipp/contracts/fixtures/problem-two-sum.json' with { type: 'json' };
 import * as Y from 'yjs';
@@ -93,12 +94,23 @@ function toDetail(c: ProblemContent): ProblemDetail {
     limits: c.limits,
     sampleTests: c.tests.filter((t) => !t.hidden),
     hiddenTestCount: c.tests.filter((t) => t.hidden).length + 55,
-    scaffolds: generateScaffolds(c.signature),
+    languages: c.languages,
+    scaffolds: problemScaffolds(c),
   });
 }
 
 export const TWO_SUM = toDetail(twoSumContent);
 export const LRU = toDetail(lruContent);
+/** A C++-only problem with its own starter code (the contracts' box-cpp fixture, renamed). */
+export const UNIQUE_PTR = toDetail(
+  ProblemContent.parse({
+    ...boxJson,
+    slug: 'unique-pointer',
+    title: 'Unique Pointer',
+    difficulty: 'medium',
+    category: 'data-structure',
+  }),
+);
 
 export const PROBLEMS = ProblemSummary.array().parse([
   {
@@ -199,11 +211,20 @@ export const PROBLEMS = ProblemSummary.array().parse([
     category: 'dsa',
     tags: ['binary-search'],
   },
+  {
+    slug: UNIQUE_PTR.slug,
+    title: UNIQUE_PTR.title,
+    difficulty: UNIQUE_PTR.difficulty,
+    category: UNIQUE_PTR.category,
+    tags: UNIQUE_PTR.tags,
+    languages: UNIQUE_PTR.languages,
+  },
 ]);
 
 export const PROBLEM_DETAILS: Record<string, ProblemDetail> = {
   'two-sum': TWO_SUM,
   'lru-cache': LRU,
+  'unique-pointer': UNIQUE_PTR,
 };
 
 // ---------- pads ----------
@@ -740,7 +761,7 @@ export function makePlayback(): Playback {
     updates.push({ seq: ++seq, at: at(currentSec), update: b64(u) });
   });
   let currentSec = 0;
-  const scaffolds = generateScaffolds(LRU.signature);
+  const scaffolds = LRU.scaffolds;
   doc.transact(() => {
     for (const lang of ['cpp', 'python', 'java'] as Language[])
       doc.getText(YDOC.code(lang)).insert(0, scaffolds[lang]);

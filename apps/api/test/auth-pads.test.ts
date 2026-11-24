@@ -110,7 +110,11 @@ describe('problems', () => {
   it('lists and filters; detail never contains server-only fields', async () => {
     const c = new Client(h.base);
     const list = await c.get('/api/problems');
-    expect(list.json.map((p: { slug: string }) => p.slug).sort()).toEqual(['lru-cache', 'two-sum']);
+    expect(list.json.map((p: { slug: string }) => p.slug).sort()).toEqual([
+      'box-cpp',
+      'lru-cache',
+      'two-sum',
+    ]);
     expect(
       (await c.get('/api/problems?difficulty=easy')).json.map((p: { slug: string }) => p.slug),
     ).toEqual(['two-sum']);
@@ -120,7 +124,7 @@ describe('problems', () => {
       Object.fromEntries(
         list.json.map((p: { slug: string; category: string }) => [p.slug, p.category]),
       ),
-    ).toEqual({ 'two-sum': 'dsa', 'lru-cache': 'data-structure' });
+    ).toEqual({ 'two-sum': 'dsa', 'lru-cache': 'data-structure', 'box-cpp': 'implementation' });
     expect(
       (await c.get('/api/problems?category=data-structure')).json.map(
         (p: { slug: string }) => p.slug,

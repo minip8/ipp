@@ -266,6 +266,10 @@ export class InterviewerHost {
       limits: problem.limits,
       interviewerNotes: problem.interviewerNotes,
       referenceSolutions: problem.referenceSolutions,
+      languages: problem.languages,
+      starterCode: problem.starterCode,
+      // What the tests exercise when the candidate's code is driven by a harness.
+      harness: problem.harness,
       ...(problem.source ? { source: problem.source } : {}),
     };
     const language: Language = pad.language;

@@ -8,6 +8,7 @@ import { messages, padMembers, pads, timelineEvents } from '@ipp/db';
 import { and, eq, isNull } from '@ipp/db/orm';
 import { WebSocket, WebSocketServer } from 'ws';
 import type { Ctx } from '../context';
+import { HttpError } from '../http/errors';
 import { changeLanguage } from '../pads/service';
 import { messageView } from '../views';
 import type { RoomClient } from './rooms';
@@ -200,7 +201,13 @@ export class EventsGateway {
         return;
       }
       case 'language': {
-        await changeLanguage(ctx, padId, ev.language as Language);
+        try {
+          await changeLanguage(ctx, padId, ev.language as Language);
+        } catch (err) {
+          // e.g. language_unavailable: the problem does not offer this language.
+          if (!(err instanceof HttpError)) throw err;
+          send(client, { type: 'error', code: err.code, message: err.message });
+        }
         return;
       }
     }

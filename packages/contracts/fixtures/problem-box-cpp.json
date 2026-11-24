@@ -1,0 +1,44 @@
+{
+  "slug": "box-cpp",
+  "title": "Box",
+  "difficulty": "hard",
+  "category": "implementation",
+  "tags": ["design"],
+  "statement": "Implement `template <typename T> class Box` that owns one value: `explicit Box(T value)`, `const T& get() const`, and a move constructor.",
+  "signature": {
+    "className": "BoxTests",
+    "kind": "design",
+    "ctorParams": [],
+    "methods": [
+      { "name": "roundTrip", "params": [{ "name": "x", "type": "int" }], "returns": "int" },
+      { "name": "moved", "params": [{ "name": "s", "type": "string" }], "returns": "string" }
+    ]
+  },
+  "languages": ["cpp"],
+  "starterCode": {
+    "cpp": "#include <bits/stdc++.h>\nusing namespace std;\n\ntemplate <typename T>\nclass Box {\npublic:\n    explicit Box(T value) {\n    }\n\n    const T& get() const {\n    }\n};\n\nint main() {\n    Box<int> b(1);\n    cout << b.get() << endl;\n    return 0;\n}\n"
+  },
+  "harness": {
+    "cpp": "#include <string>\n#include <utility>\n\nclass BoxTests {\npublic:\n    int roundTrip(int x) {\n        Box<int> b(x);\n        return b.get();\n    }\n\n    std::string moved(std::string s) {\n        Box<std::string> a(s);\n        Box<std::string> b(std::move(a));\n        return b.get();\n    }\n};\n"
+  },
+  "tests": [
+    {
+      "id": "s1",
+      "hidden": false,
+      "ctorArgs": [],
+      "calls": [{ "method": "roundTrip", "args": [7] }, { "method": "moved", "args": ["hi"] }],
+      "expected": [7, "hi"]
+    },
+    {
+      "id": "h1",
+      "hidden": true,
+      "ctorArgs": [],
+      "calls": [{ "method": "roundTrip", "args": [-3] }],
+      "expected": [-3]
+    }
+  ],
+  "interviewerNotes": "Test fixture: a value-owning template with a move constructor.",
+  "referenceSolutions": {
+    "cpp": "#include <utility>\n\ntemplate <typename T>\nclass Box {\npublic:\n    explicit Box(T value) : value_(std::move(value)) {}\n    Box(Box&& other) noexcept : value_(std::move(other.value_)) {}\n    const T& get() const { return value_; }\n\nprivate:\n    T value_;\n};\n\nint main() { return 0; }\n"
+  }
+}

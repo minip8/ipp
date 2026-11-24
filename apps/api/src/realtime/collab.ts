@@ -1,7 +1,8 @@
 /**
  * Hocuspocus (Yjs) at /collab. Document `pad:<padId>`; the WS ticket is the Hocuspocus token.
  *
- *  - first load seeds code:<language> for all languages with generateScaffold, and records that
+ *  - first load seeds code:<language> for all languages with problemScaffold (the problem's
+ *    starter code where it has some, else the generated scaffold), and records that
  *    seed as history row 1 so playback can start from an empty doc
  *  - state persisted to pad_docs (debounced by Hocuspocus)
  *  - incremental updates coalesced into pad_updates rows, at most one per historyCoalesceMs
@@ -15,7 +16,13 @@
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
 import { Hocuspocus } from '@hocuspocus/server';
-import { generateScaffold, LANGUAGES, type Language, YDOC } from '@ipp/contracts';
+import {
+  LANGUAGES,
+  type Language,
+  problemScaffold,
+  type StarterSource,
+  YDOC,
+} from '@ipp/contracts';
 import { padDocs, padMembers, pads, padUpdates, problems, user } from '@ipp/db';
 import { and, eq, max, sql } from '@ipp/db/orm';
 import { type RawData, WebSocketServer } from 'ws';
@@ -86,10 +93,10 @@ const padIdOf = (documentName: string): string | null => {
   return m ? (m[1] ?? null) : null;
 };
 
-export function seedDoc(doc: Y.Doc, signature: Parameters<typeof generateScaffold>[0]): void {
+export function seedDoc(doc: Y.Doc, problem: StarterSource): void {
   doc.transact(() => {
     for (const lang of LANGUAGES)
-      doc.getText(YDOC.code(lang)).insert(0, generateScaffold(signature, lang));
+      doc.getText(YDOC.code(lang)).insert(0, problemScaffold(problem, lang));
     doc.getText(YDOC.notes);
   });
 }
@@ -255,8 +262,8 @@ export class Collab {
         .where(eq(padDocs.padId, padId));
       if (row) Y.applyUpdate(doc, row.state);
       else {
-        const signature = await this.signatureFor(padId);
-        if (signature) seedDoc(doc, signature);
+        const starter = await this.starterFor(padId);
+        if (starter) seedDoc(doc, starter);
       }
     }
     const code = Object.fromEntries(
@@ -319,13 +326,17 @@ export class Collab {
 
   // ------------------------------------------------------------------ internals
 
-  private async signatureFor(padId: string) {
+  private async starterFor(padId: string): Promise<StarterSource | null> {
     const [row] = await this.ctx.db
-      .select({ signature: problems.signature })
+      .select({
+        signature: problems.signature,
+        languages: problems.languages,
+        starterCode: problems.starterCode,
+      })
       .from(pads)
       .innerJoin(problems, eq(problems.slug, pads.problemSlug))
       .where(eq(pads.id, padId));
-    return row?.signature ?? null;
+    return row ?? null;
   }
 
   private async loadOrSeedState(padId: string): Promise<Uint8Array> {
@@ -335,10 +346,10 @@ export class Collab {
       .from(padDocs)
       .where(eq(padDocs.padId, padId));
     if (row) return row.state;
-    const signature = await this.signatureFor(padId);
-    if (!signature) throw new Error('pad not found');
+    const starter = await this.starterFor(padId);
+    if (!starter) throw new Error('pad not found');
     const doc = new Y.Doc();
-    seedDoc(doc, signature);
+    seedDoc(doc, starter);
     const update = Y.encodeStateAsUpdate(doc);
     const won = await db.transaction(async (tx) => {
       const inserted = await tx

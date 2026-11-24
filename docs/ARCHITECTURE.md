@@ -59,7 +59,7 @@ Better Auth owns `user`, `session`, `account`, `verification` (text ids). App ta
 
 | Table | Key columns |
 |---|---|
-| `problems` | `slug` pk, title, difficulty, category, tags text[], statement, signature jsonb, limits jsonb, interviewer_notes, reference_solutions jsonb, source jsonb |
+| `problems` | `slug` pk, title, difficulty, category, tags text[], statement, signature jsonb, limits jsonb, interviewer_notes, reference_solutions jsonb, languages text[], starter_code jsonb, harness jsonb (server-only), source jsonb |
 | `problem_tests` | problem_slug, idx, hidden, data jsonb (`TestCase`) |
 | `pads` | id uuid, owner_id, title, problem_slug, language, status, duration_min, interviewer jsonb, share_token, started_at, ended_at |
 | `pad_members` | pad_id, user_id, role |
@@ -141,7 +141,7 @@ single-use ticket (`POST /api/ws-ticket`, 30 s TTL, stored in Redis, bound to us
   interviewer panel changes without a reload).
 - `/collab` — Hocuspocus (Yjs). Document `pad:<padId>` (layout in `YDOC`, `contracts/src/pad.ts`);
   the ticket is the Hocuspocus token. On first load the server seeds `code:<language>` for all three
-  languages with `generateScaffold`. State is persisted to `pad_docs` (debounced) and history to
+  languages with `problemScaffold` (the problem's starter code where it has some, else the generated scaffold; empty for a language the problem does not offer). State is persisted to `pad_docs` (debounced) and history to
   `pad_updates`. Ended pads are read-only.
 
 The API holds the live Y.Doc, so the interviewer reads the code server-side without the browser
@@ -192,6 +192,20 @@ Before compiling, verify the required class and each required method exist (by n
 return `invalid_submission` with a specific message if not ("class `LRUCache` has no method `put`").
 Compiler diagnostics must point at the candidate's own line numbers (`#line` in C++, an offset map
 elsewhere), and must not show driver source.
+
+**Problems with a harness** (language-restricted ones such as a C++ `UniquePtr<T>`; content files
+`harness.<ext>` / `starter.<ext>`, `languages:` in `problem.yaml`). The candidate writes what the
+statement asks for, starting from the problem's starter code; the signature describes a harness
+class that drives their code. For judged runs the API appends the harness to the candidate's
+source before queueing (`composeJudgedSource` in `contracts/src/harness.ts`, also used by
+`scripts/judge-all.ts`), so the judge sees one ordinary file and needs no special handling. In
+C++ the composition is `<candidate>[\n]#line 1 "tests.cpp"\n<harness>`: the candidate's lines keep
+their numbers (`solution.cpp:N`), and errors inside the harness (typically a member it uses is
+missing) read `tests.cpp:N`, which the web keeps out of the editor and explains in the console.
+The run row stores only the candidate's source; `file` runs are untouched; `CAPS.sourceBytes`
+applies to the candidate's part. The harness is server-only (never in a problem response); the
+interviewer gets it. Pads, random picks, language switches and judged runs refuse a language the
+problem does not offer (`language_unavailable`).
 
 ### 6.2 Driver
 

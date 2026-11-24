@@ -27,6 +27,7 @@ import { type Env, parseBody, requireUser } from '../http/app';
 import { conflict, forbidden, notFound, rateLimited } from '../http/errors';
 import type { PadRow } from '../pads/service';
 import {
+  assertLanguageOffered,
   changeLanguage,
   computeStats,
   deletePad,
@@ -66,6 +67,8 @@ export function padRoutes(ctx: Ctx) {
       const where: SQL[] = [eq(problems.active, true)];
       if (body.random?.difficulty) where.push(eq(problems.difficulty, body.random.difficulty));
       if (body.random?.tag) where.push(arrayContains(problems.tags, [body.random.tag]));
+      // Only problems that can be solved in the chosen language.
+      where.push(arrayContains(problems.languages, [body.language]));
       [problem] = await db
         .select()
         .from(problems)
@@ -74,6 +77,7 @@ export function padRoutes(ctx: Ctx) {
         .limit(1);
     }
     if (!problem) throw notFound('Problem');
+    assertLanguageOffered(problem, body.language);
 
     const row = await db.transaction(async (tx) => {
       const [pad] = await tx
@@ -185,6 +189,14 @@ export function padRoutes(ctx: Ctx) {
       throw forbidden('Only the owner can change the title or interviewer settings');
     }
     if (pad.status !== 'active') throw conflict('pad_ended', 'This pad has ended');
+    if (body.language !== undefined && body.language !== pad.language) {
+      // Refuse before changing anything else (changeLanguage checks again for the WS path).
+      const [problem] = await db
+        .select({ title: problems.title, languages: problems.languages })
+        .from(problems)
+        .where(eq(problems.slug, pad.problemSlug));
+      if (problem) assertLanguageOffered(problem, body.language);
+    }
     if (body.title !== undefined || body.interviewer !== undefined) {
       const [row] = await db
         .update(pads)

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { linkifyLocations, parseCompilerOutput } from './diagnostics';
+import { linkifyLocations, mentionsTestHarness, parseCompilerOutput } from './diagnostics';
 
 describe('parseCompilerOutput', () => {
   it('reads gcc/clang errors and warnings, skipping notes', () => {
@@ -20,6 +20,30 @@ main.cpp:12:9: warning: unused variable 'x' [-Wunused-variable]`;
         severity: 'warning',
         message: "unused variable 'x' [-Wunused-variable]",
       },
+    ]);
+  });
+  it("keeps the candidate's own lines and leaves test-harness lines out of the editor", () => {
+    // What the judge reports for a problem whose harness (tests.cpp) drives the candidate's code.
+    const out = `solution.cpp: In instantiation of 'T& UniquePtr<T>::operator*() const [with T = int]':
+tests.cpp:26:46:   required from here
+solution.cpp:17:35: error: invalid conversion from 'int*' to 'int' [-fpermissive]
+tests.cpp: In member function 'int UniquePtrTests::releaseKeeps(int)':
+tests.cpp:41:22: error: 'class UniquePtr<int>' has no member named 'release'`;
+    expect(parseCompilerOutput(out, 'cpp')).toEqual([
+      {
+        line: 17,
+        column: 35,
+        severity: 'error',
+        message: "invalid conversion from 'int*' to 'int' [-fpermissive]",
+      },
+    ]);
+    expect(mentionsTestHarness(out)).toBe(true);
+    expect(mentionsTestHarness('solution.cpp:3:1: error: x\ntests.cpp:2:1: warning: y')).toBe(
+      false,
+    );
+    expect(linkifyLocations('tests.cpp:41:22: error: x; solution.cpp:17:35')).toEqual([
+      { text: 'tests.cpp:41:22: error: x; ' },
+      { text: 'solution.cpp:17:35', line: 17, column: 35 },
     ]);
   });
   it('reads javac errors', () => {

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { Identifier, Json, Language, Slug } from './common';
+import { Identifier, Json, LANGUAGES, Language, Slug } from './common';
 import { ProblemCategory } from './taxonomy';
 
 /**
@@ -83,39 +83,99 @@ export const ProblemLimits = z.object({
 });
 export type ProblemLimits = z.infer<typeof ProblemLimits>;
 
+/** Offered languages whose reference solution is required (the others' are optional). */
+export const REQUIRED_SOLUTION_LANGUAGES: readonly Language[] = ['cpp', 'python'];
+
+/** The languages a problem offers: non-empty, no repeats, normalised to LANGUAGES order. */
+export const ProblemLanguages = z
+  .array(Language)
+  .min(1)
+  .refine((ls) => new Set(ls).size === ls.length, { message: 'languages must not repeat' })
+  .transform((ls) => LANGUAGES.filter((l) => ls.includes(l)));
+
+/** Source text for some languages. */
+const PerLanguage = z.partialRecord(Language, z.string());
+
 /** Authoring format: one file per problem in packages/content. Seeded into Postgres. */
-export const ProblemContent = z.object({
-  slug: Slug,
-  title: z.string().max(120),
-  difficulty: Difficulty,
-  /** What kind of interview this is; see CATEGORY_INFO. */
-  category: ProblemCategory,
-  /** Fine-grained topics; each is in a TOPIC_GROUPS group or in EXCLUDED_TAGS. */
-  tags: z.array(Slug),
-  /** Markdown shown to the candidate. */
-  statement: z.string(),
-  signature: ProblemSignature,
-  limits: ProblemLimits.default({ timeMs: 1000, memoryMb: 256 }),
-  tests: z.array(TestCase).min(1),
-  /**
-   * Server-only. Given to the AI interviewer, never to the browser: intended approaches and
-   * complexity, common wrong turns, a ladder of progressively stronger hints, follow-up questions.
-   */
-  interviewerNotes: z.string(),
-  /**
-   * Server-only. Each must pass every test; verified through the real judge in CI.
-   * C++ and Python are required, Java is optional.
-   */
-  referenceSolutions: z
-    .partialRecord(Language, z.string())
-    .refine((r) => r.cpp !== undefined && r.python !== undefined, {
-      message: 'cpp and python reference solutions are required',
-    }),
-  /** Where the idea came from. The statement is always in our own words. */
-  source: z
-    .object({ name: z.string(), url: z.url().optional(), license: z.string().optional() })
-    .optional(),
-});
+export const ProblemContent = z
+  .object({
+    slug: Slug,
+    title: z.string().max(120),
+    difficulty: Difficulty,
+    /** What kind of interview this is; see CATEGORY_INFO. */
+    category: ProblemCategory,
+    /** Fine-grained topics; each is in a TOPIC_GROUPS group or in EXCLUDED_TAGS. */
+    tags: z.array(Slug),
+    /** Markdown shown to the candidate. */
+    statement: z.string(),
+    /**
+     * The class the tests call. With a `harness` this is the harness's class, which drives the
+     * candidate's own code; the candidate does not write it.
+     */
+    signature: ProblemSignature,
+    limits: ProblemLimits.default({ timeMs: 1000, memoryMb: 256 }),
+    /**
+     * The languages the problem can be solved in; absent = all. A problem that cannot be stated
+     * language-neutrally (a C++ template with move semantics, say) offers only the one it needs.
+     */
+    languages: ProblemLanguages.default([...LANGUAGES]),
+    /** Editor starter code per language, instead of the scaffold generated from the signature. */
+    starterCode: PerLanguage.default({}),
+    /**
+     * Server-only. Test code appended after the candidate's source for judged runs
+     * (`composeJudgedSource`): it defines `signature.className` and exercises the candidate's
+     * code. Self-contained (its own includes, qualified names) and without an entry point.
+     */
+    harness: PerLanguage.default({}),
+    tests: z.array(TestCase).min(1),
+    /**
+     * Server-only. Given to the AI interviewer, never to the browser: intended approaches and
+     * complexity, common wrong turns, a ladder of progressively stronger hints, follow-up questions.
+     */
+    interviewerNotes: z.string(),
+    /**
+     * Server-only. Each must pass every test; verified through the real judge in CI. Required for
+     * every offered language in REQUIRED_SOLUTION_LANGUAGES, optional for the other offered ones,
+     * absent for languages the problem does not offer. With a harness, a reference solution is
+     * the candidate-side code only (the harness is appended as for the candidate).
+     */
+    referenceSolutions: PerLanguage,
+    /** Where the idea came from. The statement is always in our own words. */
+    source: z
+      .object({ name: z.string(), url: z.url().optional(), license: z.string().optional() })
+      .optional(),
+  })
+  .superRefine((p, ctx) => {
+    const offered = new Set<Language>(p.languages);
+    const missing = REQUIRED_SOLUTION_LANGUAGES.filter(
+      (l) => offered.has(l) && p.referenceSolutions[l] === undefined,
+    );
+    if (missing.length)
+      ctx.addIssue({
+        code: 'custom',
+        path: ['referenceSolutions'],
+        message: `${missing.join(' and ')} reference solution${missing.length > 1 ? 's are' : ' is'} required`,
+      });
+    // The generated scaffold would be the harness class, which the candidate does not write.
+    for (const l of Object.keys(p.harness) as Language[]) {
+      if (p.starterCode[l] === undefined)
+        ctx.addIssue({
+          code: 'custom',
+          path: ['starterCode', l],
+          message: `a problem with a ${l} harness needs ${l} starter code`,
+        });
+    }
+    for (const field of ['referenceSolutions', 'starterCode', 'harness'] as const) {
+      for (const l of Object.keys(p[field]) as Language[]) {
+        if (!offered.has(l))
+          ctx.addIssue({
+            code: 'custom',
+            path: [field, l],
+            message: `${l} is not one of the problem's languages (${p.languages.join(', ')})`,
+          });
+      }
+    }
+  });
 export type ProblemContent = z.infer<typeof ProblemContent>;
 
 export const ProblemSummary = z.object({
@@ -124,10 +184,19 @@ export const ProblemSummary = z.object({
   difficulty: Difficulty,
   category: ProblemCategory,
   tags: z.array(z.string()),
+  /** The languages the problem can be solved in (all unless it is restricted). */
+  languages: z
+    .array(Language)
+    .min(1)
+    .default([...LANGUAGES]),
 });
 export type ProblemSummary = z.infer<typeof ProblemSummary>;
 
-/** What the browser may see: no hidden tests, notes or reference solutions. */
+/**
+ * What the browser may see: no hidden tests, notes, reference solutions or harness.
+ * `scaffolds` is the editor's starting code per language: the problem's starter code where it has
+ * one, otherwise generated from the signature (`problemScaffolds`).
+ */
 export const ProblemDetail = ProblemSummary.extend({
   statement: z.string(),
   signature: ProblemSignature,

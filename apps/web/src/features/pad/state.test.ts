@@ -30,6 +30,7 @@ const detail: PadDetail = {
     difficulty: 'easy',
     category: 'dsa',
     tags: [],
+    languages: ['cpp', 'python', 'java'],
     statement: '',
     signature: sig,
     limits: { timeMs: 1000, memoryMb: 256 },

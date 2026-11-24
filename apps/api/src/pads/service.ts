@@ -1,8 +1,8 @@
-import type { Language, PadRole, Report } from '@ipp/contracts';
-import { messages, padMembers, pads, reports, runs, timelineEvents } from '@ipp/db';
+import { LANGUAGE_LABELS, type Language, type PadRole, type Report } from '@ipp/contracts';
+import { messages, padMembers, pads, problems, reports, runs, timelineEvents } from '@ipp/db';
 import { and, count, eq, ne, sql } from '@ipp/db/orm';
 import type { Ctx } from '../context';
-import { notFound } from '../http/errors';
+import { badRequest, notFound } from '../http/errors';
 import { isForeignKeyViolation } from '../pg';
 import { padView } from '../views';
 
@@ -24,12 +24,34 @@ export async function padForMember(
   return row;
 }
 
-/** Changes the pad language (any member, active pads only); timeline, broadcast, trigger. */
+/** 400 `language_unavailable` unless the problem can be solved in `language`. */
+export function assertLanguageOffered(
+  problem: { title: string; languages: Language[] },
+  language: Language,
+): void {
+  if (problem.languages.includes(language)) return;
+  const offered = problem.languages.map((l) => LANGUAGE_LABELS[l]).join(', ');
+  throw badRequest(
+    `${problem.title} can only be solved in ${offered}, not ${LANGUAGE_LABELS[language]}`,
+    'language_unavailable',
+  );
+}
+
+/**
+ * Changes the pad language (any member, active pads only); timeline, broadcast, trigger.
+ * Throws `language_unavailable` when the pad's problem does not offer the language.
+ */
 export async function changeLanguage(
   ctx: Ctx,
   padId: string,
   language: Language,
 ): Promise<PadRow | null> {
+  const [problem] = await ctx.db
+    .select({ title: problems.title, languages: problems.languages })
+    .from(pads)
+    .innerJoin(problems, eq(problems.slug, pads.problemSlug))
+    .where(eq(pads.id, padId));
+  if (problem) assertLanguageOffered(problem, language);
   const [row] = await ctx.db
     .update(pads)
     .set({ language })

@@ -123,6 +123,19 @@ export const problems = pgTable('problems', {
   referenceSolutions: jsonb('reference_solutions')
     .$type<Partial<Record<Language, string>>>()
     .notNull(),
+  /** The languages the problem offers (defaults: every language, no starter code, no harness). */
+  languages: text('languages')
+    .array()
+    .$type<Language[]>()
+    .notNull()
+    .default(sql`'{cpp,python,java}'::text[]`),
+  /** Editor starter code per language, instead of the generated scaffold. */
+  starterCode: jsonb('starter_code')
+    .$type<Partial<Record<Language, string>>>()
+    .notNull()
+    .default({}),
+  /** Server-only: test harness per language, appended to the candidate's source for judged runs. */
+  harness: jsonb('harness').$type<Partial<Record<Language, string>>>().notNull().default({}),
   source: jsonb('source').$type<{ name: string; url?: string; license?: string } | null>(),
   /** false when the problem has disappeared from content; existing pads keep working. */
   active: boolean('active').notNull().default(true),

@@ -1,4 +1,4 @@
-import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CONTENT_ROOT } from '@ipp/content';
@@ -73,6 +73,33 @@ describe('seed', () => {
     expect(before.problems).toBe(1);
     const [row] = await h.db.select().from(problems).where(eq(problems.slug, 'two-sum'));
     expect(row?.category).toBe('dsa');
+  });
+
+  it('writes languages, starter code and harness', async () => {
+    // A C++-only variant of two-sum with its own starter code and harness.
+    const dir = join(root, 'problems', 'two-sum-cpp');
+    cpSync(join(CONTENT_ROOT, 'problems', 'two-sum'), dir, { recursive: true });
+    for (const f of ['solution.py', 'solution.java']) rmSync(join(dir, f), { force: true });
+    const yaml = readFileSync(join(dir, 'problem.yaml'), 'utf8');
+    writeFileSync(
+      join(dir, 'problem.yaml'),
+      `${yaml.replace('slug: two-sum', 'slug: two-sum-cpp')}languages: [cpp]\n`,
+    );
+    writeFileSync(join(dir, 'starter.cpp'), '// starter\n');
+    writeFileSync(join(dir, 'harness.cpp'), '// harness\n');
+    try {
+      const report = await seed(h.db, { root });
+      expect(report.skipped.map((s) => s.where)).not.toContain('problems/two-sum-cpp');
+      const [row] = await h.db.select().from(problems).where(eq(problems.slug, 'two-sum-cpp'));
+      expect(row?.languages).toEqual(['cpp']);
+      expect(row?.starterCode).toEqual({ cpp: '// starter\n' });
+      expect(row?.harness).toEqual({ cpp: '// harness\n' });
+      const [plain] = await h.db.select().from(problems).where(eq(problems.slug, 'two-sum'));
+      expect(plain?.languages).toEqual(['cpp', 'python', 'java']);
+      expect(plain?.harness).toEqual({});
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('removing a question keeps its answers and deactivates it', async () => {

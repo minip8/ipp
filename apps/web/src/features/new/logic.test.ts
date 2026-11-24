@@ -2,13 +2,18 @@ import type { ProblemSummary } from '@ipp/contracts';
 import { describe, expect, it } from 'vitest';
 import {
   categoryCounts,
+  effectiveLanguage,
   filterProblems,
   groupOptions,
+  isLanguageRestricted,
   type LibraryFilters,
+  languageNote,
   NO_FILTERS,
   parseCategory,
   parseDifficulty,
   pickRandom,
+  randomPool,
+  restrictionLabel,
   subtopicOptions,
 } from './logic';
 
@@ -17,7 +22,15 @@ const P = (
   category: ProblemSummary['category'],
   difficulty: ProblemSummary['difficulty'],
   tags: string[],
-): ProblemSummary => ({ slug, title: slug.replace(/-/g, ' '), category, difficulty, tags });
+  languages: ProblemSummary['languages'] = ['cpp', 'python', 'java'],
+): ProblemSummary => ({
+  slug,
+  title: slug.replace(/-/g, ' '),
+  category,
+  difficulty,
+  tags,
+  languages,
+});
 
 const LIB: ProblemSummary[] = [
   P('two-sum', 'dsa', 'easy', ['array', 'hash-table']),
@@ -130,6 +143,45 @@ describe('pickRandom', () => {
       expect(pickRandom(graphs, 'number-of-islands', () => r)?.slug).not.toBe('number-of-islands');
     expect(pickRandom([LIB[0] as ProblemSummary], 'two-sum')?.slug).toBe('two-sum');
     expect(pickRandom([], null)).toBeUndefined();
+  });
+});
+
+describe('language-restricted problems', () => {
+  const uptr = P('unique-ptr', 'data-structure', 'medium', ['design'], ['cpp']);
+  const two = P('two-langs', 'dsa', 'easy', [], ['cpp', 'python']);
+  const any = LIB[0] as ProblemSummary;
+
+  it('labels only restricted problems', () => {
+    expect(isLanguageRestricted(any)).toBe(false);
+    expect(restrictionLabel(any)).toBeNull();
+    expect(restrictionLabel(uptr)).toBe('C++ only');
+    expect(restrictionLabel(two)).toBe('C++ or Python only');
+  });
+
+  it('switches to an offered language without touching the preference', () => {
+    expect(effectiveLanguage('python', undefined)).toBe('python');
+    expect(effectiveLanguage('python', any)).toBe('python');
+    expect(effectiveLanguage('python', uptr)).toBe('cpp');
+    expect(effectiveLanguage('python', two)).toBe('python');
+    expect(effectiveLanguage('java', two)).toBe('cpp');
+  });
+
+  it('says why the picker offers fewer languages', () => {
+    expect(languageNote('python', any)).toBeNull();
+    expect(languageNote('python', undefined)).toBeNull();
+    expect(languageNote('cpp', uptr)).toBe('unique ptr can only be solved in C++.');
+    expect(languageNote('python', uptr)).toBe(
+      'unique ptr can only be solved in C++, so this interview uses C++ (your usual Python is kept for other problems).',
+    );
+  });
+
+  it('random picks only choose problems in the selected language', () => {
+    const lib = [...LIB, uptr];
+    expect(slugs(randomPool(lib, 'cpp'))).toContain('unique-ptr');
+    expect(slugs(randomPool(lib, 'python'))).not.toContain('unique-ptr');
+    expect(randomPool(lib, 'python')).toHaveLength(LIB.length);
+    for (const r of [0, 0.5, 0.999])
+      expect(pickRandom(randomPool([uptr, any], 'java'), null, () => r)?.slug).toBe('two-sum');
   });
 });
 

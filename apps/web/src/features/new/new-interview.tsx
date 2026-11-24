@@ -61,14 +61,18 @@ import {
   type CategoryFilter,
   categoryCounts,
   type DifficultyFilter,
+  effectiveLanguage,
   filterProblems,
   groupOptions,
   type LibraryFilters,
+  languageNote,
   loadShowTopics,
   NO_FILTERS,
   parseCategory,
   parseDifficulty,
   pickRandom,
+  randomPool,
+  restrictionLabel,
   saveShowTopics,
   subtopicOptions,
 } from './logic';
@@ -129,9 +133,25 @@ function ProblemRow({
             </span>
           )}
         </span>
+        <RestrictionBadge p={p} />
         <DifficultyBadge difficulty={p.difficulty} />
       </button>
     </li>
+  );
+}
+
+/** "C++ only" on problems that cannot be solved in every language; nothing otherwise. */
+function RestrictionBadge({ p }: { p: ProblemSummary }) {
+  const label = restrictionLabel(p);
+  if (!label) return null;
+  return (
+    <span
+      data-testid="language-restriction"
+      title={`This problem can only be solved in ${p.languages.map((l) => LANG_LABEL[l]).join(' or ')}`}
+      className="inline-flex h-5 shrink-0 items-center rounded-[4px] border border-border px-1.5 text-2xs font-medium whitespace-nowrap text-fg-muted"
+    >
+      {label}
+    </span>
   );
 }
 
@@ -159,15 +179,24 @@ function ProblemPreview({ slug }: { slug: string }) {
   );
 }
 
-function randomHint(matching: number | null, filtersActive: boolean): string {
-  if (matching === 0) return 'No problems match your filters.';
+/** `inLanguage`: set when some matching problems are left out for not offering that language. */
+function randomHint(
+  matching: number | null,
+  filtersActive: boolean,
+  inLanguage: Language | null = null,
+): string {
+  const lang = inLanguage ? ` in ${LANG_LABEL[inLanguage]}` : '';
+  if (matching === 0)
+    return inLanguage
+      ? `No problems that match your filters can be solved${lang}.`
+      : 'No problems match your filters.';
   const which =
     matching === null
       ? 'One of the problems that match your filters.'
       : matching === 1
-        ? 'The only problem that matches your filters.'
-        : filtersActive
-          ? `One of the ${matching} problems that match your filters.`
+        ? `The only problem${lang} that matches your filters.`
+        : filtersActive || inLanguage
+          ? `One of the ${matching} problems${lang} that match your filters.`
           : `One of all ${matching} problems in the library.`;
   return `${which} You see it before you start.`;
 }
@@ -247,9 +276,13 @@ export function NewInterview() {
   const groups = useMemo(() => groupOptions(library), [library]);
   const subtopics = useMemo(() => subtopicOptions(library, group), [library, group]);
   const current = library.find((p) => p.slug === selected);
+  // Random picks stay within the user's language; a problem picked by hand may restrict it.
+  const pool = useMemo(() => randomPool(filtered, prefs.language), [filtered, prefs.language]);
+  const language = effectiveLanguage(prefs.language, current);
+  const offered = current?.languages ?? LANGUAGES;
 
   const pickAtRandom = () => {
-    const p = pickRandom(filtered, selected);
+    const p = pickRandom(pool, selected);
     if (!p) return;
     setSelected(p.slug);
     setRolled(true);
@@ -262,7 +295,10 @@ export function NewInterview() {
     if (!randomRequested.current || !problems.data) return;
     randomRequested.current = false;
     const p = pickRandom(
-      filterProblems(problems.data, { ...NO_FILTERS, category, difficulty, showTopics: false }),
+      randomPool(
+        filterProblems(problems.data, { ...NO_FILTERS, category, difficulty, showTopics: false }),
+        prefs.language,
+      ),
     );
     if (!p) return;
     setSelected(p.slug);
@@ -271,7 +307,7 @@ export function NewInterview() {
     next.delete('random');
     next.set('problem', p.slug);
     window.history.replaceState(null, '', `?${next.toString()}`);
-  }, [problems.data, category, difficulty]);
+  }, [problems.data, category, difficulty, prefs.language]);
 
   // Unknown (loading or failed) counts as fine: never block starting on this.
   const keyState = aiKey.data?.state ?? 'active';
@@ -292,7 +328,7 @@ export function NewInterview() {
       if (!current) throw new Error('Choose a problem first.');
       return api.createPad({
         problemSlug: current.slug,
-        language: prefs.language,
+        language,
         durationMin: prefs.durationMin,
         interviewer,
       });
@@ -441,7 +477,7 @@ export function NewInterview() {
                   <button
                     type="button"
                     onClick={pickAtRandom}
-                    disabled={filtered.length === 0}
+                    disabled={pool.length === 0}
                     className="flex w-full items-center gap-3 border-l-2 border-l-transparent px-4 py-3 text-left transition-colors hover:bg-surface-2 focus-visible:outline-offset-[-2px] disabled:opacity-50"
                   >
                     <span className="flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-surface-2 text-accent-text">
@@ -450,7 +486,11 @@ export function NewInterview() {
                     <span className="min-w-0 flex-1">
                       <span className="block font-medium">Pick a random problem</span>
                       <span className="block text-xs text-fg-muted">
-                        {randomHint(problems.data ? filtered.length : null, filtersActive)}
+                        {randomHint(
+                          problems.data ? pool.length : null,
+                          filtersActive,
+                          pool.length < filtered.length ? prefs.language : null,
+                        )}
                       </span>
                     </span>
                   </button>
@@ -537,7 +577,7 @@ export function NewInterview() {
                   size="sm"
                   className="mt-3"
                   onClick={pickAtRandom}
-                  disabled={filtered.length === 0}
+                  disabled={pool.length === 0}
                 >
                   <ShuffleIcon /> Pick one at random
                 </Button>
@@ -551,6 +591,7 @@ export function NewInterview() {
                     </span>
                     <DifficultyBadge difficulty={current.difficulty} />
                     <CategoryBadge category={current.category} />
+                    <RestrictionBadge p={current} />
                   </div>
                   {rolled && (
                     <Button
@@ -558,7 +599,7 @@ export function NewInterview() {
                       size="xs"
                       className="-mr-1"
                       onClick={pickAtRandom}
-                      disabled={filtered.length === 0}
+                      disabled={pool.length === 0}
                       aria-label="Pick another random problem"
                       title="Pick another random problem matching your filters"
                     >
@@ -579,12 +620,13 @@ export function NewInterview() {
               <Segmented
                 aria-label="Language"
                 className="flex w-full"
-                value={prefs.language}
-                onValueChange={(language: Language) => update({ language })}
-                options={LANGUAGES.map((l) => ({ value: l, label: LANG_LABEL[l] }))}
+                value={language}
+                onValueChange={(l: Language) => update({ language: l })}
+                options={offered.map((l) => ({ value: l, label: LANG_LABEL[l] }))}
               />
-              <p className="text-xs text-fg-muted">
-                You can switch languages during the interview.
+              <p className="text-xs text-fg-muted" data-testid="language-note">
+                {languageNote(prefs.language, current) ??
+                  'You can switch languages during the interview.'}
               </p>
             </div>
 

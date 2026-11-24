@@ -10,7 +10,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { CONTENT_ROOT, listProblemSlugs, loadProblem } from '../src';
+import { CONTENT_ROOT, judgedReferenceSolutions, listProblemSlugs, loadProblem } from '../src';
 
 const args = process.argv.slice(2);
 const langAt = args.indexOf('--lang');
@@ -23,7 +23,13 @@ const tmp = mkdtempSync(join(tmpdir(), 'ipp-judge-all-'));
 const failed: string[] = [];
 for (const slug of slugs) {
   const file = join(tmp, `${slug}.json`);
-  writeFileSync(file, JSON.stringify(loadProblem(slug)));
+  // The judge gets each solution with the problem's harness appended, exactly as the API sends
+  // a candidate's source (composeJudgedSource); the harness itself never travels separately.
+  const problem = loadProblem(slug);
+  writeFileSync(
+    file,
+    JSON.stringify({ ...problem, referenceSolutions: judgedReferenceSolutions(problem) }),
+  );
   const started = Date.now();
   const res = spawnSync(judge, ['run-problem', file, ...(lang ? ['--lang', lang] : [])], {
     encoding: 'utf8',
