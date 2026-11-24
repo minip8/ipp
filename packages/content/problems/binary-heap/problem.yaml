@@ -1,0 +1,37 @@
+slug: binary-heap
+title: Binary Heap (Priority Queue)
+difficulty: medium
+category: data-structure
+tags: [design, heap, array]
+signature:
+  className: BinaryHeap
+  kind: design
+  methods:
+    - name: push
+      params:
+        - { name: value, type: int }
+      returns: void
+    - name: pop
+      params: []
+      returns: int
+    - name: top
+      params: []
+      returns: int
+    - name: size
+      params: []
+      returns: int
+    - name: build
+      params:
+        - { name: values, type: { array: int } }
+      returns: void
+    - name: replaceTop
+      params:
+        - { name: value, type: int }
+      returns: int
+    - name: toArray
+      params: []
+      returns: { array: int }
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Implementing a subset of std::priority_queue / heapq on an array (sift up, sift down, Floyd's O(n) heap construction); a common data-structures interview exercise
+  url: https://en.cppreference.com/w/cpp/container/priority_queue
