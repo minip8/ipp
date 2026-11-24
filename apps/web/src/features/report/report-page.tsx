@@ -210,7 +210,7 @@ export function ReportPage({ id }: { id: string }) {
                 </Card>
               ) : (
                 <>
-                  <StatsStrip stats={report.data.stats} />
+                  <StatsStrip stats={report.data.stats} room={isRoomHost} />
                   <Assessment
                     report={report.data}
                     pad={pad.data}

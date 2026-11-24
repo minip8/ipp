@@ -210,6 +210,20 @@ export class MockBackend {
           // Like the real interviewer: silent without the pad owner's key.
           const padId = /\/ws\/pads\/([0-9a-f-]{36})/.exec(ws.url())?.[1] ?? '';
           const d = this.pads.get(padId);
+          if (d?.pad.kind === 'room') {
+            // A room is people talking: the message comes back to everyone, and no AI answers.
+            this.push({
+              type: 'message.created',
+              message: makeMessage({
+                padId,
+                role: d.role === 'owner' ? 'interviewer' : 'candidate',
+                userId: this.me.id,
+                text: ev.text,
+                createdAt: new Date().toISOString(),
+              }),
+            });
+            return;
+          }
           if (d && this.detail(d).interviewerKey === 'active')
             void this.streamReply(this.replyText);
         }
@@ -350,7 +364,7 @@ export class MockBackend {
     if (path === '/api/pads/join-guest' && method === 'POST') {
       const req = JoinGuestRequest.parse(body);
       const pad = this.padByToken(req.shareToken);
-      if (!pad || pad.pad.kind !== 'room') return this.status(404, 'not_found', 'Invite not found');
+      if (pad?.pad.kind !== 'room') return this.status(404, 'not_found', 'Invite not found');
       if (pad.pad.status !== 'active')
         return this.status(409, 'pad_ended', 'This interview has ended');
       if (!this.signedIn) {

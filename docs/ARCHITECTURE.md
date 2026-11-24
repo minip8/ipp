@@ -61,14 +61,14 @@ Better Auth owns `user`, `session`, `account`, `verification` (text ids). App ta
 |---|---|
 | `problems` | `slug` pk, title, difficulty, category, tags text[], statement, signature jsonb, limits jsonb, interviewer_notes, reference_solutions jsonb, languages text[], starter_code jsonb, harness jsonb (server-only), source jsonb |
 | `problem_tests` | problem_slug, idx, hidden, data jsonb (`TestCase`) |
-| `pads` | id uuid, owner_id, title, problem_slug, language, status, duration_min, interviewer jsonb, share_token, started_at, ended_at |
-| `pad_members` | pad_id, user_id, role |
+| `pads` | id uuid, owner_id, title, kind (`practice` / `room`), problem_slug (null: a blank room), language, status, duration_min, interviewer jsonb, share_token, host_notes (rooms, host-only), started_at, ended_at |
+| `pad_members` | pad_id, user_id, role (`owner`; `collaborator` = a room's candidate) |
 | `pad_docs` | pad_id pk, state bytea (merged Yjs state), updated_at |
 | `pad_updates` | pad_id, seq, at, update bytea — append-only Yjs history for playback, coalesced to at most one row per ~2 s of editing |
 | `messages` | id, pad_id, role, kind, intent, text, via, user_id, created_at |
 | `interviewer_notes` | pad_id, at, note — private notes the interviewer writes to itself |
 | `timeline_events` | id, pad_id, at, event jsonb |
-| `runs` | id, pad_id, user_id, mode, language, source, status, verdict, result jsonb (full `JudgeResult`), hidden_ids text[], created_at, finished_at |
+| `runs` | id, pad_id, user_id, problem_slug (the pad's problem when queued), mode, language, source, status, verdict, result jsonb (full `JudgeResult`), hidden_ids text[], created_at, finished_at |
 | `reports` | pad_id pk, status, stats jsonb, assessment jsonb, generated_at |
 | `quiz_topics` | slug pk, title, description |
 | `quiz_questions` | id pk (slug), topic, subtopic, difficulty, type, data jsonb (`QuizQuestion`) |
@@ -76,6 +76,9 @@ Better Auth owns `user`, `session`, `account`, `verification` (text ids). App ta
 | `quiz_answers` | attempt_id, question_id, response jsonb, score, correct, feedback, graded_by, answered_at |
 | `quiz_standalone_answers` | user_id, question_id (pk together), same grading columns — question-bank answers outside attempts, latest per question |
 | `ai_usage` | user_id, day, messages, input_tokens, output_tokens — spend guard |
+
+`user.is_anonymous` marks a guest (Better Auth's anonymous plugin): someone who joined a room by
+its link with just a name (§4.1).
 
 Seeding is idempotent upsert from `packages/content`; removing a question from content does not delete answers.
 
@@ -89,7 +92,7 @@ Every body is validated with the contracts schema named below.
 | Method and path | Request | Response |
 |---|---|---|
 | `ALL /api/auth/*` | Better Auth (email+password; Google and GitHub when configured) | |
-| `GET /api/me` | | `{ user: { id, name, email, image } }` |
+| `GET /api/me` | | `{ user: { id, name, email, image, guest } }` |
 | `GET /api/config` | | `{ githubAuth, googleAuth, ai: { requiresUserKey: true, model, keyTtlHours } }` (server facts only; `model` is the Anthropic default; AI availability is per user) |
 | `GET /api/ai-key` | | `AiKeyStatus` (`state` active / missing / rejected, `provider`, `last4`, `expiresAt`, `problem`, `model` = the provider's default model, `ttlHours`) |
 | `PUT /api/ai-key` | `SaveAiKeyRequest` (`{ provider?, apiKey }`, ≤ 2 KB body; provider inferred from the key shape when absent; a key that does not fit the provider is a 400 before any call) | `AiKeyStatus`; 422 `ai_key_rejected` when the provider refuses the key, 503 `ai_key_unverifiable` when it cannot be reached, 429 |
@@ -97,15 +100,21 @@ Every body is validated with the contracts schema named below.
 | `GET /api/ai-key/models` | | `AiModelList` (`provider`, `defaultModel`, `models[] {id, label, default}`, `source` live / fallback); 409 `ai_key_missing` without a usable key; 429 |
 | `GET /api/problems?difficulty=&tag=&q=` | | `ProblemSummary[]` |
 | `GET /api/problems/:slug` | | `ProblemDetail` |
-| `POST /api/pads` | `CreatePadRequest` | `Pad` |
+| `POST /api/pads` | `CreatePadRequest` (`kind: 'room'` hosts an interview; a room may be `blank`) | `Pad` |
 | `GET /api/pads` | | `PadSummary[]` (mine, newest first) |
 | `GET /api/pads/:id` | | `PadDetail` |
 | `PATCH /api/pads/:id` | `UpdatePadRequest` | `Pad` |
 | `POST /api/pads/:id/end` | | `Pad` (starts report generation) |
 | `DELETE /api/pads/:id` | | `DeletePadResponse` (owner: deletes the pad and everything attached, closing its live sockets; collaborator: removes only their own membership) |
-| `POST /api/pads/join` | `{ shareToken }` | `{ padId }` |
-| `GET /api/pads/:id/report` | | `Report` (`assessmentUnavailable` says why there is no assessment) |
-| `POST /api/pads/:id/report/assessment` | | `Report` (owner only, after the pad ended, with a usable key; starts the assessment again) |
+| `GET /api/pads/invite/:token` | no session needed | `InviteInfo` (`kind`, `title`, `hostName`, `status`) |
+| `POST /api/pads/join` | `{ shareToken }` | `{ padId }` (the session's user becomes a member; a guest may only join rooms) |
+| `POST /api/pads/join-guest` | `JoinGuestRequest` (`shareToken`, `name`), no session needed | `{ padId }`, and a guest session cookie when there was no session (rooms only) |
+| `POST /api/pads/:id/problem` | `ChangeProblemRequest` (`problemSlug` or null) | `PadProblem` (room host; also broadcast as `pad.problem`) |
+| `GET /api/pads/:id/host` | | `HostView` (room host: interviewer notes, reference solutions, own notes) |
+| `PUT /api/pads/:id/host/notes` | `UpdateHostNotesRequest` | `{ notes }` (room host; also after the room ended) |
+| `POST /api/pads/:id/review` | `ReviewRequest` (`question?`) | `SolutionReview` (room host, on their key; 409 `ai_key_missing`, 429, 502 `review_failed`) |
+| `GET /api/pads/:id/report` | | `Report` (`assessmentUnavailable` says why there is no assessment; a room's report is its host's alone and carries `hostNotes`) |
+| `POST /api/pads/:id/report/assessment` | | `Report` (owner only, after the pad ended, with a usable key; starts the assessment again, or for a room writes it for the first time) |
 | `GET /api/pads/:id/playback` | | `Playback` |
 | `POST /api/pads/:id/runs` | `CreateRunRequest` | `201 Run` (status `queued`) |
 | `GET /api/runs/:id` | | `Run` |
@@ -126,7 +135,44 @@ The key endpoints act only on the signed-in user's own key and never return it (
 four characters). `PadDetail.interviewerAvailable` / `interviewerKey` describe the pad owner's key
 state and `PadDetail.interviewerModel` the model the interviewer runs on (which implies the key's
 provider); collaborators learn nothing else about it.
-Problem responses never contain hidden tests, interviewer notes or reference solutions.
+Problem responses never contain hidden tests, interviewer notes or reference solutions; the one
+exception is `GET /api/pads/:id/host`, for the host of a room.
+
+### 4.1 Interview rooms
+
+A pad of kind `room` is hosted by its owner, who is the interviewer; whoever joins by the invite
+link is a candidate (role `collaborator`). The web app offers it as "Host an interview"
+(`/new?mode=host`, `src/features/room`).
+
+- **Guests.** A candidate needs no account: `POST /api/pads/join-guest` creates a guest user
+  (`is_anonymous`) with the name they typed, signs them in and adds them to the room. This is the
+  only way a guest is created (Better Auth's own `/sign-in/anonymous` is answered with 404), it
+  needs a link to an active room, and it is rate limited per client address (`invites`, `auth`).
+  A room takes at most `PAD_MEMBERS_MAX` people besides its host. A guest may use the pads they
+  are a member of and nothing else: every other route goes through `requireAccount` (403
+  `account_required`), and the web app sends a guest to sign-in anywhere but the room. A guest
+  who then signs in or signs up keeps their rooms (memberships, runs and messages move to the
+  account). Deleting a room deletes the guests who are in no other room.
+- **No AI in the conversation.** A room's `interviewer.enabled` is always false, so no trigger
+  reaches the interviewer. Chat is between people: the host's messages are stored with the
+  `interviewer` role and their user id, the candidates' with `candidate`.
+- **Host only.** The problem's interviewer notes and reference solutions, the host's own notes
+  (`pads.host_notes`, never in the shared document), the AI second opinion, the report and the
+  playback. A candidate's `PadDetail` says nothing about the host's key, and
+  `interviewer.status` events go to the host's sockets only.
+- **Changing the problem.** The host can move the room to another library problem or to a blank
+  editor (`problem_slug` null: no statement, no tests, only `file` runs). The editor keeps one
+  buffer per language: the server, on the live document, stashes each language's code under the
+  problem being left (`YDOC.stash`) and puts back what was stashed for the new one, or its
+  starter code the first time. A `problem` timeline event marks the change; runs carry the
+  problem they were made on and the console shows those of the current one.
+- **Runs** by a candidate count against the host's run allowance (the in-flight guard stays per
+  user), so minting guests buys no extra runs.
+- **AI for the host** (§7): a second opinion on the code as it is now (`POST …/review`, one
+  model call, returned to the host and neither stored nor broadcast), and after the interview an
+  assessment written only when the host asks for it. Both run on the host's own key, with the
+  room prompts in `packages/interviewer/src/room-prompts.ts`: the model advises the host as an
+  observer and never addresses the candidate.
 Quiz responses never contain answers or explanations for questions the user has not answered
 (practice) or before the attempt is finished (exam).
 
@@ -138,7 +184,7 @@ single-use ticket (`POST /api/ws-ticket`, 30 s TTL, stored in Redis, bound to us
 - `/ws/pads/:padId?ticket=` — JSON events, `ServerEvent` / `ClientEvent` in `contracts/src/ws.ts`.
   Run progress and results, chat, streamed interviewer replies, pad updates, and
   `interviewer.status` when the pad owner's key is saved, removed, expires or is rejected (so the
-  interviewer panel changes without a reload).
+  interviewer panel changes without a reload). Rooms add `member.joined` and `pad.problem`.
 - `/collab` — Hocuspocus (Yjs). Document `pad:<padId>` (layout in `YDOC`, `contracts/src/pad.ts`);
   the ticket is the Hocuspocus token. On first load the server seeds `code:<language>` for all three
   languages with `problemScaffold` (the problem's starter code where it has some, else the generated scaffold; empty for a language the problem does not offer). State is persisted to `pad_docs` (debounced) and history to
@@ -283,6 +329,11 @@ these limits protect the user's spend and keep the server from being used as a r
 At the end of a pad the interviewer produces a `ReportAssessment` on the owner's key; the report
 page also offers playback of the editor history with run and chat markers.
 
+In an interview room (§4.1) a person interviews and the model only advises that person:
+`Interviewer.reviewSolution` (purpose `review`) and `generateRoomAssessment`, both fed by
+`InterviewerDeps.loadRoomContext` (which, unlike `loadContext`, may have no problem and includes
+the host's notes).
+
 ### 7.1 Bring your own key
 
 The site is public and the operator pays for no model usage. The interviewer, the end-of-interview
@@ -418,7 +469,8 @@ exams (a running exam never shows up).
 - Secrets only in env; structured logs without request bodies or source code. Users' API keys only
   encrypted in Redis (§7.1).
 - Rate limits in Redis (sliding window) keyed by user and by IP.
-- Hidden tests, reference solutions and interviewer notes never reach the browser; redaction happens in exactly one place in the API and is unit-tested.
+- Hidden tests, reference solutions and interviewer notes never reach the browser; redaction happens in exactly one place in the API and is unit-tested. (A room's host reads the notes and solutions of the problem they chose, §4.1; hidden tests stay hidden from them too.)
+- Guests (§4.1) exist only for the rooms they were invited to: created by a valid room link, refused by every route that is not a pad they are a member of.
 
 ### Limits added by the security review
 

@@ -98,7 +98,6 @@ export function ChangeProblemDialog({
               className="h-8 w-full rounded-md border border-border-strong bg-surface pr-2.5 pl-8 text-sm outline-none placeholder:text-fg-subtle focus-visible:border-accent focus-visible:ring-3 focus-visible:ring-accent/20"
             />
           </div>
-          {/* biome-ignore lint/a11y/useSemanticElements: a list of choices, not a form fieldset */}
           <div
             role="radiogroup"
             aria-label="Problem"

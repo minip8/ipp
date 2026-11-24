@@ -113,6 +113,13 @@ browser ── /api/* (Next rewrite, same origin, cookie session) ──▶ apps
   provider base URLs are fixed server-side. A pad runs on its owner's key and optionally a model
   chosen per interview (`InterviewerSettings.model`); a refused model falls back to the provider
   default without discarding the key.
+- **Interview rooms** (ARCHITECTURE §4.1): a pad of kind `room` is hosted by its owner, who
+  interviews whoever joins by the invite link; a candidate needs only a name (a guest user,
+  created only by `POST /api/pads/join-guest`). Guests may use the pads they are members of and
+  nothing else: a new route that is not about a pad takes `requireAccount`, not `requireUser`.
+  A room has no AI in the conversation and may have no problem (`problemSlug` null), and
+  host-only data (interviewer notes, reference solutions, `host_notes`, the AI review, the
+  report) must never be put in `PadDetail`, the shared Yjs document or a broadcast event.
 - **`apps/web`** is UI only. Read `apps/web/AGENTS.md` first: this Next.js version differs from
   older ones, and the relevant guide under `apps/web/node_modules/next/dist/docs/` should be read
   before writing Next-specific code. Features live in `src/features/<name>/`, with pure logic in

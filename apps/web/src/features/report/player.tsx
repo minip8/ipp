@@ -1,5 +1,12 @@
 'use client';
-import { LANGUAGES, type Language, type PadDetail, type Playback, YDOC } from '@ipp/contracts';
+import {
+  LANGUAGES,
+  type Language,
+  type Message,
+  type PadDetail,
+  type Playback,
+  YDOC,
+} from '@ipp/contracts';
 import { ChevronLeftIcon, ChevronRightIcon, PauseIcon, PlayIcon } from 'lucide-react';
 import {
   type KeyboardEvent,
@@ -30,7 +37,13 @@ import {
   stepTime,
   timelineSpan,
 } from './playback-engine';
-import { buildTranscript, runEventLabel, type TranscriptItem, TranscriptRow } from './transcript';
+import {
+  buildTranscript,
+  runEventLabel,
+  speaker,
+  type TranscriptItem,
+  TranscriptRow,
+} from './transcript';
 
 type View = Language | 'notes';
 const SPEEDS = ['1', '4', '16', '64'] as const;
@@ -44,10 +57,13 @@ function Marker({
   item,
   span,
   onSeek,
+  whoSaid,
 }: {
   item: TranscriptItem;
   span: Span;
   onSeek: (t: number) => void;
+  /** In an interview room: the people in it by name. */
+  whoSaid?: (m: Message) => string;
 }) {
   const time = formatClock((item.t - span.start) / 1000);
   if (item.kind === 'event') {
@@ -87,8 +103,8 @@ function Marker({
     m.role === 'interviewer'
       ? proactive
         ? `Interviewer spoke up${m.intent ? ` (${humanize(m.intent).toLowerCase()})` : ''}`
-        : 'Interviewer'
-      : 'You';
+        : (whoSaid?.(m) ?? 'Interviewer')
+      : (whoSaid?.(m) ?? 'You');
   const preview = m.text.length > 90 ? `${m.text.slice(0, 88)}…` : m.text;
   return (
     <Tooltip
@@ -128,6 +144,7 @@ function Timeline({
   histogram,
   items,
   onKeyDown,
+  whoSaid,
 }: {
   span: Span;
   t: number;
@@ -135,6 +152,7 @@ function Timeline({
   histogram: number[];
   items: TranscriptItem[];
   onKeyDown: (e: KeyboardEvent) => void;
+  whoSaid?: (m: Message) => string;
 }) {
   const trackRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
@@ -165,7 +183,7 @@ function Timeline({
         {items
           .filter((i) => i.kind === 'event')
           .map((i) => (
-            <Marker key={i.key} item={i} span={span} onSeek={onSeek} />
+            <Marker key={i.key} item={i} span={span} onSeek={onSeek} whoSaid={whoSaid} />
           ))}
       </div>
       {/* track */}
@@ -221,14 +239,15 @@ function Timeline({
         {items
           .filter((i) => i.kind === 'message')
           .map((i) => (
-            <Marker key={i.key} item={i} span={span} onSeek={onSeek} />
+            <Marker key={i.key} item={i} span={span} onSeek={onSeek} whoSaid={whoSaid} />
           ))}
       </div>
     </div>
   );
 }
 
-function Legend() {
+/** `room`: the transcript is between the candidate and the host, who is the reader. */
+function Legend({ room }: { room: boolean }) {
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-2xs text-fg-subtle">
       <span className="flex items-center gap-1.5">
@@ -238,14 +257,18 @@ function Legend() {
         Run
       </span>
       <span className="flex items-center gap-1.5">
-        <span className="size-2 rounded-full border-2 border-accent bg-accent" /> You
+        <span className="size-2 rounded-full border-2 border-accent bg-accent" />{' '}
+        {room ? 'Candidate' : 'You'}
       </span>
       <span className="flex items-center gap-1.5">
-        <span className="size-2 rounded-full border-2 border-fg-subtle bg-surface" /> Interviewer
+        <span className="size-2 rounded-full border-2 border-fg-subtle bg-surface" />{' '}
+        {room ? 'You' : 'Interviewer'}
       </span>
-      <span className="flex items-center gap-1.5">
-        <span className="size-2 rounded-full border-2 border-proactive bg-surface" /> Spoke up
-      </span>
+      {!room && (
+        <span className="flex items-center gap-1.5">
+          <span className="size-2 rounded-full border-2 border-proactive bg-surface" /> Spoke up
+        </span>
+      )}
       <span className="flex items-center gap-1.5">
         <span className="h-2.5 w-1 rounded-t-[1px] bg-fg-subtle/40" /> Editing
       </span>
@@ -387,7 +410,7 @@ export function Player({
         <h2 id="playback-heading" className="text-sm font-semibold">
           Playback
         </h2>
-        <Legend />
+        <Legend room={detail.pad.kind === 'room'} />
       </div>
 
       {/* Desktop: code | transcript, controls underneath. Phone: code, controls, transcript. */}
@@ -507,6 +530,7 @@ export function Player({
             histogram={histogram}
             items={items}
             onKeyDown={onKeyDown}
+            whoSaid={names ? (m) => speaker(m, selfId, names) : undefined}
           />
           <div className="mt-2 flex flex-wrap items-center gap-2 px-2">
             <Tooltip label={playing ? 'Pause' : 'Play'} shortcut="Space" side="top">

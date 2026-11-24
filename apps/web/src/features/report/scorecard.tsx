@@ -178,7 +178,8 @@ function ListBlock({
 }
 
 /** Stats strip; works for any report status because stats are always present. */
-export function StatsStrip({ stats }: { stats: Report['stats'] }) {
+/** `room`: read by the host, so the interviewer's messages are the reader's own. */
+export function StatsStrip({ stats, room }: { stats: Report['stats']; room?: boolean }) {
   const tiles: { label: string; value: ReactNode; sub?: string }[] = [
     { label: 'Duration', value: formatDuration(stats.durationSec) },
     {
@@ -198,7 +199,9 @@ export function StatsStrip({ stats }: { stats: Report['stats'] }) {
     {
       label: 'Messages',
       value: stats.candidateMessages + stats.interviewerMessages,
-      sub: `${stats.candidateMessages} you · ${stats.interviewerMessages} interviewer`,
+      sub: room
+        ? `${stats.candidateMessages} candidate · ${stats.interviewerMessages} you`
+        : `${stats.candidateMessages} you · ${stats.interviewerMessages} interviewer`,
     },
   ];
   return (
