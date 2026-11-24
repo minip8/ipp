@@ -20,7 +20,15 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useDeferredValue, useEffect, useId, useMemo, useRef, useState } from 'react';
+import {
+  type RefObject,
+  useDeferredValue,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { CategoryBadge, DifficultyBadge, LANG_LABEL } from '@/components/domain';
 import { Markdown } from '@/components/markdown';
 import { EmptyState, ErrorState, InlineError } from '@/components/states';
@@ -42,6 +50,7 @@ import { AiKeyDialog } from '@/features/ai-key/ai-key-dialog';
 import { AiKeyPrompt } from '@/features/ai-key/ai-key-prompt';
 import { rejectedTitle } from '@/features/ai-key/logic';
 import { ModelPicker } from '@/features/ai-key/model-picker';
+import { SavedKeyLine } from '@/features/ai-key/saved-key-line';
 import { api } from '@/lib/api';
 import { humanize } from '@/lib/format';
 import { loadStartPrefs, type StartPrefs, saveStartPrefs } from '@/lib/prefs';
@@ -165,11 +174,47 @@ function randomHint(matching: number | null, filtersActive: boolean): string {
 
 const DURATIONS = [30, 45, 60, 90] as const;
 
+/**
+ * Keeps a sticky side panel no taller than the room between its top edge and the bottom of the
+ * window. CSS alone cannot: before the panel sticks it starts lower on the page (under the page
+ * title), so a fixed `100dvh - offset` either overflows at the top of the page or wastes space
+ * once stuck. Only on the two-column layout; on phones the panel is in the page flow.
+ */
+function useFitBelow(ref: RefObject<HTMLElement | null>, gap = 16) {
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const twoColumns = window.matchMedia('(min-width: 1024px)');
+    let frame = 0;
+    const measure = () => {
+      frame = 0;
+      el.style.maxHeight = twoColumns.matches
+        ? `${Math.max(240, window.innerHeight - el.getBoundingClientRect().top - gap)}px`
+        : '';
+    };
+    const schedule = () => {
+      if (!frame) frame = requestAnimationFrame(measure);
+    };
+    measure();
+    window.addEventListener('scroll', schedule, { passive: true });
+    window.addEventListener('resize', schedule);
+    twoColumns.addEventListener('change', schedule);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener('scroll', schedule);
+      window.removeEventListener('resize', schedule);
+      twoColumns.removeEventListener('change', schedule);
+    };
+  }, [ref, gap]);
+}
+
 export function NewInterview() {
   const router = useRouter();
   const params = useSearchParams();
   const aiKey = useAiKey();
   const [keyDialog, setKeyDialog] = useState(false);
+  const setupPanel = useRef<HTMLElement>(null);
+  useFitBelow(setupPanel);
   const [query, setQuery] = useState('');
   const deferredQuery = useDeferredValue(query);
   const [category, setCategory] = useState<CategoryFilter>(() =>
@@ -470,7 +515,10 @@ export function NewInterview() {
         <section
           aria-labelledby="setup-heading"
           id="interview-setup"
-          className="min-w-0 scroll-mt-20 rounded-lg border border-border bg-surface lg:sticky lg:top-20"
+          ref={setupPanel}
+          // Never taller than the window (useFitBelow refines the height): the settings scroll
+          // inside the panel and Start stays in view.
+          className="min-w-0 scroll-mt-20 rounded-lg border border-border bg-surface lg:sticky lg:top-20 lg:max-h-[calc(100dvh-6rem)] lg:overflow-y-auto"
         >
           <div className="border-b border-border p-4">
             <h2
@@ -634,6 +682,7 @@ export function NewInterview() {
                     value={prefs.interviewer.model}
                     onChange={(model) => updateInterviewer({ model })}
                   />
+                  <SavedKeyLine />
                   <div className="flex items-start gap-3">
                     <MicIcon className="mt-0.5 size-4 text-fg-subtle" aria-hidden />
                     <div className="min-w-0 flex-1">
@@ -657,23 +706,25 @@ export function NewInterview() {
               )}
             </div>
 
-            <InlineError error={start.error} />
-            <Button
-              variant="primary"
-              size="lg"
-              className="w-full"
-              onClick={() => (needsKey ? setKeyDialog(true) : start.mutate({}))}
-              disabled={start.isPending || !current}
-              aria-describedby={current ? undefined : 'start-hint'}
-            >
-              {start.isPending ? <Spinner /> : <CheckIcon />}
-              Start interview
-            </Button>
-            {!current && (
-              <p id="start-hint" className="-mt-3 text-center text-xs text-fg-muted">
-                Choose a problem to start.
-              </p>
-            )}
+            <div className="-mx-4 -mb-4 space-y-2 rounded-b-lg border-t border-border bg-surface p-4 lg:sticky lg:bottom-0">
+              <InlineError error={start.error} />
+              <Button
+                variant="primary"
+                size="lg"
+                className="w-full"
+                onClick={() => (needsKey ? setKeyDialog(true) : start.mutate({}))}
+                disabled={start.isPending || !current}
+                aria-describedby={current ? undefined : 'start-hint'}
+              >
+                {start.isPending ? <Spinner /> : <CheckIcon />}
+                Start interview
+              </Button>
+              {!current && (
+                <p id="start-hint" className="text-center text-xs text-fg-muted">
+                  Choose a problem to start.
+                </p>
+              )}
+            </div>
           </div>
         </section>
       </div>

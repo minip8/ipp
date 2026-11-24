@@ -116,3 +116,33 @@ test.describe('problem library', () => {
     await expect(panel).toContainText('Hash table');
   });
 });
+
+test.describe('interview setup panel', () => {
+  // A laptop-sized window: the whole panel (statement preview, language, duration, interviewer
+  // settings) is taller than the window.
+  test.use({ viewport: { width: 1280, height: 620 } });
+
+  test('Start stays in view without scrolling the page; the settings scroll inside the panel', async ({
+    page,
+  }) => {
+    await setup(page);
+    await page.goto('/new');
+    await page.getByRole('button', { name: /Two Sum/ }).click();
+    const start = page.getByRole('button', { name: 'Start interview' });
+    await expect(start).toBeInViewport({ ratio: 1 });
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+    // Everything above it is still reachable by scrolling the panel itself.
+    const panel = page.locator('#interview-setup');
+    expect(
+      await panel.evaluate((el) => el.scrollHeight > el.clientHeight),
+      'the panel should be scrollable at this height',
+    ).toBe(true);
+    await page.getByLabel('Voice').scrollIntoViewIfNeeded();
+    await expect(page.getByLabel('Voice')).toBeInViewport();
+    await expect(start).toBeInViewport({ ratio: 1 });
+    // ...and it still follows the page when the library is scrolled.
+    await page.mouse.move(300, 400);
+    await page.mouse.wheel(0, 600);
+    await expect(start).toBeInViewport({ ratio: 1 });
+  });
+});

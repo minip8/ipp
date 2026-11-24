@@ -82,6 +82,7 @@ export function AiKeyDialog({
   description = 'The AI interviewer, the written assessment and AI grading run on your own key; interview++ does not pay for model usage.',
   submitLabel,
   secondary,
+  manage,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -91,6 +92,11 @@ export function AiKeyDialog({
   description?: string;
   submitLabel?: string;
   secondary?: ReactNode;
+  /**
+   * Show the saved key with its Replace and Remove actions instead of going straight to the
+   * entry form: for "change or remove my key" from the interview setup and from a pad.
+   */
+  manage?: boolean;
 }) {
   const status = useAiKey(open);
   return (
@@ -107,7 +113,7 @@ export function AiKeyDialog({
         <DialogBody className="space-y-4 pb-5">
           <KeyFacts ttlHours={status.data?.ttlHours} provider={status.data?.provider} />
           <AiKeyForm
-            status={status.data?.state === 'active' ? undefined : status.data}
+            status={!manage && status.data?.state === 'active' ? undefined : status.data}
             compact
             autoFocus
             submitLabel={submitLabel}

@@ -7,6 +7,7 @@ import {
   BotOffIcon,
   ClockIcon,
   CpuIcon,
+  KeyRoundIcon,
   MicIcon,
   MicOffIcon,
   MoreHorizontalIcon,
@@ -49,6 +50,7 @@ import { Tooltip } from '@/components/ui/tooltip';
 import { AiKeyPrompt } from '@/features/ai-key/ai-key-prompt';
 import { providerLabel, rejectedTitle } from '@/features/ai-key/logic';
 import { ModelPicker } from '@/features/ai-key/model-picker';
+import { ManageKeyDialog } from '@/features/ai-key/saved-key-line';
 import { formatTimeOfDay, humanize } from '@/lib/format';
 import { useAiKey } from '@/lib/queries';
 import { cn } from '@/lib/utils';
@@ -394,6 +396,7 @@ export const ChatPanel = forwardRef<ChatHandle, { className?: string }>(function
   const { state, sendChat, readOnly, updateInterviewer, socketStatus } = usePad();
   const [draft, setDraft] = useState('');
   const [modelDialog, setModelDialog] = useState(false);
+  const [keyDialog, setKeyDialog] = useState(false);
   const input = useRef<HTMLTextAreaElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const [stuck, setStuck] = useState(true);
@@ -541,6 +544,13 @@ export const ChatPanel = forwardRef<ChatHandle, { className?: string }>(function
                     {state.interviewerModel?.id ?? 'Provider default'}
                   </p>
                 )}
+                {state.role === 'owner' && (
+                  <MenuItem onSelect={() => setKeyDialog(true)} data-testid="interviewer-key">
+                    <KeyRoundIcon />
+                    <span className="min-w-0 flex-1">API key</span>
+                    <span className="text-xs text-fg-subtle">Change or remove…</span>
+                  </MenuItem>
+                )}
                 <MenuSeparator />
                 <MenuItem onSelect={() => updateInterviewer({ enabled: false })}>
                   <BotOffIcon /> Turn the interviewer off
@@ -549,7 +559,10 @@ export const ChatPanel = forwardRef<ChatHandle, { className?: string }>(function
             </Menu>
           )}
           {state.role === 'owner' && !readOnly && (
-            <ModelDialog open={modelDialog} onOpenChange={setModelDialog} />
+            <>
+              <ModelDialog open={modelDialog} onOpenChange={setModelDialog} />
+              <ManageKeyDialog open={keyDialog} onOpenChange={setKeyDialog} />
+            </>
           )}
         </div>
       </header>

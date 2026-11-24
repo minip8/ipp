@@ -429,3 +429,56 @@ test.describe('quiz short answers', () => {
     await expect(page.getByRole('region', { name: 'Feedback' })).toContainText('Graded by the AI');
   });
 });
+
+test.describe('changing or removing the key where it is used', () => {
+  test('from the interview setup: the saved key is named, and can be removed there', async ({
+    page,
+  }) => {
+    const backend = await setup(page);
+    await page.goto('/new');
+    const line = page.getByTestId('saved-key-line');
+    await expect(line).toContainText('Anthropic key');
+    await line.getByRole('button', { name: 'Change or remove' }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByRole('heading', { name: 'Your AI API key' })).toBeVisible();
+    await expect(dialog.getByTestId('ai-key-saved')).toBeVisible();
+    await dialog.getByRole('button', { name: 'Remove' }).click();
+    // Removing closes the dialog; the page now asks for a key instead of naming one.
+    await expect(dialog).toHaveCount(0);
+    expect(backend.aiKey.state).toBe('missing');
+    await expect(page.getByTestId('saved-key-line')).toHaveCount(0);
+    await expect(page.getByTestId('ai-key-prompt')).toBeVisible();
+  });
+
+  test('from the interview setup: replace with a key from another provider', async ({ page }) => {
+    const backend = await setup(page);
+    await page.goto('/new');
+    await page.getByTestId('saved-key-line').getByRole('button').click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByRole('button', { name: 'Replace' }).click();
+    await dialog.getByTestId('ai-key-provider').click();
+    await page.getByRole('option', { name: 'OpenAI' }).click();
+    await dialog.getByLabel(/API key/).fill('sk-proj-replacement0000000000000000000000WXYZ');
+    await dialog.getByRole('button', { name: 'Save key' }).click();
+    await expect(dialog).toHaveCount(0);
+    expect(backend.savedKeys).toHaveLength(1);
+    await expect(page.getByTestId('saved-key-line')).toContainText('OpenAI key');
+    await expect(page.getByTestId('saved-key-line')).toContainText('WXYZ');
+  });
+
+  test('from a pad: the interviewer options open the same dialog for the owner', async ({
+    page,
+  }) => {
+    await setup(page);
+    await page.goto(`/pads/${ACTIVE_PAD_ID}`);
+    await page.getByRole('button', { name: 'Interviewer options' }).click();
+    await page.getByTestId('interviewer-key').click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByRole('heading', { name: 'Your AI API key' })).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'Replace' })).toBeVisible();
+    await dialog.getByRole('button', { name: 'Remove' }).click();
+    await expect(dialog).toHaveCount(0);
+    // Without a key the interviewer panel asks for one.
+    await expect(page.getByTestId('ai-key-prompt')).toBeVisible();
+  });
+});
