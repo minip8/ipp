@@ -88,8 +88,12 @@ for (const width of WIDTHS) {
       await setup(page);
       const bank = `/quiz/topics/${QUIZ_BANK_TOPIC}`;
       await page.goto(bank);
+      await expect(page.getByTestId('bank-subtopics')).toBeVisible();
+      await shoot(page, 'quiz-bank-overview', { fullPage: true });
+
+      await page.goto(`${bank}?subtopic=Processes`);
       await expect(page.getByTestId('bank-list')).toBeVisible();
-      await shoot(page, 'quiz-bank-list', { fullPage: true });
+      await shoot(page, 'quiz-bank-subtopic', { fullPage: true });
 
       await page.goto(`${bank}?question=os-virtual-memory-002`);
       await page.getByRole('radio', { name: /page fault/ }).click();
@@ -108,17 +112,20 @@ for (const width of WIDTHS) {
       await shoot(page, 'quiz-bank-empty');
     });
 
-    test('question bank outline', async ({ page }) => {
+    test('question bank, many subtopics', async ({ page }) => {
       await setup(page, (b) => {
         b.quizBank.questions = QUIZ_BANK_LONG;
       });
       const bank = `/quiz/topics/${QUIZ_BANK_TOPIC}`;
       await page.goto(bank);
-      await expect(page.getByTestId('bank-list')).toBeVisible();
-      await shoot(page, 'quiz-bank-outline', { fullPage: true });
+      await expect(page.getByTestId('bank-subtopics')).toBeVisible();
+      await shoot(page, 'quiz-bank-overview-long', { fullPage: true });
+      await page.getByLabel('Search questions').fill('s');
+      await page.getByRole('radio', { name: /^New/ }).click();
+      await shoot(page, 'quiz-bank-overview-narrowed', { fullPage: true });
       await page.goto(`${bank}?question=os-processes-004`);
       await expect(page.getByLabel('Your answer')).toBeVisible();
-      await shoot(page, 'quiz-bank-outline-open', { fullPage: true });
+      await shoot(page, 'quiz-bank-long-question', { fullPage: true });
     });
   });
 }
