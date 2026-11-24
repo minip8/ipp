@@ -259,7 +259,10 @@ export function Workspace() {
   }, [readOnly, telemetry]);
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden bg-bg">
+    // `relative`: visually hidden (sr-only) labels are absolutely positioned. Without a positioned
+    // ancestor they sit in the document, outside every panel's clipping, at wherever their panel's
+    // content put them, and one far down a scrolled panel made the whole page scrollable.
+    <div className="relative flex h-dvh flex-col overflow-hidden bg-bg">
       <TopBar
         onSettings={() => setDialog('settings')}
         onShortcuts={() => setDialog('shortcuts')}

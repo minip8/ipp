@@ -14,7 +14,7 @@ import { Workspace } from './workspace';
 function PadSkeleton() {
   return (
     <div
-      className="flex h-dvh flex-col"
+      className="relative flex h-dvh flex-col overflow-hidden"
       role="status"
       aria-busy="true"
       aria-label="Loading the interview"

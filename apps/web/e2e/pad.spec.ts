@@ -409,3 +409,37 @@ test('voice mode: speech becomes a voice message and replies are spoken', async 
     interviewer: { voice: true },
   });
 });
+
+test.describe('the pad fills the window exactly', () => {
+  for (const viewport of [
+    { width: 1440, height: 900 },
+    { width: 1280, height: 620 },
+  ]) {
+    test(`the page itself cannot scroll at ${viewport.width}x${viewport.height}`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(viewport);
+      await setup(page);
+      await page.goto(`/pads/${ACTIVE_PAD_ID}`);
+      await expect(page.locator('.view-lines')).toContainText('class Solution', {
+        timeout: 20_000,
+      });
+      // The problem panel is longer than the window and scrolls inside itself...
+      const height = () =>
+        page.evaluate(() => ({
+          doc: document.documentElement.scrollHeight,
+          win: window.innerHeight,
+        }));
+      const { doc, win } = await height();
+      // ...but nothing (such as a visually hidden label deep in a panel) makes the document taller.
+      expect(doc).toBe(win);
+      await page.evaluate(() => window.scrollTo(0, 99_999));
+      await page.mouse.move(120, 300);
+      await page.mouse.wheel(0, 4000);
+      expect(await page.evaluate(() => window.scrollY)).toBe(0);
+      // The console and chat tabs must not break it either.
+      await page.getByRole('button', { name: 'Run tests' }).click();
+      await expect.poll(async () => (await height()).doc).toBe(win);
+    });
+  }
+});
