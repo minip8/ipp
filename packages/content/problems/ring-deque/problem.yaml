@@ -1,0 +1,48 @@
+slug: ring-deque
+title: Ring Buffer Deque
+difficulty: medium
+category: data-structure
+tags: [design, deque, array]
+signature:
+  className: RingDeque
+  kind: design
+  methods:
+    - name: pushFront
+      params:
+        - { name: value, type: int }
+      returns: void
+    - name: pushBack
+      params:
+        - { name: value, type: int }
+      returns: void
+    - name: popFront
+      params: []
+      returns: int
+    - name: popBack
+      params: []
+      returns: int
+    - name: front
+      params: []
+      returns: int
+    - name: back
+      params: []
+      returns: int
+    - name: get
+      params:
+        - { name: index, type: int }
+      returns: int
+    - name: size
+      params: []
+      returns: int
+    - name: resize
+      params:
+        - { name: n, type: int }
+        - { name: value, type: int }
+      returns: void
+    - name: toArray
+      params: []
+      returns: { array: int }
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Implementing a subset of std::deque / Python's collections.deque on a growable circular buffer; extends Design Circular Deque (LeetCode 641)
+  url: https://leetcode.com/problems/design-circular-deque/

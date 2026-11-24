@@ -1,0 +1,59 @@
+slug: dynamic-array
+title: Dynamic Array (Vector)
+difficulty: easy
+category: data-structure
+tags: [design, array]
+signature:
+  className: DynamicArray
+  kind: design
+  methods:
+    - name: pushBack
+      params:
+        - { name: value, type: int }
+      returns: void
+    - name: popBack
+      params: []
+      returns: int
+    - name: get
+      params:
+        - { name: index, type: int }
+      returns: int
+    - name: set
+      params:
+        - { name: index, type: int }
+        - { name: value, type: int }
+      returns: bool
+    - name: insert
+      params:
+        - { name: index, type: int }
+        - { name: value, type: int }
+      returns: bool
+    - name: erase
+      params:
+        - { name: index, type: int }
+      returns: int
+    - name: size
+      params: []
+      returns: int
+    - name: capacity
+      params: []
+      returns: int
+    - name: reserve
+      params:
+        - { name: n, type: int }
+      returns: void
+    - name: resize
+      params:
+        - { name: n, type: int }
+        - { name: value, type: int }
+      returns: void
+    - name: shrinkToFit
+      params: []
+      returns: void
+    - name: toArray
+      params: []
+      returns: { array: int }
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Implementing a subset of std::vector (growth policy, amortised push_back); a staple of C++ and systems interviews
+  url: https://en.cppreference.com/w/cpp/container/vector
