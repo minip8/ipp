@@ -125,7 +125,10 @@ export class EventsGateway {
     const ev = parsed.data;
     if (ev.type === 'ping') return send(client, { type: 'pong' });
 
-    const [pad] = await ctx.db.select({ status: pads.status }).from(pads).where(eq(pads.id, padId));
+    const [pad] = await ctx.db
+      .select({ status: pads.status, kind: pads.kind, ownerId: pads.ownerId })
+      .from(pads)
+      .where(eq(pads.id, padId));
     if (pad?.status !== 'active') {
       return send(client, { type: 'error', code: 'pad_ended', message: 'This pad has ended' });
     }
@@ -169,7 +172,8 @@ export class EventsGateway {
           .insert(messages)
           .values({
             padId,
-            role: 'candidate',
+            // In a room the host is the interviewer and the conversation is between people.
+            role: pad.kind === 'room' && pad.ownerId === userId ? 'interviewer' : 'candidate',
             kind: 'chat',
             intent: null,
             text,
@@ -179,7 +183,8 @@ export class EventsGateway {
           .returning();
         if (!row) return;
         ctx.rooms.broadcast(padId, { type: 'message.created', message: messageView(row) });
-        ctx.ai.trigger(padId, { type: 'candidate_message', text, via: ev.via, userId });
+        if (pad.kind !== 'room')
+          ctx.ai.trigger(padId, { type: 'candidate_message', text, via: ev.via, userId });
         return;
       }
       case 'telemetry': {

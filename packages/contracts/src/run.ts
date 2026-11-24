@@ -1,6 +1,6 @@
 /** Client-facing view of a code run. Hidden-test detail is stripped by the API, never by the browser. */
 import { z } from 'zod';
-import { Id, IsoDate, Json, Language } from './common';
+import { Id, IsoDate, Json, Language, Slug } from './common';
 import { CompileOutcome, FileOutcome, JudgeTestResult, RunVerdict, TestVerdict } from './judge';
 import { Call } from './problem';
 
@@ -39,6 +39,8 @@ export const Run = z.object({
   id: Id,
   padId: Id,
   userId: z.string(),
+  /** The pad's problem when the run was made (null: a blank room, or a run from before rooms). */
+  problemSlug: Slug.nullable().optional(),
   mode: RunMode,
   language: Language,
   status: z.enum(['queued', 'running', 'finished']),

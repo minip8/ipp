@@ -51,6 +51,8 @@ export const user = pgTable('user', {
   email: text('email').notNull().unique(),
   emailVerified: boolean('email_verified').notNull().default(false),
   image: text('image'),
+  /** Better Auth's anonymous plugin: a guest who joined a room by its link with just a name. */
+  isAnonymous: boolean('is_anonymous').notNull().default(false),
   createdAt: tsz('created_at').notNull().defaultNow(),
   updatedAt: tsz('updated_at').notNull().defaultNow(),
 });
@@ -159,6 +161,7 @@ export const problemTests = pgTable(
 
 export type PadStatus = 'active' | 'ended';
 export type PadRole = 'owner' | 'collaborator';
+export type PadKind = 'practice' | 'room';
 
 export const pads = pgTable(
   'pads',
@@ -168,14 +171,17 @@ export const pads = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
     title: text('title').notNull(),
-    problemSlug: text('problem_slug')
-      .notNull()
-      .references(() => problems.slug),
+    /** practice: the owner is the candidate; room: the owner hosts and interviews whoever joins. */
+    kind: text('kind').$type<PadKind>().notNull().default('practice'),
+    /** null: a room with a blank editor. A room's host can change it during the interview. */
+    problemSlug: text('problem_slug').references(() => problems.slug),
     language: text('language').$type<Language>().notNull(),
     status: text('status').$type<PadStatus>().notNull().default('active'),
     durationMin: integer('duration_min').notNull(),
     interviewer: jsonb('interviewer').$type<InterviewerSettings>().notNull(),
     shareToken: text('share_token').notNull().unique(),
+    /** Rooms: the host's private notes on the interview. Never sent to anyone else. */
+    hostNotes: text('host_notes').notNull().default(''),
     startedAt: tsz('started_at').notNull().defaultNow(),
     endedAt: tsz('ended_at'),
     /** Set when session_started was sent to the interviewer (first time the pad is opened). */
@@ -278,6 +284,8 @@ export const runs = pgTable(
     userId: text('user_id')
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
+    /** The pad's problem when the run was queued (a room's problem can change). */
+    problemSlug: text('problem_slug'),
     mode: text('mode').$type<'file' | 'samples' | 'custom' | 'submit'>().notNull(),
     language: text('language').$type<Language>().notNull(),
     source: text('source').notNull(),

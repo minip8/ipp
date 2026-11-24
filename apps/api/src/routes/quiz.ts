@@ -12,7 +12,7 @@ import { quizAnswers, quizAttempts, quizQuestions, quizTopics } from '@ipp/db';
 import { and, desc, eq, inArray, sql } from '@ipp/db/orm';
 import { Hono } from 'hono';
 import type { Ctx } from '../context';
-import { type Env, parseBody, requireUser } from '../http/app';
+import { type Env, parseBody, requireAccount } from '../http/app';
 import { badRequest, conflict, notFound, rateLimited } from '../http/errors';
 import {
   type AnswerRow,
@@ -102,7 +102,7 @@ export function quizRoutes(ctx: Ctx) {
   }
 
   r.get('/quiz/topics', async (c) => {
-    const user = requireUser(c);
+    const user = requireAccount(c);
     // Latest graded answer per question, from attempts and the question bank.
     const latest = db.$with('latest').as(latestAnswers(db, user.id, { graded: true }));
     const rows = await db
@@ -133,7 +133,7 @@ export function quizRoutes(ctx: Ctx) {
   });
 
   r.post('/quiz/attempts', async (c) => {
-    const user = requireUser(c);
+    const user = requireAccount(c);
     const body = await parseBody(c, CreateAttemptRequest);
     const topics = [...new Set(body.topics)];
     const known = await db
@@ -179,7 +179,7 @@ export function quizRoutes(ctx: Ctx) {
   });
 
   r.get('/quiz/attempts', async (c) => {
-    const user = requireUser(c);
+    const user = requireAccount(c);
     const rows = await db
       .select()
       .from(quizAttempts)
@@ -200,12 +200,12 @@ export function quizRoutes(ctx: Ctx) {
   });
 
   r.get('/quiz/attempts/:id', async (c) => {
-    const user = requireUser(c);
+    const user = requireAccount(c);
     return c.json(await view(await loadAttempt(c.req.param('id'), user.id)));
   });
 
   r.post('/quiz/attempts/:id/answers', async (c) => {
-    const user = requireUser(c);
+    const user = requireAccount(c);
     const attempt = await loadAttempt(c.req.param('id'), user.id);
     const body = await parseBody(c, SubmitAnswerRequest);
     if (!attempt.questionIds.includes(body.questionId))
@@ -258,7 +258,7 @@ export function quizRoutes(ctx: Ctx) {
   });
 
   r.post('/quiz/attempts/:id/finish', async (c) => {
-    const user = requireUser(c);
+    const user = requireAccount(c);
     const attempt = await loadAttempt(c.req.param('id'), user.id);
     if (attempt.status === 'finished') return c.json(await view(attempt));
     const score = await recomputeScore(attempt);

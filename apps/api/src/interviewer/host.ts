@@ -14,8 +14,8 @@ import {
   type ProblemContent,
   type ServerEvent,
 } from '@ipp/contracts';
-import { aiUsage, interviewerNotes, messages, pads, problems, runs } from '@ipp/db';
-import { and, count, desc, eq, inArray, sql } from '@ipp/db/orm';
+import { aiUsage, interviewerNotes, messages, pads, problems, runs, timelineEvents } from '@ipp/db';
+import { and, asc, count, desc, eq, inArray, sql } from '@ipp/db/orm';
 import type { Ctx } from '../context';
 import { toInterviewerRun } from '../runs/redact';
 import { messageView, padView, storedRun } from '../views';
@@ -28,6 +28,7 @@ import type {
   NewMessage,
   QuizQuestionShort,
   ResolvedKey,
+  RoomContext,
   ShortAnswerGrade,
   Trigger,
 } from './types';
@@ -47,6 +48,27 @@ interface PadGate {
 }
 
 const OWNER_CACHE_MAX = 2000;
+
+/** The problem with its server-only fields, as the model's private context. */
+function problemContent(problem: typeof problems.$inferSelect): Omit<ProblemContent, 'tests'> {
+  return {
+    slug: problem.slug,
+    title: problem.title,
+    difficulty: problem.difficulty,
+    category: problem.category,
+    tags: problem.tags,
+    statement: problem.statement,
+    signature: problem.signature,
+    limits: problem.limits,
+    interviewerNotes: problem.interviewerNotes,
+    referenceSolutions: problem.referenceSolutions,
+    languages: problem.languages,
+    starterCode: problem.starterCode,
+    // What the tests exercise when the candidate's code is driven by a harness.
+    harness: problem.harness,
+    ...(problem.source ? { source: problem.source } : {}),
+  };
+}
 
 export class InterviewerHost {
   readonly interviewer: Interviewer;
@@ -121,12 +143,22 @@ export class InterviewerHost {
     const live = this.ctx.rooms.pads();
     if (live.length === 0) return;
     const owned = await this.ctx.db
-      .select({ id: pads.id, status: pads.status, interviewer: pads.interviewer })
+      .select({
+        id: pads.id,
+        status: pads.status,
+        kind: pads.kind,
+        interviewer: pads.interviewer,
+      })
       .from(pads)
       .where(and(eq(pads.ownerId, userId), inArray(pads.id, live)));
     for (const p of owned) {
       const { key: state, model } = await this.padModel(userId, p.interviewer);
-      this.ctx.rooms.broadcast(p.id, { type: 'interviewer.status', key: state, model });
+      // In a room the AI is the host's private adviser: candidates hear nothing about the key.
+      this.ctx.rooms.broadcast(
+        p.id,
+        { type: 'interviewer.status', key: state, model },
+        p.kind === 'room' ? userId : undefined,
+      );
       if (state === 'active' && p.status === 'active' && p.interviewer.enabled)
         this.interviewer.handle(p.id, { type: 'session_started' });
     }
@@ -138,7 +170,7 @@ export class InterviewerHost {
    */
   async modelUnavailable(padId: string, model: AiModelChoice): Promise<void> {
     const [row] = await this.ctx.db
-      .select({ interviewer: pads.interviewer, ownerId: pads.ownerId })
+      .select({ interviewer: pads.interviewer, ownerId: pads.ownerId, kind: pads.kind })
       .from(pads)
       .where(eq(pads.id, padId));
     const chosen = row?.interviewer.model;
@@ -152,7 +184,11 @@ export class InterviewerHost {
     if (!updated) return;
     this.ctx.rooms.broadcast(padId, { type: 'pad.updated', pad: padView(updated, null) });
     const { key, model: now } = await this.padModel(row.ownerId, updated.interviewer);
-    this.ctx.rooms.broadcast(padId, { type: 'interviewer.status', key, model: now });
+    this.ctx.rooms.broadcast(
+      padId,
+      { type: 'interviewer.status', key, model: now },
+      row.kind === 'room' ? row.ownerId : undefined,
+    );
   }
 
   /** Call after a pad's status or interviewer settings change. */
@@ -214,6 +250,7 @@ export class InterviewerHost {
       keyRejected: (scope, keyId, problem) => this.keyRejected(scope, keyId, problem),
       modelUnavailable: (padId, model) => this.modelUnavailable(padId, model),
       loadContext: (padId) => this.loadContext(padId),
+      loadRoomContext: (padId) => this.loadRoomContext(padId),
       saveMessage: (padId, message) => this.saveMessage(padId, message),
       appendPrivateNote: async (padId, note) => {
         await ctx.db.insert(interviewerNotes).values({ padId, note: note.slice(0, 4000) });
@@ -237,8 +274,10 @@ export class InterviewerHost {
     const { db } = this.ctx;
     const [pad] = await db.select().from(pads).where(eq(pads.id, padId));
     if (!pad) throw new Error(`pad ${padId} not found`);
-    const [problem] = await db.select().from(problems).where(eq(problems.slug, pad.problemSlug));
-    if (!problem) throw new Error(`problem ${pad.problemSlug} not found`);
+    const [problem] = pad.problemSlug
+      ? await db.select().from(problems).where(eq(problems.slug, pad.problemSlug))
+      : [];
+    if (!problem) throw new Error(`pad ${padId} has no problem (${pad.problemSlug})`);
     const [texts, transcript, recent, notes] = await Promise.all([
       this.ctx.collab.readTexts(padId),
       db
@@ -255,33 +294,61 @@ export class InterviewerHost {
         .orderBy(desc(interviewerNotes.at))
         .limit(PRIVATE_NOTES_LIMIT),
     ]);
-    const content: Omit<ProblemContent, 'tests'> = {
-      slug: problem.slug,
-      title: problem.title,
-      difficulty: problem.difficulty,
-      category: problem.category,
-      tags: problem.tags,
-      statement: problem.statement,
-      signature: problem.signature,
-      limits: problem.limits,
-      interviewerNotes: problem.interviewerNotes,
-      referenceSolutions: problem.referenceSolutions,
-      languages: problem.languages,
-      starterCode: problem.starterCode,
-      // What the tests exercise when the candidate's code is driven by a harness.
-      harness: problem.harness,
-      ...(problem.source ? { source: problem.source } : {}),
-    };
     const language: Language = pad.language;
     return {
       pad: padView(pad, null),
-      problem: content,
+      problem: problemContent(problem),
       language,
       code: texts.code[language],
       notes: texts.notes,
       transcript: transcript.reverse().map(messageView),
       recentRuns: recent.map((r) => toInterviewerRun(storedRun(r))),
       privateNotes: notes.map((n) => n.note).reverse(),
+      now: new Date(),
+    };
+  }
+
+  /** A room as its host's adviser sees it: host notes included, the problem possibly absent. */
+  async loadRoomContext(padId: string): Promise<RoomContext> {
+    const { db } = this.ctx;
+    const [pad] = await db.select().from(pads).where(eq(pads.id, padId));
+    if (!pad) throw new Error(`pad ${padId} not found`);
+    const [problem] = pad.problemSlug
+      ? await db.select().from(problems).where(eq(problems.slug, pad.problemSlug))
+      : [];
+    const [texts, transcript, recent, changes] = await Promise.all([
+      this.ctx.collab.readTexts(padId),
+      db
+        .select()
+        .from(messages)
+        .where(eq(messages.padId, padId))
+        .orderBy(desc(messages.createdAt))
+        .limit(TRANSCRIPT_LIMIT),
+      db.select().from(runs).where(eq(runs.padId, padId)).orderBy(desc(runs.createdAt)).limit(10),
+      db
+        .select({ event: timelineEvents.event })
+        .from(timelineEvents)
+        .where(
+          and(eq(timelineEvents.padId, padId), sql`${timelineEvents.event}->>'type' = 'problem'`),
+        )
+        .orderBy(asc(timelineEvents.at)),
+    ]);
+    // Each change records the problem moved to; the one before the first is not recorded, so
+    // "earlier" is every title moved to except the current one.
+    const current = problem?.title ?? 'Blank';
+    const earlier = changes
+      .map((c) => (c.event.type === 'problem' ? c.event.title : ''))
+      .filter((title) => title && title !== current);
+    return {
+      pad: padView(pad, null),
+      problem: problem ? problemContent(problem) : null,
+      earlierProblems: [...new Set(earlier)],
+      language: pad.language,
+      code: texts.code[pad.language],
+      notes: texts.notes,
+      hostNotes: pad.hostNotes,
+      transcript: transcript.reverse().map(messageView),
+      recentRuns: recent.map((r) => toInterviewerRun(storedRun(r))),
       now: new Date(),
     };
   }

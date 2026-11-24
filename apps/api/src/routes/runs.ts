@@ -19,6 +19,8 @@ export function runRoutes(ctx: Ctx) {
     const body = await parseBody(c, CreateRunRequest);
     const run = await ctx.runs.create({
       userId: user.id,
+      // A room's candidates (guests included) run code on the host's allowance.
+      ...(pad.kind === 'room' ? { chargeUserId: pad.ownerId } : {}),
       ip: c.get('ip'),
       padId: pad.id,
       problemSlug: pad.problemSlug,

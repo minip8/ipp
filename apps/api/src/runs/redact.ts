@@ -18,6 +18,7 @@ export interface StoredRun {
   id: string;
   padId: string;
   userId: string;
+  problemSlug: string | null;
   mode: RunMode;
   language: Run['language'];
   status: Run['status'];
@@ -34,6 +35,7 @@ function base(row: StoredRun): Omit<Run, 'tests' | 'passed'> {
     id: row.id,
     padId: row.padId,
     userId: row.userId,
+    problemSlug: row.problemSlug,
     mode: row.mode,
     language: row.language,
     status: row.status,

@@ -13,7 +13,15 @@ export function miscRoutes(ctx: Ctx) {
 
   r.get('/me', (c) => {
     const user = requireUser(c);
-    return c.json({ user: { id: user.id, name: user.name, email: user.email, image: user.image } });
+    return c.json({
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        image: user.image,
+        guest: user.guest,
+      },
+    });
   });
 
   // Server facts only. Whether the AI features work is per user (their own key): GET /api/ai-key,

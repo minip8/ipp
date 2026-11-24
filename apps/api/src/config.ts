@@ -93,6 +93,12 @@ export interface Limits {
   aiModels: { userBurst: RateLimit };
   /** Asking for a report assessment again (after adding a key). */
   assessmentRetry: { userBurst: RateLimit };
+  /** A room host asking the AI for a second opinion on the code (one model call each). */
+  review: { userBurst: RateLimit; userDaily: RateLimit };
+  /** Reading an invite or joining by one, per client address (the token is the only secret). */
+  invites: { ipBurst: RateLimit; ipDaily: RateLimit };
+  /** A room host changing the problem (each rewrites the editor document). */
+  problemChange: { userBurst: RateLimit };
   /** Hard cap on interviewer messages per pad (spend guard). */
   interviewerMessagesPerPad: number;
   collab: {
@@ -129,6 +135,9 @@ export const DEFAULT_LIMITS: Limits = {
   },
   aiModels: { userBurst: { limit: 30, windowSec: 600 } },
   assessmentRetry: { userBurst: { limit: 5, windowSec: 3600 } },
+  review: { userBurst: { limit: 6, windowSec: 60 }, userDaily: { limit: 150, windowSec: 86_400 } },
+  invites: { ipBurst: { limit: 30, windowSec: 60 }, ipDaily: { limit: 600, windowSec: 86_400 } },
+  problemChange: { userBurst: { limit: 10, windowSec: 60 } },
   interviewerMessagesPerPad: 200,
   collab: { docBytes: 16 * 1024 * 1024, preAuthBytes: 64 * 1024, authTimeoutMs: 15_000 },
 };

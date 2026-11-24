@@ -9,7 +9,7 @@
  */
 import type { Language } from './common';
 import type { ProblemSignature } from './problem';
-import { generateScaffold } from './scaffold';
+import { BLANK_SCAFFOLDS, generateScaffold } from './scaffold';
 
 /**
  * File name the C++ harness is compiled under: diagnostics in harness lines read
@@ -52,13 +52,15 @@ export interface StarterSource {
  * The editor's starting code: the problem's starter code if it has one, else the scaffold
  * generated from the signature. Empty for a language the problem does not offer (its signature
  * may be a harness class the candidate never writes).
+ * No problem (a blank room): a small program that runs as written.
  */
-export function problemScaffold(problem: StarterSource, language: Language): string {
+export function problemScaffold(problem: StarterSource | null, language: Language): string {
+  if (!problem) return BLANK_SCAFFOLDS[language];
   if (problem.languages && !problem.languages.includes(language)) return '';
   return problem.starterCode?.[language] ?? generateScaffold(problem.signature, language);
 }
 
-export function problemScaffolds(problem: StarterSource): Record<Language, string> {
+export function problemScaffolds(problem: StarterSource | null): Record<Language, string> {
   return {
     cpp: problemScaffold(problem, 'cpp'),
     python: problemScaffold(problem, 'python'),

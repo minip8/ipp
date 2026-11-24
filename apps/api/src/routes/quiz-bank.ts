@@ -16,7 +16,7 @@ import { quizQuestions, quizStandaloneAnswers, quizTopics } from '@ipp/db';
 import { and, eq } from '@ipp/db/orm';
 import { Hono } from 'hono';
 import type { Ctx } from '../context';
-import { type Env, parseBody, requireUser } from '../http/app';
+import { type Env, parseBody, requireAccount } from '../http/app';
 import { badRequest, notFound, rateLimited } from '../http/errors';
 import {
   applySelfGrade,
@@ -64,7 +64,7 @@ export function quizBankRoutes(ctx: Ctx) {
   }
 
   r.get('/quiz/topics/:slug/questions', async (c) => {
-    const user = requireUser(c);
+    const user = requireAccount(c);
     const slug = c.req.param('slug');
     if (!Slug.safeParse(slug).success) throw notFound('Topic');
     const [topic] = await db.select().from(quizTopics).where(eq(quizTopics.slug, slug));
@@ -84,7 +84,7 @@ export function quizBankRoutes(ctx: Ctx) {
   });
 
   r.get('/quiz/questions/:id', async (c) => {
-    const user = requireUser(c);
+    const user = requireAccount(c);
     const q = await activeQuestion(c.req.param('id'));
     const a = (await latestAnswerMap(db, user.id, { questionIds: [q.id] })).get(q.id);
     const out: QuizBankQuestion = {
@@ -96,7 +96,7 @@ export function quizBankRoutes(ctx: Ctx) {
   });
 
   r.post('/quiz/questions/:id/answers', async (c) => {
-    const user = requireUser(c);
+    const user = requireAccount(c);
     const body = await parseBody(c, SubmitStandaloneAnswerRequest);
     // Same budget as attempt answers: short answers are graded on the user's own key.
     const wait = await ctx.limiter.hit([
