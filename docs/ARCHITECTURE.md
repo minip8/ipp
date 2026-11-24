@@ -61,7 +61,7 @@ Better Auth owns `user`, `session`, `account`, `verification` (text ids). App ta
 |---|---|
 | `problems` | `slug` pk, title, difficulty, category, tags text[], statement, signature jsonb, limits jsonb, interviewer_notes, reference_solutions jsonb, languages text[], starter_code jsonb, harness jsonb (server-only), source jsonb |
 | `problem_tests` | problem_slug, idx, hidden, data jsonb (`TestCase`) |
-| `pads` | id uuid, owner_id, title, kind (`practice` / `room`), problem_slug (null: a blank room), language, status, duration_min, interviewer jsonb, share_token, host_notes (rooms, host-only), started_at, ended_at |
+| `pads` | id uuid, owner_id, title, kind (`practice` / `room`), problem_slug (null: a blank room), language, status, duration_min (null: no time limit), interviewer jsonb, share_token, host_notes (rooms, host-only), started_at, ended_at |
 | `pad_members` | pad_id, user_id, role (`owner`; `collaborator` = a room's candidate) |
 | `pad_docs` | pad_id pk, state bytea (merged Yjs state), updated_at |
 | `pad_updates` | pad_id, seq, at, update bytea — append-only Yjs history for playback, coalesced to at most one row per ~2 s of editing |
@@ -514,7 +514,9 @@ a regression test.
 - A rejected key is not re-checked: after topping up credit the user saves the key again.
 - CSP styles still allow `'unsafe-inline'` (Monaco and React inline styles).
 - The queue-depth check is not atomic and can overshoot under concurrent submissions.
-- Pads do not end automatically when the timer reaches zero; the interviewer calls time.
+- Pads do not end automatically when the timer reaches zero; the interviewer calls time. (A pad
+  created with `durationMin: null` has no time limit: its clock shows the time elapsed, and the
+  interviewer raises no clock checkpoints and is told not to bring up the time.)
 
 ## 10. Out of scope for the first version
 

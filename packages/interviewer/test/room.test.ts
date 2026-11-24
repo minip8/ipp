@@ -299,6 +299,16 @@ describe('room assessment', () => {
     expect(system).toContain('about the candidate in the third person');
   });
 
+  it('says so when the room had no time limit', async () => {
+    const r = room({
+      model: new FakeModel(() => JSON.stringify(assessment)),
+      ctx: { pad: { ...pad, durationMin: null } },
+    });
+    await r.iv.generateRoomAssessment(PAD_ID);
+    const system = text(r.model.calls[0] as ModelRequest, 'system');
+    expect(system).toContain('Session: no time limit; now at 20:00');
+  });
+
   it('is null without a key, over budget, or when the model fails', async () => {
     expect(
       await room({ key: { ok: false, state: 'rejected' } }).iv.generateRoomAssessment(PAD_ID),

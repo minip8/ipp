@@ -445,14 +445,24 @@ export interface StateFacts {
   silentDecisions: { at: number; kind: string; reason: string }[];
 }
 
+/** Where the session is against its planned length, or that it has none. */
+export function sessionClock(durationMin: number | null, elapsed: number): string {
+  if (durationMin === null)
+    return `Session clock: ${clock(elapsed)} elapsed. This session has no time limit: do not bring up the time or hurry the candidate, and wrap up only when they say they are done.`;
+  const remaining = durationMin * 60_000 - elapsed;
+  return `Session clock: ${clock(elapsed)} elapsed of ${durationMin} min (${remaining > 0 ? `${duration(remaining)} left` : `over time by ${duration(-remaining)}`}).`;
+}
+
+/** "45 min planned", or "no time limit". */
+export const plannedLength = (durationMin: number | null) =>
+  durationMin === null ? 'no time limit' : `${durationMin} min planned`;
+
 export function stateText(ctx: InterviewContext, f: StateFacts): string {
   const startedAt = Date.parse(ctx.pad.startedAt);
   const elapsed = f.now - startedAt;
-  const total = ctx.pad.durationMin * 60_000;
-  const remaining = total - elapsed;
   const s = ctx.pad.interviewer;
   const lines = [
-    `Session clock: ${clock(elapsed)} elapsed of ${ctx.pad.durationMin} min (${remaining > 0 ? `${duration(remaining)} left` : `over time by ${duration(-remaining)}`}).`,
+    sessionClock(ctx.pad.durationMin, elapsed),
     `Language: ${LANGUAGE_LABELS[ctx.language]}. Interviewer style: ${s.style}. Proactivity: ${s.proactivity}. Voice: ${s.voice ? 'on (your messages are spoken aloud)' : 'off'}.`,
     `Candidate activity: last edit ${f.lastCodeChangeAt === null ? 'none yet' : `${duration(f.now - f.lastCodeChangeAt)} ago`}; last chat message ${f.lastCandidateMsgAt === null ? 'none yet' : `${duration(f.now - f.lastCandidateMsgAt)} ago`}. Runs so far: ${f.runs}. Accepted submission: ${f.accepted ? 'yes' : 'no'}.`,
   ];
@@ -550,7 +560,7 @@ export function assessmentMessages(ctx: InterviewContext, events: SessionEvent[]
   const runs = [...ctx.recentRuns].reverse();
   const runLines = runs.map((r) => `[${at(r.createdAt, startedAt)}] ${runFact(r, null)}`);
   const state = [
-    `Session: ${ctx.pad.durationMin} min planned; ended at ${clock((ctx.pad.endedAt ? Date.parse(ctx.pad.endedAt) : ctx.now.getTime()) - startedAt)}. Final language: ${LANGUAGE_LABELS[ctx.language]}. Interviewer style was ${ctx.pad.interviewer.style}.`,
+    `Session: ${plannedLength(ctx.pad.durationMin)}; ended at ${clock((ctx.pad.endedAt ? Date.parse(ctx.pad.endedAt) : ctx.now.getTime()) - startedAt)}. Final language: ${LANGUAGE_LABELS[ctx.language]}. Interviewer style was ${ctx.pad.interviewer.style}.`,
     runLines.length
       ? `Run history (most recent ${runLines.length}):\n${runLines.join('\n')}`
       : 'No runs.',

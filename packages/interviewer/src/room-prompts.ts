@@ -16,6 +16,7 @@ import {
   LIMITS,
   neutralise,
   numbered,
+  plannedLength,
   problemPrompt,
   runFact,
   runOutput,
@@ -94,7 +95,7 @@ export function roomFacts(ctx: RoomContext): string {
   const end = ctx.pad.endedAt ? Date.parse(ctx.pad.endedAt) : ctx.now.getTime();
   const runs = [...ctx.recentRuns].reverse();
   const lines = [
-    `Session: ${ctx.pad.durationMin} min planned; ${ctx.pad.endedAt ? 'ended at' : 'now at'} ${clock(end - startedAt)}. Editor language: ${LANGUAGE_LABELS[ctx.language]}.`,
+    `Session: ${plannedLength(ctx.pad.durationMin)}; ${ctx.pad.endedAt ? 'ended at' : 'now at'} ${clock(end - startedAt)}. Editor language: ${LANGUAGE_LABELS[ctx.language]}.`,
   ];
   if (ctx.earlierProblems.length)
     lines.push(

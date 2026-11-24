@@ -44,7 +44,8 @@ export const Pad = z.object({
   problemSlug: Slug.nullable(),
   language: Language,
   status: z.enum(['active', 'ended']),
-  durationMin: z.int(),
+  /** null: no time limit (no countdown, and the AI interviewer never brings up the clock). */
+  durationMin: z.int().nullable(),
   interviewer: InterviewerSettings,
   /**
    * Present only for the owner. A practice pad: anyone signed in with the link joins as a
@@ -64,7 +65,8 @@ export const CreatePadRequest = z.object({
   /** Rooms only: start without a problem. */
   blank: z.boolean().optional(),
   language: Language,
-  durationMin: z.int().min(5).max(180).default(45),
+  /** null: no time limit. */
+  durationMin: z.int().min(5).max(180).nullable().default(45),
   interviewer: InterviewerSettings.default({
     enabled: true,
     style: 'neutral',

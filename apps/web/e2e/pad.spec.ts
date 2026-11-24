@@ -32,6 +32,31 @@ test('create a pad from the library with the chosen settings', async ({ page }) 
   });
 });
 
+test('a pad without a time limit shows the time elapsed instead of a countdown', async ({
+  page,
+}) => {
+  const backend = await setup(page);
+  await page.goto('/new');
+  await page.getByRole('button', { name: /LRU Cache/ }).click();
+  await expect(page.getByTestId('duration-note')).toHaveCount(0);
+  await page.getByRole('radio', { name: 'No limit' }).click();
+  await expect(page.getByTestId('duration-note')).toContainText('never brings up the time');
+  await page.getByRole('button', { name: 'Start interview' }).click();
+  await expect(page).toHaveURL(/\/pads\/[0-9a-f-]{36}$/);
+  const create = backend.requests.find((r) => r.method === 'POST' && r.path === '/api/pads');
+  expect(create?.body).toMatchObject({ problemSlug: 'lru-cache', durationMin: null });
+  const timer = page.getByTestId('timer');
+  await expect(timer).toHaveAccessibleName(/^Time elapsed: 0:0\d$/);
+  await timer.hover();
+  await expect(page.getByRole('tooltip')).toContainText('No time limit, started');
+  // The choice is remembered for the next interview.
+  await page.goto('/new');
+  await expect(page.getByRole('radio', { name: 'No limit' })).toHaveAttribute(
+    'aria-checked',
+    'true',
+  );
+});
+
 test('quick start picks a random problem by difficulty and waits for Start', async ({ page }) => {
   const backend = await setup(page);
   const medium = PROBLEMS.filter((p) => p.difficulty === 'medium');
