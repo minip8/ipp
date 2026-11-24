@@ -397,7 +397,8 @@ free-form answers graded by the model against key points, on the quiz taker's ow
 Practice mode gives feedback after each answer; exam mode at the end. Selection favours questions
 the user has missed or not seen. Stats per topic.
 The question bank (`/quiz/topics/:slug`) lists a topic's whole bank by subtopic, filterable by
-difficulty, type and status, and answers any question in place with no attempt; answering again
+difficulty, type and status, and answers any question in place with no attempt. Each subtopic is
+a collapsible section; a list of more than 20 questions starts with them all closed. Answering again
 replaces the previous standalone answer. Status, stats and selection all use the latest
 *countable* answer per question across standalone answers, practice-attempt answers and finished
 exams (a running exam never shows up).

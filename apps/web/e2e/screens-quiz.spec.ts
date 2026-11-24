@@ -3,7 +3,7 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { aiKeyStatus, QUIZ_ATTEMPT_ID } from './fixtures';
-import { QUIZ_BANK_TOPIC } from './fixtures-quiz-bank';
+import { QUIZ_BANK_LONG, QUIZ_BANK_TOPIC } from './fixtures-quiz-bank';
 import { shoot as rawShoot, setup } from './helpers';
 
 async function shoot(page: Page, name: string, opts?: { fullPage?: boolean }) {
@@ -106,6 +106,19 @@ for (const width of WIDTHS) {
       await page.goto(`${bank}?status=correct&type=short`);
       await expect(page.getByText('No questions match')).toBeVisible();
       await shoot(page, 'quiz-bank-empty');
+    });
+
+    test('question bank outline', async ({ page }) => {
+      await setup(page, (b) => {
+        b.quizBank.questions = QUIZ_BANK_LONG;
+      });
+      const bank = `/quiz/topics/${QUIZ_BANK_TOPIC}`;
+      await page.goto(bank);
+      await expect(page.getByTestId('bank-list')).toBeVisible();
+      await shoot(page, 'quiz-bank-outline', { fullPage: true });
+      await page.goto(`${bank}?question=os-processes-004`);
+      await expect(page.getByLabel('Your answer')).toBeVisible();
+      await shoot(page, 'quiz-bank-outline-open', { fullPage: true });
     });
   });
 }

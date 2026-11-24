@@ -17,6 +17,8 @@ import {
   ArrowRightIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  ChevronsDownUpIcon,
+  ChevronsUpDownIcon,
   CircleDashedIcon,
   ListChecksIcon,
   ListIcon,
@@ -26,7 +28,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { DifficultyBadge } from '@/components/domain';
 import { Markdown } from '@/components/markdown';
 import { EmptyState, ErrorState, InlineError, useRetryCountdown } from '@/components/states';
@@ -53,6 +55,7 @@ import {
   bankHref,
   bankSearch,
   bankWithFeedback,
+  DEFAULT_DISCLOSURE,
   DEFAULT_FILTERS,
   type DifficultyFilter,
   filterItems,
@@ -64,8 +67,11 @@ import {
   parseFilters,
   STATUS_LABEL,
   type StatusFilter,
+  sectionOpen,
+  startsOpen,
   statusCounts,
   type TypeFilter,
+  withSection,
 } from './bank-logic';
 import {
   type Draft,
@@ -499,7 +505,19 @@ function QuestionList({
   onClear?: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const baseId = useId();
   const groups = useMemo(() => groupBySubtopic(list), [list]);
+  const [disclosure, setDisclosure] = useState(DEFAULT_DISCLOSURE);
+  const fallback = startsOpen(groups);
+  const isOpen = (subtopic: string) => sectionOpen(disclosure, subtopic, fallback);
+  // Moving to a question (deep link, J/K, "next") opens the section it is in.
+  const [revealed, setRevealed] = useState<string | null>(null);
+  if (selected !== revealed) {
+    setRevealed(selected);
+    const subtopic = list.find((i) => i.question.id === selected)?.question.subtopic;
+    if (subtopic !== undefined && !isOpen(subtopic))
+      setDisclosure(withSection(disclosure, subtopic, true));
+  }
   // Keep the open question visible in the list as the user steps through.
   useEffect(() => {
     if (!selected) return;
@@ -530,63 +548,120 @@ function QuestionList({
       </div>
     );
 
+  const anyOpen = groups.some((g) => isOpen(g.subtopic));
+
   return (
-    <div
-      ref={ref}
-      className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-border bg-surface"
-      data-testid="bank-list"
-    >
-      {groups.map((g) => {
-        const right = g.items.filter((i) => i.status === 'correct').length;
-        return (
-          <div key={g.subtopic}>
-            <h2 className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-border bg-surface-2/95 px-3 py-1.5 text-2xs font-medium tracking-wider text-fg-subtle uppercase backdrop-blur-sm">
-              <span className="truncate">{g.subtopic}</span>
-              <span className="tabular normal-case tracking-normal">
-                {right}/{g.items.length}
-              </span>
-            </h2>
-            <ul className="divide-y divide-border">
-              {g.items.map((i) => {
-                const q = i.question;
-                const current = q.id === selected;
-                return (
-                  <li key={q.id}>
-                    <a
-                      href={bankHref(topic, filters, q.id)}
-                      data-question-id={q.id}
-                      aria-current={current ? 'true' : undefined}
-                      onClick={(e) => {
-                        if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
-                        e.preventDefault();
-                        onOpen(q.id);
-                      }}
-                      className={cn(
-                        'flex items-start gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-surface-2 focus-visible:outline-offset-[-2px]',
-                        current &&
-                          'bg-accent-soft/40 shadow-[inset_2px_0_0_var(--accent)] hover:bg-accent-soft/50',
-                      )}
-                    >
-                      <StatusIcon status={i.status} className="mt-0.5 shrink-0" />
-                      <span className="min-w-0 flex-1">
-                        <span className="line-clamp-2 text-sm text-fg">
-                          {promptSummary(q.prompt, 110) || TYPE_SHORT[q.type]}
-                        </span>
-                        <span className="mt-1 flex items-center gap-2 text-2xs text-fg-subtle">
-                          <DifficultyBadge difficulty={q.difficulty} />
-                          <span>{TYPE_SHORT[q.type]}</span>
-                          <span className="sr-only">. {STATUS_LABEL[i.status]}</span>
-                        </span>
-                      </span>
-                    </a>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        );
-      })}
-    </div>
+    <>
+      {groups.length > 1 && (
+        <div className="flex items-center justify-between gap-2 pb-2 pl-1">
+          <p className="text-xs text-fg-muted tabular">
+            {plural(groups.length, 'subtopic')} · {plural(list.length, 'question')}
+          </p>
+          <Button
+            variant="ghost"
+            size="xs"
+            onClick={() => setDisclosure({ all: !anyOpen, toggled: new Map() })}
+          >
+            {anyOpen ? <ChevronsDownUpIcon /> : <ChevronsUpDownIcon />}
+            {anyOpen ? 'Collapse all' : 'Expand all'}
+          </Button>
+        </div>
+      )}
+      <div ref={ref} className="min-h-0 flex-1 space-y-2 overflow-y-auto" data-testid="bank-list">
+        {groups.map((g, n) => {
+          const open = isOpen(g.subtopic);
+          const counts = statusCounts(g.items);
+          const done = counts.correct === counts.total;
+          const panelId = `${baseId}-${n}`;
+          return (
+            <div key={g.subtopic}>
+              {/* The page colour behind the rounded corners hides rows scrolling under a stuck header. */}
+              <h2 className="sticky top-0 z-10 rounded-t-lg bg-bg">
+                <button
+                  type="button"
+                  aria-expanded={open}
+                  aria-controls={panelId}
+                  onClick={() => setDisclosure((d) => withSection(d, g.subtopic, !open))}
+                  className={cn(
+                    'flex w-full items-start gap-2 border border-border bg-surface-2 px-3 py-2 text-left transition-colors hover:border-border-strong hover:bg-surface-3 focus-visible:outline-offset-[-2px]',
+                    open ? 'rounded-t-lg' : 'rounded-lg',
+                  )}
+                >
+                  <ChevronRightIcon
+                    aria-hidden
+                    className={cn(
+                      'mt-0.5 size-4 shrink-0 text-fg-subtle transition-transform',
+                      open && 'rotate-90',
+                    )}
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium text-fg">{g.subtopic}</span>
+                    <span className="mt-1.5 block">
+                      <ProgressBar counts={counts} />
+                    </span>
+                  </span>
+                  <span
+                    aria-hidden
+                    className={cn(
+                      'mt-0.5 text-xs tabular',
+                      done ? 'font-medium text-ok-text' : 'text-fg-muted',
+                    )}
+                  >
+                    {counts.correct}/{counts.total}
+                  </span>
+                  <span className="sr-only">
+                    {counts.correct} of {counts.total} correct
+                  </span>
+                </button>
+              </h2>
+              {open && (
+                <ul
+                  id={panelId}
+                  className="divide-y divide-border overflow-hidden rounded-b-lg border-x border-b border-border bg-surface"
+                >
+                  {g.items.map((i) => {
+                    const q = i.question;
+                    const current = q.id === selected;
+                    return (
+                      <li key={q.id}>
+                        <a
+                          href={bankHref(topic, filters, q.id)}
+                          data-question-id={q.id}
+                          aria-current={current ? 'true' : undefined}
+                          onClick={(e) => {
+                            if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+                            e.preventDefault();
+                            onOpen(q.id);
+                          }}
+                          className={cn(
+                            // The scroll margin keeps a row clear of its section's stuck header.
+                            'flex scroll-mt-16 items-start gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-surface-2 focus-visible:outline-offset-[-2px]',
+                            current &&
+                              'bg-accent-soft/40 shadow-[inset_2px_0_0_var(--accent)] hover:bg-accent-soft/50',
+                          )}
+                        >
+                          <StatusIcon status={i.status} className="mt-0.5 shrink-0" />
+                          <span className="min-w-0 flex-1">
+                            <span className="line-clamp-2 text-sm text-fg">
+                              {promptSummary(q.prompt, 110) || TYPE_SHORT[q.type]}
+                            </span>
+                            <span className="mt-1 flex items-center gap-2 text-2xs text-fg-subtle">
+                              <DifficultyBadge difficulty={q.difficulty} />
+                              <span>{TYPE_SHORT[q.type]}</span>
+                              <span className="sr-only">. {STATUS_LABEL[i.status]}</span>
+                            </span>
+                          </span>
+                        </a>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </>
   );
 }
 

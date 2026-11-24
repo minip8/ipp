@@ -35,6 +35,8 @@ const statusOf = (f: AnswerFeedback | undefined): QuizQuestionStatus =>
           : 'incorrect';
 
 export class MockQuizBank {
+  /** The questions of QUIZ_BANK_TOPIC, in the order the API returns them. */
+  questions = QUIZ_BANK_QUESTIONS;
   /** The user's latest answer per question (seeded with QUIZ_BANK_PRIOR). */
   answers = new Map<string, Recorded>();
 
@@ -47,7 +49,7 @@ export class MockQuizBank {
   }
 
   private item(id: string): QuizBankItem | null {
-    const question = QUIZ_BANK_QUESTIONS.find((q) => q.id === id);
+    const question = this.questions.find((q) => q.id === id);
     if (!question) return null;
     const a = this.answers.get(id);
     return {
@@ -74,7 +76,7 @@ export class MockQuizBank {
       if (!topic) return notFound('Topic');
       const items =
         slug === QUIZ_BANK_TOPIC
-          ? QUIZ_BANK_QUESTIONS.map((q) => this.item(q.id)).filter((i) => i !== null)
+          ? this.questions.map((q) => this.item(q.id)).filter((i) => i !== null)
           : [];
       return QuizBank.parse({
         topic: { slug: topic.slug, title: topic.title, description: topic.description },

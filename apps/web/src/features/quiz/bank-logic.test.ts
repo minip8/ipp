@@ -4,14 +4,19 @@ import {
   bankHref,
   bankSearch,
   bankWithFeedback,
+  DEFAULT_DISCLOSURE,
   DEFAULT_FILTERS,
   filterItems,
   groupBySubtopic,
   neighbours,
   nextToPractise,
+  OUTLINE_ABOVE,
   parseFilters,
+  sectionOpen,
+  startsOpen,
   statusCounts,
   statusFromFeedback,
+  withSection,
 } from './bank-logic';
 
 const q = (id: string, over: Partial<PublicQuizQuestion> = {}): PublicQuizQuestion => ({
@@ -116,6 +121,39 @@ describe('filtering and grouping', () => {
     ]);
     expect(statusCounts(items)).toEqual({ total: 6, new: 2, missed: 3, correct: 1 });
     expect(groupBySubtopic([])).toEqual([]);
+  });
+});
+
+describe('subtopic sections', () => {
+  const long = (subtopics: string[]) =>
+    groupBySubtopic(
+      subtopics.flatMap((subtopic) =>
+        Array.from({ length: OUTLINE_ABOVE }, (_, n) =>
+          item(`${subtopic}-${n}`, 'unanswered', { subtopic }),
+        ),
+      ),
+    );
+
+  it('start open in a short list or a single subtopic, closed in a long list', () => {
+    expect(startsOpen(groupBySubtopic(items))).toBe(true);
+    expect(startsOpen(long(['Paging']))).toBe(true);
+    expect(startsOpen(long(['Paging', 'Scheduling']))).toBe(false);
+    expect(startsOpen([])).toBe(true);
+  });
+
+  it('follow the last choice: one section, then all of them, then the default', () => {
+    expect(sectionOpen(DEFAULT_DISCLOSURE, 'Paging', false)).toBe(false);
+    expect(sectionOpen(DEFAULT_DISCLOSURE, 'Paging', true)).toBe(true);
+    const one = withSection(DEFAULT_DISCLOSURE, 'Paging', true);
+    expect(sectionOpen(one, 'Paging', false)).toBe(true);
+    expect(sectionOpen(one, 'Scheduling', false)).toBe(false);
+    expect(DEFAULT_DISCLOSURE.toggled.size).toBe(0);
+    // "Collapse all", then one section opened again
+    const collapsed = { all: false, toggled: new Map<string, boolean>() };
+    expect(sectionOpen(collapsed, 'Paging', true)).toBe(false);
+    const reopened = withSection(collapsed, 'Scheduling', true);
+    expect(sectionOpen(reopened, 'Scheduling', true)).toBe(true);
+    expect(sectionOpen(reopened, 'Paging', true)).toBe(false);
   });
 });
 

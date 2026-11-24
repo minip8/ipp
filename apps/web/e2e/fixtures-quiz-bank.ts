@@ -73,6 +73,31 @@ export const QUIZ_BANK_QUESTIONS = PublicQuizQuestion.array().parse([
   fromAttempt('os-virtual-memory-002'),
 ]);
 
+/**
+ * A bank long enough to open as an outline (subtopics collapsed): the questions above, then
+ * four more subtopics of six single-choice questions each. Only the ones above can be answered.
+ */
+export const QUIZ_BANK_LONG = PublicQuizQuestion.array()
+  .parse([
+    ...QUIZ_BANK_QUESTIONS,
+    ...['File systems', 'Scheduling', 'Signals', 'System calls'].flatMap((subtopic, s) =>
+      Array.from({ length: 6 }, (_, n) => ({
+        id: `os-long-${s}-${n}`,
+        topic: QUIZ_BANK_TOPIC,
+        subtopic,
+        difficulty: (['easy', 'medium', 'hard'] as const)[Math.floor(n / 2)],
+        type: 'single',
+        prompt: `${subtopic}: question ${n + 1}`,
+        choices: [
+          { id: 'a', text: 'Yes' },
+          { id: 'b', text: 'No' },
+        ],
+        code: null,
+      })),
+    ),
+  ])
+  .sort((a, b) => a.subtopic.localeCompare(b.subtopic));
+
 const auto = (
   questionId: string,
   correct: boolean,

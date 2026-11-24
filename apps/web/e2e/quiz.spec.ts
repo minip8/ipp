@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { aiKeyStatus, QUIZ_ATTEMPT_ID } from './fixtures';
-import { QUIZ_BANK_TOPIC } from './fixtures-quiz-bank';
+import { QUIZ_BANK_LONG, QUIZ_BANK_TOPIC } from './fixtures-quiz-bank';
 import { setup } from './helpers';
 
 test.describe('quizzes', () => {
@@ -357,6 +357,75 @@ test.describe('question bank', () => {
     await expect(page.getByText('No questions in this topic yet')).toBeVisible();
     await page.goto('/quiz/topics/nope');
     await expect(page.getByText('This topic does not exist')).toBeVisible();
+  });
+
+  test('subtopics are sections that collapse', async ({ page }) => {
+    await setup(page);
+    await page.goto(BANK);
+    const list = page.getByTestId('bank-list');
+    const rows = list.getByRole('link');
+    const sections = list.getByRole('button');
+    // A short list shows every question, under its subtopic.
+    await expect(page.getByText('3 subtopics · 6 questions')).toBeVisible();
+    await expect(sections).toHaveCount(3);
+    const processes = list.getByRole('button', { name: 'Processes 1 of 3 correct' });
+    await expect(processes).toHaveAttribute('aria-expanded', 'true');
+    await processes.click();
+    await expect(processes).toHaveAttribute('aria-expanded', 'false');
+    await expect(rows).toHaveCount(3);
+    await page.getByRole('button', { name: 'Collapse all' }).click();
+    await expect(rows).toHaveCount(0);
+    await page.getByRole('button', { name: 'Expand all' }).click();
+    await expect(rows).toHaveCount(6);
+  });
+
+  test('a long list opens as an outline of its subtopics', async ({ page }) => {
+    await setup(page, (b) => {
+      b.quizBank.questions = QUIZ_BANK_LONG;
+    });
+    await page.goto(BANK);
+    const list = page.getByTestId('bank-list');
+    const rows = list.getByRole('link');
+    const sections = list.getByRole('button');
+    await expect(page.getByText('7 subtopics · 30 questions')).toBeVisible();
+    await expect(sections).toHaveCount(7);
+    await expect(rows).toHaveCount(0);
+    await expect(sections.first()).toHaveAccessibleName('File systems 0 of 6 correct');
+
+    // Opening one subtopic leaves the others closed.
+    const signals = list.getByRole('button', { name: /^Signals/ });
+    await signals.click();
+    await expect(signals).toHaveAttribute('aria-expanded', 'true');
+    await expect(rows).toHaveCount(6);
+    await signals.click();
+    await expect(rows).toHaveCount(0);
+
+    // Going to a question opens its section, and stepping on opens the next one.
+    await page.getByRole('button', { name: 'Start with the first open question' }).click();
+    await expect(page).toHaveURL(/question=os-long-0-0$/);
+    await expect(rows).toHaveCount(6);
+    await expect(rows.first()).toHaveAttribute('aria-current', 'true');
+    for (let n = 2; n <= 7; n++) {
+      await page.keyboard.press('j');
+      await expect(page.getByTestId('bank-counter')).toHaveText(`Question ${n} of 30`);
+    }
+    await expect(list.getByRole('button', { name: /^Processes/ })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+    await expect(rows).toHaveCount(9);
+
+    // Few enough questions after filtering: all of them are shown again.
+    await page.getByRole('radio', { name: /^Missed/ }).click();
+    await expect(page.getByText('3 subtopics · 3 questions')).toBeVisible();
+    await expect(rows).toHaveCount(3);
+
+    // A deep link shows its question in the list.
+    await page.goto(`${BANK}?question=os-virtual-memory-002`);
+    await expect(list.getByRole('button', { expanded: true })).toHaveAccessibleName(
+      /^Virtual memory/,
+    );
+    await expect(list.locator('[aria-current="true"]')).toBeInViewport();
   });
 
   test('short answers are self-graded without an API key', async ({ page }) => {

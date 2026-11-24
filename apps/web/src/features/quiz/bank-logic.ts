@@ -101,6 +101,33 @@ export function groupBySubtopic(items: QuizBankItem[]): SubtopicGroup[] {
   return groups;
 }
 
+/** A list longer than this starts as an outline: every subtopic closed until it is opened. */
+export const OUTLINE_ABOVE = 20;
+
+/** Which subtopic sections are open: the user's choices, over a default that depends on the list. */
+export interface Disclosure {
+  /** the last "Expand all" (true) or "Collapse all" (false); null until one is used */
+  all: boolean | null;
+  /** sections opened or closed one at a time since then */
+  toggled: ReadonlyMap<string, boolean>;
+}
+
+export const DEFAULT_DISCLOSURE: Disclosure = { all: null, toggled: new Map() };
+
+/** Short lists, and lists that are a single subtopic, show their questions straight away. */
+export function startsOpen(groups: SubtopicGroup[]): boolean {
+  const total = groups.reduce((n, g) => n + g.items.length, 0);
+  return groups.length <= 1 || total <= OUTLINE_ABOVE;
+}
+
+export function sectionOpen(d: Disclosure, subtopic: string, fallback: boolean): boolean {
+  return d.toggled.get(subtopic) ?? d.all ?? fallback;
+}
+
+export function withSection(d: Disclosure, subtopic: string, open: boolean): Disclosure {
+  return { all: d.all, toggled: new Map(d.toggled).set(subtopic, open) };
+}
+
 export interface StatusCounts {
   total: number;
   new: number;
