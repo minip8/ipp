@@ -31,6 +31,9 @@ $DC run --rm tools pnpm db:migrate
 $DC run --rm tools pnpm db:seed
 $DC up -d
 $DC ps
-echo
-echo "Judge REDIS_URL (put it in /etc/ipp/judge.env on the judge VM):"
-echo "  REDIS_URL=redis://judge:$(grep '^REDIS_JUDGE_PASSWORD=' .env.prod | cut -d= -f2)@$(grep '^REDIS_BIND_IP=' .env.prod | cut -d= -f2):6379"
+# Not when the output goes to a CI log (gcp.sh deploy sets this): the URL contains a password.
+if [ -z "${IPP_NO_SECRET_OUTPUT:-}" ]; then
+  echo
+  echo "Judge REDIS_URL (put it in /etc/ipp/judge.env on the judge VM):"
+  echo "  REDIS_URL=redis://judge:$(grep '^REDIS_JUDGE_PASSWORD=' .env.prod | cut -d= -f2)@$(grep '^REDIS_BIND_IP=' .env.prod | cut -d= -f2):6379"
+fi

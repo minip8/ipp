@@ -1,0 +1,89 @@
+# Checks every push and pull request; a push to main that passes is deployed to the app VM.
+#
+# The deploy job runs `infra/deploy/gcp.sh deploy`: it copies this commit to the app VM over an
+# IAP SSH tunnel and runs setup-app.sh there (build, migrate, seed, restart). The judge VM is not
+# touched; update it by hand (docs/DEPLOY.md "Updating") when crates/, apps/judge or
+# infra/sandbox change.
+#
+# Authentication is Workload Identity Federation: no key is stored in the repository. One-time
+# setup: `infra/deploy/gcp.sh ci-identity <owner/repo>`, then set the variables it prints
+# (docs/DEPLOY.md "Deploying from GitHub"). Until GCP_WORKLOAD_IDENTITY_PROVIDER is set the
+# deploy job is skipped.
+#
+#   variables  GCP_PROJECT_ID                  project of the VMs
+#              GCP_WORKLOAD_IDENTITY_PROVIDER  the provider's full resource name
+#              GCP_DEPLOY_SERVICE_ACCOUNT      the deploy service account's email
+#              IPP_ZONE                        zone of the ipp-app VM
+#              IPP_SITE_HOST                   the site's hostname, e.g. interview.example.com
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: typecheck, lint, tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      # Same images and credentials as docker-compose.yml; the tests create their own databases.
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: ipp
+          POSTGRES_PASSWORD: ipp
+          POSTGRES_DB: ipp
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ipp" --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:8-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
+
+  deploy:
+    name: deploy the app VM
+    needs: check
+    if: >-
+      github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+      && vars.GCP_WORKLOAD_IDENTITY_PROVIDER != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # One deploy at a time, in order; a running deploy is never cancelled half way.
+    concurrency:
+      group: deploy-app
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write # the OIDC token Workload Identity Federation exchanges
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Copy this commit to the app VM and run setup-app.sh there
+        env:
+          CLOUDSDK_COMPUTE_ZONE: ${{ vars.IPP_ZONE }}
+          IPP_SITE_HOST: ${{ vars.IPP_SITE_HOST }}
+        run: infra/deploy/gcp.sh deploy "$IPP_SITE_HOST"

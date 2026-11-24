@@ -118,11 +118,46 @@ When updating a deployment from before bring-your-own-key: delete `ANTHROPIC_API
 save one. Pages are now rendered per request (the CSP nonce), with no static HTML caching.
 
 ```sh
+infra/deploy/gcp.sh deploy <hostname>   # app host: copy the checked-out commit, build, migrate, seed, restart
+```
+
+`deploy` ships the commit that is checked out (`git archive HEAD`), not the working tree, and
+does not touch the judge host. Update that by hand when `crates/`, `apps/judge` or
+`infra/sandbox` change:
+
+```sh
 infra/deploy/gcp.sh push
-# app host:    cd /opt/ipp-src && infra/deploy/setup-app.sh <hostname>
 # judge host:  gcp.sh unlock; rebuild (cargo build --release, infra/sandbox/build.sh if images changed),
 #              sudo install target/release/judge /opt/ipp/judge && sudo systemctl restart ipp-judge; gcp.sh lockdown
 ```
+
+Both `deploy` and `push` unpack over `/opt/ipp-src` without removing anything (`.env.prod` lives
+there), so a file deleted from the repository stays on the host. If a build fails on a file that
+no longer exists in the repository, delete it on the host.
+
+## Deploying from GitHub
+
+`.github/workflows/deploy.yml` runs the checks (typecheck, lint, tests) on every push and pull
+request, and on a push to `main` that passes runs `gcp.sh deploy` against the app host. It signs
+in with Workload Identity Federation, so the repository holds no key.
+
+One-time setup, from a machine where `gcloud` is signed in as a project owner and its
+project/zone are the ones the VMs are in:
+
+```sh
+infra/deploy/gcp.sh ci-identity <owner>/<repo>
+```
+
+It creates the service account `ipp-deploy` and an OIDC provider in the workload identity pool
+`github` (created if the project has none) that only this repository's `main` branch can use.
+The account may read instance details and open IAP tunnels project-wide, and log in (with sudo)
+to `ipp-app` only. OS Login must already be on for the project; the script checks and does not
+change it. It prints the `gh variable set` lines for the five repository variables the workflow
+reads; set `IPP_SITE_HOST` to the site's hostname. Until the variables are set the deploy job
+is skipped and only the checks run.
+
+The workflow's log is public when the repository is: `setup-app.sh` is run with
+`IPP_NO_SECRET_OUTPUT=1` there so it does not print the judge's Redis URL.
 
 ## Still open
 
