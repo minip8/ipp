@@ -16,6 +16,7 @@ import {
   MicIcon,
   SearchIcon,
   ShuffleIcon,
+  UsersIcon,
   XIcon,
 } from 'lucide-react';
 import Link from 'next/link';
@@ -259,6 +260,18 @@ export function NewInterview() {
   // Nothing is selected until the user picks a problem (or asks for a random one).
   const [selected, setSelected] = useState<string | null>(params.get('problem'));
   const [rolled, setRolled] = useState(false);
+  // "Host an interview": a room where the user interviews someone they invite, instead of
+  // being interviewed by the AI.
+  const [host, setHost] = useState(params.get('mode') === 'host');
+  const [blankChosen, setBlankChosen] = useState(false);
+  const setMode = (next: 'practice' | 'host') => {
+    setHost(next === 'host');
+    const q = new URLSearchParams(window.location.search);
+    if (next === 'host') q.set('mode', 'host');
+    else q.delete('mode');
+    const search = q.toString();
+    window.history.replaceState(null, '', search ? `?${search}` : window.location.pathname);
+  };
   const [prefs, setPrefs] = useState<StartPrefs>(() => loadStartPrefs());
   const [voiceOk, setVoiceOk] = useState(true);
   useEffect(() => setVoiceOk(speechSupported()), []);
@@ -280,6 +293,9 @@ export function NewInterview() {
   const pool = useMemo(() => randomPool(filtered, prefs.language), [filtered, prefs.language]);
   const language = effectiveLanguage(prefs.language, current);
   const offered = current?.languages ?? LANGUAGES;
+  // Picking a problem afterwards wins over "blank".
+  const blank = host && blankChosen && !current;
+  const ready = Boolean(current) || blank;
 
   const pickAtRandom = () => {
     const p = pickRandom(pool, selected);
@@ -312,7 +328,7 @@ export function NewInterview() {
   // Unknown (loading or failed) counts as fine: never block starting on this.
   const keyState = aiKey.data?.state ?? 'active';
   const interviewerOn = prefs.interviewer.enabled;
-  const needsKey = interviewerOn && keyState !== 'active';
+  const needsKey = !host && interviewerOn && keyState !== 'active';
 
   const update = (patch: Partial<StartPrefs>) => setPrefs((p) => ({ ...p, ...patch }));
   const updateInterviewer = (patch: Partial<InterviewerSettings>) =>
@@ -325,6 +341,15 @@ export function NewInterview() {
         ...prefs.interviewer,
         enabled: prefs.interviewer.enabled && (opts.withInterviewer ?? true),
       };
+      if (host) {
+        if (!current && !blank) throw new Error('Choose a problem, or start with a blank editor.');
+        return api.createPad({
+          kind: 'room',
+          ...(current ? { problemSlug: current.slug } : { blank: true }),
+          language,
+          durationMin: prefs.durationMin,
+        });
+      }
       if (!current) throw new Error('Choose a problem first.');
       return api.createPad({
         problemSlug: current.slug,
@@ -359,10 +384,27 @@ export function NewInterview() {
       >
         <ArrowLeftIcon className="size-3.5" /> Interviews
       </Link>
-      <h1 className="mt-2 text-xl font-semibold tracking-tight">New interview</h1>
-      <p className="mt-1 text-sm text-fg-muted">
-        Choose a problem and how you want to be interviewed.
-      </p>
+      <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">
+            {host ? 'Host an interview' : 'New interview'}
+          </h1>
+          <p className="mt-1 text-sm text-fg-muted">
+            {host
+              ? 'Choose the problem for your candidate. You get a link to send them; they join with just their name.'
+              : 'Choose a problem and how you want to be interviewed.'}
+          </p>
+        </div>
+        <Segmented
+          aria-label="Kind of interview"
+          value={host ? 'host' : 'practice'}
+          onValueChange={setMode}
+          options={[
+            { value: 'practice', label: 'Practise with the AI' },
+            { value: 'host', label: 'Interview someone' },
+          ]}
+        />
+      </div>
 
       <div className="mt-6 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
         {/* Library */}
@@ -567,20 +609,37 @@ export function NewInterview() {
             >
               Problem
             </h2>
-            {!current ? (
+            {blank ? (
+              <div className="mt-2">
+                <p className="font-medium" data-testid="selected-problem">
+                  Blank editor
+                </p>
+                <p className="mt-0.5 text-sm text-fg-muted">
+                  No statement or tests: you give the task yourself, and the code runs as a program.
+                  You can switch to a library problem during the interview.
+                </p>
+                <Button size="sm" className="mt-3" onClick={() => setBlankChosen(false)}>
+                  Choose a problem instead
+                </Button>
+              </div>
+            ) : !current ? (
               <div className="mt-2">
                 <p className="font-medium">No problem selected</p>
                 <p className="mt-0.5 text-sm text-fg-muted">
-                  Choose one from the library, or let us pick one for you.
+                  {host
+                    ? 'Choose one from the library, pick one at random, or start with a blank editor.'
+                    : 'Choose one from the library, or let us pick one for you.'}
                 </p>
-                <Button
-                  size="sm"
-                  className="mt-3"
-                  onClick={pickAtRandom}
-                  disabled={pool.length === 0}
-                >
-                  <ShuffleIcon /> Pick one at random
-                </Button>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button size="sm" onClick={pickAtRandom} disabled={pool.length === 0}>
+                    <ShuffleIcon /> Pick one at random
+                  </Button>
+                  {host && (
+                    <Button size="sm" onClick={() => setBlankChosen(true)}>
+                      Start with a blank editor
+                    </Button>
+                  )}
+                </div>
               </div>
             ) : (
               <>
@@ -626,7 +685,9 @@ export function NewInterview() {
               />
               <p className="text-xs text-fg-muted" data-testid="language-note">
                 {languageNote(prefs.language, current) ??
-                  'You can switch languages during the interview.'}
+                  (host
+                    ? 'You or your candidate can switch languages during the interview.'
+                    : 'You can switch languages during the interview.')}
               </p>
             </div>
 
@@ -641,112 +702,133 @@ export function NewInterview() {
               />
             </div>
 
-            <div className="rounded-md border border-border">
-              <div className="flex items-center gap-3 px-3 py-2.5">
-                {interviewerOn ? (
-                  <BotIcon className="size-4 text-accent-text" aria-hidden />
-                ) : (
-                  <BotOffIcon className="size-4 text-fg-subtle" aria-hidden />
-                )}
-                <div className="min-w-0 flex-1">
-                  <label htmlFor="interviewer-enabled" className="block text-sm font-medium">
-                    AI interviewer
-                  </label>
-                  {!interviewerOn && (
-                    <p className="text-xs text-fg-muted">
-                      Off. You can still code, run tests and chat.
-                    </p>
-                  )}
-                </div>
-                <Switch
-                  id="interviewer-enabled"
-                  checked={interviewerOn}
-                  onCheckedChange={(enabled) => updateInterviewer({ enabled })}
-                />
+            {host && (
+              <div className="rounded-md border border-border bg-surface-2 px-3 py-2.5">
+                <p className="flex items-center gap-2 text-sm font-medium">
+                  <UsersIcon className="size-4 text-accent-text" aria-hidden /> You are the
+                  interviewer
+                </p>
+                <ul className="mt-1.5 list-disc space-y-1 pl-5 text-xs text-fg-muted">
+                  <li>A shared editor, chat and whiteboard with whoever you invite.</li>
+                  <li>
+                    Only you see the interviewer notes, the reference solution and your own notes.
+                  </li>
+                  <li>
+                    The AI stays out of the conversation. With your API key it can give you a second
+                    opinion on the code, and an assessment afterwards.
+                  </li>
+                  <li>You can change the problem during the interview.</li>
+                </ul>
               </div>
-              {needsKey && (
-                <AiKeyPrompt
-                  className="mx-3 mb-3"
-                  size="sm"
-                  state={keyState === 'rejected' ? 'rejected' : 'missing'}
-                  title={
-                    keyState === 'rejected'
-                      ? rejectedTitle(aiKey.data?.provider)
-                      : 'Runs on your own AI API key'
-                  }
-                >
-                  {keyState === 'rejected'
-                    ? 'Save a working key to interview with the AI.'
-                    : 'Add one to be interviewed by the AI. You can also add it later from the pad.'}
-                </AiKeyPrompt>
-              )}
-              {interviewerOn && (
-                <div className="space-y-4 border-t border-border px-3 pt-3 pb-3.5">
-                  <div className="space-y-1.5">
-                    <Label id={ids.style} className="text-xs text-fg-muted">
-                      Style
-                    </Label>
-                    <Segmented
-                      aria-label="Interviewer style"
-                      size="sm"
-                      className="flex w-full"
-                      value={prefs.interviewer.style}
-                      onValueChange={(style) => updateInterviewer({ style })}
-                      options={[
-                        {
-                          value: 'supportive',
-                          label: 'Supportive',
-                          hint: 'Encouraging, more hints',
-                        },
-                        { value: 'neutral', label: 'Neutral', hint: 'Like most real interviews' },
-                        { value: 'tough', label: 'Tough', hint: 'Probing, few hints' },
-                      ]}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label id={ids.pro} className="text-xs text-fg-muted">
-                      Speaks up unprompted
-                    </Label>
-                    <Segmented
-                      aria-label="Proactivity"
-                      size="sm"
-                      className="flex w-full"
-                      value={prefs.interviewer.proactivity}
-                      onValueChange={(proactivity) => updateInterviewer({ proactivity })}
-                      options={[
-                        { value: 'low', label: 'Rarely' },
-                        { value: 'normal', label: 'Sometimes' },
-                        { value: 'high', label: 'Often' },
-                      ]}
-                    />
-                  </div>
-                  <ModelPicker
-                    value={prefs.interviewer.model}
-                    onChange={(model) => updateInterviewer({ model })}
-                  />
-                  <SavedKeyLine />
-                  <div className="flex items-start gap-3">
-                    <MicIcon className="mt-0.5 size-4 text-fg-subtle" aria-hidden />
-                    <div className="min-w-0 flex-1">
-                      <label htmlFor="voice" className="block text-sm font-medium">
-                        Voice
-                      </label>
+            )}
+            {!host && (
+              <div className="rounded-md border border-border">
+                <div className="flex items-center gap-3 px-3 py-2.5">
+                  {interviewerOn ? (
+                    <BotIcon className="size-4 text-accent-text" aria-hidden />
+                  ) : (
+                    <BotOffIcon className="size-4 text-fg-subtle" aria-hidden />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <label htmlFor="interviewer-enabled" className="block text-sm font-medium">
+                      AI interviewer
+                    </label>
+                    {!interviewerOn && (
                       <p className="text-xs text-fg-muted">
-                        {voiceOk
-                          ? 'Talk to the interviewer and hear replies. You can turn this on or off later.'
-                          : 'This browser does not support speech. Chrome and Edge do.'}
+                        Off. You can still code, run tests and chat.
                       </p>
-                    </div>
-                    <Switch
-                      id="voice"
-                      checked={prefs.interviewer.voice && voiceOk}
-                      disabled={!voiceOk}
-                      onCheckedChange={(voice) => updateInterviewer({ voice })}
-                    />
+                    )}
                   </div>
+                  <Switch
+                    id="interviewer-enabled"
+                    checked={interviewerOn}
+                    onCheckedChange={(enabled) => updateInterviewer({ enabled })}
+                  />
                 </div>
-              )}
-            </div>
+                {needsKey && (
+                  <AiKeyPrompt
+                    className="mx-3 mb-3"
+                    size="sm"
+                    state={keyState === 'rejected' ? 'rejected' : 'missing'}
+                    title={
+                      keyState === 'rejected'
+                        ? rejectedTitle(aiKey.data?.provider)
+                        : 'Runs on your own AI API key'
+                    }
+                  >
+                    {keyState === 'rejected'
+                      ? 'Save a working key to interview with the AI.'
+                      : 'Add one to be interviewed by the AI. You can also add it later from the pad.'}
+                  </AiKeyPrompt>
+                )}
+                {interviewerOn && (
+                  <div className="space-y-4 border-t border-border px-3 pt-3 pb-3.5">
+                    <div className="space-y-1.5">
+                      <Label id={ids.style} className="text-xs text-fg-muted">
+                        Style
+                      </Label>
+                      <Segmented
+                        aria-label="Interviewer style"
+                        size="sm"
+                        className="flex w-full"
+                        value={prefs.interviewer.style}
+                        onValueChange={(style) => updateInterviewer({ style })}
+                        options={[
+                          {
+                            value: 'supportive',
+                            label: 'Supportive',
+                            hint: 'Encouraging, more hints',
+                          },
+                          { value: 'neutral', label: 'Neutral', hint: 'Like most real interviews' },
+                          { value: 'tough', label: 'Tough', hint: 'Probing, few hints' },
+                        ]}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label id={ids.pro} className="text-xs text-fg-muted">
+                        Speaks up unprompted
+                      </Label>
+                      <Segmented
+                        aria-label="Proactivity"
+                        size="sm"
+                        className="flex w-full"
+                        value={prefs.interviewer.proactivity}
+                        onValueChange={(proactivity) => updateInterviewer({ proactivity })}
+                        options={[
+                          { value: 'low', label: 'Rarely' },
+                          { value: 'normal', label: 'Sometimes' },
+                          { value: 'high', label: 'Often' },
+                        ]}
+                      />
+                    </div>
+                    <ModelPicker
+                      value={prefs.interviewer.model}
+                      onChange={(model) => updateInterviewer({ model })}
+                    />
+                    <SavedKeyLine />
+                    <div className="flex items-start gap-3">
+                      <MicIcon className="mt-0.5 size-4 text-fg-subtle" aria-hidden />
+                      <div className="min-w-0 flex-1">
+                        <label htmlFor="voice" className="block text-sm font-medium">
+                          Voice
+                        </label>
+                        <p className="text-xs text-fg-muted">
+                          {voiceOk
+                            ? 'Talk to the interviewer and hear replies. You can turn this on or off later.'
+                            : 'This browser does not support speech. Chrome and Edge do.'}
+                        </p>
+                      </div>
+                      <Switch
+                        id="voice"
+                        checked={prefs.interviewer.voice && voiceOk}
+                        disabled={!voiceOk}
+                        onCheckedChange={(voice) => updateInterviewer({ voice })}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="-mx-4 -mb-4 space-y-2 rounded-b-lg border-t border-border bg-surface p-4 lg:sticky lg:bottom-0">
               <InlineError error={start.error} />
@@ -755,15 +837,17 @@ export function NewInterview() {
                 size="lg"
                 className="w-full"
                 onClick={() => (needsKey ? setKeyDialog(true) : start.mutate({}))}
-                disabled={start.isPending || !current}
-                aria-describedby={current ? undefined : 'start-hint'}
+                disabled={start.isPending || !ready}
+                aria-describedby={ready ? undefined : 'start-hint'}
               >
-                {start.isPending ? <Spinner /> : <CheckIcon />}
-                Start interview
+                {start.isPending ? <Spinner /> : host ? <UsersIcon /> : <CheckIcon />}
+                {host ? 'Create room' : 'Start interview'}
               </Button>
-              {!current && (
+              {!ready && (
                 <p id="start-hint" className="text-center text-xs text-fg-muted">
-                  Choose a problem to start.
+                  {host
+                    ? 'Choose a problem or a blank editor to start.'
+                    : 'Choose a problem to start.'}
                 </p>
               )}
             </div>
@@ -796,8 +880,8 @@ export function NewInterview() {
         <div className="mx-auto flex max-w-6xl items-center gap-3">
           <p className="min-w-0 flex-1 truncate text-sm">
             <span className="text-fg-muted">Problem: </span>
-            <span className={cn('font-medium', !current && 'text-fg-muted')}>
-              {current ? current.title : 'None selected'}
+            <span className={cn('font-medium', !ready && 'text-fg-muted')}>
+              {current ? current.title : blank ? 'Blank editor' : 'None selected'}
             </span>
           </p>
           <Button

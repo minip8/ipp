@@ -112,7 +112,7 @@ function InterviewerMessage({ m }: { m: Message }) {
   );
 }
 
-function CandidateBubble({
+export function CandidateBubble({
   text,
   via,
   meta,

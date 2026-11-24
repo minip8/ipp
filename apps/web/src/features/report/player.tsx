@@ -263,6 +263,14 @@ export function Player({
   selfId?: string;
 }) {
   const updates = useMemo(() => decodeUpdates(playback.updates), [playback.updates]);
+  // An interview room: the transcript is between people, shown by name.
+  const names = useMemo(
+    () =>
+      detail.pad.kind === 'room'
+        ? new Map(detail.members.map((m) => [m.userId, m.name]))
+        : undefined,
+    [detail.pad.kind, detail.members],
+  );
   const engine = useMemo(() => new PlaybackEngine(updates), [updates]);
   useEffect(() => () => engine.destroy(), [engine]);
   const span = useMemo(
@@ -483,6 +491,7 @@ export function Player({
                     seek(time);
                   }}
                   selfId={selfId}
+                  names={names}
                 />
               ))}
             </ol>

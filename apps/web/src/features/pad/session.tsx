@@ -21,6 +21,7 @@ import {
   useState,
 } from 'react';
 import { toast } from 'sonner';
+import { runsForProblem } from '@/features/room/logic';
 import { ApiRequestError, api, errorMessage, formatRetry } from '@/lib/api';
 import { wsBaseUrl } from '@/lib/env';
 import { qk } from '@/lib/queries';
@@ -50,6 +51,12 @@ export type PadSession = {
   sendChat: (text: string, via?: 'text' | 'voice') => void;
   retryPending: (localId: string) => void;
   setLanguage: (lang: Language) => Promise<void>;
+  /** An interview room (the owner hosts; the others are candidates). */
+  isRoom: boolean;
+  /** The room's host: the only one who sees the host panel, the report and the end button. */
+  isHost: boolean;
+  /** Room host: move on to another problem, or to a blank editor (null). */
+  changeProblem: (problemSlug: string | null) => Promise<boolean>;
   updateInterviewer: (patch: Partial<InterviewerSettings>) => Promise<void>;
   /** The owner just saved a key here; do not wait for the socket to say so. */
   setInterviewerKey: (key: PadDetail['interviewerKey']) => void;
@@ -312,6 +319,23 @@ export function PadSessionProvider({
     [padId],
   );
 
+  const changeProblem = useCallback(
+    async (problemSlug: string | null) => {
+      try {
+        const { pad, problem } = await api.changeProblem(padId, problemSlug);
+        dispatch({ type: 'event', event: { type: 'pad.problem', pad, problem } });
+        selectRun(null);
+        // The interviewer notes and solutions shown to the host belong to the old problem.
+        void qc.invalidateQueries({ queryKey: qk.hostView(padId) });
+        return true;
+      } catch (e) {
+        toast.error('Could not change the problem', { description: errorMessage(e) });
+        return false;
+      }
+    },
+    [padId, qc],
+  );
+
   const updateInterviewer = useCallback(
     async (patch: Partial<InterviewerSettings>) => {
       const prev = stateRef.current.pad;
@@ -362,11 +386,21 @@ export function PadSessionProvider({
   }, [collab]);
 
   const readOnly = state.pad.status === 'ended';
+  const isRoom = state.pad.kind === 'room';
+  // A room's problem can change: the console shows the runs of the one on screen.
+  const visible = useMemo(
+    () =>
+      state.pad.kind === 'room'
+        ? { ...state, runs: runsForProblem(state.runs, state.pad.problemSlug) }
+        : state,
+    [state],
+  );
+  const isHost = isRoom && state.role === 'owner';
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: runInputs is a stable Map instance
   const value = useMemo<PadSession>(
     () => ({
-      state,
+      state: visible,
       me,
       collab,
       socketStatus,
@@ -382,6 +416,9 @@ export function PadSessionProvider({
       sendChat,
       retryPending,
       setLanguage,
+      isRoom,
+      isHost,
+      changeProblem,
       updateInterviewer,
       setInterviewerKey,
       endPad,
@@ -390,7 +427,7 @@ export function PadSessionProvider({
       source,
     }),
     [
-      state,
+      visible,
       me,
       collab,
       socketStatus,
@@ -404,6 +441,9 @@ export function PadSessionProvider({
       sendChat,
       retryPending,
       setLanguage,
+      isRoom,
+      isHost,
+      changeProblem,
       updateInterviewer,
       setInterviewerKey,
       endPad,

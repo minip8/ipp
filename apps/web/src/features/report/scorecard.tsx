@@ -15,6 +15,7 @@ import {
   MinusIcon,
   PlusIcon,
   RotateCwIcon,
+  SparklesIcon,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { toast } from 'sonner';
@@ -25,7 +26,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { AiKeyPrompt } from '@/features/ai-key/ai-key-prompt';
 import { api, errorMessage } from '@/lib/api';
 import { formatDuration } from '@/lib/format';
-import { qk } from '@/lib/queries';
+import { qk, useAiKey } from '@/lib/queries';
 import { cn } from '@/lib/utils';
 
 type Recommendation = ReportAssessment['recommendation'];
@@ -259,12 +260,53 @@ function useRequestAssessment(padId: string) {
   });
 }
 
+/** A room's host has not asked for an assessment yet: offer it (it runs on their own key). */
+function RoomAssessmentOffer({ padId }: { padId: string }) {
+  const ask = useRequestAssessment(padId);
+  const key = useAiKey();
+  const state = key.data?.state;
+  const body =
+    'The AI reads the chat, the code history, the runs and your notes, and writes its own assessment of the candidate. It is a second opinion for you: nobody else sees it.';
+  if (state && state !== 'active')
+    return (
+      <AiKeyPrompt
+        testId="assessment-key-prompt"
+        state={state}
+        title="Want a second opinion on this interview?"
+        onSaved={() => ask.mutate()}
+        className="bg-surface px-5 py-5"
+      >
+        {body} It runs on your own AI API key.
+      </AiKeyPrompt>
+    );
+  return (
+    <Notice
+      icon={<SparklesIcon className="size-4" />}
+      title="Want a second opinion on this interview?"
+      action={
+        <Button
+          size="sm"
+          variant="primary"
+          onClick={() => ask.mutate()}
+          disabled={ask.isPending}
+          data-testid="request-assessment"
+        >
+          {ask.isPending ? <Spinner /> : <SparklesIcon />} Write an AI assessment
+        </Button>
+      }
+    >
+      {body}
+    </Notice>
+  );
+}
+
 function NoAssessment({ report, pad }: { report: Report; pad: PadDetail }) {
   const owner = pad.role === 'owner';
   const ask = useRequestAssessment(pad.pad.id);
   const why =
     report.assessmentUnavailable ?? (pad.pad.interviewer.enabled ? 'failed' : 'interviewer_off');
   const below = 'Stats, transcript and playback are below.';
+  if (why === 'not_requested') return <RoomAssessmentOffer padId={pad.pad.id} />;
   if (why === 'interviewer_off')
     return (
       <Notice icon={<BotOffIcon className="size-4" />} title="No AI assessment for this interview">
@@ -335,8 +377,8 @@ export function Assessment({
   if (report.status === 'pending') {
     return (
       <Notice icon={<Spinner className="text-accent-text" />} title="Writing your assessment…">
-        The interviewer is reviewing the session. This usually takes under a minute; the page
-        updates by itself.
+        {pad.pad.kind === 'room' ? 'The AI' : 'The interviewer'} is reviewing the session. This
+        usually takes under a minute; the page updates by itself.
       </Notice>
     );
   }

@@ -12,8 +12,11 @@ import {
   type CreatePadRequest,
   type CreateRunRequest,
   DeletePadResponse,
+  HostView,
+  InviteInfo,
   Pad,
   PadDetail,
+  PadProblem,
   PadSummary,
   Playback,
   ProblemDetail,
@@ -26,6 +29,8 @@ import {
   QuizTopicStats,
   Report,
   Run,
+  SolutionReview,
+  UpdateHostNotesRequest,
   type UpdatePadRequest,
   WsTicketResponse,
 } from '@ipp/contracts';
@@ -149,7 +154,8 @@ export const api = {
   problems: (f: { difficulty?: string; tag?: string; q?: string } = {}) =>
     request(`/problems${qs(f)}`, z.array(ProblemSummary)),
   problem: (slug: string) => request(`/problems/${encodeURIComponent(slug)}`, ProblemDetail),
-  createPad: (body: CreatePadRequest) => request('/pads', Pad, { method: 'POST', body }),
+  createPad: (body: z.input<typeof CreatePadRequest>) =>
+    request('/pads', Pad, { method: 'POST', body }),
   pads: () => request('/pads', z.array(PadSummary)),
   pad: (id: string) => request(`/pads/${id}`, PadDetail),
   updatePad: (id: string, body: UpdatePadRequest) =>
@@ -159,6 +165,25 @@ export const api = {
   deletePad: (id: string) => request(`/pads/${id}`, DeletePadResponse, { method: 'DELETE' }),
   joinPad: (shareToken: string) =>
     request('/pads/join', JoinResponse, { method: 'POST', body: { shareToken } }),
+  /** Who is inviting and to what; works without a session. */
+  invite: (shareToken: string) =>
+    request(`/pads/invite/${encodeURIComponent(shareToken)}`, InviteInfo),
+  /** Enter an interview room with just a name (creates a guest session when there is none). */
+  joinAsGuest: (shareToken: string, name: string) =>
+    request('/pads/join-guest', JoinResponse, { method: 'POST', body: { shareToken, name } }),
+  /** Room host: move the room to another problem, or to a blank editor (null). */
+  changeProblem: (id: string, problemSlug: string | null) =>
+    request(`/pads/${id}/problem`, PadProblem, { method: 'POST', body: { problemSlug } }),
+  /** Room host only: interviewer notes, reference solutions and the host's own notes. */
+  hostView: (id: string) => request(`/pads/${id}/host`, HostView),
+  saveHostNotes: (id: string, notes: string) =>
+    request(`/pads/${id}/host/notes`, UpdateHostNotesRequest, { method: 'PUT', body: { notes } }),
+  /** Room host only: the AI's second opinion on the code as it is now (the host's own key). */
+  reviewSolution: (id: string, question?: string) =>
+    request(`/pads/${id}/review`, SolutionReview, {
+      method: 'POST',
+      body: question ? { question } : {},
+    }),
   report: (id: string) => request(`/pads/${id}/report`, Report),
   requestAssessment: (id: string) =>
     request(`/pads/${id}/report/assessment`, Report, { method: 'POST' }),

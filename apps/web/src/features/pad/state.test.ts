@@ -14,6 +14,7 @@ const detail: PadDetail = {
     id: PAD,
     ownerId: 'me',
     title: 'T',
+    kind: 'practice',
     problemSlug: 'two-sum',
     language: 'cpp',
     status: 'active',
@@ -24,6 +25,7 @@ const detail: PadDetail = {
     endedAt: null,
   },
   role: 'owner',
+  members: [],
   problem: {
     slug: 'two-sum',
     title: 'Two Sum',
@@ -318,5 +320,66 @@ describe('chat order', () => {
       'candidate',
       'interviewer',
     ]);
+  });
+});
+
+describe('interview rooms', () => {
+  const room: PadDetail = {
+    ...detail,
+    pad: { ...detail.pad, kind: 'room', shareToken: 'tok' },
+    members: [{ userId: 'me', name: 'Hana', role: 'owner', guest: false }],
+  };
+
+  it('replaces the optimistic copy of the host message, which has the interviewer role', () => {
+    let s = initPadState(room, 'me');
+    s = padReducer(s, {
+      type: 'pending.add',
+      message: {
+        localId: 'l1',
+        text: 'Welcome',
+        via: 'text',
+        createdAt: '2026-01-01T10:00:00.000Z',
+        status: 'sending',
+      },
+    });
+    s = padReducer(s, {
+      type: 'event',
+      event: {
+        type: 'message.created',
+        message: msg({ role: 'interviewer', userId: 'me', text: 'Welcome' }),
+      },
+    });
+    expect(s.pending).toEqual([]);
+    expect(chatItems(s).map((i) => i.kind)).toEqual(['message']);
+  });
+
+  it('adds whoever joins, once', () => {
+    const member = { userId: 'c', name: 'Casey', role: 'collaborator', guest: true } as const;
+    let s = initPadState(room, 'me');
+    s = padReducer(s, { type: 'event', event: { type: 'member.joined', member } });
+    s = padReducer(s, { type: 'event', event: { type: 'member.joined', member } });
+    expect(s.members.map((m) => m.name)).toEqual(['Hana', 'Casey']);
+  });
+
+  it('follows a change of problem and keeps the invite link', () => {
+    let s = initPadState(room, 'me');
+    s = padReducer(s, {
+      type: 'event',
+      event: {
+        type: 'pad.problem',
+        pad: { ...room.pad, problemSlug: null, shareToken: null },
+        problem: null,
+      },
+    });
+    expect(s.problem).toBeNull();
+    expect(s.pad.problemSlug).toBeNull();
+    expect(s.pad.shareToken).toBe('tok');
+    // Broadcast pad updates carry no token either.
+    s = padReducer(s, {
+      type: 'event',
+      event: { type: 'pad.updated', pad: { ...room.pad, language: 'python', shareToken: null } },
+    });
+    expect(s.pad.language).toBe('python');
+    expect(s.pad.shareToken).toBe('tok');
   });
 });

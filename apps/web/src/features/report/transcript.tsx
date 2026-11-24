@@ -7,6 +7,7 @@ import {
   type TimelineEvent,
 } from '@ipp/contracts';
 import {
+  ArrowLeftRightIcon,
   ClipboardPasteIcon,
   CodeIcon,
   EyeOffIcon,
@@ -110,7 +111,16 @@ function EventRow({ event }: { event: TimelineEvent['event'] }) {
     case 'joined':
       return (
         <span className="flex items-center gap-2 text-fg-muted">
-          <UserPlusIcon className="size-4 text-fg-subtle" aria-hidden /> A collaborator joined
+          <UserPlusIcon className="size-4 text-fg-subtle" aria-hidden /> Someone joined
+        </span>
+      );
+    case 'problem':
+      return (
+        <span className="flex min-w-0 items-center gap-2 text-fg-muted">
+          <ArrowLeftRightIcon className="size-4 shrink-0 text-fg-subtle" aria-hidden />
+          <span className="truncate">
+            Problem changed to <span className="font-medium text-fg">{event.title}</span>
+          </span>
         </span>
       );
     case 'ended':
@@ -122,14 +132,31 @@ function EventRow({ event }: { event: TimelineEvent['event'] }) {
   }
 }
 
-function MessageBody({ message, selfId }: { message: Message; selfId?: string }) {
+/**
+ * Who said it. In an interview room (`names` given) both sides are people, named; elsewhere the
+ * interviewer is the AI and the candidate is the reader, or a collaborator of theirs.
+ */
+export function speaker(message: Message, selfId?: string, names?: Map<string, string>): string {
+  if (message.userId && selfId && message.userId === selfId) return 'You';
+  const named = message.userId ? names?.get(message.userId) : undefined;
+  if (named) return named;
+  if (message.role === 'interviewer') return 'Interviewer';
+  if (names) return 'Candidate';
+  return message.userId && selfId ? 'Collaborator' : 'You';
+}
+
+function MessageBody({
+  message,
+  selfId,
+  names,
+}: {
+  message: Message;
+  selfId?: string;
+  names?: Map<string, string>;
+}) {
   const interviewer = message.role === 'interviewer';
   const proactive = interviewer && message.kind === 'proactive';
-  const who = interviewer
-    ? 'Interviewer'
-    : message.userId && selfId && message.userId !== selfId
-      ? 'Collaborator'
-      : 'You';
+  const who = speaker(message, selfId, names);
   return (
     <div
       className={cn(
@@ -175,8 +202,9 @@ export const TranscriptRow = forwardRef<
     current: boolean;
     onSeek: (t: number) => void;
     selfId?: string;
+    names?: Map<string, string>;
   }
->(function TranscriptRow({ item, start, past, current, onSeek, selfId }, ref) {
+>(function TranscriptRow({ item, start, past, current, onSeek, selfId, names }, ref) {
   const time = formatClock(Math.max(0, (item.t - start) / 1000));
   return (
     <li ref={ref} className={cn('group relative transition-opacity', !past && 'opacity-45')}>
@@ -194,7 +222,7 @@ export const TranscriptRow = forwardRef<
       </button>
       <div className={cn('pl-12', item.kind === 'message' ? '' : 'py-1 text-xs')}>
         {item.kind === 'message' ? (
-          <MessageBody message={item.message} selfId={selfId} />
+          <MessageBody message={item.message} selfId={selfId} names={names} />
         ) : (
           <EventRow event={item.event} />
         )}

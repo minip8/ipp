@@ -1,5 +1,5 @@
 'use client';
-import { CAPS, type CustomTest, type ProblemSignature } from '@ipp/contracts';
+import { CAPS, type CustomTest, type ProblemDetail, type ProblemSignature } from '@ipp/contracts';
 import {
   CopyPlusIcon,
   FlaskConicalIcon,
@@ -96,9 +96,17 @@ function ArgField({
   );
 }
 
-function CustomTestsTab({ cs, onRun }: { cs: ConsoleState; onRun: () => void }) {
-  const { state, readOnly, running } = usePad();
-  const sig = state.problem.signature;
+function CustomTestsTab({
+  cs,
+  onRun,
+  problem,
+}: {
+  cs: ConsoleState;
+  onRun: () => void;
+  problem: ProblemDetail;
+}) {
+  const { readOnly, running } = usePad();
+  const sig = problem.signature;
   const { drafts, setDrafts } = cs;
   const compiled = useMemo(() => compileAll(sig, drafts), [sig, drafts]);
   const update = (i: number, d: DraftTest) => setDrafts(drafts.map((x, j) => (j === i ? d : x)));
@@ -119,7 +127,7 @@ function CustomTestsTab({ cs, onRun }: { cs: ConsoleState; onRun: () => void }) 
         >
           <PlusIcon /> Add test
         </Button>
-        {state.problem.sampleTests.length > 0 && (
+        {problem.sampleTests.length > 0 && (
           <Menu>
             <MenuTrigger asChild>
               <Button size="sm" variant="ghost" disabled={full || readOnly}>
@@ -128,7 +136,7 @@ function CustomTestsTab({ cs, onRun }: { cs: ConsoleState; onRun: () => void }) 
             </MenuTrigger>
             <MenuContent align="end">
               <MenuLabel>Start from</MenuLabel>
-              {state.problem.sampleTests.map((t, i) => (
+              {problem.sampleTests.map((t, i) => (
                 <MenuItem key={t.id} onSelect={() => setDrafts([...drafts, draftFromSample(t)])}>
                   Sample {i + 1}
                 </MenuItem>
@@ -348,10 +356,13 @@ export function ConsolePanel({
   const latest = state.runs.at(-1);
   const shown = (selectedRunId && state.runs.find((r) => r.id === selectedRunId)) || latest;
   const isLive = shown && shown.status !== 'finished';
+  // A blank room has no class to test: only the result and the program's input remain.
+  const problem = state.problem;
+  const tab = !problem && cs.tab === 'custom' ? 'result' : cs.tab;
 
   return (
     <Tabs
-      value={cs.tab}
+      value={tab}
       onValueChange={(v) => cs.setTab(v as ConsoleTab)}
       className="flex h-full flex-col bg-surface"
     >
@@ -365,14 +376,16 @@ export function ConsolePanel({
               </span>
             )}
           </TabsTrigger>
-          <TabsTrigger value="custom">
-            <FlaskConicalIcon /> Custom tests
-            {cs.drafts.length > 0 && (
-              <span className="rounded-full bg-surface-3 px-1.5 text-2xs text-fg-muted tabular">
-                {cs.drafts.length}
-              </span>
-            )}
-          </TabsTrigger>
+          {problem && (
+            <TabsTrigger value="custom">
+              <FlaskConicalIcon /> Custom tests
+              {cs.drafts.length > 0 && (
+                <span className="rounded-full bg-surface-3 px-1.5 text-2xs text-fg-muted tabular">
+                  {cs.drafts.length}
+                </span>
+              )}
+            </TabsTrigger>
+          )}
           <TabsTrigger value="stdin">
             <TextCursorInputIcon /> Input
             {cs.stdin && (
@@ -383,7 +396,7 @@ export function ConsolePanel({
           </TabsTrigger>
         </TabsList>
         <div className="ml-auto flex items-center">
-          {cs.tab === 'result' && <RunHistory value={selectedRunId} onChange={selectRun} />}
+          {tab === 'result' && <RunHistory value={selectedRunId} onChange={selectRun} />}
         </div>
       </div>
       <TabsContent
@@ -391,7 +404,7 @@ export function ConsolePanel({
         className="min-h-0 flex-1 overflow-y-auto focus-visible:outline-none"
       >
         {!shown ? (
-          <NoRunsYet />
+          <NoRunsYet blank={!problem} />
         ) : (
           <div className="p-4">
             {isLive ? (
@@ -402,12 +415,14 @@ export function ConsolePanel({
           </div>
         )}
       </TabsContent>
-      <TabsContent
-        value="custom"
-        className="min-h-0 flex-1 overflow-y-auto focus-visible:outline-none"
-      >
-        <CustomTestsTab cs={cs} onRun={onRunCustom} />
-      </TabsContent>
+      {problem && (
+        <TabsContent
+          value="custom"
+          className="min-h-0 flex-1 overflow-y-auto focus-visible:outline-none"
+        >
+          <CustomTestsTab cs={cs} onRun={onRunCustom} problem={problem} />
+        </TabsContent>
+      )}
       <TabsContent
         value="stdin"
         className="flex min-h-0 flex-1 flex-col focus-visible:outline-none"

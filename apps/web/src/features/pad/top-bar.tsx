@@ -7,6 +7,7 @@ import { LogoMark } from '@/components/logo';
 import { Button } from '@/components/ui/button';
 import { Tooltip } from '@/components/ui/tooltip';
 import { Avatar } from '@/components/user-menu';
+import { hostOf } from '@/features/room/logic';
 import { formatClock, formatTimeOfDay } from '@/lib/format';
 import { storage } from '@/lib/storage';
 import { cn } from '@/lib/utils';
@@ -172,24 +173,40 @@ export function TopBar({
   onShortcuts: () => void;
   onEnd: () => void;
 }) {
-  const { state, readOnly } = usePad();
+  const { state, readOnly, me, isRoom, isHost } = usePad();
+  const host = hostOf(state.members);
   return (
     <header className="flex h-11 shrink-0 items-center gap-3 border-b border-border bg-surface px-3">
-      <Tooltip label="Back to dashboard">
-        <Link
-          href="/dashboard"
-          className="rounded-md p-1 hover:bg-surface-3"
-          aria-label="interview++ dashboard"
-        >
+      {me.guest ? (
+        // A guest has no dashboard to go back to.
+        <span className="p-1">
           <LogoMark />
-        </Link>
-      </Tooltip>
+        </span>
+      ) : (
+        <Tooltip label="Back to dashboard">
+          <Link
+            href="/dashboard"
+            className="rounded-md p-1 hover:bg-surface-3"
+            aria-label="interview++ dashboard"
+          >
+            <LogoMark />
+          </Link>
+        </Tooltip>
+      )}
       <span className="h-4 w-px bg-border" aria-hidden />
       <div className="flex min-w-0 items-center gap-2">
-        <h1 className="truncate text-sm font-semibold">{state.problem.title}</h1>
-        <DifficultyBadge difficulty={state.problem.difficulty} />
-        {state.role === 'collaborator' && (
-          <span className="text-xs text-fg-subtle">· collaborating</span>
+        <h1 className="truncate text-sm font-semibold">
+          {state.problem?.title ?? state.pad.title}
+        </h1>
+        {state.problem && <DifficultyBadge difficulty={state.problem.difficulty} />}
+        {isRoom ? (
+          <span className="truncate text-xs text-fg-subtle" data-testid="room-role">
+            {isHost ? '· you are hosting' : host ? `· interview with ${host.name}` : '· interview'}
+          </span>
+        ) : (
+          state.role === 'collaborator' && (
+            <span className="text-xs text-fg-subtle">· collaborating</span>
+          )
         )}
       </div>
       <div className="ml-auto flex items-center gap-1">
@@ -219,17 +236,17 @@ export function TopBar({
             <Settings2Icon />
           </Button>
         </Tooltip>
-        {readOnly ? (
-          <Button asChild size="sm" variant="primary" className="ml-1">
-            <Link href={`/pads/${state.pad.id}/report`}>View report</Link>
-          </Button>
-        ) : (
-          state.role === 'owner' && (
-            <Button size="sm" variant="secondary" className="ml-1" onClick={onEnd}>
-              End interview
-            </Button>
-          )
-        )}
+        {readOnly
+          ? (!isRoom || isHost) && (
+              <Button asChild size="sm" variant="primary" className="ml-1">
+                <Link href={`/pads/${state.pad.id}/report`}>View report</Link>
+              </Button>
+            )
+          : state.role === 'owner' && (
+              <Button size="sm" variant="secondary" className="ml-1" onClick={onEnd}>
+                End interview
+              </Button>
+            )}
       </div>
     </header>
   );

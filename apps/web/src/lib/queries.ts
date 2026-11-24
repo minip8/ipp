@@ -11,6 +11,8 @@ export const qk = {
   problem: (slug: string) => ['problem', slug] as const,
   pads: ['pads'] as const,
   pad: (id: string) => ['pad', id] as const,
+  hostView: (id: string) => ['pad', id, 'host'] as const,
+  invite: (token: string) => ['invite', token] as const,
   report: (id: string) => ['report', id] as const,
   playback: (id: string) => ['playback', id] as const,
   quizTopics: ['quiz', 'topics'] as const,

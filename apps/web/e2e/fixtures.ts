@@ -7,10 +7,12 @@ import {
   AiModelList,
   type AiProvider,
   AnswerFeedback,
+  type HostView,
   type Language,
   Message,
   Pad,
   PadDetail,
+  type PadMember,
   PadSummary,
   Playback,
   ProblemContent,
@@ -23,6 +25,7 @@ import {
   QuizTopicStats,
   Report,
   Run,
+  SolutionReview,
   YDOC,
 } from '@ipp/contracts';
 import boxJson from '@ipp/contracts/fixtures/problem-box-cpp.json' with { type: 'json' };
@@ -297,13 +300,15 @@ export function makePadDetail(
     runs?: Run[];
     interviewerKey?: 'active' | 'missing' | 'rejected';
     role?: 'owner' | 'collaborator';
+    members?: PadMember[];
   } = {},
 ) {
   const pad = makePad(over.pad);
   return PadDetail.parse({
     pad,
     role: over.role ?? 'owner',
-    problem: PROBLEM_DETAILS[pad.problemSlug] ?? TWO_SUM,
+    problem: pad.problemSlug ? (PROBLEM_DETAILS[pad.problemSlug] ?? TWO_SUM) : null,
+    members: over.members ?? [],
     messages: over.messages ?? initialMessages(pad.id),
     runs: over.runs ?? [],
     interviewerAvailable: (over.interviewerKey ?? 'active') === 'active',
@@ -317,6 +322,111 @@ export function makePadDetail(
             defaultModel: 'claude-opus-5-5',
           }
         : null,
+  });
+}
+
+// ---------------------------------------------------------------- interview rooms
+
+export const ROOM_PAD_ID = uuid(1101);
+export const ROOM_TOKEN = 'room_Kx81QzT4';
+/** Someone who joins a room by its link with just a name. */
+export const GUEST = { id: 'guest_casey', name: 'Casey Jones', email: 'temp-1@guest.invalid' };
+export const HOST_MEMBER: PadMember = {
+  userId: USER.id,
+  name: USER.name,
+  role: 'owner',
+  guest: false,
+};
+export const GUEST_MEMBER: PadMember = {
+  userId: GUEST.id,
+  name: GUEST.name,
+  role: 'collaborator',
+  guest: true,
+};
+
+/**
+ * A room. `as: 'host'` is the signed-in user's own room; `as: 'candidate'` is one Grace Hopper
+ * hosts, seen by whoever joined it.
+ */
+export function makeRoomDetail(
+  over: {
+    as?: 'host' | 'candidate';
+    pad?: Partial<Pad>;
+    members?: PadMember[];
+    messages?: Message[];
+    runs?: Run[];
+  } = {},
+) {
+  const host = (over.as ?? 'host') === 'host';
+  const owner: PadMember = host
+    ? HOST_MEMBER
+    : { userId: OTHER_USER.id, name: OTHER_USER.name, role: 'owner', guest: false };
+  return makePadDetail({
+    pad: {
+      id: ROOM_PAD_ID,
+      kind: 'room',
+      ownerId: owner.userId,
+      interviewer: { enabled: false, style: 'neutral', proactivity: 'normal', voice: false },
+      shareToken: host ? ROOM_TOKEN : null,
+      ...over.pad,
+    },
+    role: host ? 'owner' : 'collaborator',
+    members: over.members ?? [owner],
+    messages: over.messages ?? [],
+    runs: over.runs,
+    // A candidate learns nothing about the host's key.
+    ...(host ? {} : { interviewerKey: 'missing' as const }),
+  });
+}
+
+/** A short exchange between the host (Ada) and the candidate (Casey). */
+export function roomMessages(hostId = USER.id, candidateId = GUEST.id): Message[] {
+  return [
+    makeMessage({
+      padId: ROOM_PAD_ID,
+      role: 'interviewer',
+      userId: hostId,
+      text: 'Welcome! Take a minute to read the problem, then talk me through your approach.',
+      createdAt: new Date(Date.now() - 9 * 60_000).toISOString(),
+    }),
+    makeMessage({
+      padId: ROOM_PAD_ID,
+      role: 'candidate',
+      userId: candidateId,
+      text: 'A hash map from value to index, so each lookup for the complement is O(1).',
+      createdAt: new Date(Date.now() - 7 * 60_000).toISOString(),
+    }),
+  ];
+}
+
+export const HOST_VIEWS: Record<string, HostView['problem']> = {
+  'two-sum': {
+    slug: 'two-sum',
+    interviewerNotes: twoSumContent.interviewerNotes,
+    referenceSolutions: twoSumContent.referenceSolutions,
+  },
+  'lru-cache': {
+    slug: 'lru-cache',
+    interviewerNotes: lruContent.interviewerNotes,
+    referenceSolutions: lruContent.referenceSolutions,
+  },
+};
+
+export function makeReview(question?: string): SolutionReview {
+  return SolutionReview.parse({
+    verdict: 'incorrect',
+    summary:
+      'The approach is right, but the map is filled before the lookup, so an element can be paired with itself.',
+    issues: ['Line 6: for nums = [3, 2, 4] and target = 6 it returns [0, 0]; expected [1, 2].'],
+    complexity: 'O(n) time and O(n) space, which is what the problem asks for.',
+    followUps: [
+      'What does your code return when the same value appears twice?',
+      'Could you do it without extra space if the input were sorted?',
+    ],
+    answer: question ? 'Yes: the loop visits every index once, so the bound is right.' : null,
+    language: 'cpp',
+    model: 'claude-opus-5-5',
+    createdAt: new Date().toISOString(),
   });
 }
 
@@ -744,6 +854,15 @@ export const REPORT_PENDING = Report.parse({
   status: 'pending',
   generatedAt: null,
   assessment: null,
+});
+
+/** A room's report before the host asks for the AI assessment. */
+export const REPORT_ROOM = Report.parse({
+  ...REPORT_READY,
+  padId: ROOM_PAD_ID,
+  assessment: null,
+  assessmentUnavailable: 'not_requested',
+  hostNotes: 'Strong start. Needed a nudge on duplicates.',
 });
 
 function b64(u: Uint8Array) {

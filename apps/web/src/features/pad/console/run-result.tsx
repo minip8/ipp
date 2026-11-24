@@ -142,10 +142,11 @@ function TestDetail({
   custom: CustomTest | null;
 }) {
   const { problem } = usePad().state;
-  const sample = problem.sampleTests.find((t) => t.id === test.id);
+  const sample = problem?.sampleTests.find((t) => t.id === test.id);
   const input = sample ?? custom;
   const expected = sample?.expected ?? null;
-  const view = input ? describeTest(problem.signature, input, expected, test.actual) : null;
+  const view =
+    input && problem ? describeTest(problem.signature, input, expected, test.actual) : null;
   const v = TEST_VERDICT[test.verdict];
   const showOutputs = test.verdict !== 'skipped';
 
@@ -624,17 +625,24 @@ export function RunProgressView({ run }: { run: Run }) {
   );
 }
 
-export function NoRunsYet() {
+export function NoRunsYet({ blank }: { blank?: boolean }) {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-sm text-fg-muted">
       <TerminalIcon className="size-5 text-fg-subtle" aria-hidden />
       <p className="font-medium text-fg">Nothing has run yet</p>
-      <p className="max-w-md">
-        <strong className="font-medium text-fg">Run</strong> executes your file as written,
-        including your own main. <strong className="font-medium text-fg">Run tests</strong> checks
-        your class against the samples, and <strong className="font-medium text-fg">Submit</strong>{' '}
-        runs the hidden tests too.
-      </p>
+      {blank ? (
+        <p className="max-w-md">
+          <strong className="font-medium text-fg">Run</strong> executes the file as written and
+          shows what it prints. This room has no problem, so there are no tests.
+        </p>
+      ) : (
+        <p className="max-w-md">
+          <strong className="font-medium text-fg">Run</strong> executes your file as written,
+          including your own main. <strong className="font-medium text-fg">Run tests</strong> checks
+          your class against the samples, and{' '}
+          <strong className="font-medium text-fg">Submit</strong> runs the hidden tests too.
+        </p>
+      )}
     </div>
   );
 }

@@ -254,7 +254,7 @@ export function ShortcutsDialog({
 }
 
 export function SharePopover({ children }: { children: React.ReactNode }) {
-  const { state } = usePad();
+  const { state, isRoom } = usePad();
   const [copied, setCopied] = useState(false);
   const token = state.pad.shareToken;
   const [url, setUrl] = useState('');
@@ -276,11 +276,13 @@ export function SharePopover({ children }: { children: React.ReactNode }) {
       <PopoverTrigger asChild>{children}</PopoverTrigger>
       <PopoverContent align="end" className="w-96">
         <p className="flex items-center gap-2 text-sm font-medium">
-          <LinkIcon className="size-4 text-fg-muted" /> Invite a collaborator
+          <LinkIcon className="size-4 text-fg-muted" />{' '}
+          {isRoom ? 'Invite your candidate' : 'Invite a collaborator'}
         </p>
         <p className="mt-1 text-xs text-fg-muted">
-          Anyone signed in with this link can join, edit the code and chat. Share it with a friend
-          playing interviewer, or a mentor.
+          {isRoom
+            ? 'Anyone with this link can join as a candidate: they type their name, no account needed. They can edit the code, run it and chat. Your notes, the solution and the report stay with you.'
+            : 'Anyone signed in with this link can join, edit the code and chat. Share it with a friend playing interviewer, or a mentor.'}
         </p>
         <div className="mt-3 flex gap-2">
           <label htmlFor="share-url" className="sr-only">
@@ -357,7 +359,7 @@ export function EndDialog({
   onOpenChange: (o: boolean) => void;
   onEnded: () => void;
 }) {
-  const { state, endPad } = usePad();
+  const { state, endPad, isRoom } = usePad();
   const [busy, setBusy] = useState(false);
   const elapsed = (Date.now() - Date.parse(state.pad.startedAt)) / 1000;
   const submissions = state.runs.filter((r) => r.mode === 'submit' && r.status === 'finished');
@@ -369,7 +371,9 @@ export function EndDialog({
         <DialogHeader>
           <DialogTitle>End the interview?</DialogTitle>
           <DialogDescription>
-            The pad becomes read-only for everyone and your report is generated.
+            {isRoom
+              ? 'The room becomes read-only for everyone. The report, with the playback and your notes, is for you alone.'
+              : 'The pad becomes read-only for everyone and your report is generated.'}
           </DialogDescription>
         </DialogHeader>
         <DialogBody>
@@ -390,6 +394,8 @@ export function EndDialog({
               <p className="flex items-center gap-2">
                 Last submission <RunVerdictBadge verdict={lastSubmit.verdict} />
               </p>
+            ) : isRoom ? (
+              <p className="text-fg-muted">Nothing has been submitted on this problem.</p>
             ) : (
               <p className="text-fg-muted">
                 You have not submitted yet. Submitting runs the hidden tests, and the result is part
