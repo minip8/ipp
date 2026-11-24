@@ -109,7 +109,6 @@ inline void resetHeap() {
     g_live.clear([](void*) {});  // blocks the previous test leaked: forgotten, not freed
     g_quarantine.clear([](void* p) { std::free(p); });
     g_counting = false;
-    g_pause = 0;
     g_failNext = false;
     g_overflow = false;
     g_doubleFrees = 0;
