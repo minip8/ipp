@@ -190,6 +190,15 @@ export const TOPIC_GROUPS: readonly TopicGroup[] = [
       { tag: 'geometry', label: 'Geometry' },
     ],
   },
+  {
+    slug: 'memory-ownership',
+    label: 'Memory & ownership',
+    umbrella: [],
+    subtopics: [
+      { tag: 'memory-management', label: 'Memory management' },
+      { tag: 'move-semantics', label: 'Move semantics' },
+    ],
+  },
 ];
 
 /** Tags deliberately outside every group, with the reason. */
