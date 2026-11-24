@@ -122,7 +122,7 @@ test.describe('problem library', () => {
     await row.click();
     const setup_ = page.locator('#interview-setup');
     await expect(setup_.getByTestId('language-restriction')).toHaveText('C++ only');
-    const langs = page.getByRole('group', { name: 'Language' }).getByRole('radio');
+    const langs = page.getByRole('radiogroup', { name: 'Language' }).getByRole('radio');
     await expect(langs).toHaveText(['C++']);
     await expect(langs.first()).toHaveAttribute('aria-checked', 'true');
     await expect(page.getByTestId('language-note')).toContainText(
