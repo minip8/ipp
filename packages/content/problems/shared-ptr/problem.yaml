@@ -1,0 +1,93 @@
+slug: shared-ptr
+title: Implement shared_ptr
+difficulty: medium
+category: data-structure
+languages: [cpp]
+tags: [design, memory-management, move-semantics]
+signature:
+  className: SharedPtrHarness
+  kind: design
+  ctorParams: []
+  methods:
+    - name: make
+      params:
+        - { name: slot, type: int }
+        - { name: value, type: int }
+      returns: void
+    - name: makeNull
+      params:
+        - { name: slot, type: int }
+      returns: void
+    - name: copyConstruct
+      params:
+        - { name: from, type: int }
+        - { name: to, type: int }
+      returns: void
+    - name: copyAssign
+      params:
+        - { name: from, type: int }
+        - { name: to, type: int }
+      returns: void
+    - name: moveConstruct
+      params:
+        - { name: from, type: int }
+        - { name: to, type: int }
+      returns: void
+    - name: moveAssign
+      params:
+        - { name: from, type: int }
+        - { name: to, type: int }
+      returns: void
+    - name: reset
+      params:
+        - { name: slot, type: int }
+        - { name: value, type: int }
+      returns: void
+    - name: resetNull
+      params:
+        - { name: slot, type: int }
+      returns: void
+    - name: swap
+      params:
+        - { name: a, type: int }
+        - { name: b, type: int }
+      returns: void
+    - name: destroy
+      params:
+        - { name: slot, type: int }
+      returns: void
+    - name: destroyAll
+      params: []
+      returns: void
+    - name: constructFailingAlloc
+      params:
+        - { name: value, type: int }
+      returns: bool
+    - name: value
+      params:
+        - { name: slot, type: int }
+      returns: int
+    - name: isNull
+      params:
+        - { name: slot, type: int }
+      returns: bool
+    - name: useCount
+      params:
+        - { name: slot, type: int }
+      returns: int
+    - name: alive
+      params: []
+      returns: int
+    - name: destroyed
+      params: []
+      returns: { list: int }
+    - name: heapBlocks
+      params: []
+      returns: int
+    - name: errors
+      params: []
+      returns: { list: string }
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic C++ systems interview question (implement std::shared_ptr with a reference-counted control block)
+  url: https://en.cppreference.com/w/cpp/memory/shared_ptr

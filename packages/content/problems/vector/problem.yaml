@@ -1,0 +1,116 @@
+slug: vector
+title: Implement vector
+difficulty: hard
+category: data-structure
+languages: [cpp]
+tags: [design, array, memory-management, move-semantics]
+signature:
+  className: VectorHarness
+  kind: design
+  ctorParams: []
+  methods:
+    - name: create
+      params:
+        - { name: slot, type: int }
+      returns: void
+    - name: pushCopy
+      params:
+        - { name: slot, type: int }
+        - { name: value, type: int }
+      returns: void
+    - name: pushMove
+      params:
+        - { name: slot, type: int }
+        - { name: value, type: int }
+      returns: void
+    - name: emplace
+      params:
+        - { name: slot, type: int }
+        - { name: value, type: int }
+      returns: int
+    - name: pushOwn
+      params:
+        - { name: slot, type: int }
+        - { name: index, type: int }
+      returns: void
+    - name: pop
+      params:
+        - { name: slot, type: int }
+      returns: void
+    - name: get
+      params:
+        - { name: slot, type: int }
+        - { name: index, type: int }
+      returns: int
+    - name: at
+      params:
+        - { name: slot, type: int }
+        - { name: index, type: int }
+      returns: int
+    - name: size
+      params:
+        - { name: slot, type: int }
+      returns: int
+    - name: capacity
+      params:
+        - { name: slot, type: int }
+      returns: int
+    - name: reserve
+      params:
+        - { name: slot, type: int }
+        - { name: n, type: int }
+      returns: void
+    - name: clear
+      params:
+        - { name: slot, type: int }
+      returns: void
+    - name: contents
+      params:
+        - { name: slot, type: int }
+      returns: { list: int }
+    - name: copyConstruct
+      params:
+        - { name: from, type: int }
+        - { name: to, type: int }
+      returns: void
+    - name: copyAssign
+      params:
+        - { name: from, type: int }
+        - { name: to, type: int }
+      returns: void
+    - name: moveConstruct
+      params:
+        - { name: from, type: int }
+        - { name: to, type: int }
+      returns: void
+    - name: moveAssign
+      params:
+        - { name: from, type: int }
+        - { name: to, type: int }
+      returns: void
+    - name: destroy
+      params:
+        - { name: slot, type: int }
+      returns: void
+    - name: destroyAll
+      params: []
+      returns: void
+    - name: alive
+      params: []
+      returns: int
+    - name: copies
+      params: []
+      returns: int
+    - name: moves
+      params: []
+      returns: int
+    - name: heapBlocks
+      params: []
+      returns: int
+    - name: errors
+      params: []
+      returns: { list: string }
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic C++ systems interview question (implement std::vector with raw storage and placement new)
+  url: https://en.cppreference.com/w/cpp/container/vector
