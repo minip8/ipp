@@ -93,7 +93,8 @@ const padIdOf = (documentName: string): string | null => {
   return m ? (m[1] ?? null) : null;
 };
 
-export function seedDoc(doc: Y.Doc, problem: StarterSource): void {
+/** `problem` null: a blank room, seeded with a small runnable program per language. */
+export function seedDoc(doc: Y.Doc, problem: StarterSource | null): void {
   doc.transact(() => {
     for (const lang of LANGUAGES)
       doc.getText(YDOC.code(lang)).insert(0, problemScaffold(problem, lang));
@@ -263,13 +264,48 @@ export class Collab {
       if (row) Y.applyUpdate(doc, row.state);
       else {
         const starter = await this.starterFor(padId);
-        if (starter) seedDoc(doc, starter);
+        if (starter) seedDoc(doc, starter.problem);
       }
     }
     const code = Object.fromEntries(
       LANGUAGES.map((l) => [l, doc.getText(YDOC.code(l)).toString()]),
     ) as Record<Language, string>;
     return { code, notes: doc.getText(YDOC.notes).toString() };
+  }
+
+  /**
+   * Swaps the editor over to another problem, on the live document (loading and seeding it
+   * first if nobody has it open): each language's code is stashed under the problem being left,
+   * and replaced by what was stashed for the new one, or its starter code the first time.
+   * `commit` records the change in the database once the document is loaded and before it is
+   * rewritten; when it returns null nothing is touched.
+   */
+  async switchProblem<T>(
+    padId: string,
+    from: string | null,
+    next: (StarterSource & { slug: string }) | null,
+    commit: () => Promise<T | null>,
+  ): Promise<T | null> {
+    const conn = await this.hocuspocus.openDirectConnection(YDOC.name(padId), { server: true });
+    try {
+      const committed = await commit();
+      if (committed === null) return null;
+      await conn.transact((doc) => {
+        const stash = doc.getMap<string>(YDOC.stash);
+        for (const lang of LANGUAGES) {
+          const text = doc.getText(YDOC.code(lang));
+          stash.set(YDOC.stashKey(from, lang), text.toString());
+          const restored = stash.get(YDOC.stashKey(next?.slug ?? null, lang));
+          text.delete(0, text.length);
+          text.insert(0, typeof restored === 'string' ? restored : problemScaffold(next, lang));
+        }
+      });
+      return committed;
+    } finally {
+      await conn
+        .disconnect()
+        .catch((err) => this.ctx.log.warn({ err, padId }, 'closing the direct connection failed'));
+    }
   }
 
   /** After a pad ends: persist now and drop connections so clients reconnect read-only. */
@@ -326,17 +362,27 @@ export class Collab {
 
   // ------------------------------------------------------------------ internals
 
-  private async starterFor(padId: string): Promise<StarterSource | null> {
+  /** The pad's starter source (`problem` null for a blank room); null when the pad is gone. */
+  private async starterFor(padId: string): Promise<{ problem: StarterSource | null } | null> {
     const [row] = await this.ctx.db
       .select({
+        slug: pads.problemSlug,
         signature: problems.signature,
         languages: problems.languages,
         starterCode: problems.starterCode,
       })
       .from(pads)
-      .innerJoin(problems, eq(problems.slug, pads.problemSlug))
+      .leftJoin(problems, eq(problems.slug, pads.problemSlug))
       .where(eq(pads.id, padId));
-    return row ?? null;
+    if (!row) return null;
+    if (!row.slug || !row.signature) return { problem: null };
+    return {
+      problem: {
+        signature: row.signature,
+        languages: row.languages ?? undefined,
+        starterCode: row.starterCode ?? undefined,
+      },
+    };
   }
 
   private async loadOrSeedState(padId: string): Promise<Uint8Array> {
@@ -349,7 +395,7 @@ export class Collab {
     const starter = await this.starterFor(padId);
     if (!starter) throw new Error('pad not found');
     const doc = new Y.Doc();
-    seedDoc(doc, starter);
+    seedDoc(doc, starter.problem);
     const update = Y.encodeStateAsUpdate(doc);
     const won = await db.transaction(async (tx) => {
       const inserted = await tx

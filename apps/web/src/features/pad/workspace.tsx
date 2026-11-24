@@ -1,5 +1,5 @@
 'use client';
-import { LANGUAGES, type Language } from '@ipp/contracts';
+import { BLANK_SCAFFOLDS, LANGUAGES, type Language } from '@ipp/contracts';
 import {
   FileCode2Icon,
   FlaskConicalIcon,
@@ -32,6 +32,9 @@ import {
 } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { Tooltip } from '@/components/ui/tooltip';
+import { ChangeProblemDialog } from '@/features/room/change-problem-dialog';
+import { InviteBanner } from '@/features/room/invite-banner';
+import { RoomSidePanel } from '@/features/room/side-panel';
 import { cn } from '@/lib/utils';
 import { type ChatHandle, ChatPanel } from './chat-panel';
 import { ConsolePanel, compileAll, useConsoleState } from './console/console-panel';
@@ -71,9 +74,24 @@ function RunButtons({
   onTests: () => void;
   onSubmit: () => void;
 }) {
-  const { running, readOnly, synced } = usePad();
+  const { state, running, readOnly, synced } = usePad();
   const disabled = readOnly || !synced || Boolean(running);
   const spin = (mode: string) => running?.mode === mode;
+  // A blank room has nothing to test against: the program is simply run.
+  if (!state.problem)
+    return (
+      <Tooltip label="Run the file as written" shortcut="Mod+Enter">
+        <Button
+          size="sm"
+          variant="primary"
+          onClick={onRun}
+          disabled={disabled}
+          data-testid="run-file"
+        >
+          {spin('file') ? <Spinner /> : <PlayIcon className="fill-current" />} Run
+        </Button>
+      </Tooltip>
+    );
   return (
     <div className="flex items-center gap-1.5">
       <Tooltip label="Run the file as written, with your own main()" shortcut="Mod+Enter">
@@ -146,7 +164,13 @@ export function Workspace() {
   const chatPanel = useRef<PanelImperativeHandle>(null);
   const consolePanel = useRef<PanelImperativeHandle>(null);
   const [view, setView] = useState<'code' | 'board'>('code');
-  const [dialog, setDialog] = useState<null | 'settings' | 'shortcuts' | 'end' | 'reset'>(null);
+  const [dialog, setDialog] = useState<
+    null | 'settings' | 'shortcuts' | 'end' | 'reset' | 'problem'
+  >(null);
+  const problem = state.problem;
+  const languages = problem?.languages ?? LANGUAGES;
+  // In a room the telemetry is about the candidate, not about the host looking something up.
+  const watched = !readOnly && !pad.isHost;
   const [cursor, setCursor] = useState({ line: 1, col: 1 });
   const [narrowDismissed, setNarrowDismissed] = useState(false);
 
@@ -176,15 +200,18 @@ export function Workspace() {
     void startRun('file', { stdin: cs.stdin });
   };
   const runTests = () => {
+    if (!problem) return;
     showResults();
     void startRun('samples');
   };
   const submit = () => {
+    if (!problem) return;
     showResults();
     void startRun('submit');
   };
   const runCustom = () => {
-    const c = compileAll(state.problem.signature, cs.drafts);
+    if (!problem) return;
+    const c = compileAll(problem.signature, cs.drafts);
     if (!c.ok || c.tests.length === 0) {
       cs.setTab('custom');
       toast.error('Fix the custom tests first', {
@@ -239,7 +266,7 @@ export function Workspace() {
 
   // Blur telemetry: how long the candidate was away from the tab.
   useEffect(() => {
-    if (readOnly) return;
+    if (!watched) return;
     let since: number | null = null;
     const blur = () => {
       since = Date.now();
@@ -256,7 +283,7 @@ export function Workspace() {
       window.removeEventListener('blur', blur);
       window.removeEventListener('focus', focus);
     };
-  }, [readOnly, telemetry]);
+  }, [watched, telemetry]);
 
   return (
     // `relative`: visually hidden (sr-only) labels are absolutely positioned. Without a positioned
@@ -276,14 +303,18 @@ export function Workspace() {
         >
           <LockIcon className="size-4 text-accent-text" aria-hidden />
           <span>This interview has ended. The pad is read-only.</span>
-          <Link
-            href={`/pads/${state.pad.id}/report`}
-            className="font-medium text-accent-text hover:underline"
-          >
-            See the report
-          </Link>
+          {/* A room's report belongs to its host. */}
+          {(!pad.isRoom || pad.isHost) && (
+            <Link
+              href={`/pads/${state.pad.id}/report`}
+              className="font-medium text-accent-text hover:underline"
+            >
+              See the report
+            </Link>
+          )}
         </div>
       )}
+      <InviteBanner />
       {!narrowDismissed && (
         <div className="flex shrink-0 items-center gap-3 border-b border-border bg-warn-soft px-4 py-1.5 text-xs text-warn-text lg:hidden">
           <span className="flex-1">
@@ -316,7 +347,7 @@ export function Workspace() {
           collapsible
           collapsedSize={0}
         >
-          <ProblemPanel />
+          <ProblemPanel onChangeProblem={() => setDialog('problem')} />
         </Panel>
         <ResizeHandle />
         <Panel id="center" minSize="30%" defaultSize="50%">
@@ -369,21 +400,21 @@ export function Workspace() {
                         value={lang}
                         onValueChange={(v) => void setLanguage(v as Language)}
                         // A language-restricted problem offers only its own languages.
-                        disabled={readOnly || state.problem.languages.length < 2}
+                        disabled={readOnly || languages.length < 2}
                       >
                         <SelectTrigger
                           className="h-7 w-28 text-xs"
                           aria-label="Language"
                           title={
-                            state.problem.languages.length < LANGUAGES.length
-                              ? `This problem can only be solved in ${state.problem.languages.map((l) => LANG_LABEL[l]).join(' or ')}`
+                            languages.length < LANGUAGES.length
+                              ? `This problem can only be solved in ${languages.map((l) => LANG_LABEL[l]).join(' or ')}`
                               : undefined
                           }
                         >
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {state.problem.languages.map((l) => (
+                          {languages.map((l) => (
                             <SelectItem key={l} value={l}>
                               {LANG_LABEL[l]}
                             </SelectItem>
@@ -419,7 +450,7 @@ export function Workspace() {
                     settings={settings}
                     commands={editorCommands}
                     diagnosticsRun={latestFinished}
-                    onPaste={(chars) => chars > 0 && telemetry('paste', chars)}
+                    onPaste={(chars) => chars > 0 && watched && telemetry('paste', chars)}
                     onCursor={(line, col) => setCursor({ line, col })}
                   />
                   {view === 'board' && (
@@ -459,7 +490,7 @@ export function Workspace() {
           collapsible
           collapsedSize={0}
         >
-          <ChatPanel ref={chatRef} />
+          {pad.isRoom ? <RoomSidePanel ref={chatRef} /> : <ChatPanel ref={chatRef} />}
         </Panel>
       </Group>
       <StatusBar cursor={cursor} />
@@ -476,10 +507,16 @@ export function Workspace() {
         open={dialog === 'reset'}
         onOpenChange={(o) => setDialog(o ? 'reset' : null)}
         onConfirm={() => {
-          const starter = state.problem.scaffolds[lang];
+          const starter = problem ? problem.scaffolds[lang] : BLANK_SCAFFOLDS[lang];
           if (starter !== undefined) editorRef.current?.replaceAll(starter);
         }}
       />
+      {pad.isHost && (
+        <ChangeProblemDialog
+          open={dialog === 'problem'}
+          onOpenChange={(o) => setDialog(o ? 'problem' : null)}
+        />
+      )}
       <EndDialog
         open={dialog === 'end'}
         onOpenChange={(o) => setDialog(o ? 'end' : null)}

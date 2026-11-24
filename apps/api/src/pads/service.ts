@@ -1,12 +1,56 @@
-import { LANGUAGE_LABELS, type Language, type PadRole, type Report } from '@ipp/contracts';
-import { messages, padMembers, pads, problems, reports, runs, timelineEvents } from '@ipp/db';
-import { and, count, eq, ne, sql } from '@ipp/db/orm';
+import {
+  LANGUAGE_LABELS,
+  type Language,
+  type PadMember,
+  type PadProblem,
+  type PadRole,
+  type Report,
+} from '@ipp/contracts';
+import {
+  messages,
+  padMembers,
+  pads,
+  problems,
+  problemTests,
+  reports,
+  runs,
+  timelineEvents,
+  user,
+} from '@ipp/db';
+import { and, asc, count, eq, inArray, ne, sql } from '@ipp/db/orm';
 import type { Ctx } from '../context';
 import { badRequest, notFound } from '../http/errors';
 import { isForeignKeyViolation } from '../pg';
-import { padView } from '../views';
+import { padView, problemDetail } from '../views';
 
 export type PadRow = typeof pads.$inferSelect;
+export type ProblemRow = typeof problems.$inferSelect;
+
+/** Everyone in the pad, the owner first, then in the order they joined. */
+export async function padMembersOf(ctx: Ctx, padId: string): Promise<PadMember[]> {
+  const rows = await ctx.db
+    .select({
+      userId: padMembers.userId,
+      name: user.name,
+      role: padMembers.role,
+      guest: user.isAnonymous,
+    })
+    .from(padMembers)
+    .innerJoin(user, eq(user.id, padMembers.userId))
+    .where(eq(padMembers.padId, padId))
+    .orderBy(asc(padMembers.joinedAt));
+  return [...rows.filter((m) => m.role === 'owner'), ...rows.filter((m) => m.role !== 'owner')];
+}
+
+/** The problem as a member sees it (no server-only fields); null for a blank room. */
+export async function publicProblem(ctx: Ctx, problem: ProblemRow | null) {
+  if (!problem) return null;
+  const tests = await ctx.db
+    .select()
+    .from(problemTests)
+    .where(eq(problemTests.problemSlug, problem.slug));
+  return problemDetail(problem, tests);
+}
 
 /** The pad if the user is a member. Non-members get 404 so pad ids cannot be probed. */
 export async function padForMember(
@@ -46,6 +90,7 @@ export async function changeLanguage(
   padId: string,
   language: Language,
 ): Promise<PadRow | null> {
+  // A blank room has no problem, so every language is available.
   const [problem] = await ctx.db
     .select({ title: problems.title, languages: problems.languages })
     .from(pads)
@@ -109,6 +154,14 @@ export async function endPad(ctx: Ctx, padId: string): Promise<PadRow | null> {
   await ctx.collab.endPad(padId).catch((err) => ctx.log.error({ err, padId }, 'collab end failed'));
   ctx.ai.trigger(padId, { type: 'session_ended' });
   const stats = await computeStats(ctx, row);
+  if (row.kind === 'room') {
+    // A room's report is ready at once: the AI assessment is written only if the host asks.
+    await ctx.db
+      .insert(reports)
+      .values({ padId, status: 'ready', stats, assessment: null, generatedAt: new Date() })
+      .onConflictDoNothing();
+    return row;
+  }
   await ctx.db
     .insert(reports)
     .values({ padId, status: 'pending', stats, assessment: null })
@@ -119,16 +172,61 @@ export async function endPad(ctx: Ctx, padId: string): Promise<PadRow | null> {
   return row;
 }
 
+/**
+ * A room's host changes its problem (null = a blank editor). The editor keeps one buffer per
+ * language; the code of the problem being left is stashed in the document and comes back when
+ * the host returns to it. The pad's language follows when the new problem does not offer it.
+ * Returns null when the pad ended or its problem changed in the meantime.
+ */
+export async function changeProblem(
+  ctx: Ctx,
+  pad: PadRow,
+  next: ProblemRow | null,
+): Promise<PadProblem | null> {
+  const language: Language =
+    !next || next.languages.includes(pad.language)
+      ? pad.language
+      : (next.languages[0] ?? pad.language);
+  const row = await ctx.collab.switchProblem(pad.id, pad.problemSlug, next, async () => {
+    const [updated] = await ctx.db
+      .update(pads)
+      .set({ problemSlug: next?.slug ?? null, language })
+      .where(
+        and(
+          eq(pads.id, pad.id),
+          eq(pads.status, 'active'),
+          sql`${pads.problemSlug} is not distinct from ${pad.problemSlug}`,
+        ),
+      )
+      .returning();
+    return updated ?? null;
+  });
+  if (!row) return null;
+  await ctx.db.insert(timelineEvents).values({
+    padId: pad.id,
+    event: { type: 'problem', problemSlug: next?.slug ?? null, title: next?.title ?? 'Blank' },
+  });
+  ctx.ai.invalidate(pad.id);
+  const problem = await publicProblem(ctx, next);
+  ctx.rooms.broadcast(pad.id, { type: 'pad.problem', pad: padView(row, null), problem });
+  return { pad: padView(row, null), problem };
+}
+
 /** Fills in the report: stats always; the assessment when the interviewer can produce one. */
 export async function generateAssessment(ctx: Ctx, pad: PadRow): Promise<void> {
   const stats = await computeStats(ctx, pad);
   let status: Report['status'] = 'ready';
   let assessment: Report['assessment'] = null;
   // Runs on the pad owner's key; without a usable one the report has stats only, and the owner
-  // can ask for the assessment later (POST /api/pads/:id/report/assessment).
-  if (pad.interviewer.enabled) {
+  // can ask for the assessment later (POST /api/pads/:id/report/assessment). A room has no AI
+  // interviewer: its assessment is an observer's, written for the host when they ask.
+  if (pad.kind === 'room' || pad.interviewer.enabled) {
     try {
-      assessment = await ctx.ai.interviewer.generateAssessment(pad.id);
+      assessment =
+        pad.kind === 'room'
+          ? await ctx.ai.interviewer.generateRoomAssessment(pad.id)
+          : await ctx.ai.interviewer.generateAssessment(pad.id);
+      if (pad.kind === 'room' && !assessment) status = 'failed';
     } catch (err) {
       ctx.log.error({ err, padId: pad.id }, 'assessment failed');
       status = 'failed';
@@ -166,8 +264,28 @@ export async function deletePad(ctx: Ctx, padId: string): Promise<boolean> {
     .select({ id: runs.id, userId: runs.userId })
     .from(runs)
     .where(and(eq(runs.padId, padId), ne(runs.status, 'finished')));
+  const guests = await ctx.db
+    .select({ id: user.id })
+    .from(padMembers)
+    .innerJoin(user, eq(user.id, padMembers.userId))
+    .where(and(eq(padMembers.padId, padId), eq(user.isAnonymous, true)));
   const deleted = await ctx.db.delete(pads).where(eq(pads.id, padId)).returning({ id: pads.id });
   if (deleted.length === 0) return false;
+  // Guests exist only for the rooms they joined: one left in no room goes with this one.
+  if (guests.length)
+    await ctx.db
+      .delete(user)
+      .where(
+        and(
+          inArray(
+            user.id,
+            guests.map((g) => g.id),
+          ),
+          eq(user.isAnonymous, true),
+          sql`not exists (select 1 from pad_members m where m.user_id = ${user.id})`,
+        ),
+      )
+      .catch((err) => ctx.log.warn({ err, padId }, 'removing guests of a deleted pad failed'));
   ctx.rooms.close(padId, PAD_GONE.code, PAD_GONE.reason);
   ctx.collab.deletePad(padId);
   ctx.ai.forget(padId);

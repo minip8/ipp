@@ -11,6 +11,8 @@ export type {
   ModelUsage,
   NewMessage,
   ResolvedKey,
+  ReviewResult,
+  RoomContext,
   ShortAnswerGrade,
   Trigger,
 } from '@ipp/interviewer';

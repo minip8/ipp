@@ -18,6 +18,7 @@ import {
   type QuizQuestion,
   REPORT_DIMENSIONS,
   ReportAssessment,
+  SolutionReview,
 } from '@ipp/contracts';
 import { z } from 'zod';
 import { type ModelClient, ModelError, type ModelRequest, type ModelResponse } from './model';
@@ -36,6 +37,7 @@ import {
   systemBlocks,
 } from './prompts';
 import { createModelClient, defaultModelFor } from './providers';
+import { reviewMessages, roomAssessmentMessages, roomSystem } from './room-prompts';
 import type {
   AiScope,
   InterviewContext,
@@ -44,6 +46,7 @@ import type {
   InterviewerDeps,
   ModelUsage,
   ResolvedKey,
+  ReviewResult,
   ShortAnswerGrade,
   Trigger,
 } from './types';
@@ -84,6 +87,15 @@ export const GradeSchema = z.object({
   feedback: z.string(),
 });
 
+export const ReviewSchema = z.object({
+  verdict: SolutionReview.shape.verdict,
+  summary: z.string(),
+  issues: z.array(z.string()),
+  complexity: z.string(),
+  follow_ups: z.array(z.string()),
+  answer: z.string(),
+});
+
 // ---------------------------------------------------------------- call settings per purpose (§7)
 
 export const CALLS = {
@@ -91,6 +103,7 @@ export const CALLS = {
   reply: { effort: 'medium', maxTokens: 8_000, timeoutMs: 90_000 },
   assessment: { effort: 'high', maxTokens: 32_000, timeoutMs: 240_000 },
   grade: { effort: 'medium', maxTokens: 6_000, timeoutMs: 60_000 },
+  review: { effort: 'medium', maxTokens: 8_000, timeoutMs: 90_000 },
 } as const;
 
 const MAX_EVENTS = 300;
@@ -933,25 +946,118 @@ export function createInterviewer(
         padModel(rt, ctx, key),
       );
       if (res.refused) return null;
-      const out = AssessmentSchema.parse(JSON.parse(res.text));
-      const assessment: ReportAssessment = {
-        recommendation: out.recommendation,
-        summary: out.summary.trim(),
-        scores: REPORT_DIMENSIONS.map((d) => ({
-          dimension: d,
-          score: Math.min(4, Math.max(1, Math.round(out.scores[d].score))),
-          evidence: out.scores[d].evidence.trim(),
-        })),
-        strengths: out.strengths.map((x) => x.trim()).filter(Boolean),
-        improvements: out.improvements.map((x) => x.trim()).filter(Boolean),
-      };
-      return ReportAssessment.parse(assessment);
+      return toAssessment(AssessmentSchema.parse(JSON.parse(res.text)));
     } catch (err) {
       deps.log.error(
         { padId, err: err instanceof Error ? err.message : String(err) },
         'assessment failed',
       );
       return null;
+    }
+  }
+
+  /** Shapes the model's assessment output into the report's (clamped scores, trimmed text). */
+  function toAssessment(out: z.infer<typeof AssessmentSchema>): ReportAssessment {
+    return ReportAssessment.parse({
+      recommendation: out.recommendation,
+      summary: out.summary.trim(),
+      scores: REPORT_DIMENSIONS.map((d) => ({
+        dimension: d,
+        score: Math.min(4, Math.max(1, Math.round(out.scores[d].score))),
+        evidence: out.scores[d].evidence.trim(),
+      })),
+      strengths: out.strengths.map((x) => x.trim()).filter(Boolean),
+      improvements: out.improvements.map((x) => x.trim()).filter(Boolean),
+    });
+  }
+
+  // ------------------------------------------------------------ rooms (the host interviews)
+
+  async function generateRoomAssessment(padId: string): Promise<ReportAssessment | null> {
+    try {
+      if (!deps.loadRoomContext) return null;
+      const key = await deps.resolveKey({ padId });
+      if (!key.ok) {
+        deps.log.info({ padId, key: key.state }, 'room assessment skipped: no usable key');
+        return null;
+      }
+      const budget = await deps.checkBudget(padId);
+      if (!budget.ok) {
+        deps.log.info({ padId, reason: budget.reason }, 'room assessment skipped: budget');
+        return null;
+      }
+      const ctx = await deps.loadRoomContext(padId);
+      const res = await callModel(
+        { padId },
+        key,
+        {
+          purpose: 'assessment',
+          system: roomSystem(ctx),
+          messages: roomAssessmentMessages(ctx),
+          ...CALLS.assessment,
+          schema: AssessmentSchema,
+        },
+        effectiveModel(ctx.pad.interviewer.model, key.provider, defaultModel(key.provider)).id,
+      );
+      if (res.refused) return null;
+      return toAssessment(AssessmentSchema.parse(JSON.parse(res.text)));
+    } catch (err) {
+      deps.log.error(
+        { padId, err: err instanceof Error ? err.message : String(err) },
+        'room assessment failed',
+      );
+      return null;
+    }
+  }
+
+  async function reviewSolution(padId: string, question?: string): Promise<ReviewResult> {
+    try {
+      if (!deps.loadRoomContext) return { ok: false, reason: 'failed' };
+      const key = await deps.resolveKey({ padId });
+      if (!key.ok) return { ok: false, reason: 'no_key' };
+      const budget = await deps.checkBudget(padId);
+      if (!budget.ok) return { ok: false, reason: 'budget', message: budget.reason };
+      const ctx = await deps.loadRoomContext(padId);
+      const res = await callModel(
+        { padId },
+        key,
+        {
+          purpose: 'review',
+          system: roomSystem(ctx),
+          messages: reviewMessages(ctx, question),
+          ...CALLS.review,
+          schema: ReviewSchema,
+        },
+        effectiveModel(ctx.pad.interviewer.model, key.provider, defaultModel(key.provider)).id,
+      );
+      if (res.refused) return { ok: false, reason: 'failed' };
+      const out = ReviewSchema.parse(JSON.parse(res.text));
+      const list = (xs: string[], max: number) =>
+        xs
+          .map((x) => x.trim())
+          .filter(Boolean)
+          .slice(0, max);
+      const review = SolutionReview.parse({
+        verdict: out.verdict,
+        summary: out.summary.trim(),
+        issues: list(out.issues, 6),
+        complexity: out.complexity.trim() || null,
+        followUps: list(out.follow_ups, 3),
+        answer: question ? out.answer.trim() || null : null,
+        language: ctx.language,
+        model: res.model,
+        createdAt: deps.now().toISOString(),
+      });
+      return { ok: true, review };
+    } catch (err) {
+      const e = err instanceof ModelError ? err : null;
+      deps.log.warn(
+        { padId, err: err instanceof Error ? err.message : String(err) },
+        'solution review failed',
+      );
+      // The key was refused mid-call: the host has to save one again.
+      if (e?.keyFailure && e.keyFailure !== 'rate_limited') return { ok: false, reason: 'no_key' };
+      return { ok: false, reason: 'failed' };
     }
   }
 
@@ -992,6 +1098,8 @@ export function createInterviewer(
       pads.delete(padId);
     },
     generateAssessment,
+    generateRoomAssessment,
+    reviewSolution,
     gradeShortAnswer,
     cachedClients: () => clients.size,
     async idle(padId) {

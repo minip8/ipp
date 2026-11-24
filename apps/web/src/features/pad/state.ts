@@ -35,6 +35,8 @@ export type PadState = {
   pad: Pad;
   role: PadDetail['role'];
   problem: PadDetail['problem'];
+  /** Everyone in the pad, the owner first (names for the chat, and who the host has let in). */
+  members: PadDetail['members'];
   /** The pad owner's API key: the interviewer speaks only when this is `active`. */
   interviewerKey: PadDetail['interviewerKey'];
   interviewerAvailable: boolean;
@@ -81,6 +83,7 @@ export function initPadState(detail: PadDetail, me: string): PadState {
     pad: detail.pad,
     role: detail.role,
     problem: detail.problem,
+    members: detail.members,
     interviewerKey: detail.interviewerKey,
     interviewerAvailable: detail.interviewerAvailable,
     interviewerModel: detail.interviewerModel ?? null,
@@ -228,7 +231,8 @@ function applyEvent(state: PadState, ev: ServerEvent): PadState {
       let pending = state.pending;
       // Takes the slot of its stream, or of our optimistic copy when it is our own message echoed.
       let slot = order.indexOf(`s:${m.id}`);
-      if (m.role === 'candidate' && m.userId === state.me) {
+      // (In a room the host's own messages have the interviewer role.)
+      if (m.userId === state.me) {
         const p = pending.find((x) => x.text.trim() === m.text.trim());
         if (p) {
           pending = pending.filter((x) => x !== p);
@@ -252,9 +256,22 @@ function applyEvent(state: PadState, ev: ServerEvent): PadState {
     case 'pad.updated':
       return {
         ...state,
-        pad: ev.pad,
+        // Broadcasts carry no share token; keep the one the owner has.
+        pad: { ...ev.pad, shareToken: state.pad.shareToken },
         interviewerModel: modelFor(ev.pad, state.interviewerModel),
       };
+    case 'pad.problem':
+      // A room's host moved on: the editor document already holds the new problem's code.
+      return {
+        ...state,
+        // The event is broadcast without the share token; keep the one the host has.
+        pad: { ...ev.pad, shareToken: state.pad.shareToken },
+        problem: ev.problem,
+      };
+    case 'member.joined':
+      return state.members.some((m) => m.userId === ev.member.userId)
+        ? state
+        : { ...state, members: [...state.members, ev.member] };
     case 'interviewer.status':
       return {
         ...state,

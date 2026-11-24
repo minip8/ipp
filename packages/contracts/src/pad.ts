@@ -22,16 +22,34 @@ export type InterviewerSettings = z.infer<typeof InterviewerSettings>;
 export const PadRole = z.enum(['owner', 'collaborator']);
 export type PadRole = z.infer<typeof PadRole>;
 
+/**
+ *  practice  the owner is the candidate and the AI interviews them (the default)
+ *  room      the owner is the interviewer (the host); whoever joins by the invite link is a
+ *            candidate, with or without an account. No AI in the conversation.
+ */
+export const PadKind = z.enum(['practice', 'room']);
+export type PadKind = z.infer<typeof PadKind>;
+
+export const HOST_NOTES_MAX = 20_000;
+export const GUEST_NAME_MAX = 60;
+/** People who can join one pad by its invite link (the owner not counted). */
+export const PAD_MEMBERS_MAX = 12;
+
 export const Pad = z.object({
   id: Id,
   ownerId: z.string(),
   title: z.string(),
-  problemSlug: Slug,
+  kind: PadKind.default('practice'),
+  /** null: a room with no library problem (a blank editor, runs as plain programs). */
+  problemSlug: Slug.nullable(),
   language: Language,
   status: z.enum(['active', 'ended']),
   durationMin: z.int(),
   interviewer: InterviewerSettings,
-  /** Present only for the owner. Anyone signed in with the link can join as a collaborator. */
+  /**
+   * Present only for the owner. A practice pad: anyone signed in with the link joins as a
+   * collaborator. A room: anyone with the link joins as a candidate, a name is enough.
+   */
   shareToken: z.string().nullable(),
   startedAt: IsoDate,
   endedAt: IsoDate.nullable(),
@@ -39,9 +57,12 @@ export const Pad = z.object({
 export type Pad = z.infer<typeof Pad>;
 
 export const CreatePadRequest = z.object({
+  kind: PadKind.default('practice'),
   /** Either a specific problem or a random pick. */
   problemSlug: Slug.optional(),
   random: z.object({ difficulty: Difficulty.optional(), tag: Slug.optional() }).optional(),
+  /** Rooms only: start without a problem. */
+  blank: z.boolean().optional(),
   language: Language,
   durationMin: z.int().min(5).max(180).default(45),
   interviewer: InterviewerSettings.default({
@@ -60,6 +81,86 @@ export const UpdatePadRequest = z.object({
   interviewer: InterviewerSettings.partial().optional(),
 });
 export type UpdatePadRequest = z.infer<typeof UpdatePadRequest>;
+
+/** POST /api/pads/:id/problem (room host): another library problem, or null for a blank editor. */
+export const ChangeProblemRequest = z.object({ problemSlug: Slug.nullable() });
+export type ChangeProblemRequest = z.infer<typeof ChangeProblemRequest>;
+
+/** The pad and its problem after a change; also what `pad.problem` carries to everyone in the room. */
+export const PadProblem = z.object({ pad: Pad, problem: ProblemDetail.nullable() });
+export type PadProblem = z.infer<typeof PadProblem>;
+
+export const PadMember = z.object({
+  userId: z.string(),
+  name: z.string(),
+  role: PadRole,
+  /** Joined by the invite link without an account. */
+  guest: z.boolean(),
+});
+export type PadMember = z.infer<typeof PadMember>;
+
+/** GET /api/pads/invite/:token, readable without a session: enough to greet whoever was invited. */
+export const InviteInfo = z.object({
+  kind: PadKind,
+  title: z.string(),
+  hostName: z.string(),
+  status: z.enum(['active', 'ended']),
+});
+export type InviteInfo = z.infer<typeof InviteInfo>;
+
+/** POST /api/pads/join-guest: enter a room by its link with just a name (no account). */
+export const JoinGuestRequest = z.object({
+  shareToken: z.string().min(1).max(200),
+  name: z.string().trim().min(1).max(GUEST_NAME_MAX),
+});
+export type JoinGuestRequest = z.infer<typeof JoinGuestRequest>;
+
+/** What only a room's host may read (GET /api/pads/:id/host). Never sent to a candidate. */
+export const HostView = z.object({
+  /** The current problem's private material; null in a blank room. */
+  problem: z
+    .object({
+      slug: Slug,
+      interviewerNotes: z.string(),
+      referenceSolutions: z.partialRecord(Language, z.string()),
+    })
+    .nullable(),
+  /** The host's own notes on this interview. */
+  notes: z.string(),
+});
+export type HostView = z.infer<typeof HostView>;
+
+export const UpdateHostNotesRequest = z.object({ notes: z.string().max(HOST_NOTES_MAX) });
+export type UpdateHostNotesRequest = z.infer<typeof UpdateHostNotesRequest>;
+
+/** POST /api/pads/:id/review: the AI's second opinion on the code as it is now, for the host. */
+export const ReviewRequest = z.object({
+  /** Something specific the host wants checked, in their own words. */
+  question: z.string().trim().max(1000).optional(),
+});
+export type ReviewRequest = z.infer<typeof ReviewRequest>;
+
+export const SolutionReview = z.object({
+  /**
+   *  correct     solves the problem as written
+   *  incorrect   has a bug or fails on some input
+   *  incomplete  not finished yet
+   *  unclear     not enough to judge (e.g. a blank room with no stated task)
+   */
+  verdict: z.enum(['correct', 'incorrect', 'incomplete', 'unclear']),
+  summary: z.string(),
+  /** Concrete problems, each with the input or line it shows up on. */
+  issues: z.array(z.string()),
+  complexity: z.string().nullable(),
+  /** Things worth asking the candidate next. */
+  followUps: z.array(z.string()),
+  /** The answer to the host's own question, when one was asked. */
+  answer: z.string().nullable(),
+  language: Language,
+  model: z.string(),
+  createdAt: IsoDate,
+});
+export type SolutionReview = z.infer<typeof SolutionReview>;
 
 export const MessageIntent = z.enum([
   'greeting',
@@ -106,6 +207,8 @@ export const TimelineEvent = z.object({
     z.object({ type: z.literal('paste'), chars: z.int() }),
     z.object({ type: z.literal('blur'), ms: z.int() }),
     z.object({ type: z.literal('joined'), userId: z.string() }),
+    /** The host changed the room's problem (null = blank). */
+    z.object({ type: z.literal('problem'), problemSlug: Slug.nullable(), title: z.string() }),
     z.object({ type: z.literal('ended') }),
   ]),
 });
@@ -146,22 +249,33 @@ export const Report = z.object({
     candidateMessages: z.int(),
     interviewerMessages: z.int(),
   }),
-  /** null while pending, when the interviewer was off, without a usable key, or when generation failed. */
+  /**
+   * null while pending, when the interviewer was off, without a usable key, when generation
+   * failed, or in a room whose host has not asked for one.
+   */
   assessment: ReportAssessment.nullable(),
   /**
    * Why there is no assessment (null when there is one or it is still being written). Computed
    * when the report is read: `no_key` / `key_rejected` describe the pad owner's key now, so the
    * owner can add one and ask for the assessment (`POST /api/pads/:id/report/assessment`);
-   * `failed` means the owner has a usable key and can retry.
+   * `failed` means the owner has a usable key and can retry. `not_requested`: a room, where the
+   * assessment is written only when the host asks for it (same endpoint).
    */
-  assessmentUnavailable: z.enum(['interviewer_off', 'no_key', 'key_rejected', 'failed']).nullable(),
+  assessmentUnavailable: z
+    .enum(['interviewer_off', 'no_key', 'key_rejected', 'failed', 'not_requested'])
+    .nullable(),
+  /** A room's report, which only its host can read: the host's own notes. */
+  hostNotes: z.string().nullable().default(null),
 });
 export type Report = z.infer<typeof Report>;
 
 export const PadDetail = z.object({
   pad: Pad,
   role: PadRole,
-  problem: ProblemDetail,
+  /** null in a blank room. */
+  problem: ProblemDetail.nullable(),
+  /** Everyone in the pad, the owner first. */
+  members: z.array(PadMember).default([]),
   messages: z.array(Message),
   runs: z.array(Run),
   /** true when the pad owner has a usable AI provider API key (the interviewer runs on it). */
@@ -176,14 +290,16 @@ export type PadDetail = z.infer<typeof PadDetail>;
 export const PadSummary = Pad.pick({
   id: true,
   title: true,
+  kind: true,
   problemSlug: true,
   language: true,
   status: true,
   startedAt: true,
   endedAt: true,
 }).extend({
-  problemTitle: z.string(),
-  difficulty: Difficulty,
+  /** null for a blank room. */
+  problemTitle: z.string().nullable(),
+  difficulty: Difficulty.nullable(),
   accepted: z.boolean(),
   /** The viewer's role: deleting an owned pad deletes it; a collaborator only leaves it. */
   role: PadRole,
@@ -209,10 +325,16 @@ export type Playback = z.infer<typeof Playback>;
  *   Y.Text  code:cpp | code:python | code:java   one buffer per language, seeded with the scaffold
  *   Y.Text  notes                                 candidate scratch notes
  *   Y.Map   drawing                               whiteboard scene (owned by the web app)
+ *   Y.Map   stash                                 rooms: the code of problems the host switched
+ *                                                 away from, `<slug>:<language>` -> string (the
+ *                                                 slug is empty for the blank editor); written
+ *                                                 by the server only
  */
 export const YDOC = {
   name: (padId: string) => `pad:${padId}`,
   code: (language: Language) => `code:${language}`,
   notes: 'notes',
   drawing: 'drawing',
+  stash: 'stash',
+  stashKey: (problemSlug: string | null, language: Language) => `${problemSlug ?? ''}:${language}`,
 } as const;

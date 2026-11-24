@@ -7,7 +7,8 @@ import { z } from 'zod';
 import { AiKeyState, InterviewerModel } from './ai';
 import { Id, Language } from './common';
 import { JudgeProgress } from './judge';
-import { Message, Pad } from './pad';
+import { Message, Pad, PadMember } from './pad';
+import { ProblemDetail } from './problem';
 import { Run } from './run';
 
 export const ServerEvent = z.discriminatedUnion('type', [
@@ -27,6 +28,10 @@ export const ServerEvent = z.discriminatedUnion('type', [
     model: InterviewerModel.nullable().optional(),
   }),
   z.object({ type: z.literal('pad.updated'), pad: Pad }),
+  /** A room's host changed its problem: the editor now holds that problem's code. */
+  z.object({ type: z.literal('pad.problem'), pad: Pad, problem: ProblemDetail.nullable() }),
+  /** Someone joined by the invite link. */
+  z.object({ type: z.literal('member.joined'), member: PadMember }),
   z.object({ type: z.literal('error'), code: z.string(), message: z.string() }),
   z.object({ type: z.literal('pong') }),
 ]);

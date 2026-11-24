@@ -1,16 +1,24 @@
 'use client';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeftIcon, CodeIcon, FileQuestionIcon, PlayIcon, Trash2Icon } from 'lucide-react';
+import {
+  ArrowLeftIcon,
+  CodeIcon,
+  FileQuestionIcon,
+  LockIcon,
+  PlayIcon,
+  Trash2Icon,
+} from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { DifficultyBadge, LanguageTag } from '@/components/domain';
 import { EmptyState, ErrorState } from '@/components/states';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
+import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DeletePadDialog } from '@/features/delete-pad/delete-pad-dialog';
 import { type DeleteTarget, deleteCopy } from '@/features/delete-pad/logic';
+import { PrivateNotes } from '@/features/room/host-tools';
 import { ApiRequestError, api } from '@/lib/api';
 import { qk, useMe } from '@/lib/queries';
 import { Player } from './player';
@@ -67,11 +75,14 @@ export function ReportPage({ id }: { id: string }) {
   const [deleted, setDeleted] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const pad = useQuery({ queryKey: qk.pad(id), queryFn: () => api.pad(id), enabled: !deleted });
-  const ended = pad.data?.pad.status === 'ended' && !deleted;
+  // A room's report belongs to its host: a candidate who took part does not get to read it.
+  const hostOnly = pad.data?.pad.kind === 'room' && pad.data.role !== 'owner';
+  const isRoomHost = pad.data?.pad.kind === 'room' && pad.data.role === 'owner';
+  const ended = pad.data?.pad.status === 'ended' && !deleted && !hostOnly;
   const target: DeleteTarget | null = pad.data
     ? {
         id,
-        problemTitle: pad.data.problem.title,
+        problemTitle: pad.data.problem?.title ?? pad.data.pad.title,
         status: pad.data.pad.status,
         role: pad.data.role,
       }
@@ -125,8 +136,10 @@ export function ReportPage({ id }: { id: string }) {
           <header className="mt-2 flex flex-wrap items-end justify-between gap-4">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2.5">
-                <h1 className="text-xl font-semibold tracking-tight">{pad.data.problem.title}</h1>
-                <DifficultyBadge difficulty={pad.data.problem.difficulty} />
+                <h1 className="text-xl font-semibold tracking-tight">
+                  {pad.data.problem?.title ?? pad.data.pad.title}
+                </h1>
+                {pad.data.problem && <DifficultyBadge difficulty={pad.data.problem.difficulty} />}
               </div>
               <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-fg-muted">
                 <span>Interview report</span>
@@ -156,7 +169,14 @@ export function ReportPage({ id }: { id: string }) {
             </div>
           </header>
 
-          {!ended ? (
+          {hostOnly ? (
+            <Card className="mt-6">
+              <EmptyState icon={LockIcon} title="This report is for the interviewer">
+                The report of an interview room, with its playback and notes, can only be opened by
+                the person who hosted it.
+              </EmptyState>
+            </Card>
+          ) : !ended ? (
             <Card className="mt-6">
               <EmptyState
                 icon={PlayIcon}
@@ -190,13 +210,23 @@ export function ReportPage({ id }: { id: string }) {
                 </Card>
               ) : (
                 <>
-                  <StatsStrip stats={report.data.stats} />
+                  <StatsStrip stats={report.data.stats} room={isRoomHost} />
                   <Assessment
                     report={report.data}
                     pad={pad.data}
                     onRetry={() => report.refetch()}
                   />
                 </>
+              )}
+              {isRoomHost && (
+                <Card aria-labelledby="host-notes-heading">
+                  <CardHeader>
+                    <CardTitle id="host-notes-heading">Your notes</CardTitle>
+                  </CardHeader>
+                  <div className="h-56">
+                    <PrivateNotes padId={id} />
+                  </div>
+                </Card>
               )}
 
               {playback.isPending ? (

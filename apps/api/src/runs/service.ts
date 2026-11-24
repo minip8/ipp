@@ -60,9 +60,12 @@ export class RunService {
 
   async create(args: {
     userId: string;
+    /** Whose run allowance is used: a room candidate's runs count against the host's. */
+    chargeUserId?: string;
     ip: string;
     padId: string;
-    problemSlug: string;
+    /** null: a blank room, where only `file` runs exist. */
+    problemSlug: string | null;
     body: CreateRunRequest;
   }): Promise<Run> {
     const { ctx } = this;
@@ -75,13 +78,16 @@ export class RunService {
     if (body.customTests.length > CAPS.customTests)
       throw badRequest(`At most ${CAPS.customTests} custom tests`);
 
-    const [problem] = await ctx.db
-      .select()
-      .from(problems)
-      .where(eq(problems.slug, args.problemSlug));
-    if (!problem) throw badRequest('Problem not found');
+    const [found] = args.problemSlug
+      ? await ctx.db.select().from(problems).where(eq(problems.slug, args.problemSlug))
+      : [];
+    if (args.problemSlug && !found) throw badRequest('Problem not found');
+    if (!found && body.mode !== 'file')
+      throw badRequest('This room has no problem, so there are no tests to run', 'no_problem');
     // `file` runs are just the candidate's program; judged runs need a language the problem offers.
-    if (body.mode !== 'file') assertLanguageOffered(problem, body.language);
+    if (found && body.mode !== 'file') assertLanguageOffered(found, body.language);
+    // Judged modes always have a problem (checked above); `file` runs never read it.
+    const problem = found as NonNullable<typeof found>;
 
     // Choose tests and limits. The API decides; the client only picks the mode.
     let tests: JudgeTest[] = [];
@@ -145,9 +151,10 @@ export class RunService {
       throw rateLimited(2, 'run_in_flight', 'Wait for your current run to finish');
     }
     const l = ctx.config.limits.runs;
+    const charged = args.chargeUserId ?? userId;
     const wait = await ctx.limiter.hit([
-      { key: `runs:u:${userId}:burst`, ...l.userBurst },
-      { key: `runs:u:${userId}:day`, ...l.userDaily },
+      { key: `runs:u:${charged}:burst`, ...l.userBurst },
+      { key: `runs:u:${charged}:day`, ...l.userDaily },
       { key: `runs:ip:${args.ip}:burst`, ...l.ipBurst },
       { key: `runs:ip:${args.ip}:day`, ...l.ipDaily },
     ]);
@@ -190,6 +197,7 @@ export class RunService {
           id: runId,
           padId,
           userId,
+          problemSlug: args.problemSlug,
           mode: body.mode,
           language: body.language,
           source: body.source,

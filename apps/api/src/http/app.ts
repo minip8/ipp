@@ -29,6 +29,14 @@ export function requireUser(c: C): SessionUser {
   return user;
 }
 
+/** A real account: guests (who joined a room by its link) may only use that room. */
+export function requireAccount(c: C): SessionUser {
+  const user = requireUser(c);
+  if (user.guest)
+    throw new HttpError(403, 'account_required', 'Sign in with an account to do this');
+  return user;
+}
+
 export const MAX_JSON_DEPTH = 64;
 
 /** Iterative, so it cannot overflow the stack itself. */
@@ -180,6 +188,9 @@ export function createHttpApp(ctx: Ctx): Hono<Env> {
 
   // Better Auth. Credential endpoints are rate limited per IP.
   app.on(['GET', 'POST'], '/api/auth/*', async (c) => {
+    // Guest users are created only by joining a room (POST /api/pads/join-guest), never here.
+    if (/^\/api\/auth\/(sign-in\/anonymous|delete-anonymous-user)\/?$/.test(c.req.path))
+      return c.json(new HttpError(404, 'not_found', 'Not found').toBody(), 404);
     if (c.req.method === 'POST') {
       const l = ctx.config.limits.auth;
       const ip = c.get('ip');
@@ -212,7 +223,13 @@ export function createHttpApp(ctx: Ctx): Hono<Env> {
     const session = await ctx.auth.api.getSession({ headers: c.req.raw.headers });
     if (session?.user) {
       const u = session.user;
-      c.set('user', { id: u.id, name: u.name, email: u.email, image: u.image ?? null });
+      c.set('user', {
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        image: u.image ?? null,
+        guest: (u as { isAnonymous?: boolean | null }).isAnonymous === true,
+      });
     }
     await next();
   });

@@ -143,3 +143,33 @@ export function generateScaffold(signature: ProblemSignature, language: Language
 export function generateScaffolds(signature: ProblemSignature): Record<Language, string> {
   return { cpp: cpp(signature), java: java(signature), python: python(signature) };
 }
+
+/**
+ * A blank room's editor (no library problem): a program that runs as written. There are no
+ * tests to call a class, so "Run" is the only way to execute it.
+ */
+export const BLANK_SCAFFOLDS: Record<Language, string> = {
+  cpp: `#include <bits/stdc++.h>
+using namespace std;
+
+int main() {
+    cout << "Hello from the interview room" << endl;
+    return 0;
+}
+`,
+  java: `import java.util.*;
+
+public class Main {
+    public static void main(String[] args) {
+        System.out.println("Hello from the interview room");
+    }
+}
+`,
+  python: `def main() -> None:
+    print("Hello from the interview room")
+
+
+if __name__ == "__main__":
+    main()
+`,
+};

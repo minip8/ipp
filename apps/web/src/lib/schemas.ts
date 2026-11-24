@@ -10,6 +10,8 @@ export const MeResponse = z.object({
     name: z.string(),
     email: z.string(),
     image: z.string().nullable().optional(),
+    /** Joined an interview room by its link without an account: only that room is theirs. */
+    guest: z.boolean().default(false),
   }),
 });
 export type Me = z.infer<typeof MeResponse>['user'];

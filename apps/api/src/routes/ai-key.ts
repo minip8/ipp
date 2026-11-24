@@ -16,7 +16,7 @@ import {
 import { fallbackModels } from '@ipp/interviewer';
 import { Hono } from 'hono';
 import type { Ctx } from '../context';
-import { type Env, parseBody, requireUser } from '../http/app';
+import { type Env, parseBody, requireAccount } from '../http/app';
 import { conflict, HttpError, rateLimited, unavailable } from '../http/errors';
 import { defaultModel } from '../interviewer/wiring';
 
@@ -66,12 +66,12 @@ export function aiKeyRoutes(ctx: Ctx) {
   };
 
   r.get('/ai-key', async (c) => {
-    const user = requireUser(c);
+    const user = requireAccount(c);
     return c.json(await status(user.id));
   });
 
   r.put('/ai-key', async (c) => {
-    const user = requireUser(c);
+    const user = requireAccount(c);
     // Malformed input, or a key that does not fit the chosen provider, is refused without
     // calling anyone, so it does not use up an attempt.
     const { provider, apiKey } = await parseBody(c, SaveAiKeyRequest);
@@ -114,7 +114,7 @@ export function aiKeyRoutes(ctx: Ctx) {
   });
 
   r.delete('/ai-key', async (c) => {
-    const user = requireUser(c);
+    const user = requireAccount(c);
     if (await ctx.aiKeys.delete(user.id)) {
       ctx.log.info({ userId: user.id }, 'AI key deleted');
       await ctx.ai
@@ -131,7 +131,7 @@ export function aiKeyRoutes(ctx: Ctx) {
    * blocks anything. Listing is not "use" of the key (its expiry is not refreshed).
    */
   r.get('/ai-key/models', async (c) => {
-    const user = requireUser(c);
+    const user = requireAccount(c);
     const key = await ctx.aiKeys.resolve(user.id, { touch: false });
     if (!key.ok)
       throw conflict(

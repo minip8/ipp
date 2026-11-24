@@ -57,7 +57,7 @@ function PadLoader({ id }: { id: string }) {
     return (
       <div className="flex min-h-dvh flex-col">
         <header className="flex h-14 items-center px-4">
-          <Logo href="/dashboard" />
+          <Logo href={me.data.guest ? '/' : '/dashboard'} />
         </header>
         <div className="flex flex-1 items-start justify-center pt-[12vh]">
           {notFound ? (
@@ -67,9 +67,11 @@ function PadLoader({ id }: { id: string }) {
                 It was deleted, it does not exist, or you are not a member. If someone invited you,
                 open their invite link again.
               </p>
-              <Button asChild className="mt-5" variant="primary">
-                <Link href="/dashboard">Go to your interviews</Link>
-              </Button>
+              {!me.data.guest && (
+                <Button asChild className="mt-5" variant="primary">
+                  <Link href="/dashboard">Go to your interviews</Link>
+                </Button>
+              )}
             </div>
           ) : (
             <ErrorState error={q.error} onRetry={() => q.refetch()} />
@@ -87,7 +89,7 @@ function PadLoader({ id }: { id: string }) {
 
 export function PadPage({ id }: { id: string }) {
   return (
-    <AuthGate fallback={<PadSkeleton />}>
+    <AuthGate fallback={<PadSkeleton />} allowGuest>
       <PadLoader id={id} />
     </AuthGate>
   );

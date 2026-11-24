@@ -13,7 +13,8 @@ export interface RoomClient {
 export interface Rooms {
   join(padId: string, client: RoomClient): void;
   leave(padId: string, client: RoomClient): void;
-  broadcast(padId: string, event: ServerEvent): void;
+  /** To everyone in the pad, or only to `toUserId`'s sockets when given. */
+  broadcast(padId: string, event: ServerEvent, toUserId?: string): void;
   count(padId: string): number;
   /** Closes the pad's sockets (only `userId`'s when given); their close handlers leave the room. */
   close(padId: string, code: number, reason: string, userId?: string): void;
@@ -38,11 +39,12 @@ export function createRooms(): Rooms {
       set.delete(client);
       if (set.size === 0) rooms.delete(padId);
     },
-    broadcast(padId, event) {
+    broadcast(padId, event, toUserId) {
       const set = rooms.get(padId);
       if (!set) return;
       const data = JSON.stringify(event);
       for (const c of set) {
+        if (toUserId !== undefined && c.userId !== toUserId) continue;
         try {
           c.send(data);
         } catch {

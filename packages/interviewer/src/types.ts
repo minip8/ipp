@@ -17,6 +17,7 @@ import type {
   ReportAssessment,
   Run,
   ServerEvent,
+  SolutionReview,
 } from '@ipp/contracts';
 
 /** Things the API tells the interviewer about. `handle` returns immediately; work is serialized per pad. */
@@ -48,6 +49,34 @@ export interface InterviewContext {
   privateNotes: string[];
   now: Date;
 }
+
+/**
+ * A room as the model sees it: a person (the host) interviews, the model only advises them.
+ * Unlike `InterviewContext` there may be no problem (a blank room), and the chat is between people.
+ */
+export interface RoomContext {
+  pad: Pad;
+  /** Includes interviewerNotes and reference solutions; null in a blank room. */
+  problem: Omit<ProblemContent, 'tests'> | null;
+  /** Titles of the problems the host used before the current one, oldest first. */
+  earlierProblems: string[];
+  language: Language;
+  /** Current editor contents for the active language. */
+  code: string;
+  /** The notes everyone in the room shares. */
+  notes: string;
+  /** The host's private notes. */
+  hostNotes: string;
+  /** `interviewer` messages are the host's, `candidate` messages the candidates'. */
+  transcript: Message[];
+  /** Most recent first, at most 10. */
+  recentRuns: Run[];
+  now: Date;
+}
+
+export type ReviewResult =
+  | { ok: true; review: SolutionReview }
+  | { ok: false; reason: 'no_key' | 'budget' | 'failed'; message?: string };
 
 export interface NewMessage {
   /** Supplied when the text was streamed with message.delta events under this id. */
@@ -92,6 +121,8 @@ export interface InterviewerDeps {
    */
   modelUnavailable?(padId: string, model: AiModelChoice): Promise<void>;
   loadContext(padId: string): Promise<InterviewContext>;
+  /** Rooms only (optional so hosts without rooms need not provide it). */
+  loadRoomContext?(padId: string): Promise<RoomContext>;
   /** Persists an interviewer message and broadcasts message.created. */
   saveMessage(padId: string, message: NewMessage): Promise<Message>;
   appendPrivateNote(padId: string, note: string): Promise<void>;
@@ -109,7 +140,7 @@ export interface InterviewerDeps {
 }
 
 export interface ModelUsage {
-  purpose: 'reply' | 'decision' | 'assessment' | 'grade';
+  purpose: 'reply' | 'decision' | 'assessment' | 'grade' | 'review';
   model: string;
   inputTokens: number;
   outputTokens: number;
@@ -136,6 +167,13 @@ export interface Interviewer {
   release(padId: string): void;
   /** Null without a usable key for the pad's owner, over budget, or when the model failed. */
   generateAssessment(padId: string): Promise<ReportAssessment | null>;
+  /**
+   * A room's assessment: an observer's view of the candidate, written for the host on the
+   * host's key. Null under the same conditions as `generateAssessment`.
+   */
+  generateRoomAssessment(padId: string): Promise<ReportAssessment | null>;
+  /** A room host's second opinion on the code as it is now. Never shown to the candidate. */
+  reviewSolution(padId: string, question?: string): Promise<ReviewResult>;
   /** Runs on `userId`'s key; null without a usable key or when the model failed. */
   gradeShortAnswer(
     userId: string,

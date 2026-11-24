@@ -143,6 +143,7 @@ export function harness(opts: HarnessOptions = {}) {
     id: padId,
     ownerId: 'u1',
     title: 't',
+    kind: 'practice',
     problemSlug: 'two-sum',
     language: 'python',
     status: 'active',

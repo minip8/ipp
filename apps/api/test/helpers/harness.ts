@@ -8,6 +8,8 @@ import type { InterviewerFactory } from '../../src/interviewer/host';
 import type {
   Interviewer,
   InterviewerDeps,
+  ReviewResult,
+  RoomContext,
   ShortAnswerGrade,
   Trigger,
 } from '../../src/interviewer/types';
@@ -150,6 +152,37 @@ export class FakeInterviewer implements Interviewer {
   }
   generateAssessment = async (padId: string) =>
     (await this.model({ padId })) ? this.assessment : null;
+  /** What the room adviser was shown, per call (host notes and all). */
+  roomContexts: RoomContext[] = [];
+  reviewQuestions: (string | undefined)[] = [];
+  generateRoomAssessment = async (padId: string) => {
+    if (!(await this.model({ padId }))) return null;
+    if (this.deps.loadRoomContext) this.roomContexts.push(await this.deps.loadRoomContext(padId));
+    return this.assessment;
+  };
+  reviewSolution = async (padId: string, question?: string): Promise<ReviewResult> => {
+    if (!(await this.model({ padId }))) return { ok: false, reason: 'no_key' };
+    const budget = await this.deps.checkBudget(padId);
+    if (!budget.ok) return { ok: false, reason: 'budget', message: budget.reason };
+    if (!this.deps.loadRoomContext) return { ok: false, reason: 'failed' };
+    const ctx = await this.deps.loadRoomContext(padId);
+    this.roomContexts.push(ctx);
+    this.reviewQuestions.push(question);
+    return {
+      ok: true,
+      review: {
+        verdict: 'incorrect',
+        summary: `Read ${ctx.code.length} characters of ${ctx.language}.`,
+        issues: ['Line 3 returns early on an empty list.'],
+        complexity: 'O(n) time, O(n) space.',
+        followUps: ['What happens with duplicates?'],
+        answer: question ? `About "${question}": yes.` : null,
+        language: ctx.language,
+        model: 'fake',
+        createdAt: new Date().toISOString(),
+      },
+    };
+  };
   gradeShortAnswer = async (userId: string) => {
     if (!(await this.model({ userId }))) return null;
     await new Promise((r) => setTimeout(r, 5));

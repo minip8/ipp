@@ -12,11 +12,15 @@ import {
   type AiKeyStatus,
   type AiProvider,
   type AnswerFeedback,
+  ChangeProblemRequest,
   ClientEvent,
   CreateAttemptRequest,
   CreatePadRequest,
   CreateRunRequest,
   effectiveModel,
+  type HostView,
+  type InviteInfo,
+  JoinGuestRequest,
   LANGUAGE_LABELS,
   type Language,
   type Message,
@@ -24,9 +28,11 @@ import {
   type PadDetail,
   type PadSummary,
   QuizAttempt,
+  ReviewRequest,
   type Run,
   ServerEvent,
   SubmitAnswerRequest,
+  UpdateHostNotesRequest,
   UpdatePadRequest,
 } from '@ipp/contracts';
 import type { Page, WebSocketRoute } from '@playwright/test';
@@ -36,11 +42,15 @@ import {
   aiModelList,
   DEFAULT_MODELS,
   ENDED_PAD_ID,
+  GUEST,
+  HOST_VIEWS,
   iso,
   makeAttempt,
   makeMessage,
   makePadDetail,
   makePlayback,
+  makeReview,
+  makeRoomDetail,
   PAD_SUMMARIES,
   PROBLEM_DETAILS,
   PROBLEMS,
@@ -49,6 +59,7 @@ import {
   QUIZ_TOPICS,
   REPORT_PENDING,
   REPORT_READY,
+  REPORT_ROOM,
   RUNS,
   TWO_SUM,
   USER,
@@ -60,6 +71,12 @@ type RunScript = (id: string, mode: Run['mode']) => Run;
 
 export class MockBackend {
   signedIn = true;
+  /** Who /api/me says is signed in (a guest after joining a room by its link). */
+  me: { id: string; name: string; email: string; image?: string | null; guest?: boolean } = USER;
+  /** Room hosts' private notes, by pad. */
+  hostNotes = new Map<string, string>();
+  /** Questions sent with second-opinion requests (undefined = none). */
+  reviews: (string | undefined)[] = [];
   githubAuth = true;
   googleAuth = true;
   /** The signed-in user's own provider key. Pads they own run on it. */
@@ -193,6 +210,20 @@ export class MockBackend {
           // Like the real interviewer: silent without the pad owner's key.
           const padId = /\/ws\/pads\/([0-9a-f-]{36})/.exec(ws.url())?.[1] ?? '';
           const d = this.pads.get(padId);
+          if (d?.pad.kind === 'room') {
+            // A room is people talking: the message comes back to everyone, and no AI answers.
+            this.push({
+              type: 'message.created',
+              message: makeMessage({
+                padId,
+                role: d.role === 'owner' ? 'interviewer' : 'candidate',
+                userId: this.me.id,
+                text: ev.text,
+                createdAt: new Date().toISOString(),
+              }),
+            });
+            return;
+          }
           if (d && this.detail(d).interviewerKey === 'active')
             void this.streamReply(this.replyText);
         }
@@ -206,6 +237,7 @@ export class MockBackend {
   /** Pad detail as GET returns it: an owned pad follows the user's own key. */
   detail(d: PadDetail): PadDetail {
     if (d.role !== 'owner') return d;
+    // A room has no AI in the conversation; the host's own key is read from /api/ai-key.
     const provider = this.aiKey.state === 'active' ? this.aiKey.provider : null;
     return {
       ...d,
@@ -215,6 +247,31 @@ export class MockBackend {
         ? effectiveModel(d.pad.interviewer.model, provider, DEFAULT_MODELS[provider])
         : null,
     };
+  }
+
+  /** A room's host asked for the AI assessment (until then its report offers one). */
+  roomAssessed = false;
+
+  private padByToken(token: string): PadDetail | undefined {
+    return [...this.pads.values()].find(
+      (p) => p.pad.shareToken === token || this.tokens.get(token) === p.pad.id,
+    );
+  }
+
+  /** Invite tokens of rooms the signed-in user does not host (their pad carries no token). */
+  tokens = new Map<string, string>();
+
+  /** The current user enters a room as a candidate, and everyone in it is told. */
+  private joinRoom(pad: PadDetail) {
+    if (pad.members.some((x) => x.userId === this.me.id)) return;
+    const member = {
+      userId: this.me.id,
+      name: this.me.name,
+      role: 'collaborator' as const,
+      guest: this.me.guest === true,
+    };
+    pad.members = [...pad.members, member];
+    this.push({ type: 'member.joined', member });
   }
 
   /**
@@ -291,8 +348,40 @@ export class MockBackend {
         googleAuth: this.googleAuth,
         ai: { requiresUserKey: true, model: 'claude-opus-5-5', keyTtlHours: 24 },
       };
+    // Invite links work without a session.
+    let inv = m(/^\/api\/pads\/invite\/([^/]+)$/);
+    if (inv) {
+      const pad = this.padByToken(decodeURIComponent(inv[1] ?? ''));
+      if (!pad) return this.status(404, 'not_found', 'Invite not found');
+      const info: InviteInfo = {
+        kind: pad.pad.kind,
+        title: pad.pad.title,
+        hostName: pad.members.find((x) => x.role === 'owner')?.name ?? 'Someone',
+        status: pad.pad.status,
+      };
+      return info;
+    }
+    if (path === '/api/pads/join-guest' && method === 'POST') {
+      const req = JoinGuestRequest.parse(body);
+      const pad = this.padByToken(req.shareToken);
+      if (pad?.pad.kind !== 'room') return this.status(404, 'not_found', 'Invite not found');
+      if (pad.pad.status !== 'active')
+        return this.status(409, 'pad_ended', 'This interview has ended');
+      if (!this.signedIn) {
+        this.signedIn = true;
+        this.me = { ...GUEST, name: req.name, image: null, guest: true };
+      } else if (this.me.guest) this.me = { ...this.me, name: req.name };
+      this.joinRoom(pad);
+      return { padId: pad.pad.id };
+    }
+    inv = null;
     if (!this.signedIn) return this.status(401, 'unauthorized', 'Sign in to continue.');
-    if (path === '/api/me') return { user: USER };
+    if (path === '/api/me') return { user: this.me };
+    if (
+      this.me.guest &&
+      (path === '/api/pads' || path.startsWith('/api/ai-key') || path.startsWith('/api/quiz'))
+    )
+      return this.status(403, 'account_required', 'Sign in with an account to do this');
 
     if (path === '/api/ai-key') {
       if (method === 'GET') return this.aiKey;
@@ -356,6 +445,23 @@ export class MockBackend {
 
     if (path === '/api/pads' && method === 'POST') {
       const req = CreatePadRequest.parse(body);
+      if (req.kind === 'room') {
+        const id = uuid();
+        const slug = req.blank ? null : (req.problemSlug ?? 'two-sum');
+        const detail = makeRoomDetail({
+          pad: {
+            id,
+            problemSlug: slug,
+            title: PROBLEMS.find((p) => p.slug === slug)?.title ?? 'Interview room',
+            language: req.language,
+            durationMin: req.durationMin,
+            shareToken: `room_${id.slice(0, 8)}`,
+            startedAt: new Date().toISOString(),
+          },
+        });
+        this.pads.set(id, detail);
+        return detail.pad;
+      }
       // A random pick (API compatibility; the web UI always sends a slug) takes the first match.
       const slug =
         req.problemSlug ??
@@ -385,7 +491,15 @@ export class MockBackend {
       return detail.pad;
     }
     if (path === '/api/pads' && method === 'GET') return this.summaries;
-    if (path === '/api/pads/join' && method === 'POST') return { padId: ACTIVE_PAD_ID };
+    if (path === '/api/pads/join' && method === 'POST') {
+      const token = (body as { shareToken?: string })?.shareToken ?? '';
+      const room = this.padByToken(token);
+      if (room?.pad.kind === 'room') {
+        this.joinRoom(room);
+        return { padId: room.pad.id };
+      }
+      return { padId: ACTIVE_PAD_ID };
+    }
 
     r = m(/^\/api\/pads\/([0-9a-f-]{36})(\/.*)?$/);
     if (r) {
@@ -405,7 +519,10 @@ export class MockBackend {
       if (rest === '' && method === 'GET') return this.detail(pad);
       if (rest === '' && method === 'PATCH') {
         const upd = UpdatePadRequest.parse(body);
-        const refusal = upd.language && this.languageRefusal(pad.pad.problemSlug, upd.language);
+        const refusal =
+          upd.language &&
+          pad.pad.problemSlug &&
+          this.languageRefusal(pad.pad.problemSlug, upd.language);
         if (refusal) return refusal;
         const next: Pad = {
           ...pad.pad,
@@ -421,10 +538,59 @@ export class MockBackend {
         this.push({ type: 'pad.updated', pad: pad.pad });
         return pad.pad;
       }
-      if (rest === '/report') return { ...this.report, padId: id };
+      const room = pad.pad.kind === 'room';
+      const hostOnly = () => this.status(403, 'forbidden', 'Only the host of a room can do this');
+      if (rest === '/host' || rest === '/host/notes' || rest === '/review' || rest === '/problem') {
+        if (!room || pad.role !== 'owner') return hostOnly();
+        if (rest === '/host') {
+          const view: HostView = {
+            problem: pad.pad.problemSlug ? (HOST_VIEWS[pad.pad.problemSlug] ?? null) : null,
+            notes: this.hostNotes.get(id) ?? '',
+          };
+          return view;
+        }
+        if (rest === '/host/notes' && method === 'PUT') {
+          const { notes } = UpdateHostNotesRequest.parse(body);
+          this.hostNotes.set(id, notes);
+          return { notes };
+        }
+        if (rest === '/review' && method === 'POST') {
+          const { question } = ReviewRequest.parse(body);
+          if (this.aiKey.state !== 'active')
+            return this.status(409, 'ai_key_missing', 'Add your AI API key first');
+          this.reviews.push(question);
+          await sleep(300); // one model call
+          return makeReview(question);
+        }
+        if (rest === '/problem' && method === 'POST') {
+          const { problemSlug } = ChangeProblemRequest.parse(body);
+          const problem = problemSlug ? (PROBLEM_DETAILS[problemSlug] ?? null) : null;
+          if (problemSlug && !problem) return this.status(404, 'not_found', 'Problem not found');
+          pad.pad = { ...pad.pad, problemSlug };
+          pad.problem = problem;
+          this.push({ type: 'pad.problem', pad: { ...pad.pad, shareToken: null }, problem });
+          return { pad: pad.pad, problem };
+        }
+      }
+      if ((rest === '/report' || rest === '/playback') && room && pad.role !== 'owner')
+        return this.status(403, 'forbidden', 'Only the host can open the report');
+      if (rest === '/report') {
+        if (room && this.report === REPORT_READY && !this.roomAssessed)
+          return {
+            ...REPORT_ROOM,
+            padId: id,
+            hostNotes: this.hostNotes.get(id) ?? REPORT_ROOM.hostNotes,
+          };
+        return {
+          ...this.report,
+          padId: id,
+          ...(room ? { hostNotes: this.hostNotes.get(id) ?? '' } : {}),
+        };
+      }
       if (rest === '/report/assessment' && method === 'POST') {
         if (this.aiKey.state !== 'active')
           return this.status(409, 'ai_key_missing', 'Add your AI API key first');
+        this.roomAssessed = true;
         this.report = REPORT_PENDING;
         setTimeout(() => {
           this.report = REPORT_READY;
@@ -435,7 +601,14 @@ export class MockBackend {
       if (rest === '/runs' && method === 'POST') {
         const req = CreateRunRequest.parse(body);
         const runId = uuid();
-        const queued = { ...RUNS.queued(req.mode, runId), padId: id, language: req.language };
+        if (!pad.pad.problemSlug && req.mode !== 'file')
+          return this.status(400, 'no_problem', 'This room has no problem, so there are no tests');
+        const queued = {
+          ...RUNS.queued(req.mode, runId),
+          padId: id,
+          language: req.language,
+          problemSlug: pad.pad.problemSlug,
+        };
         this.runs.set(runId, queued);
         const script = this.nextRun ?? defaultScript(req.mode);
         this.nextRun = null;

@@ -26,6 +26,7 @@ const stored = (result: JudgeResult | null, hiddenIds: string[]): StoredRun => (
   id: result?.runId ?? '0b9d6c1e-6f0a-4c56-9d3e-0c1c9a1f4f10',
   padId: '11111111-1111-4111-8111-111111111111',
   userId: 'u1',
+  problemSlug: 'two-sum',
   mode: 'submit',
   language: 'cpp',
   status: result ? 'finished' : 'queued',

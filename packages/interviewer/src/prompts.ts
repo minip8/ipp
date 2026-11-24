@@ -100,7 +100,7 @@ export function duration(ms: number): string {
 /** Stop candidate text from closing or opening our own tags. */
 export function neutralise(text: string): string {
   return text.replace(
-    /<(\/?)(candidate_|run_output|session|problem|answer|key_points|question)/gi,
+    /<(\/?)(candidate_|host_|run_output|session|problem|answer|key_points|question)/gi,
     '‹$1$2',
   );
 }
@@ -112,7 +112,7 @@ export function truncate(text: string, max: number): string {
   return `${text.slice(0, head)}\n… [${text.length - max} characters omitted] …\n${text.slice(text.length - tail)}`;
 }
 
-function numbered(code: string): string {
+export function numbered(code: string): string {
   const lines = code.split('\n');
   const width = String(lines.length).length;
   return lines.map((l, i) => `${String(i + 1).padStart(width)} | ${l}`).join('\n');

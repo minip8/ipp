@@ -11,11 +11,13 @@ import {
   PlayIcon,
   PlusIcon,
   ShuffleIcon,
+  UsersIcon,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
 import { DifficultyBadge, LanguageTag } from '@/components/domain';
 import { EmptyState, ErrorState } from '@/components/states';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -65,6 +67,26 @@ function QuickStart() {
 
 type OnDelete = (t: DeleteTarget) => void;
 
+/** What a pad is called in lists: its problem, or its own title when it has none (a blank room). */
+const padName = (p: PadSummary) => p.problemTitle ?? p.title;
+const deleteTarget = (p: PadSummary): DeleteTarget => ({
+  id: p.id,
+  problemTitle: padName(p),
+  status: p.status,
+  role: p.role,
+});
+/** A room's report is its host's; a candidate with an account only gets the pad back. */
+const canOpenReport = (p: PadSummary) => p.kind !== 'room' || p.role === 'owner';
+
+function RoomBadge({ p }: { p: PadSummary }) {
+  if (p.kind !== 'room') return null;
+  return (
+    <Badge tone="outline">
+      <UsersIcon /> {p.role === 'owner' ? 'Hosting' : 'Candidate'}
+    </Badge>
+  );
+}
+
 function ActivePads({ pads, onDelete }: { pads: PadSummary[]; onDelete: OnDelete }) {
   if (pads.length === 0) return null;
   return (
@@ -83,9 +105,10 @@ function ActivePads({ pads, onDelete }: { pads: PadSummary[]; onDelete: OnDelete
               <span className="relative inline-flex size-2.5 rounded-full bg-accent" />
             </span>
             <div className="min-w-0 flex-1">
-              <p className="truncate font-medium">{p.problemTitle}</p>
+              <p className="truncate font-medium">{padName(p)}</p>
               <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-fg-muted">
-                <DifficultyBadge difficulty={p.difficulty} />
+                <RoomBadge p={p} />
+                {p.difficulty && <DifficultyBadge difficulty={p.difficulty} />}
                 <LanguageTag language={p.language} />
                 <span>Started {formatRelative(p.startedAt)}</span>
               </p>
@@ -96,7 +119,7 @@ function ActivePads({ pads, onDelete }: { pads: PadSummary[]; onDelete: OnDelete
                   <PlayIcon /> Resume
                 </Link>
               </Button>
-              <DeletePadButton target={p} onClick={() => onDelete(p)} />
+              <DeletePadButton target={deleteTarget(p)} onClick={() => onDelete(deleteTarget(p))} />
             </div>
           </li>
         ))}
@@ -146,12 +169,13 @@ function History({ pads, onDelete }: { pads: PadSummary[]; onDelete: OnDelete })
                     <td className="px-4 py-2.5">
                       <div className="flex items-center gap-2">
                         <Link
-                          href={`/pads/${p.id}/report`}
+                          href={canOpenReport(p) ? `/pads/${p.id}/report` : `/pads/${p.id}`}
                           className="truncate font-medium hover:underline"
                         >
-                          {p.problemTitle}
+                          {padName(p)}
                         </Link>
-                        <DifficultyBadge difficulty={p.difficulty} />
+                        {p.difficulty && <DifficultyBadge difficulty={p.difficulty} />}
+                        <RoomBadge p={p} />
                       </div>
                     </td>
                     <td className="hidden px-4 py-2.5 md:table-cell">
@@ -177,15 +201,20 @@ function History({ pads, onDelete }: { pads: PadSummary[]; onDelete: OnDelete })
                     </td>
                     <td className="px-4 py-2.5 text-right">
                       <div className="inline-flex items-center gap-1">
-                        <Button asChild variant="ghost" size="xs">
-                          <Link
-                            href={`/pads/${p.id}/report`}
-                            aria-label={`Report for ${p.problemTitle}`}
-                          >
-                            <FileTextIcon /> <span className="hidden sm:inline">Report</span>
-                          </Link>
-                        </Button>
-                        <DeletePadButton target={p} onClick={() => onDelete(p)} />
+                        {canOpenReport(p) && (
+                          <Button asChild variant="ghost" size="xs">
+                            <Link
+                              href={`/pads/${p.id}/report`}
+                              aria-label={`Report for ${padName(p)}`}
+                            >
+                              <FileTextIcon /> <span className="hidden sm:inline">Report</span>
+                            </Link>
+                          </Button>
+                        )}
+                        <DeletePadButton
+                          target={deleteTarget(p)}
+                          onClick={() => onDelete(deleteTarget(p))}
+                        />
                       </div>
                     </td>
                   </tr>
@@ -294,11 +323,18 @@ export function Dashboard() {
             Pick up a problem at random, or choose one from the library.
           </p>
         </div>
-        <Button asChild variant="primary">
-          <Link href="/new">
-            <PlusIcon /> Choose a problem
-          </Link>
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button asChild>
+            <Link href="/new?mode=host">
+              <UsersIcon /> Host an interview
+            </Link>
+          </Button>
+          <Button asChild variant="primary">
+            <Link href="/new">
+              <PlusIcon /> Choose a problem
+            </Link>
+          </Button>
+        </div>
       </div>
 
       <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,1fr)_300px]">
