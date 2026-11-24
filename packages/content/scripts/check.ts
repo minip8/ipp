@@ -1,8 +1,10 @@
 /**
  * Validates content and checks reference solutions without the judge:
  *   - every problem and quiz file parses against the contracts
- *   - solution.py reproduces tests.json (run in a subprocess with a tiny harness)
- *   - solution.cpp passes `g++ -fsyntax-only` (real execution happens in the judge e2e test)
+ *   - solution.py (+ harness.py) reproduces tests.json (run in a subprocess with a tiny runner);
+ *     skipped for a problem without solution.py (one that does not offer Python)
+ *   - solution.cpp, with harness.cpp appended as the API appends it, passes `g++ -fsyntax-only`
+ *     (real execution: scripts/judge-all.ts)
  *
  *   pnpm --filter @ipp/content check              all problems
  *   pnpm --filter @ipp/content check two-sum ...  only these slugs
@@ -13,7 +15,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Json } from '@ipp/contracts';
 import {
-  CONTENT_ROOT,
+  EXTENSIONS,
+  judgedReferenceSolutions,
   listProblemSlugs,
   loadProblem,
   loadQuizQuestions,
@@ -22,7 +25,7 @@ import {
   untaxonomizedTags,
 } from '../src';
 
-const HARNESS = `
+const RUNNER = `
 import importlib.util, json, sys
 spec = importlib.util.spec_from_file_location("solution", sys.argv[1])
 mod = importlib.util.module_from_spec(spec)
@@ -38,7 +41,7 @@ json.dump(out, sys.stdout)
 const only = process.argv.slice(2);
 const slugs = only.length ? only : listProblemSlugs();
 const tmp = mkdtempSync(join(tmpdir(), 'ipp-content-'));
-writeFileSync(join(tmp, 'harness.py'), HARNESS);
+writeFileSync(join(tmp, 'runner.py'), RUNNER);
 let failures = 0;
 const bad = (msg: string) => {
   failures++;
@@ -50,38 +53,43 @@ for (const slug of slugs) {
     const p = loadProblem(slug);
     for (const t of untaxonomizedTags([p]))
       bad(`${t} is in no topic group (add it to TOPIC_GROUPS or EXCLUDED_TAGS in @ipp/contracts)`);
-    const dir = join(CONTENT_ROOT, 'problems', slug);
-    const input = join(tmp, `${slug}.json`);
-    writeFileSync(input, JSON.stringify({ className: p.signature.className, tests: p.tests }));
-    const raw = execFileSync(
-      'python3',
-      [join(tmp, 'harness.py'), join(dir, 'solution.py'), input],
-      {
+    // Reference solutions with the problem's harness appended, as the judge receives them.
+    const judged = judgedReferenceSolutions(p);
+    const withHarness = (l: 'cpp' | 'python') =>
+      p.harness[l] ? ` + harness.${EXTENSIONS[l]}` : '';
+    if (judged.python !== undefined) {
+      const input = join(tmp, `${slug}.json`);
+      writeFileSync(input, JSON.stringify({ className: p.signature.className, tests: p.tests }));
+      const solution = join(tmp, `${slug}.py`);
+      writeFileSync(solution, judged.python);
+      const raw = execFileSync('python3', [join(tmp, 'runner.py'), solution, input], {
         maxBuffer: 256 * 1024 * 1024,
         timeout: 120_000,
-      },
-    );
-    const actual = JSON.parse(raw.toString()) as Json[][];
-    const compare = new Map(p.signature.methods.map((m) => [m.name, m.compare]));
-    p.tests.forEach((t, i) => {
-      t.calls.forEach((c, j) => {
-        const got = (actual[i]?.[j] ?? null) as Json;
-        const want = t.expected[j] as Json;
-        if (!resultsEqual(got, want, compare.get(c.method) ?? 'exact')) {
-          bad(
-            `${slug} test ${t.id} call ${j} (${c.method}): expected ${JSON.stringify(want)?.slice(0, 200)}, python gave ${JSON.stringify(got)?.slice(0, 200)}`,
-          );
-        }
       });
-    });
-    try {
-      execFileSync('g++', ['-std=c++20', '-fsyntax-only', '-Wall', join(dir, 'solution.cpp')], {
-        stdio: 'pipe',
+      const actual = JSON.parse(raw.toString()) as Json[][];
+      const compare = new Map(p.signature.methods.map((m) => [m.name, m.compare]));
+      p.tests.forEach((t, i) => {
+        t.calls.forEach((c, j) => {
+          const got = (actual[i]?.[j] ?? null) as Json;
+          const want = t.expected[j] as Json;
+          if (!resultsEqual(got, want, compare.get(c.method) ?? 'exact')) {
+            bad(
+              `${slug} test ${t.id} call ${j} (${c.method}): expected ${JSON.stringify(want)?.slice(0, 200)}, python gave ${JSON.stringify(got)?.slice(0, 200)}`,
+            );
+          }
+        });
       });
-    } catch (e) {
-      bad(
-        `${slug} solution.cpp does not compile:\n${(e as { stderr?: Buffer }).stderr?.toString().slice(0, 2000)}`,
-      );
+    }
+    if (judged.cpp !== undefined) {
+      const solution = join(tmp, `${slug}.cpp`);
+      writeFileSync(solution, judged.cpp);
+      try {
+        execFileSync('g++', ['-std=c++20', '-fsyntax-only', '-Wall', solution], { stdio: 'pipe' });
+      } catch (e) {
+        bad(
+          `${slug} solution.cpp${withHarness('cpp')} does not compile:\n${(e as { stderr?: Buffer }).stderr?.toString().slice(0, 2000)}`,
+        );
+      }
     }
     const bytes = JSON.stringify(p.tests).length;
     if (bytes > 400_000) bad(`${slug}: tests.json is ${bytes} bytes; keep it under 400 KB`);

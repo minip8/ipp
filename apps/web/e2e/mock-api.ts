@@ -17,6 +17,8 @@ import {
   CreatePadRequest,
   CreateRunRequest,
   effectiveModel,
+  LANGUAGE_LABELS,
+  type Language,
   type Message,
   type Pad,
   type PadDetail,
@@ -243,6 +245,17 @@ export class MockBackend {
     );
   }
 
+  /** Like the API's `language_unavailable`: a problem refuses languages it does not offer. */
+  private languageRefusal(slug: string, language: Language) {
+    const p = PROBLEMS.find((x) => x.slug === slug);
+    if (!p || p.languages.includes(language)) return null;
+    return this.status(
+      400,
+      'language_unavailable',
+      `${p.title} can only be solved in ${p.languages.map((l) => LANGUAGE_LABELS[l]).join(', ')}, not ${LANGUAGE_LABELS[language]}`,
+    );
+  }
+
   private async handle(
     method: string,
     path: string,
@@ -349,9 +362,12 @@ export class MockBackend {
         PROBLEMS.find(
           (p) =>
             (!req.random?.difficulty || p.difficulty === req.random.difficulty) &&
-            (!req.random?.tag || p.tags.includes(req.random.tag)),
+            (!req.random?.tag || p.tags.includes(req.random.tag)) &&
+            p.languages.includes(req.language),
         )?.slug ??
         'two-sum';
+      const refusal = this.languageRefusal(slug, req.language);
+      if (refusal) return refusal;
       const id = uuid();
       const detail = makePadDetail({
         pad: {
@@ -389,6 +405,8 @@ export class MockBackend {
       if (rest === '' && method === 'GET') return this.detail(pad);
       if (rest === '' && method === 'PATCH') {
         const upd = UpdatePadRequest.parse(body);
+        const refusal = upd.language && this.languageRefusal(pad.pad.problemSlug, upd.language);
+        if (refusal) return refusal;
         const next: Pad = {
           ...pad.pad,
           ...upd,

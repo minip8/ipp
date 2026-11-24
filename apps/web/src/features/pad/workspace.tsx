@@ -365,13 +365,22 @@ export function Workspace() {
                       <Select
                         value={lang}
                         onValueChange={(v) => void setLanguage(v as Language)}
-                        disabled={readOnly}
+                        // A language-restricted problem offers only its own languages.
+                        disabled={readOnly || state.problem.languages.length < 2}
                       >
-                        <SelectTrigger className="h-7 w-28 text-xs" aria-label="Language">
+                        <SelectTrigger
+                          className="h-7 w-28 text-xs"
+                          aria-label="Language"
+                          title={
+                            state.problem.languages.length < LANGUAGES.length
+                              ? `This problem can only be solved in ${state.problem.languages.map((l) => LANG_LABEL[l]).join(' or ')}`
+                              : undefined
+                          }
+                        >
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {LANGUAGES.map((l) => (
+                          {state.problem.languages.map((l) => (
                             <SelectItem key={l} value={l}>
                               {LANG_LABEL[l]}
                             </SelectItem>

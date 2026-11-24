@@ -26,12 +26,12 @@ test.describe('problem library', () => {
   test('categories organise the library', async ({ page }) => {
     await setup(page);
     await page.goto('/new');
-    await expect(rows(page)).toHaveCount(14);
+    await expect(rows(page)).toHaveCount(15);
     await page.getByRole('tab', { name: /^Implementation/ }).click();
     await expect(page.getByText('Practical code with no trick to spot')).toBeVisible();
     expect(await titles(page)).toEqual(['Key-Value Store with Transactions', 'Text Justification']);
     await page.getByRole('tab', { name: /^Data structures/ }).click();
-    expect(await titles(page)).toEqual(['LRU Cache', 'Min Stack']);
+    expect(await titles(page)).toEqual(['LRU Cache', 'Min Stack', 'Unique Pointer']);
     // Counts follow the other filters.
     await page.getByRole('radio', { name: 'Hard' }).click();
     await expect(page.getByRole('tab', { name: /^Implementation/ })).toContainText('1');
@@ -88,7 +88,10 @@ test.describe('problem library', () => {
   }) => {
     const backend = await setup(page);
     await page.goto('/new');
+    // In Python the C++-only Unique Pointer is never picked, which leaves two candidates.
+    await page.getByRole('radio', { name: 'Python' }).click();
     await page.getByRole('tab', { name: /^Data structures/ }).click();
+    await expect(page.getByText('One of the 2 problems in Python that match')).toBeVisible();
     await page.getByRole('button', { name: 'Pick a random problem' }).click();
     const title = page.getByTestId('selected-problem');
     const first = await title.textContent();
@@ -102,6 +105,46 @@ test.describe('problem library', () => {
     const create = backend.requests.find((r) => r.method === 'POST' && r.path === '/api/pads');
     expect(create?.body).toMatchObject({
       problemSlug: first === 'LRU Cache' ? 'min-stack' : 'lru-cache',
+    });
+  });
+
+  test('a C++-only problem is marked, switches the language to C++ and keeps the preference', async ({
+    page,
+  }) => {
+    const backend = await setup(page);
+    await page.goto('/new');
+    await page.getByRole('radio', { name: 'Python' }).click();
+    const row = page.getByRole('button', { name: /Unique Pointer/ });
+    await expect(row.getByTestId('language-restriction')).toHaveText('C++ only');
+    await expect(
+      page.getByRole('button', { name: /LRU Cache/ }).getByTestId('language-restriction'),
+    ).toHaveCount(0);
+    await row.click();
+    const setup_ = page.locator('#interview-setup');
+    await expect(setup_.getByTestId('language-restriction')).toHaveText('C++ only');
+    const langs = page.getByRole('group', { name: 'Language' }).getByRole('radio');
+    await expect(langs).toHaveText(['C++']);
+    await expect(langs.first()).toHaveAttribute('aria-checked', 'true');
+    await expect(page.getByTestId('language-note')).toContainText(
+      'Unique Pointer can only be solved in C++, so this interview uses C++',
+    );
+    // Another problem brings the preferred language back.
+    await page.getByRole('button', { name: /LRU Cache/ }).click();
+    await expect(langs).toHaveText(['C++', 'Python', 'Java']);
+    await expect(page.getByRole('radio', { name: 'Python' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+    await page.getByRole('button', { name: /Unique Pointer/ }).click();
+    await page.getByRole('button', { name: 'Start interview' }).click();
+    await expect(page).toHaveURL(/\/pads\/[0-9a-f-]{36}$/);
+    const create = backend.requests.find((r) => r.method === 'POST' && r.path === '/api/pads');
+    expect(create?.body).toMatchObject({ problemSlug: 'unique-pointer', language: 'cpp' });
+    const prefs = await page.evaluate(() => localStorage.getItem('ipp:start-prefs'));
+    expect(JSON.parse(prefs ?? '{}')).toMatchObject({ language: 'python' });
+    // In the pad, the language switcher cannot leave C++.
+    await expect(page.getByRole('combobox', { name: 'Language' })).toBeDisabled({
+      timeout: 20_000,
     });
   });
 

@@ -123,7 +123,9 @@ browser ── /api/* (Next rewrite, same origin, cookie session) ──▶ apps
 
 - A coding problem is a directory under `packages/content/problems/<slug>/` (`two-sum` shows the
   shape): `problem.yaml`, `statement.md`, `notes.md` (interviewer-only), `tests.json`, and
-  reference solutions (C++ and Python required). `problem.yaml` needs a `category`
+  reference solutions (C++ and Python required unless `languages:` restricts the problem; a
+  restricted problem may add `starter.<ext>` and a server-only `harness.<ext>` appended to the
+  candidate's code for judged runs, see ARCHITECTURE §6.1). `problem.yaml` needs a `category`
   (`dsa`, `implementation`, `data-structure`), and every tag must belong to a topic group in
   `packages/contracts/src/taxonomy.ts` or be listed in its excluded tags; a content test fails
   otherwise.

@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto';
 import {
   CAPS,
   type CreateRunRequest,
+  composeJudgedSource,
   JUDGE_KEYS,
   JudgeJob,
   JudgeProgress,
@@ -26,6 +27,7 @@ import { and, asc, eq, lt, ne } from '@ipp/db/orm';
 import { Redis } from 'ioredis';
 import type { Ctx } from '../context';
 import { badRequest, notFound, rateLimited, tooLarge, unavailable } from '../http/errors';
+import { assertLanguageOffered } from '../pads/service';
 import { isForeignKeyViolation } from '../pg';
 import { storedRun } from '../views';
 import { hiddenFailures, publicProgress, toInterviewerRun, toPublicRun } from './redact';
@@ -78,6 +80,8 @@ export class RunService {
       .from(problems)
       .where(eq(problems.slug, args.problemSlug));
     if (!problem) throw badRequest('Problem not found');
+    // `file` runs are just the candidate's program; judged runs need a language the problem offers.
+    if (body.mode !== 'file') assertLanguageOffered(problem, body.language);
 
     // Choose tests and limits. The API decides; the client only picks the mode.
     let tests: JudgeTest[] = [];
@@ -159,11 +163,18 @@ export class RunService {
       throw rateLimited(2, 'run_in_flight', 'Wait for your current run to finish');
 
     const now = new Date();
+    // Judged runs of a problem with a harness: the harness goes after the candidate's code (the
+    // judge sees one file). The run row keeps only what the candidate wrote. CAPS.sourceBytes
+    // applies to the candidate's part; the judge has no source cap of its own.
+    const source =
+      body.mode === 'file'
+        ? body.source
+        : composeJudgedSource(body.language, body.source, problem.harness[body.language]);
     const job: JudgeJob = JudgeJob.parse({
       v: 1,
       runId,
       language: body.language,
-      source: body.source,
+      source,
       mode: body.mode === 'file' ? 'file' : 'tests',
       stdin: body.mode === 'file' ? body.stdin : '',
       signature: body.mode === 'file' ? null : problem.signature,

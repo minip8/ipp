@@ -1,11 +1,11 @@
 /** Row -> contract mappers. Nothing here may expose server-only problem fields. */
 import {
-  generateScaffolds,
   type Message,
   type MessageIntent,
   type Pad,
   type ProblemDetail,
   type ProblemSummary,
+  problemScaffolds,
   type TimelineEvent,
 } from '@ipp/contracts';
 import type { messages, pads, problems, problemTests, runs, timelineEvents } from '@ipp/db';
@@ -41,10 +41,14 @@ export function problemSummary(row: ProblemRow): ProblemSummary {
     difficulty: row.difficulty,
     category: row.category,
     tags: row.tags,
+    languages: row.languages,
   };
 }
 
-/** Visible tests only; hidden tests are counted, never included. */
+/**
+ * Visible tests only; hidden tests are counted, never included. Scaffolds carry the problem's
+ * starter code where it has some; the harness never leaves the server.
+ */
 export function problemDetail(row: ProblemRow, tests: TestRow[]): ProblemDetail {
   const visible = tests.filter((t) => !t.hidden).sort((a, b) => a.idx - b.idx);
   return {
@@ -54,7 +58,7 @@ export function problemDetail(row: ProblemRow, tests: TestRow[]): ProblemDetail 
     limits: row.limits,
     sampleTests: visible.map((t) => t.data),
     hiddenTestCount: tests.length - visible.length,
-    scaffolds: generateScaffolds(row.signature),
+    scaffolds: problemScaffolds(row),
   };
 }
 

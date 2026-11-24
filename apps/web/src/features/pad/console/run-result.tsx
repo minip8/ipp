@@ -1,5 +1,11 @@
 'use client';
-import type { CustomTest, Json, PublicTestResult, Run } from '@ipp/contracts';
+import {
+  CPP_HARNESS_FILE,
+  type CustomTest,
+  type Json,
+  type PublicTestResult,
+  type Run,
+} from '@ipp/contracts';
 import { AlertTriangleIcon, EyeOffIcon, TerminalIcon } from 'lucide-react';
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import {
@@ -14,7 +20,7 @@ import { Tooltip } from '@/components/ui/tooltip';
 import { formatMs, plural } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { MODE_LABEL, runHeadline, TEST_VERDICT } from '@/lib/verdict';
-import { linkifyLocations } from '../editor/diagnostics';
+import { linkifyLocations, mentionsTestHarness } from '../editor/diagnostics';
 import { usePad } from '../session';
 import { describeTest } from '../tests-format';
 
@@ -417,7 +423,21 @@ export function RunResult({
         )}
 
       {run.compile && !run.compile.ok && (
-        <OutputBlock label="Compiler output" text={run.compile.output} tone="bad" onJump={onJump} />
+        <>
+          <OutputBlock
+            label="Compiler output"
+            text={run.compile.output}
+            tone="bad"
+            onJump={onJump}
+          />
+          {mentionsTestHarness(run.compile.output) && (
+            <p className="text-xs text-fg-muted" data-testid="harness-error-note">
+              Errors in <code className="font-mono">{CPP_HARNESS_FILE}</code> are in the
+              problem&apos;s tests, not your file: they use your code as the statement describes, so
+              a missing or differently named member, or a different signature, shows up there.
+            </p>
+          )}
+        </>
       )}
       {run.compile?.ok && run.compile.output && (
         <OutputBlock

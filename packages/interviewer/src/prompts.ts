@@ -156,12 +156,26 @@ export function problemPrompt(problem: InterviewContext['problem']): string {
   );
   const ref = refLang ? problem.referenceSolutions[refLang] : undefined;
   const focus = CATEGORY_FOCUS[problem.category];
+  const harnessLang = (['cpp', 'python', 'java'] as Language[]).find((l) => problem.harness?.[l]);
+  const harness = harnessLang ? problem.harness?.[harnessLang] : undefined;
+  const languages = problem.languages ?? [];
+  const restricted = languages.length > 0 && languages.length < 3;
   return [
     `# The problem for this session: ${problem.title} (${problem.difficulty}; ${problem.tags.join(', ')})`,
     ...(focus ? [focus] : []),
+    ...(restricted
+      ? [`Languages: ${languages.map((l) => LANGUAGE_LABELS[l]).join(', ')} only.`]
+      : []),
     '## Statement (the candidate sees this)',
     problem.statement.trim(),
-    '## Required signature',
+    ...(harness
+      ? [
+          `## Test harness in ${LANGUAGE_LABELS[harnessLang as Language]} (private; the candidate does not see it)`,
+          `The candidate writes the code the statement asks for. Judged runs append this harness to their file; the tests call methods of \`${problem.signature.className}\`, which exercises their code. A compile error located in tests.cpp means their code lacks or misnames something the harness uses.`,
+          harness.trim(),
+          '## Signature of the harness class the tests call',
+        ]
+      : ['## Required signature']),
     describeSignature(problem.signature),
     `Limits: ${problem.limits.timeMs} ms and ${problem.limits.memoryMb} MB per test before language multipliers.`,
     '## Your interviewer notes (private)',

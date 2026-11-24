@@ -3,6 +3,9 @@ import {
   type Difficulty,
   groupOfTag,
   groupTags,
+  LANGUAGE_LABELS,
+  LANGUAGES,
+  type Language,
   PROBLEM_CATEGORIES,
   type ProblemCategory,
   type ProblemSummary,
@@ -114,6 +117,47 @@ export function pickRandom(
   const pool = candidates.length > 1 ? candidates.filter((p) => p.slug !== current) : candidates;
   return pool[Math.floor(random() * pool.length)] ?? pool[0];
 }
+
+// ---------------------------------------------------------------- languages
+
+/** The problem can be solved in fewer than all languages (e.g. a C++ template problem). */
+export const isLanguageRestricted = (p: Pick<ProblemSummary, 'languages'>): boolean =>
+  LANGUAGES.some((l) => !p.languages.includes(l));
+
+/** "C++ only", "C++ or Python only"; null for a problem that offers every language. */
+export function restrictionLabel(p: Pick<ProblemSummary, 'languages'>): string | null {
+  if (!isLanguageRestricted(p)) return null;
+  return `${p.languages.map((l) => LANGUAGE_LABELS[l]).join(' or ')} only`;
+}
+
+/**
+ * The language the interview starts in: the user's preference when the problem offers it,
+ * otherwise the problem's first language. The saved preference itself is left alone.
+ */
+export function effectiveLanguage(
+  preferred: Language,
+  problem: Pick<ProblemSummary, 'languages'> | undefined,
+): Language {
+  if (!problem || problem.languages.includes(preferred)) return preferred;
+  return problem.languages[0] ?? preferred;
+}
+
+/** Why the language picker shows fewer languages, or null when it shows them all. */
+export function languageNote(
+  preferred: Language,
+  problem: Pick<ProblemSummary, 'title' | 'languages'> | undefined,
+): string | null {
+  if (!problem || !isLanguageRestricted(problem)) return null;
+  const offered = problem.languages.map((l) => LANGUAGE_LABELS[l]).join(' or ');
+  const why = `${problem.title} can only be solved in ${offered}`;
+  return problem.languages.includes(preferred)
+    ? `${why}.`
+    : `${why}, so this interview uses ${LANGUAGE_LABELS[effectiveLanguage(preferred, problem)]} (your usual ${LANGUAGE_LABELS[preferred]} is kept for other problems).`;
+}
+
+/** Problems a random pick may choose: those that can be solved in the user's language. */
+export const randomPool = (problems: readonly ProblemSummary[], language: Language) =>
+  problems.filter((p) => p.languages.includes(language));
 
 const SHOW_TOPICS_KEY = 'ipp:library-show-topics';
 export const loadShowTopics = (): boolean => storage.get<unknown>(SHOW_TOPICS_KEY, false) === true;

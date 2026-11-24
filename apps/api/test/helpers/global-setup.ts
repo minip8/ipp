@@ -26,7 +26,7 @@ export default async function setup() {
     await h.db.execute(
       sql`truncate "user", problems, problem_tests, quiz_topics, quiz_questions cascade`,
     );
-    for (const name of ['problem-two-sum', 'problem-lru-cache']) {
+    for (const name of ['problem-two-sum', 'problem-lru-cache', 'problem-box-cpp']) {
       const p = ProblemContent.parse(
         JSON.parse(readFileSync(join(fixturesDir, `${name}.json`), 'utf8')),
       );
@@ -41,6 +41,9 @@ export default async function setup() {
         limits: p.limits,
         interviewerNotes: p.interviewerNotes,
         referenceSolutions: p.referenceSolutions,
+        languages: p.languages,
+        starterCode: p.starterCode,
+        harness: p.harness,
         source: p.source ?? null,
       });
       await h.db

@@ -12,9 +12,9 @@ import {
   type AiModelChoice,
   type AiProvider,
   effectiveModel,
-  generateScaffold,
   type Message,
   MessageIntent,
+  problemScaffold,
   type QuizQuestion,
   REPORT_DIMENSIONS,
   ReportAssessment,
@@ -767,7 +767,7 @@ export function createInterviewer(
       });
       return;
     }
-    const scaffold = generateScaffold(ctx.problem.signature, ctx.language);
+    const scaffold = problemScaffold(ctx.problem, ctx.language);
     const facts0 = policy.codeFacts(
       ctx.code,
       scaffold,

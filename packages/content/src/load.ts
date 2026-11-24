@@ -1,11 +1,17 @@
 /**
  * Loads and validates everything under packages/content. Layout:
  *
- *   problems/<slug>/problem.yaml    slug, title, difficulty, category, tags, signature, limits?, source?
+ *   problems/<slug>/problem.yaml    slug, title, difficulty, category, tags, signature, limits?,
+ *                                   source?, languages? (absent = all)
  *                   statement.md    shown to the candidate
  *                   notes.md        interviewer notes (server-only)
  *                   tests.json      TestCase[]
- *                   solution.cpp, solution.py, solution.java (optional)
+ *                   solution.cpp, solution.py, solution.java   reference solutions (C++ and Python
+ *                                   required when offered; candidate-side code only)
+ *                   starter.<ext>   optional editor starter code (instead of the generated scaffold)
+ *                   harness.<ext>   optional test harness appended to the candidate's code for
+ *                                   judged runs; defines the signature's class (server-only)
+ *   Starter, harness and solution files may exist only for the problem's languages.
  *   quiz/topics.yaml                QuizTopic[]
  *   quiz/<topic>/<anything>.yaml    QuizQuestion[] (topic must equal the directory name)
  */
@@ -13,6 +19,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  composeJudgedSource,
   EXCLUDED_TAGS,
   groupOfTag,
   type Language,
@@ -25,11 +32,8 @@ import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 
 export const CONTENT_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const SOLUTION_FILES: Record<Language, string> = {
-  cpp: 'solution.cpp',
-  python: 'solution.py',
-  java: 'solution.java',
-};
+/** File extension per language: solution.<ext>, starter.<ext>, harness.<ext>. */
+export const EXTENSIONS: Record<Language, string> = { cpp: 'cpp', python: 'py', java: 'java' };
 
 const read = (path: string) => readFileSync(path, 'utf8');
 const fail = (where: string, error: z.ZodError): never => {
@@ -48,16 +52,22 @@ export function listProblemSlugs(root = CONTENT_ROOT): string[] {
 export function loadProblem(slug: string, root = CONTENT_ROOT): ProblemContent {
   const dir = join(root, 'problems', slug);
   const meta = parseYaml(read(join(dir, 'problem.yaml')));
-  const referenceSolutions: Partial<Record<Language, string>> = {};
-  for (const [language, file] of Object.entries(SOLUTION_FILES) as [Language, string][]) {
-    if (existsSync(join(dir, file))) referenceSolutions[language] = read(join(dir, file));
-  }
+  const perLanguage = (stem: string) => {
+    const out: Partial<Record<Language, string>> = {};
+    for (const [language, ext] of Object.entries(EXTENSIONS) as [Language, string][]) {
+      const file = join(dir, `${stem}.${ext}`);
+      if (existsSync(file)) out[language] = read(file);
+    }
+    return out;
+  };
   const parsed = ProblemContent.safeParse({
     ...meta,
     statement: read(join(dir, 'statement.md')),
     interviewerNotes: read(join(dir, 'notes.md')),
     tests: JSON.parse(read(join(dir, 'tests.json'))),
-    referenceSolutions,
+    referenceSolutions: perLanguage('solution'),
+    starterCode: perLanguage('starter'),
+    harness: perLanguage('harness'),
   });
   if (!parsed.success) return fail(`problems/${slug}`, parsed.error);
   const problem = parsed.data;
@@ -98,6 +108,22 @@ function validateTests(problem: ProblemContent): void {
   if (!problem.tests.some((t) => !t.hidden))
     throw new Error(`${where}: needs at least one visible sample test`);
   if (!problem.tests.some((t) => t.hidden)) throw new Error(`${where}: needs hidden tests`);
+}
+
+/**
+ * The reference solutions as the judge must receive them: each with the problem's harness for
+ * that language appended exactly as the API appends it to a candidate's source.
+ */
+export function judgedReferenceSolutions(
+  problem: ProblemContent,
+): Partial<Record<Language, string>> {
+  const out: Partial<Record<Language, string>> = {};
+  for (const [language, source] of Object.entries(problem.referenceSolutions) as [
+    Language,
+    string,
+  ][])
+    out[language] = composeJudgedSource(language, source, problem.harness[language]);
+  return out;
 }
 
 export function loadProblems(root = CONTENT_ROOT): ProblemContent[] {

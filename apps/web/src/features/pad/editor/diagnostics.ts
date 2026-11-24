@@ -1,4 +1,4 @@
-import type { Run } from '@ipp/contracts';
+import { CPP_HARNESS_FILE, type Run } from '@ipp/contracts';
 
 export type Diagnostic = {
   line: number;
@@ -7,7 +7,21 @@ export type Diagnostic = {
   message: string;
 };
 
-const GCC = /^[^\s:]+\.(?:cpp|cc|cxx|h|hpp):(\d+):(\d+):\s+(error|warning|fatal error):\s+(.*)$/;
+const GCC = /^([^\s:]+\.(?:cpp|cc|cxx|h|hpp)):(\d+):(\d+):\s+(error|warning|fatal error):\s+(.*)$/;
+
+/**
+ * Lines of a problem's test harness (appended after the candidate's code for judged runs) are
+ * reported under this name: they are not lines of the candidate's file.
+ */
+const isHarnessFile = (path: string) => path === CPP_HARNESS_FILE;
+
+/** The compiler output names an error in the problem's test harness (not in the editor's file). */
+export function mentionsTestHarness(output: string): boolean {
+  return output.split('\n').some((l) => {
+    const g = GCC.exec(l);
+    return g !== null && isHarnessFile(g[1] ?? '') && g[4] !== 'warning';
+  });
+}
 const JAVA = /^[^\s:]+\.java:(\d+):\s+(error|warning):\s+(.*)$/;
 const PY_FILE = /^\s*File "[^"]*", line (\d+)/;
 const PY_ERROR = /^([A-Za-z_][\w.]*(?:Error|Exception)):?\s*(.*)$/;
@@ -30,12 +44,14 @@ export function parseCompilerOutput(output: string, language: Run['language']): 
   for (const l of lines) {
     const g = GCC.exec(l);
     if (g) {
-      out.push({
-        line: Number(g[1]),
-        column: Number(g[2]),
-        severity: g[3] === 'warning' ? 'warning' : 'error',
-        message: g[4] ?? '',
-      });
+      // Harness lines have no place in the editor; the console shows them (mentionsTestHarness).
+      if (!isHarnessFile(g[1] ?? ''))
+        out.push({
+          line: Number(g[2]),
+          column: Number(g[3]),
+          severity: g[4] === 'warning' ? 'warning' : 'error',
+          message: g[5] ?? '',
+        });
       continue;
     }
     const j = JAVA.exec(l);
@@ -75,6 +91,8 @@ export function linkifyLocations(
   const parts: ({ text: string } | { text: string; line: number; column: number | null })[] = [];
   let last = 0;
   for (let m = re.exec(text); m; m = re.exec(text)) {
+    // A harness location is not a line of the editor's file: leave it as plain text.
+    if (m[1] !== undefined && isHarnessFile(m[1])) continue;
     if (m.index > last) parts.push({ text: text.slice(last, m.index) });
     const line = Number(m[2] ?? m[5]);
     const column = m[3] ? Number(m[3]) : null;
