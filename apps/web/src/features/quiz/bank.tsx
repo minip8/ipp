@@ -72,7 +72,15 @@ import {
   summariseSubtopics,
 } from './bank-logic';
 import { type Draft, draftForKey, draftFromResponse, emptyDraft, toResponse } from './logic';
-import { AnswerInput, FeedbackPanel, QuestionCode, QuestionHeader } from './question';
+import {
+  ACTION_BAR,
+  AnswerInput,
+  FeedbackPanel,
+  PHONE_FIT,
+  QuestionCode,
+  QuestionHeader,
+  revealOnNarrow,
+} from './question';
 
 /** What happened to a question on this page since it was opened (survives moving between questions). */
 interface Local {
@@ -86,7 +94,8 @@ interface Local {
 /** From this width the list and the question sit side by side (Tailwind's `lg`). */
 const SIDE_BY_SIDE = '(min-width: 1024px)';
 
-const backLink = 'inline-flex min-w-0 items-center gap-1 text-sm text-fg-muted hover:text-fg';
+const backLink =
+  'inline-flex min-w-0 items-center gap-1 text-sm text-fg-muted hover:text-fg max-sm:min-h-10';
 
 function OverviewSkeleton() {
   return (
@@ -281,8 +290,11 @@ export function QuestionBank({ topic }: { topic: string }) {
   return (
     <div
       className={cn(
-        'mx-auto max-w-6xl px-4 pt-6 pb-16 sm:px-6',
+        'mx-auto max-w-6xl px-4 pt-6 pb-16 sm:px-6 max-sm:pt-3',
         split && 'lg:flex lg:h-[calc(100dvh-3.25rem-1px)] lg:flex-col lg:pt-4 lg:pb-0',
+        // A question's answer bar sticks to the foot of the screen below lg: no gap under it.
+        view === 'question' && loaded && 'max-lg:pb-0',
+        PHONE_FIT,
       )}
     >
       <div className="flex min-h-7 shrink-0 items-center gap-3">
@@ -353,7 +365,7 @@ export function QuestionBank({ topic }: { topic: string }) {
                     router.push(bankHref(t, { ...DEFAULT_FILTERS, type, difficulty }))
                   }
                 >
-                  <SelectTrigger className="max-sm:flex-1 sm:w-48" aria-label="Topic">
+                  <SelectTrigger className="max-sm:h-10 max-sm:flex-1 sm:w-48" aria-label="Topic">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -365,7 +377,7 @@ export function QuestionBank({ topic }: { topic: string }) {
                   </SelectContent>
                 </Select>
               )}
-              <Button asChild size="md">
+              <Button asChild size="md" className="max-sm:h-10">
                 <Link href={`/quiz?topic=${encodeURIComponent(topic)}`}>
                   <PlayIcon /> Take a quiz instead
                 </Link>
@@ -480,7 +492,11 @@ export function QuestionBank({ topic }: { topic: string }) {
                     {narrowed && (list.length === 1 ? ' matches' : ' match')}
                   </p>
                   {firstOpen && (
-                    <Button variant="primary" onClick={() => open(firstOpen, 'push')}>
+                    <Button
+                      variant="primary"
+                      className="max-sm:h-10 max-sm:w-full"
+                      onClick={() => open(firstOpen, 'push')}
+                    >
                       Start with the first open question <ArrowRightIcon />
                     </Button>
                   )}
@@ -612,6 +628,7 @@ function QuestionPane({
   const qc = useQueryClient();
   const aiKey = useAiKey();
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const feedbackRef = useRef<HTMLDivElement>(null);
   const [grading, setGrading] = useState<number | null>(null);
   // Previous answer and its feedback: only exists once a response was recorded.
   const detail = useQuery({
@@ -646,6 +663,8 @@ function QuestionPane({
       if (q.type === 'short') void qc.invalidateQueries({ queryKey: qk.aiKey });
       onAnswered(q.id, r, fb);
       setGrading(null);
+      // On a phone the feedback lands below the choices, often off screen: bring it up.
+      requestAnimationFrame(() => revealOnNarrow(feedbackRef.current));
     },
     onError: () => setGrading(null),
   });
@@ -727,10 +746,11 @@ function QuestionPane({
 
   return (
     <article aria-labelledby={`bank-q-${q.id}`}>
-      <div className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2">
+      <div className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 max-sm:gap-1 max-sm:px-1.5 max-sm:py-1">
         <Button
           variant="ghost"
           size="icon-sm"
+          className="max-sm:size-9"
           onClick={() => go(prev)}
           disabled={!prev}
           aria-label="Previous question"
@@ -743,6 +763,7 @@ function QuestionPane({
         <Button
           variant="ghost"
           size="icon-sm"
+          className="max-sm:size-9"
           onClick={() => go(next)}
           disabled={!next}
           aria-label="Next question"
@@ -750,7 +771,7 @@ function QuestionPane({
           <ChevronRightIcon />
         </Button>
         <span
-          className="ml-auto inline-flex items-center gap-1.5 text-xs text-fg-muted"
+          className="ml-auto inline-flex items-center gap-1.5 text-xs text-fg-muted max-sm:pr-1.5 max-sm:text-right"
           data-testid="bank-status"
         >
           <StatusIcon status={item.status} className="size-3.5" />
@@ -817,7 +838,7 @@ function QuestionPane({
         )}
 
         {feedback && (
-          <div className="mt-5 space-y-2">
+          <div ref={feedbackRef} className="mt-5 space-y-2 max-lg:scroll-mb-24">
             {!local.feedback && item.answeredAt && (
               <p className="text-xs text-fg-muted">
                 Your previous answer, {formatRelative(item.answeredAt)}.
@@ -840,19 +861,35 @@ function QuestionPane({
         <InlineError error={submit.error} className="mt-4" />
 
         {/* Beside the list the pane scrolls on its own, and the actions stay at its foot. */}
-        <div className="mt-6 border-t border-border bg-bg pt-4 lg:sticky lg:bottom-0 lg:z-10 lg:-mx-1 lg:px-1 lg:pb-4">
+        <div
+          className={cn(
+            'mt-6 border-t border-border bg-bg pt-4 lg:sticky lg:bottom-0 lg:z-10 lg:-mx-1 lg:px-1 lg:pb-4',
+            ACTION_BAR,
+          )}
+        >
           <div className="flex flex-wrap items-center gap-2">
             {locked && (
-              <Button variant="ghost" size="sm" onClick={again} disabled={submit.isPending}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="max-sm:h-10 max-sm:px-3"
+                onClick={again}
+                disabled={submit.isPending}
+              >
                 <RotateCcwIcon /> Answer again
               </Button>
             )}
             {!locked && next && (
-              <Button variant="ghost" size="sm" onClick={() => go(next)}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="max-sm:h-10 max-sm:px-3"
+                onClick={() => go(next)}
+              >
                 Skip
               </Button>
             )}
-            <span className="ml-auto hidden items-center gap-1.5 text-xs text-fg-subtle md:inline-flex">
+            <span className="ml-auto hidden items-center gap-1.5 text-xs text-fg-subtle md:inline-flex pointer-coarse:hidden!">
               <Kbd keys="J" />/<Kbd keys="K" /> move ·{' '}
               {q.type === 'short' || (draft.type === 'output' && draft.kind === 'output') ? (
                 <>
@@ -872,7 +909,7 @@ function QuestionPane({
             </span>
             <Button
               variant="primary"
-              className="ml-auto md:ml-2"
+              className="ml-auto md:ml-2 max-sm:h-10 max-sm:flex-1"
               onClick={primary}
               disabled={primaryDisabled}
               data-testid="bank-primary"
@@ -885,7 +922,7 @@ function QuestionPane({
             </Button>
           </div>
           {settled && !next && (
-            <p className="mt-3 text-right text-sm text-fg-muted">
+            <p className="mt-3 text-right text-sm text-fg-muted max-sm:mt-2 max-sm:text-center">
               {practise
                 ? 'That was the last question in this list.'
                 : 'Every question in this list is answered correctly.'}

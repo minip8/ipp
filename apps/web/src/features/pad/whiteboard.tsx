@@ -254,6 +254,19 @@ export function Whiteboard({ active }: { active: boolean }) {
     vy: number;
   } | null>(null);
   const spaceDown = useRef(false);
+  // Fingers on the board: two of them pinch to zoom and pan instead of drawing.
+  const touches = useRef(new Map<number, { x: number; y: number }>());
+  const pinch = useRef<{ dist: number; cx: number; cy: number; view: typeof view } | null>(null);
+  const twoFingers = () => {
+    const [a, b] = [...touches.current.values()];
+    const r = svg.current?.getBoundingClientRect();
+    if (!a || !b) return null;
+    return {
+      dist: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)),
+      cx: (a.x + b.x) / 2 - (r?.left ?? 0),
+      cy: (a.y + b.y) / 2 - (r?.top ?? 0),
+    };
+  };
 
   useEffect(() => {
     if (!map) return;
@@ -287,7 +300,22 @@ export function Whiteboard({ active }: { active: boolean }) {
 
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0 && e.button !== 1) return;
-    svg.current?.setPointerCapture(e.pointerId);
+    try {
+      svg.current?.setPointerCapture(e.pointerId);
+    } catch {
+      // A pointer the browser no longer tracks (or a synthetic one): draw without capture.
+    }
+    if (e.pointerType === 'touch') {
+      touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (touches.current.size >= 2) {
+        // A second finger: drop the stroke the first one started, and pinch.
+        drag.current = null;
+        setDraft(null);
+        const g = twoFingers();
+        pinch.current = g && { ...g, view };
+        return;
+      }
+    }
     const p = toWorld(e);
     const base = { sx: e.clientX, sy: e.clientY, last: p, vx: view.x, vy: view.y };
     if (e.button === 1 || spaceDown.current || effectiveTool === 'hand') {
@@ -329,6 +357,19 @@ export function Whiteboard({ active }: { active: boolean }) {
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
+    if (e.pointerType === 'touch' && touches.current.has(e.pointerId))
+      touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const start = pinch.current;
+    if (start) {
+      const g = twoFingers();
+      if (!g) return;
+      const k = Math.min(4, Math.max(0.25, (start.view.k * g.dist) / start.dist));
+      // The point of the board under the fingers when they landed stays under them.
+      const wx = (start.cx - start.view.x) / start.view.k;
+      const wy = (start.cy - start.view.y) / start.view.k;
+      setView({ k, x: g.cx - wx * k, y: g.cy - wy * k });
+      return;
+    }
     const d = drag.current;
     if (!d) return;
     const p = toWorld(e);
@@ -358,7 +399,14 @@ export function Whiteboard({ active }: { active: boolean }) {
       });
   };
 
-  const onPointerUp = () => {
+  const onPointerUp = (e: React.PointerEvent) => {
+    touches.current.delete(e.pointerId);
+    if (pinch.current) {
+      // Until every finger is up, the one left behind neither draws nor pans.
+      if (touches.current.size < 2) pinch.current = null;
+      drag.current = null;
+      return;
+    }
     const d = drag.current;
     drag.current = null;
     if (d?.kind === 'draw' && draft) {
@@ -504,7 +552,7 @@ export function Whiteboard({ active }: { active: boolean }) {
 
       {/* Toolbar */}
       <div
-        className="absolute top-3 left-1/2 flex -translate-x-1/2 items-center gap-0.5 rounded-lg border border-border bg-surface p-1 shadow-pop"
+        className="absolute top-3 left-1/2 flex -translate-x-1/2 items-center gap-0.5 rounded-lg border border-border bg-surface p-1 shadow-pop max-lg:top-2 max-lg:right-2 max-lg:left-2 max-lg:translate-x-0 max-lg:flex-wrap max-lg:justify-center"
         role="toolbar"
         aria-label="Whiteboard tools"
       >
@@ -518,6 +566,7 @@ export function Whiteboard({ active }: { active: boolean }) {
               disabled={readOnly && t.id !== 'hand'}
               onClick={() => setTool(t.id)}
               className={cn(
+                'max-lg:size-8',
                 effectiveTool === t.id &&
                   'bg-accent-soft text-accent-text hover:bg-accent-soft hover:text-accent-text',
               )}
@@ -526,7 +575,7 @@ export function Whiteboard({ active }: { active: boolean }) {
             </Button>
           </Tooltip>
         ))}
-        <span className="mx-1 h-5 w-px bg-border" aria-hidden />
+        <span className="mx-1 h-5 w-px bg-border max-lg:hidden" aria-hidden />
         <div className="flex items-center gap-1 px-1" role="radiogroup" aria-label="Colour">
           {(Object.keys(COLORS) as Color[]).map((c) => (
             // biome-ignore lint/a11y/useSemanticElements: a swatch button styled as a radio, like a segmented control
@@ -539,7 +588,7 @@ export function Whiteboard({ active }: { active: boolean }) {
               onClick={() => setColor(c)}
               disabled={readOnly}
               className={cn(
-                'size-5 rounded-full border-2 transition-transform',
+                'size-5 rounded-full border-2 transition-transform max-lg:size-7',
                 color === c ? 'scale-110 border-accent' : 'border-transparent hover:scale-110',
               )}
             >
@@ -547,7 +596,7 @@ export function Whiteboard({ active }: { active: boolean }) {
             </button>
           ))}
         </div>
-        <span className="mx-1 h-5 w-px bg-border" aria-hidden />
+        <span className="mx-1 h-5 w-px bg-border max-lg:hidden" aria-hidden />
         <div className="flex items-center" role="radiogroup" aria-label="Stroke width">
           {[2, 4, 6].map((w) => (
             // biome-ignore lint/a11y/useSemanticElements: a stroke button styled as a radio
@@ -560,7 +609,7 @@ export function Whiteboard({ active }: { active: boolean }) {
               disabled={readOnly}
               onClick={() => setWidth(w)}
               className={cn(
-                'flex size-7 items-center justify-center rounded-md hover:bg-surface-3',
+                'flex size-7 items-center justify-center rounded-md hover:bg-surface-3 max-lg:size-8',
                 width === w && 'bg-surface-3',
               )}
             >
@@ -576,6 +625,7 @@ export function Whiteboard({ active }: { active: boolean }) {
             size="icon-sm"
             variant="ghost"
             aria-label="Undo"
+            className="max-lg:size-9"
             disabled={readOnly}
             onClick={() => undo?.undo()}
           >
@@ -587,6 +637,7 @@ export function Whiteboard({ active }: { active: boolean }) {
             size="icon-sm"
             variant="ghost"
             aria-label="Redo"
+            className="max-lg:size-9"
             disabled={readOnly}
             onClick={() => undo?.redo()}
           >
@@ -599,6 +650,7 @@ export function Whiteboard({ active }: { active: boolean }) {
             size="icon-sm"
             variant="ghost"
             aria-label="Zoom out"
+            className="max-lg:size-9"
             onClick={() => zoom(1 / 1.2)}
           >
             <ZoomOutIcon />
@@ -607,20 +659,27 @@ export function Whiteboard({ active }: { active: boolean }) {
         <button
           type="button"
           onClick={() => setView({ x: 0, y: 0, k: 1 })}
-          className="w-12 rounded-md py-1 text-xs text-fg-muted tabular hover:bg-surface-3"
+          className="w-12 rounded-md py-1 text-xs text-fg-muted tabular hover:bg-surface-3 max-lg:py-2.5"
           aria-label="Reset zoom"
         >
           {Math.round(view.k * 100)}%
         </button>
         <Tooltip label="Zoom in" side="top">
-          <Button size="icon-sm" variant="ghost" aria-label="Zoom in" onClick={() => zoom(1.2)}>
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            aria-label="Zoom in"
+            className="max-lg:size-9"
+            onClick={() => zoom(1.2)}
+          >
             <ZoomInIcon />
           </Button>
         </Tooltip>
       </div>
 
       {!readOnly && shapes.length > 0 && (
-        <div className="absolute right-3 bottom-3">
+        // On a phone the question does not fit beside the zoom controls: it sits above them.
+        <div className={cn('absolute right-3 bottom-3', confirmClear && 'max-sm:bottom-16')}>
           {confirmClear ? (
             <div className="flex items-center gap-1 rounded-lg border border-border bg-surface p-1 pl-3 text-xs shadow-pop">
               Clear the board for everyone?
@@ -654,7 +713,7 @@ export function Whiteboard({ active }: { active: boolean }) {
       )}
 
       {shapes.length === 0 && !draft && (
-        <p className="pointer-events-none absolute inset-x-0 top-1/2 text-center text-sm text-fg-subtle">
+        <p className="pointer-events-none absolute inset-x-0 top-1/2 px-6 text-center text-sm text-fg-subtle">
           Sketch your data structures, draw the recursion tree, or walk through an example.
           <br />
           Everyone in the pad sees it live.

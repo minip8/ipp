@@ -95,13 +95,13 @@ export function ChangeProblemDialog({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search problems"
-              className="h-8 w-full rounded-md border border-border-strong bg-surface pr-2.5 pl-8 text-sm outline-none placeholder:text-fg-subtle focus-visible:border-accent focus-visible:ring-3 focus-visible:ring-accent/20"
+              className="h-8 w-full rounded-md border border-border-strong bg-surface pr-2.5 pl-8 text-sm outline-none placeholder:text-fg-subtle focus-visible:border-accent focus-visible:ring-3 focus-visible:ring-accent/20 max-lg:h-10 max-lg:text-base"
             />
           </div>
           <div
             role="radiogroup"
             aria-label="Problem"
-            className="h-72 divide-y divide-border overflow-y-auto rounded-md border border-border"
+            className="h-72 divide-y divide-border overflow-y-auto rounded-md border border-border max-lg:h-[min(18rem,45dvh)]"
           >
             {/* biome-ignore lint/a11y/useSemanticElements: rows carry badges, not just a label */}
             <button
@@ -143,7 +143,7 @@ export function ChangeProblemDialog({
                   <span className="min-w-0 flex-1 truncate font-medium">{p.title}</span>
                   {p.slug === current && <span className="text-xs text-fg-subtle">current</span>}
                   <DifficultyBadge difficulty={p.difficulty} />
-                  <CategoryBadge category={p.category} />
+                  <CategoryBadge category={p.category} className="max-sm:hidden" />
                 </button>
               ))
             )}

@@ -12,6 +12,11 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  // Lets the page draw under the notch / home indicator; globals.css pads with env(safe-area-*).
+  // User zoom stays enabled (no maximumScale / userScalable).
+  viewportFit: 'cover',
   themeColor: [
     { media: '(prefers-color-scheme: light)', color: '#fbfbfc' },
     { media: '(prefers-color-scheme: dark)', color: '#16171a' },

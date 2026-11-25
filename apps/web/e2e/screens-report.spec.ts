@@ -9,7 +9,7 @@ const WIDTHS = (process.env.SCREEN_WIDTHS ?? '1440,390').split(',').map(Number);
 
 for (const width of WIDTHS) {
   test.describe(`report at ${width}px`, () => {
-    test.use({ viewport: { width, height: width < 600 ? 844 : 900 } });
+    test.use({ viewport: { width, height: width < 600 ? 844 : 900 }, hasTouch: width < 600 });
 
     test('ready', async ({ page }) => {
       await setup(page);

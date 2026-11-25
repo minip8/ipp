@@ -23,6 +23,12 @@ const components: Components = {
     if (!isBlock) return <code {...rest}>{children}</code>;
     return <CodeBlock code={text.replace(/\n$/, '')} language={match?.[1]} />;
   },
+  // Wide tables scroll inside the text column rather than widening the page.
+  table: ({ children }) => (
+    <div className="table-scroll">
+      <table>{children}</table>
+    </div>
+  ),
   img: () => null,
 };
 

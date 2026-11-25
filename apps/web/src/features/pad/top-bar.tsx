@@ -1,10 +1,20 @@
 'use client';
-import { ClockIcon, KeyboardIcon, Settings2Icon, UserPlusIcon, WifiOffIcon } from 'lucide-react';
+import {
+  ClockIcon,
+  FileBarChartIcon,
+  FlagIcon,
+  KeyboardIcon,
+  MoreVerticalIcon,
+  Settings2Icon,
+  UserPlusIcon,
+  WifiOffIcon,
+} from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { DifficultyBadge } from '@/components/domain';
 import { LogoMark } from '@/components/logo';
 import { Button } from '@/components/ui/button';
+import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from '@/components/ui/menu';
 import { Tooltip } from '@/components/ui/tooltip';
 import { Avatar } from '@/components/user-menu';
 import { hostOf } from '@/features/room/logic';
@@ -56,7 +66,7 @@ function Timer() {
             : `Time ${clock.elapsed ? 'elapsed' : over ? 'over' : 'left'}: ${label}`
         }
         className={cn(
-          'inline-flex h-7 items-center gap-1.5 rounded-md px-2 font-mono text-sm tabular transition-colors hover:bg-surface-3',
+          'inline-flex h-7 items-center gap-1.5 rounded-md px-2 font-mono text-sm tabular transition-colors hover:bg-surface-3 max-lg:h-9',
           over
             ? 'bg-bad-soft text-bad-text'
             : warn
@@ -112,21 +122,23 @@ function Connection() {
         onClick={reconnect}
         aria-live="polite"
         className={cn(
-          'inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-xs font-medium',
+          'inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-xs font-medium max-lg:h-9',
           denied ? 'bg-bad-soft text-bad-text' : 'bg-warn-soft text-warn-text',
         )}
       >
         <WifiOffIcon className="size-3.5" aria-hidden />
         {denied ? 'Disconnected' : 'Reconnecting…'}
         {!denied && (
-          <span className="font-normal underline-offset-2 hover:underline">Retry now</span>
+          <span className="font-normal underline-offset-2 hover:underline max-lg:sr-only">
+            Retry now
+          </span>
         )}
       </button>
     </Tooltip>
   );
 }
 
-function Presence() {
+function Presence({ max = 4, more = false }: { max?: number; more?: boolean }) {
   const { collab, me } = usePad();
   const [users, setUsers] = useState<PresenceUser[]>([]);
   useEffect(() => {
@@ -153,7 +165,7 @@ function Presence() {
       role="group"
       aria-label={`${users.length} other ${users.length === 1 ? 'person' : 'people'} in this pad`}
     >
-      {users.slice(0, 4).map((u) => (
+      {users.slice(0, max).map((u) => (
         <Tooltip key={u.userId ?? u.name} label={`${u.name} is here`}>
           <span
             className="rounded-full ring-2 ring-surface"
@@ -163,39 +175,110 @@ function Presence() {
           </span>
         </Tooltip>
       ))}
+      {more && users.length > max && (
+        <span className="z-10 flex size-6 items-center justify-center rounded-full bg-surface-3 text-[10px] font-medium text-fg-muted ring-2 ring-surface">
+          +{users.length - max}
+        </span>
+      )}
     </div>
   );
 }
 
-export function TopBar({
-  onSettings,
-  onShortcuts,
-  onEnd,
-}: {
+type TopBarProps = {
   onSettings: () => void;
   onShortcuts: () => void;
   onEnd: () => void;
-}) {
-  const { state, readOnly, me, isRoom, isHost } = usePad();
+  /** Phone layout only: the invite link opens in a dialog from the menu. */
+  onShare?: () => void;
+  /** The phone layout: what does not fit in 360 px goes into a menu. */
+  compact?: boolean;
+};
+
+function Home({ className }: { className?: string }) {
+  const { me } = usePad();
+  return me.guest ? (
+    // A guest has no dashboard to go back to.
+    <span className={cn('p-1', className)}>
+      <LogoMark />
+    </span>
+  ) : (
+    <Tooltip label="Back to dashboard">
+      <Link
+        href="/dashboard"
+        className={cn('rounded-md p-1 hover:bg-surface-3', className)}
+        aria-label="interview++ dashboard"
+      >
+        <LogoMark />
+      </Link>
+    </Tooltip>
+  );
+}
+
+/**
+ * The top bar on a phone: the title, the connection, the clock and a menu with the rest. Run and
+ * Submit are under the editor, where the thumb is.
+ */
+function CompactTopBar({ onSettings, onShortcuts, onEnd, onShare }: TopBarProps) {
+  const { state, readOnly, isRoom, isHost } = usePad();
+  const canShare = !readOnly && Boolean(state.pad.shareToken) && Boolean(onShare);
+  const canEnd = !readOnly && state.role === 'owner';
+  const canReport = readOnly && (!isRoom || isHost);
+  return (
+    <header className="flex h-12 shrink-0 items-center gap-1.5 border-b border-border bg-surface pr-1 pl-2">
+      <Home className="flex size-9 shrink-0 items-center justify-center" />
+      <h1 className="min-w-0 flex-1 truncate text-sm font-semibold">
+        {state.problem?.title ?? state.pad.title}
+      </h1>
+      <div className="flex shrink-0 items-center gap-0.5">
+        <Connection />
+        <Presence max={2} more />
+        <Timer />
+        <Menu>
+          <MenuTrigger asChild>
+            <Button size="icon" variant="ghost" className="size-10" aria-label="More actions">
+              <MoreVerticalIcon />
+            </Button>
+          </MenuTrigger>
+          <MenuContent align="end" className="w-56 [&_[role=menuitem]]:h-10">
+            {canShare && (
+              <MenuItem onSelect={onShare}>
+                <UserPlusIcon /> {isRoom ? 'Invite your candidate' : 'Invite'}
+              </MenuItem>
+            )}
+            <MenuItem onSelect={onSettings}>
+              <Settings2Icon /> Editor settings
+            </MenuItem>
+            <MenuItem onSelect={onShortcuts}>
+              <KeyboardIcon /> Keyboard shortcuts
+            </MenuItem>
+            {(canEnd || canReport) && <MenuSeparator />}
+            {canEnd && (
+              <MenuItem onSelect={onEnd}>
+                <FlagIcon /> End interview
+              </MenuItem>
+            )}
+            {canReport && (
+              <MenuItem asChild>
+                <Link href={`/pads/${state.pad.id}/report`}>
+                  <FileBarChartIcon /> View report
+                </Link>
+              </MenuItem>
+            )}
+          </MenuContent>
+        </Menu>
+      </div>
+    </header>
+  );
+}
+
+export function TopBar(props: TopBarProps) {
+  const { onSettings, onShortcuts, onEnd, compact } = props;
+  const { state, readOnly, isRoom, isHost } = usePad();
   const host = hostOf(state.members);
+  if (compact) return <CompactTopBar {...props} />;
   return (
     <header className="flex h-11 shrink-0 items-center gap-3 border-b border-border bg-surface px-3">
-      {me.guest ? (
-        // A guest has no dashboard to go back to.
-        <span className="p-1">
-          <LogoMark />
-        </span>
-      ) : (
-        <Tooltip label="Back to dashboard">
-          <Link
-            href="/dashboard"
-            className="rounded-md p-1 hover:bg-surface-3"
-            aria-label="interview++ dashboard"
-          >
-            <LogoMark />
-          </Link>
-        </Tooltip>
-      )}
+      <Home />
       <span className="h-4 w-px bg-border" aria-hidden />
       <div className="flex min-w-0 items-center gap-2">
         <h1 className="truncate text-sm font-semibold">

@@ -19,6 +19,7 @@ import {
 import {
   forwardRef,
   useCallback,
+  useEffect,
   useImperativeHandle,
   useLayoutEffect,
   useMemo,
@@ -268,7 +269,7 @@ function VoiceBar({ voice }: { voice: ReturnType<typeof useVoice> }) {
               if (push && (e.key === ' ' || e.key === 'Enter')) voice.stop();
             }}
             className={cn(
-              'relative flex size-10 shrink-0 items-center justify-center rounded-full border transition-colors select-none',
+              'relative flex size-10 shrink-0 touch-none items-center justify-center rounded-full border transition-colors select-none [-webkit-touch-callout:none] max-lg:size-12',
               voice.listening
                 ? 'border-transparent bg-bad text-white'
                 : 'border-border-strong bg-surface text-fg hover:bg-surface-3',
@@ -291,8 +292,13 @@ function VoiceBar({ voice }: { voice: ReturnType<typeof useVoice> }) {
               </p>
             ) : (
               <p className="text-sm text-fg-muted">
-                {push ? 'Hold the mic, or press ' : 'Click the mic or press '}
-                <Kbd keys="Alt+M" /> {push ? 'to talk' : 'to start hands-free'}
+                <span className="max-lg:hidden">
+                  {push ? 'Hold the mic, or press ' : 'Click the mic or press '}
+                  <Kbd keys="Alt+M" /> {push ? 'to talk' : 'to start hands-free'}
+                </span>
+                <span className="lg:hidden">
+                  {push ? 'Hold the mic to talk' : 'Tap the mic to start hands-free'}
+                </span>
               </p>
             )}
             {voice.error && voice.error.code !== 'unsupported' && (
@@ -436,6 +442,19 @@ export const ChatPanel = forwardRef<ChatHandle, { className?: string }>(function
     if (atBottom) setUnseen(0);
   }, []);
 
+  // A hidden pane (the phone layout) or a resize changes the box: stay at the bottom if we were.
+  const stuckRef = useRef(stuck);
+  stuckRef.current = stuck;
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => {
+      if (stuckRef.current && el.clientHeight > 0) el.scrollTop = el.scrollHeight;
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   const send = () => {
     const t = draft.trim();
     if (!t) return;
@@ -492,7 +511,7 @@ export const ChatPanel = forwardRef<ChatHandle, { className?: string }>(function
                 aria-pressed={voiceOn}
                 aria-label="Voice mode"
                 onClick={() => updateInterviewer({ voice: !voiceOn })}
-                className={cn(voiceOn && 'text-accent-text')}
+                className={cn('max-lg:size-9', voiceOn && 'text-accent-text')}
               >
                 {voiceOn ? <MicIcon /> : <MicOffIcon />}
               </Button>
@@ -501,7 +520,12 @@ export const ChatPanel = forwardRef<ChatHandle, { className?: string }>(function
           {available && !readOnly && (
             <Menu>
               <MenuTrigger asChild>
-                <Button size="icon-sm" variant="ghost" aria-label="Interviewer options">
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  aria-label="Interviewer options"
+                  className="max-lg:size-9"
+                >
                   <MoreHorizontalIcon />
                 </Button>
               </MenuTrigger>
@@ -663,7 +687,7 @@ export const ChatPanel = forwardRef<ChatHandle, { className?: string }>(function
               placeholder={
                 available ? 'Ask a question or explain your approach…' : 'Message collaborators…'
               }
-              className="max-h-44 min-h-[22px] flex-1 resize-none bg-transparent py-0.5 text-[13.5px] leading-[22px] outline-none placeholder:text-fg-subtle"
+              className="max-h-44 min-h-[22px] flex-1 resize-none bg-transparent py-0.5 text-[13.5px] leading-[22px] outline-none placeholder:text-fg-subtle max-lg:py-1.5 max-lg:text-base max-lg:leading-6"
             />
             <Button
               type="submit"
@@ -671,13 +695,13 @@ export const ChatPanel = forwardRef<ChatHandle, { className?: string }>(function
               variant="primary"
               disabled={!draft.trim() || over}
               aria-label="Send message"
-              className="mb-px rounded-md"
+              className="mb-px rounded-md max-lg:size-9 max-lg:[&_svg]:size-4"
             >
               <ArrowUpIcon />
             </Button>
           </div>
           <p className="mt-1 flex justify-between px-1 text-2xs text-fg-subtle">
-            <span>
+            <span className="max-lg:hidden">
               <Kbd keys="Enter" className="[&>span]:h-4 [&>span]:min-w-4" /> send ·{' '}
               <Kbd keys="Shift+Enter" className="[&>span]:h-4 [&>span]:min-w-4" /> new line
             </span>

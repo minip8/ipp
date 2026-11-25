@@ -24,17 +24,26 @@ export function LogoMark({ className }: { className?: string }) {
   );
 }
 
-export function Logo({ href = '/', className }: { href?: string; className?: string }) {
+export function Logo({
+  href = '/',
+  className,
+  wordmarkClassName,
+}: {
+  href?: string;
+  className?: string;
+  /** For the "interview++" text, e.g. to hide it visually on narrow screens. */
+  wordmarkClassName?: string;
+}) {
   return (
     <Link
       href={href}
       className={cn(
-        'inline-flex items-center gap-2 rounded-md font-semibold tracking-tight text-fg',
+        'inline-flex shrink-0 items-center gap-2 rounded-md font-semibold tracking-tight text-fg',
         className,
       )}
     >
       <LogoMark />
-      <span className="text-base">
+      <span className={cn('text-base', wordmarkClassName)}>
         interview<span className="text-accent-text">++</span>
       </span>
     </Link>

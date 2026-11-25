@@ -8,6 +8,7 @@ import { ArrowDownIcon, ArrowUpIcon, MessagesSquareIcon } from 'lucide-react';
 import {
   forwardRef,
   useCallback,
+  useEffect,
   useImperativeHandle,
   useLayoutEffect,
   useMemo,
@@ -78,6 +79,19 @@ export const RoomChat = forwardRef<ChatHandle, { className?: string; bare?: bool
       const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
       setStuck(atBottom);
       if (atBottom) setUnseen(0);
+    }, []);
+
+    // A hidden pane (the phone layout) or a resize changes the box: stay at the bottom if we were.
+    const stuckRef = useRef(stuck);
+    stuckRef.current = stuck;
+    useEffect(() => {
+      const el = scroller.current;
+      if (!el || typeof ResizeObserver === 'undefined') return;
+      const ro = new ResizeObserver(() => {
+        if (stuckRef.current && el.clientHeight > 0) el.scrollTop = el.scrollHeight;
+      });
+      ro.observe(el);
+      return () => ro.disconnect();
     }, []);
 
     const over = draft.length > CAPS.chatChars;
@@ -195,7 +209,7 @@ export const RoomChat = forwardRef<ChatHandle, { className?: string; bare?: bool
                   if (e.key === 'Escape') input.current?.blur();
                 }}
                 placeholder={isHost ? 'Message your candidate…' : 'Message your interviewer…'}
-                className="max-h-44 min-h-[22px] flex-1 resize-none bg-transparent py-0.5 text-[13.5px] leading-[22px] outline-none placeholder:text-fg-subtle"
+                className="max-h-44 min-h-[22px] flex-1 resize-none bg-transparent py-0.5 text-[13.5px] leading-[22px] outline-none placeholder:text-fg-subtle max-lg:py-1.5 max-lg:text-base max-lg:leading-6"
               />
               <Button
                 type="submit"
@@ -203,13 +217,13 @@ export const RoomChat = forwardRef<ChatHandle, { className?: string; bare?: bool
                 variant="primary"
                 disabled={!draft.trim() || over}
                 aria-label="Send message"
-                className="mb-px rounded-md"
+                className="mb-px rounded-md max-lg:size-9 max-lg:[&_svg]:size-4"
               >
                 <ArrowUpIcon />
               </Button>
             </div>
             <p className="mt-1 flex justify-between px-1 text-2xs text-fg-subtle">
-              <span>
+              <span className="max-lg:hidden">
                 <Kbd keys="Enter" className="[&>span]:h-4 [&>span]:min-w-4" /> send ·{' '}
                 <Kbd keys="Shift+Enter" className="[&>span]:h-4 [&>span]:min-w-4" /> new line
               </span>

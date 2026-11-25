@@ -9,7 +9,7 @@ import {
   SunIcon,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { LANG_LABEL, RunVerdictBadge } from '@/components/domain';
 import { Button } from '@/components/ui/button';
 import {
@@ -28,7 +28,13 @@ import { Spinner } from '@/components/ui/spinner';
 import { Switch } from '@/components/ui/switch';
 import { formatDuration } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import { type EditorSettings, updateEditorSettings, useEditorSettings } from './editor/settings';
+import {
+  type EditorSettings,
+  savedEditorSettingKeys,
+  updateEditorSettings,
+  useEditorSettings,
+} from './editor/settings';
+import { touchEditorSettings } from './layout';
 import { usePad } from './session';
 import { SHORTCUTS } from './shortcuts';
 
@@ -59,11 +65,18 @@ function SettingRow({
 export function SettingsDialog({
   open,
   onOpenChange,
+  compact = false,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
+  /** The phone layout, whose defaults differ (see touchEditorSettings). */
+  compact?: boolean;
 }) {
-  const s = useEditorSettings();
+  const stored = useEditorSettings();
+  const s = useMemo(
+    () => (compact ? touchEditorSettings(stored, savedEditorSettingKeys()) : stored),
+    [compact, stored],
+  );
   const { theme, setTheme } = useTheme();
   const set = (patch: Partial<EditorSettings>) => updateEditorSettings(patch);
   return (
@@ -253,15 +266,21 @@ export function ShortcutsDialog({
   );
 }
 
-export function SharePopover({ children }: { children: React.ReactNode }) {
-  const { state, isRoom } = usePad();
+function shareText(isRoom: boolean) {
+  return isRoom
+    ? 'Anyone with this link can join as a candidate: they type their name, no account needed. They can edit the code, run it and chat. Your notes, the solution and the report stay with you.'
+    : 'Anyone signed in with this link can join, edit the code and chat. Share it with a friend playing interviewer, or a mentor.';
+}
+
+/** The invite link and its copy button (in the share popover, or the share dialog on a phone). */
+function ShareLink() {
+  const { state } = usePad();
   const [copied, setCopied] = useState(false);
   const token = state.pad.shareToken;
   const [url, setUrl] = useState('');
   useEffect(() => {
     if (token) setUrl(`${window.location.origin}/join/${token}`);
   }, [token]);
-  if (!token) return null;
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(url);
@@ -272,41 +291,70 @@ export function SharePopover({ children }: { children: React.ReactNode }) {
     }
   };
   return (
+    <div className="mt-3 flex gap-2">
+      <label htmlFor="share-url" className="sr-only">
+        Share link
+      </label>
+      <input
+        id="share-url"
+        readOnly
+        value={url}
+        onFocus={(e) => e.target.select()}
+        className="h-8 min-w-0 flex-1 rounded-md border border-border-strong bg-surface-2 px-2 font-mono text-xs text-fg-muted outline-none focus-visible:border-accent max-lg:h-10 max-lg:text-base"
+      />
+      <Button
+        size="sm"
+        variant={copied ? 'secondary' : 'primary'}
+        onClick={copy}
+        className="w-24 max-lg:h-10"
+      >
+        {copied ? <CheckIcon /> : <CopyIcon />}
+        {copied ? 'Copied' : 'Copy'}
+      </Button>
+    </div>
+  );
+}
+
+export function SharePopover({ children }: { children: React.ReactNode }) {
+  const { state, isRoom } = usePad();
+  if (!state.pad.shareToken) return null;
+  return (
     <Popover>
       <PopoverTrigger asChild>{children}</PopoverTrigger>
-      <PopoverContent align="end" className="w-96">
+      <PopoverContent align="end" className="w-96 max-w-[calc(100vw-1rem)]">
         <p className="flex items-center gap-2 text-sm font-medium">
           <LinkIcon className="size-4 text-fg-muted" />{' '}
           {isRoom ? 'Invite your candidate' : 'Invite a collaborator'}
         </p>
-        <p className="mt-1 text-xs text-fg-muted">
-          {isRoom
-            ? 'Anyone with this link can join as a candidate: they type their name, no account needed. They can edit the code, run it and chat. Your notes, the solution and the report stay with you.'
-            : 'Anyone signed in with this link can join, edit the code and chat. Share it with a friend playing interviewer, or a mentor.'}
-        </p>
-        <div className="mt-3 flex gap-2">
-          <label htmlFor="share-url" className="sr-only">
-            Share link
-          </label>
-          <input
-            id="share-url"
-            readOnly
-            value={url}
-            onFocus={(e) => e.target.select()}
-            className="h-8 min-w-0 flex-1 rounded-md border border-border-strong bg-surface-2 px-2 font-mono text-xs text-fg-muted outline-none focus-visible:border-accent"
-          />
-          <Button
-            size="sm"
-            variant={copied ? 'secondary' : 'primary'}
-            onClick={copy}
-            className="w-24"
-          >
-            {copied ? <CheckIcon /> : <CopyIcon />}
-            {copied ? 'Copied' : 'Copy'}
-          </Button>
-        </div>
+        <p className="mt-1 text-xs text-fg-muted">{shareText(isRoom)}</p>
+        <ShareLink />
       </PopoverContent>
     </Popover>
+  );
+}
+
+/** The same as SharePopover, opened from the top bar's menu on a phone. */
+export function ShareDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+}) {
+  const { state, isRoom } = usePad();
+  if (!state.pad.shareToken) return null;
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{isRoom ? 'Invite your candidate' : 'Invite a collaborator'}</DialogTitle>
+          <DialogDescription>{shareText(isRoom)}</DialogDescription>
+        </DialogHeader>
+        <DialogBody className="pb-5">
+          <ShareLink />
+        </DialogBody>
+      </DialogContent>
+    </Dialog>
   );
 }
 

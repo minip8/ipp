@@ -37,7 +37,7 @@ export function ProgressSegments({
             aria-label={`Question ${i + 1}: ${label[s]}`}
             title={`Question ${i + 1}: ${label[s]}`}
             className={cn(
-              'flex size-7 items-center justify-center rounded-md border text-xs font-medium tabular transition-colors',
+              'touch-hit flex size-7 items-center justify-center rounded-md border text-xs font-medium tabular transition-colors max-sm:size-9 max-sm:text-sm',
               s === 'empty' &&
                 'border-border-strong border-dashed text-fg-subtle hover:border-fg-subtle hover:text-fg',
               s === 'answered' && 'border-border-strong bg-surface-3 text-fg',

@@ -33,6 +33,30 @@ import {
   TYPE_LABEL,
 } from './logic';
 
+/**
+ * For a screen's root: on a phone, long words and identifiers wrap instead of widening the page.
+ * Code blocks keep scrolling sideways (`white-space: pre` does not wrap). Nothing changes from
+ * `sm` up.
+ */
+export const PHONE_FIT = 'max-sm:[overflow-wrap:anywhere]';
+
+/** A text field on a phone: 16px text, so iOS does not zoom the page when it is focused. */
+export const PHONE_FIELD = 'max-sm:text-md';
+
+/**
+ * The answer/next bar under a question: in the flow on a wide screen; below `lg`, where the page
+ * itself scrolls, it sticks to the bottom of the viewport so the primary action stays under the
+ * thumb, full bleed across the page gutter and clear of the home indicator.
+ */
+export const ACTION_BAR =
+  'max-lg:sticky max-lg:bottom-0 max-lg:z-10 max-lg:-mx-4 max-lg:bg-bg max-lg:px-4 max-lg:pt-3 max-lg:pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:max-lg:-mx-6 sm:max-lg:px-6';
+
+/** Where the page scrolls as a whole (below `lg`), bring new feedback into view. */
+export function revealOnNarrow(el: HTMLElement | null) {
+  if (!el || !window.matchMedia('(max-width: 1023.98px)').matches) return;
+  el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
 export const OUTCOME_ICON: Record<Outcome, typeof CheckIcon> = {
   correct: CircleCheckIcon,
   partial: CircleDotIcon,
@@ -225,7 +249,7 @@ function OutputAnswerInput({
             <span className="flex items-center gap-2">
               <span className="text-sm font-medium">{k.label}</span>
               <span
-                className="ml-auto hidden font-mono text-2xs text-fg-subtle sm:inline"
+                className="ml-auto hidden font-mono text-2xs text-fg-subtle sm:inline pointer-coarse:hidden!"
                 aria-hidden
               >
                 {i + 1}
@@ -248,7 +272,10 @@ function OutputAnswerInput({
             spellCheck={false}
             placeholder="Exactly what the program prints"
             onChange={(e) => setDraft({ ...draft, output: e.target.value })}
-            className="min-h-16 font-mono text-sm read-only:bg-surface-2 read-only:text-fg-muted"
+            className={cn(
+              'min-h-16 font-mono text-sm read-only:bg-surface-2 read-only:text-fg-muted max-lg:scroll-mb-28',
+              PHONE_FIELD,
+            )}
           />
         </div>
       )}
@@ -280,7 +307,10 @@ function ShortAnswerInput({
         maxLength={SHORT_MAX}
         placeholder="Write your answer in a few sentences"
         onChange={(e) => setDraft({ type: 'short', text: e.target.value })}
-        className="min-h-36 text-base read-only:bg-surface-2 read-only:text-fg-muted"
+        className={cn(
+          'min-h-36 text-base read-only:bg-surface-2 read-only:text-fg-muted max-lg:scroll-mb-28',
+          PHONE_FIELD,
+        )}
         aria-describedby={`short-count-${q.id}`}
       />
       <p
@@ -378,6 +408,7 @@ export function FeedbackPanel({
                 ].map((g) => (
                   <Button
                     key={g.v}
+                    className="max-sm:h-10 max-sm:flex-1"
                     disabled={grading !== null && grading !== undefined}
                     onClick={() => onSelfGrade?.(g.v)}
                   >

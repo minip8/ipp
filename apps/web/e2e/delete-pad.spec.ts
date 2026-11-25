@@ -3,10 +3,12 @@ import { ACTIVE_PAD_ID, COLLAB_PAD_ID, ENDED_PAD_ID } from './fixtures';
 import { setup } from './helpers';
 
 const history = (page: import('@playwright/test').Page) => page.getByRole('table').getByRole('row');
+/** Finished interviews are in the History view of the Interviews page. */
+const HISTORY = '/dashboard?view=history';
 
 test('owner deletes a finished interview from history after confirming', async ({ page }) => {
   const backend = await setup(page);
-  await page.goto('/dashboard');
+  await page.goto(HISTORY);
   await expect(history(page).filter({ hasText: 'LRU Cache' })).toHaveCount(1);
 
   // Cancel keeps it.
@@ -39,7 +41,7 @@ test('a failed delete keeps the row and shows the error; retry works', async ({ 
       error: { code: 'unavailable', message: 'The service is busy. Try again shortly.' },
     }),
   );
-  await page.goto('/dashboard');
+  await page.goto(HISTORY);
   await page.getByRole('button', { name: 'Delete interview: Merge Intervals' }).click();
   const dialog = page.getByRole('dialog');
   await dialog.getByRole('button', { name: 'Delete interview' }).click();
@@ -56,7 +58,7 @@ test('a failed delete keeps the row and shows the error; retry works', async ({ 
 
 test('a collaborator removes a joined interview from their history', async ({ page }) => {
   const backend = await setup(page);
-  await page.goto('/dashboard');
+  await page.goto(HISTORY);
   await expect(
     page.getByRole('button', { name: 'Delete interview: Number of Islands' }),
   ).toHaveCount(0);
@@ -90,6 +92,8 @@ test('delete from the report page returns to the dashboard', async ({ page }) =>
   await page.getByRole('dialog').getByRole('button', { name: 'Delete interview' }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
   await expect(page.getByText('Interview deleted')).toBeVisible();
+  await page.getByRole('tab', { name: /^History/ }).click();
+  await expect(history(page).filter({ hasText: 'Merge Intervals' })).toHaveCount(1);
   await expect(history(page).filter({ hasText: 'LRU Cache' })).toHaveCount(0);
   expect(backend.deleted).toEqual([ENDED_PAD_ID]);
 });

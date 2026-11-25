@@ -281,7 +281,7 @@ function NotesTab() {
           applyTextDiff(ytext, value, next);
           setValue(next);
         }}
-        className="min-h-0 flex-1 resize-none bg-transparent px-4 py-3 font-mono text-[13px] leading-relaxed text-fg outline-none placeholder:font-sans placeholder:text-fg-subtle"
+        className="min-h-0 flex-1 resize-none bg-transparent px-4 py-3 font-mono text-[13px] leading-relaxed text-fg outline-none placeholder:font-sans placeholder:text-fg-subtle max-lg:text-base"
       />
       <p className="shrink-0 border-t border-border px-4 py-1.5 text-right text-2xs text-fg-subtle tabular">
         {value.length.toLocaleString()} / {CAPS.notesChars.toLocaleString()}

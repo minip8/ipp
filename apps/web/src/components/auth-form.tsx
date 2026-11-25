@@ -101,10 +101,10 @@ export function AuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
 
   return (
     <div className="flex min-h-dvh flex-col bg-bg">
-      <header className="flex h-14 items-center px-4 sm:px-6">
+      <header className="flex h-14 shrink-0 items-center px-4 sm:px-6">
         <Logo />
       </header>
-      <main className="flex flex-1 items-start justify-center px-4 pt-[8vh] pb-16">
+      <main className="flex flex-1 items-start justify-center px-4 pt-[4vh] pb-16 sm:pt-[8vh]">
         <div className="w-full max-w-[380px]">
           <h1 className="text-xl font-semibold tracking-tight">
             {isSignUp ? 'Create your account' : 'Welcome back'}
@@ -141,7 +141,10 @@ export function AuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
                 <Label htmlFor="name">Name</Label>
                 <Input
                   id="name"
+                  name="name"
                   autoComplete="name"
+                  autoCapitalize="words"
+                  enterKeyHint="next"
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
@@ -153,8 +156,15 @@ export function AuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
               <Label htmlFor="email">Email</Label>
               <Input
                 id="email"
+                name="email"
                 type="email"
-                autoComplete="email"
+                inputMode="email"
+                // Sign-in: "username" lets password managers pair it with the password field.
+                autoComplete={isSignUp ? 'email' : 'username'}
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                enterKeyHint="next"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -165,8 +175,13 @@ export function AuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
               <Label htmlFor="password">Password</Label>
               <Input
                 id="password"
+                name="password"
                 type="password"
                 autoComplete={isSignUp ? 'new-password' : 'current-password'}
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                enterKeyHint={isSignUp ? 'done' : 'go'}
                 required
                 minLength={isSignUp ? 8 : undefined}
                 value={password}

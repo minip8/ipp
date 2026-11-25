@@ -101,7 +101,7 @@ export function CodeBlock({
   }, [code, lang]);
 
   const base = cn(
-    'code-block overflow-x-auto rounded-md border border-border bg-surface-2 py-3 font-mono text-sm leading-[1.6]',
+    'code-block max-w-full overflow-x-auto overscroll-x-contain rounded-md border border-border bg-surface-2 py-3 font-mono text-sm leading-[1.6]',
     lineNumbers ? 'pr-4' : 'px-3.5',
     className,
   );

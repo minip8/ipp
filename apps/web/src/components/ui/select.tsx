@@ -32,6 +32,7 @@ export function SelectContent({
   className,
   children,
   position = 'popper',
+  collisionPadding = 8,
   ...props
 }: React.ComponentProps<typeof S.Content>) {
   return (
@@ -39,8 +40,9 @@ export function SelectContent({
       <S.Content
         position={position}
         sideOffset={4}
+        collisionPadding={collisionPadding}
         className={cn(
-          'z-50 max-h-[min(var(--radix-select-content-available-height),320px)] min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-lg border border-border bg-surface text-sm text-fg shadow-overlay data-[state=open]:animate-pop-in',
+          'z-50 max-h-[min(var(--radix-select-content-available-height),320px)] min-w-[var(--radix-select-trigger-width)] max-w-[var(--radix-select-content-available-width)] overflow-hidden rounded-lg border border-border bg-surface text-sm text-fg shadow-overlay data-[state=open]:animate-pop-in',
           className,
         )}
         {...props}
@@ -54,7 +56,7 @@ export function SelectItem({ className, children, ...props }: React.ComponentPro
   return (
     <S.Item
       className={cn(
-        'relative flex h-8 cursor-default items-center rounded-md pr-2 pl-7 outline-none select-none data-[highlighted]:bg-surface-3 data-[disabled]:opacity-50',
+        'relative flex min-h-8 pointer-coarse:min-h-10 cursor-default items-center rounded-md py-1.5 pr-2 pl-7 [overflow-wrap:anywhere] outline-none select-none data-[highlighted]:bg-surface-3 data-[disabled]:opacity-50',
         className,
       )}
       {...props}

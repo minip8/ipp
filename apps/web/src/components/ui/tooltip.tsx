@@ -72,8 +72,9 @@ export function Tooltip({
         <T.Content
           side={side}
           sideOffset={6}
+          collisionPadding={8}
           className={cn(
-            'z-[60] flex items-center gap-2 rounded-md bg-fg px-2 py-1 text-xs font-medium text-bg shadow-pop data-[state=delayed-open]:animate-fade-in',
+            'z-[60] flex max-w-[var(--radix-tooltip-content-available-width)] items-center gap-2 rounded-md bg-fg px-2 py-1 text-xs font-medium text-bg shadow-pop data-[state=delayed-open]:animate-fade-in',
             className,
           )}
         >

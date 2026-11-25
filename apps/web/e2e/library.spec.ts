@@ -2,7 +2,8 @@ import { expect, type Page, test } from '@playwright/test';
 import { ACTIVE_PAD_ID } from './fixtures';
 import { setup } from './helpers';
 
-const rows = (page: Page) => page.getByRole('tabpanel').locator('button[aria-pressed]');
+const rows = (page: Page) =>
+  page.getByRole('region', { name: 'Problem library' }).locator('button[aria-pressed]');
 const titles = async (page: Page) =>
   (await rows(page).locator('span.block.font-medium').allTextContents()).sort();
 
@@ -169,9 +170,11 @@ test.describe('interview setup panel', () => {
     page,
   }) => {
     await setup(page);
-    await page.goto('/new');
-    await page.getByRole('button', { name: /^Two Sum/ }).click();
+    // Chosen by the URL: at this height the library rows start near the fold, and clicking one
+    // would make Playwright scroll the page, which is what this test rules out.
+    await page.goto('/dashboard?problem=two-sum');
     const start = page.getByRole('button', { name: 'Start interview' });
+    await expect(start).toBeEnabled();
     await expect(start).toBeInViewport({ ratio: 1 });
     expect(await page.evaluate(() => window.scrollY)).toBe(0);
     // Everything above it is still reachable by scrolling the panel itself.

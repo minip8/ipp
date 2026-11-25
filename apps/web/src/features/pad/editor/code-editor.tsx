@@ -18,6 +18,8 @@ export type EditorHandle = {
   revealLine(line: number, column?: number): void;
   /** Replace the whole buffer as one undoable edit (used by "reset to starter code"). */
   replaceAll(text: string): void;
+  /** Measure the container again (after it was hidden, e.g. on another phone pane). */
+  layout(): void;
 };
 
 export type EditorCommand = { keys: string; run: () => void };
@@ -123,6 +125,8 @@ export const CodeEditor = forwardRef<
     diagnosticsRun: Run | null;
     onPaste: (chars: number) => void;
     onCursor?: (line: number, col: number) => void;
+    /** The phone layout: a narrow touch screen, so less chrome around the code. */
+    compact?: boolean;
     className?: string;
   }
 >(function CodeEditor(
@@ -136,6 +140,7 @@ export const CodeEditor = forwardRef<
     diagnosticsRun,
     onPaste,
     onCursor,
+    compact = false,
     className,
   },
   ref,
@@ -173,6 +178,7 @@ export const CodeEditor = forwardRef<
       editor.pushUndoStop();
       editor.setPosition({ lineNumber: 1, column: 1 });
     },
+    layout: () => editor?.layout(),
   }));
 
   // Create the editor once.
@@ -253,6 +259,37 @@ export const CodeEditor = forwardRef<
     for (const model of models.current.values())
       model.updateOptions({ tabSize: settings.tabSize, insertSpaces: true });
   }, [editor, settings]);
+
+  // A narrow touch screen: every column counts, and there is no mouse to hover the gutter.
+  useEffect(() => {
+    editor?.updateOptions(
+      compact
+        ? {
+            lineNumbersMinChars: 3,
+            lineDecorationsWidth: 6,
+            folding: false,
+            glyphMargin: false,
+            padding: { top: 8, bottom: 8 },
+            scrollbar: { verticalScrollbarSize: 6, horizontalScrollbarSize: 6, useShadows: false },
+            renderLineHighlight: 'line',
+            contextmenu: false,
+          }
+        : {
+            lineNumbersMinChars: 5,
+            lineDecorationsWidth: 10,
+            folding: true,
+            glyphMargin: true,
+            padding: { top: 12, bottom: 12 },
+            scrollbar: {
+              verticalScrollbarSize: 10,
+              horizontalScrollbarSize: 10,
+              useShadows: false,
+            },
+            renderLineHighlight: 'all',
+            contextmenu: true,
+          },
+    );
+  }, [editor, compact]);
 
   useEffect(() => {
     editor?.updateOptions({
@@ -405,7 +442,15 @@ export const CodeEditor = forwardRef<
   }, [monaco, editor, diagnosticsRun, language, synced]);
 
   return (
-    <div className={cn('relative flex min-h-0 flex-col bg-editor', className)}>
+    <div
+      className={cn(
+        'relative flex min-h-0 flex-col bg-editor',
+        // iOS zooms the page into any focused text field under 16 px. Monaco types into a hidden
+        // textarea sized like the code, so give it 16 px (it is invisible either way).
+        compact && '[&_textarea]:text-[16px]!',
+        className,
+      )}
+    >
       <div ref={host} className="min-h-0 flex-1" data-testid="code-editor" />
       <div
         ref={statusBar}

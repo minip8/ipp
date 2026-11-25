@@ -32,7 +32,7 @@ import {
   promptSummary,
   TYPE_LABEL,
 } from './logic';
-import { OUTCOME_ICON, OUTCOME_TEXT, QuestionCode } from './question';
+import { OUTCOME_ICON, OUTCOME_TEXT, PHONE_FIT, QuestionCode } from './question';
 
 type RowOutcome = Outcome | 'unanswered';
 
@@ -129,9 +129,11 @@ function ReviewItem({
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-surface-2 focus-visible:outline-offset-[-2px]"
+        className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-surface-2 focus-visible:outline-offset-[-2px] max-sm:gap-2.5 max-sm:px-3"
       >
-        <span className="mt-0.5 w-6 shrink-0 text-xs text-fg-subtle tabular">{i + 1}</span>
+        <span className="mt-0.5 w-6 shrink-0 text-xs text-fg-subtle tabular max-sm:w-5">
+          {i + 1}
+        </span>
         <span className="min-w-0 flex-1">
           <span className="block text-base">{promptSummary(q.prompt)}</span>
           <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-fg-muted">
@@ -150,7 +152,7 @@ function ReviewItem({
         />
       </button>
       {open && (
-        <div className="space-y-4 px-4 pb-5 sm:pl-13">
+        <div className="space-y-4 px-4 pb-5 sm:pl-13 max-sm:px-3">
           {showFullPrompt && <Markdown className="text-base">{q.prompt}</Markdown>}
           {q.code && <QuestionCode q={q} />}
           <div className="grid gap-3 sm:grid-cols-2">
@@ -254,17 +256,17 @@ export function QuizResults({ attempt }: { attempt: QuizAttempt }) {
   ];
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
+    <div className={cn('mx-auto max-w-3xl px-4 py-6 sm:px-6 max-sm:pt-3', PHONE_FIT)}>
       <Link
         href="/quiz"
-        className="inline-flex items-center gap-1 text-sm text-fg-muted hover:text-fg"
+        className="inline-flex items-center gap-1 text-sm text-fg-muted hover:text-fg max-sm:min-h-10"
       >
         <ArrowLeftIcon className="size-3.5" /> Quizzes
       </Link>
 
       <section
         aria-labelledby="results-heading"
-        className="mt-4 rounded-lg border border-border bg-surface p-5 sm:p-6"
+        className="mt-4 rounded-lg border border-border bg-surface p-5 sm:p-6 max-sm:mt-2 max-sm:p-4"
       >
         <div className="flex flex-wrap items-center gap-2 text-xs text-fg-muted">
           <Badge tone={attempt.mode === 'exam' ? 'warn' : 'accent'}>
@@ -290,7 +292,7 @@ export function QuizResults({ attempt }: { attempt: QuizAttempt }) {
               {tally.correct} of {plural(rows.length, 'question')} correct
             </p>
           </div>
-          <div className="min-w-56 flex-1">
+          <div className="min-w-56 flex-1 max-sm:min-w-full">
             <div
               className="flex h-2.5 w-full overflow-hidden rounded-full bg-surface-3"
               aria-hidden
@@ -320,14 +322,23 @@ export function QuizResults({ attempt }: { attempt: QuizAttempt }) {
         </div>
         <div className="mt-6 flex flex-wrap gap-2">
           {missed.length > 0 && (
-            <Button variant="primary" onClick={() => retry.mutate()} disabled={retry.isPending}>
+            <Button
+              variant="primary"
+              className="max-sm:h-10 max-sm:flex-auto"
+              onClick={() => retry.mutate()}
+              disabled={retry.isPending}
+            >
               {retry.isPending ? <Spinner /> : <RotateCcwIcon />}
               {attempt.mode === 'discussion'
                 ? 'Discuss missed questions'
                 : 'Practice missed questions'}
             </Button>
           )}
-          <Button asChild variant={missed.length > 0 ? 'secondary' : 'primary'}>
+          <Button
+            asChild
+            variant={missed.length > 0 ? 'secondary' : 'primary'}
+            className="max-sm:h-10 max-sm:flex-auto"
+          >
             <Link href="/quiz">
               <PlusIcon /> New quiz
             </Link>
@@ -367,7 +378,7 @@ export function QuizResults({ attempt }: { attempt: QuizAttempt }) {
       )}
 
       <Card className="mt-6" aria-labelledby="review-heading">
-        <CardHeader>
+        <CardHeader className="max-sm:h-auto max-sm:flex-wrap max-sm:gap-y-0.5 max-sm:py-2.5">
           <CardTitle id="review-heading">Review</CardTitle>
           <span className="text-xs text-fg-subtle">Questions you missed are expanded</span>
         </CardHeader>
