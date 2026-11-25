@@ -15,8 +15,8 @@ test('create a pad from the library with the chosen settings', async ({ page }) 
   const backend = await setup(page);
   await page.goto('/new');
   await page.getByRole('searchbox', { name: 'Search problems' }).fill('lru');
-  await expect(page.getByRole('button', { name: /Two Sum/ })).toHaveCount(0);
-  await page.getByRole('button', { name: /LRU Cache/ }).click();
+  await expect(page.getByRole('button', { name: /^Two Sum/ })).toHaveCount(0);
+  await page.getByRole('button', { name: /^LRU Cache/ }).click();
   await page.getByRole('radio', { name: 'Python' }).click();
   await page.getByRole('radio', { name: '60 min' }).click();
   await page.getByRole('radio', { name: 'Tough' }).click();
@@ -37,7 +37,7 @@ test('a pad without a time limit shows the time elapsed instead of a countdown',
 }) => {
   const backend = await setup(page);
   await page.goto('/new');
-  await page.getByRole('button', { name: /LRU Cache/ }).click();
+  await page.getByRole('button', { name: /^LRU Cache/ }).click();
   await expect(page.getByTestId('duration-note')).toHaveCount(0);
   await page.getByRole('radio', { name: 'No limit' }).click();
   await expect(page.getByTestId('duration-note')).toContainText('never brings up the time');
@@ -57,13 +57,13 @@ test('a pad without a time limit shows the time elapsed instead of a countdown',
   );
 });
 
-test('quick start picks a random problem by difficulty and waits for Start', async ({ page }) => {
+test('a link with a difficulty picks a random problem and waits for Start', async ({ page }) => {
   const backend = await setup(page);
   const medium = PROBLEMS.filter((p) => p.difficulty === 'medium');
-  await page.goto('/dashboard');
-  await page.getByRole('link', { name: /Random medium problem/ }).click();
+  // The old address of the setup page still works and is sent on to the Interviews page.
+  await page.goto('/new?difficulty=medium&random=1');
   // The pick lands in the setup panel (and the URL) without creating a pad.
-  await expect(page).toHaveURL(/\/new\?difficulty=medium&problem=[a-z0-9-]+$/);
+  await expect(page).toHaveURL(/\/dashboard\?difficulty=medium&problem=[a-z0-9-]+$/);
   const first = new URL(page.url()).searchParams.get('problem');
   const title = page.getByTestId('selected-problem');
   await expect(title).toHaveText(medium.find((p) => p.slug === first)?.title ?? '?');
@@ -296,7 +296,7 @@ test('end the interview and go to the report', async ({ page }) => {
 test('the event socket reconnects and the status says so', async ({ page }) => {
   const backend = await openPad(page);
   for (const ws of backend.sockets) await ws.close({ code: 1006 });
-  await expect(page.getByRole('button', { name: /Reconnecting/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Reconnecting/ })).toBeVisible();
   await expect(page.getByRole('status', { name: 'Connected' })).toBeVisible({ timeout: 15_000 });
 });
 

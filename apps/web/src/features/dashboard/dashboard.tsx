@@ -1,16 +1,12 @@
 'use client';
-import type { Difficulty, PadSummary } from '@ipp/contracts';
+import type { PadSummary } from '@ipp/contracts';
 import { useQuery } from '@tanstack/react-query';
 import {
-  ArrowRightIcon,
   CircleCheckIcon,
   CircleDashedIcon,
   FileTextIcon,
   HistoryIcon,
-  ListChecksIcon,
   PlayIcon,
-  PlusIcon,
-  ShuffleIcon,
   UsersIcon,
 } from 'lucide-react';
 import Link from 'next/link';
@@ -23,47 +19,10 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DeletePadButton, DeletePadDialog } from '@/features/delete-pad/delete-pad-dialog';
 import type { DeleteTarget } from '@/features/delete-pad/logic';
+import { NewInterview } from '@/features/new/new-interview';
 import { api } from '@/lib/api';
-import { DIFFICULTY_LABEL, formatDuration, formatPercent, formatRelative } from '@/lib/format';
-import { qk, useMe } from '@/lib/queries';
-import { cn } from '@/lib/utils';
-
-function greeting() {
-  const h = new Date().getHours();
-  return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
-}
-
-/** Picks a random problem on the setup page; nothing starts until the user confirms there. */
-function QuickStart() {
-  const items: { d: Difficulty; blurb: string }[] = [
-    { d: 'easy', blurb: 'Warm up. About 20 minutes.' },
-    { d: 'medium', blurb: 'The typical phone screen.' },
-    { d: 'hard', blurb: 'Onsite-level. Bring a plan.' },
-  ];
-  return (
-    <div className="grid gap-3 sm:grid-cols-3">
-      {items.map(({ d, blurb }) => (
-        <Link
-          key={d}
-          href={`/new?difficulty=${d}&random=1`}
-          className="group flex flex-col items-start rounded-lg border border-border bg-surface p-4 text-left transition-[border-color,box-shadow] hover:border-border-strong hover:shadow-pop"
-        >
-          <span className="flex w-full items-center justify-between">
-            <DifficultyBadge difficulty={d} />
-            <ShuffleIcon
-              className="size-4 text-fg-subtle transition-colors group-hover:text-accent-text"
-              aria-hidden
-            />
-          </span>
-          <span className="mt-3 text-base font-medium">
-            Random {DIFFICULTY_LABEL[d].toLowerCase()} problem
-          </span>
-          <span className="mt-0.5 text-sm text-fg-muted">{blurb}</span>
-        </Link>
-      ))}
-    </div>
-  );
-}
+import { formatDuration, formatRelative } from '@/lib/format';
+import { qk } from '@/lib/queries';
 
 type OnDelete = (t: DeleteTarget) => void;
 
@@ -228,143 +187,55 @@ function History({ pads, onDelete }: { pads: PadSummary[]; onDelete: OnDelete })
   );
 }
 
-function QuizCard() {
-  const topics = useQuery({ queryKey: qk.quizTopics, queryFn: api.quizTopics });
-  const answered = topics.data?.reduce((s, t) => s + t.answered, 0) ?? 0;
-  const weighted = topics.data?.reduce((s, t) => s + (t.accuracy ?? 0) * t.answered, 0) ?? 0;
-  const accuracy = answered ? weighted / answered : null;
-  const weakest = topics.data
-    ?.filter((t) => t.accuracy !== null)
-    .sort((a, b) => (a.accuracy ?? 0) - (b.accuracy ?? 0))[0];
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Knowledge quizzes</CardTitle>
-        <ListChecksIcon className="size-4 text-fg-subtle" aria-hidden />
-      </CardHeader>
-      <div className="p-4">
-        {topics.isPending ? (
-          <div className="space-y-2">
-            <Skeleton className="h-8 w-24" />
-            <Skeleton className="h-4 w-full" />
-          </div>
-        ) : topics.isError ? (
-          <p className="text-sm text-fg-muted">Quiz stats are unavailable right now.</p>
-        ) : (
-          <>
-            <div className="flex items-baseline gap-4">
-              <div>
-                <p className="text-xl font-semibold tabular">{formatPercent(accuracy)}</p>
-                <p className="text-xs text-fg-muted">accuracy</p>
-              </div>
-              <div>
-                <p className="text-xl font-semibold tabular">{answered}</p>
-                <p className="text-xs text-fg-muted">answered</p>
-              </div>
-            </div>
-            {weakest && (
-              <p className="mt-3 text-sm text-fg-muted">
-                Weakest topic: <span className="font-medium text-fg">{weakest.title}</span> (
-                {formatPercent(weakest.accuracy)})
-              </p>
-            )}
-          </>
-        )}
-        <Button asChild className="mt-4 w-full">
-          <Link href="/quiz">
-            Practice fundamentals <ArrowRightIcon />
-          </Link>
-        </Button>
-      </div>
-    </Card>
-  );
-}
-
-function StatsCard({ pads }: { pads: PadSummary[] | undefined }) {
-  const ended = pads?.filter((p) => p.status === 'ended') ?? [];
-  const solved = ended.filter((p) => p.accepted).length;
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Your practice</CardTitle>
-      </CardHeader>
-      <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-b-lg bg-border">
-        {[
-          ['Interviews', pads ? String(ended.length) : '—'],
-          ['Solved', pads ? `${solved}` : '—'],
-        ].map(([k, v]) => (
-          <div key={k} className="bg-surface px-4 py-3">
-            <dt className="text-xs text-fg-muted">{k}</dt>
-            <dd className="mt-0.5 text-lg font-semibold tabular">{v}</dd>
-          </div>
-        ))}
-      </dl>
-    </Card>
-  );
-}
-
 export function Dashboard() {
-  const me = useMe();
   const pads = useQuery({ queryKey: qk.pads, queryFn: api.pads });
   const active = pads.data?.filter((p) => p.status === 'active') ?? [];
   const ended = pads.data?.filter((p) => p.status === 'ended') ?? [];
-  const firstName = me.data?.name.split(' ')[0];
+  const solved = ended.filter((p) => p.accepted).length;
   const [toDelete, setToDelete] = useState<DeleteTarget | null>(null);
 
+  // The same shape as the quiz page: what you can start, how to set it up, then what you did.
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+    <div className="mx-auto max-w-6xl px-4 pt-8 pb-24 sm:px-6 lg:pb-8">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">
-            {greeting()}
-            {firstName ? `, ${firstName}` : ''}
-          </h1>
+          <h1 className="text-xl font-semibold tracking-tight">Interviews</h1>
+          <p className="mt-1 text-sm text-fg-muted">
+            Solve a problem with the AI interviewer, or interview someone yourself.
+          </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button asChild>
-            <Link href="/new?mode=host">
-              <UsersIcon /> Host an interview
-            </Link>
-          </Button>
-          <Button asChild variant="primary">
-            <Link href="/new">
-              <PlusIcon /> Choose a problem
-            </Link>
-          </Button>
-        </div>
+        {pads.data && (
+          <dl className="flex gap-6 text-right">
+            <div>
+              <dt className="text-xs text-fg-muted">Interviews</dt>
+              <dd className="text-lg font-semibold tabular">{ended.length}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-fg-muted">Solved</dt>
+              <dd className="text-lg font-semibold tabular">{solved}</dd>
+            </div>
+          </dl>
+        )}
       </div>
 
-      <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,1fr)_300px]">
-        <div className="min-w-0">
-          <QuickStart />
-          {pads.isPending ? (
-            <div
-              className="mt-8 space-y-2"
-              role="status"
-              aria-busy="true"
-              aria-label="Loading interviews"
-            >
-              <Skeleton className="h-4 w-24" />
-              <Skeleton className="h-16 w-full" />
-              <Skeleton className="mt-6 h-64 w-full" />
-            </div>
-          ) : pads.isError ? (
-            <Card className="mt-8">
-              <ErrorState error={pads.error} onRetry={() => pads.refetch()} compact />
-            </Card>
-          ) : (
-            <>
-              <ActivePads pads={active} onDelete={setToDelete} />
-              <History pads={ended} onDelete={setToDelete} />
-              <DeletePadDialog target={toDelete} onClose={() => setToDelete(null)} />
-            </>
-          )}
-        </div>
-        <aside className={cn('space-y-4')}>
-          <StatsCard pads={pads.data} />
-          <QuizCard />
-        </aside>
+      {pads.data && <ActivePads pads={active} onDelete={setToDelete} />}
+      <div className="mt-8">
+        <NewInterview />
       </div>
+      {pads.isPending ? (
+        <div className="mt-8" role="status" aria-busy="true" aria-label="Loading interviews">
+          <Skeleton className="h-64 w-full" />
+        </div>
+      ) : pads.isError ? (
+        <Card className="mt-8">
+          <ErrorState error={pads.error} onRetry={() => pads.refetch()} compact />
+        </Card>
+      ) : (
+        <>
+          <History pads={ended} onDelete={setToDelete} />
+          <DeletePadDialog target={toDelete} onClose={() => setToDelete(null)} />
+        </>
+      )}
     </div>
   );
 }

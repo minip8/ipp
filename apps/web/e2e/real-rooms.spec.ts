@@ -39,7 +39,7 @@ test('host a room, invite a guest, talk, change the problem, end; the report is 
   await host.getByRole('button', { name: 'Create account' }).click();
   await expect(host).toHaveURL(/\/dashboard/);
 
-  await host.getByRole('link', { name: 'Host an interview' }).click();
+  await host.getByRole('radio', { name: 'Interview someone' }).click();
   await host.getByRole('searchbox', { name: 'Search problems' }).fill('two sum');
   await host
     .getByRole('button', { name: /^Two Sum/ })

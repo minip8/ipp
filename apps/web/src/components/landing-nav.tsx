@@ -46,17 +46,13 @@ export function LandingActions() {
   return (
     <div className="mt-7 flex flex-wrap items-center gap-3">
       <Button asChild variant="primary" size="lg">
-        <Link href={account ? '/new' : '/sign-up'}>
+        <Link href={account ? '/dashboard' : '/sign-up'}>
           Start a practice interview <ArrowRightIcon />
         </Link>
       </Button>
-      {!loading && (
+      {!loading && !account && (
         <Button asChild variant="ghost" size="lg">
-          {account ? (
-            <Link href="/dashboard">Go to your interviews</Link>
-          ) : (
-            <Link href="/sign-in">I have an account</Link>
-          )}
+          <Link href="/sign-in">I have an account</Link>
         </Button>
       )}
     </div>

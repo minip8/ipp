@@ -143,7 +143,7 @@ exception is `GET /api/pads/:id/host`, for the host of a room.
 
 A pad of kind `room` is hosted by its owner, who is the interviewer; whoever joins by the invite
 link is a candidate (role `collaborator`). The web app offers it as "Host an interview"
-(`/new?mode=host`, `src/features/room`).
+(`/dashboard?mode=host`, `src/features/room`; `/new` redirects to `/dashboard` with its query).
 
 - **Guests.** A candidate needs no account: `POST /api/pads/join-guest` creates a guest user
   (`is_anonymous`) with the name they typed, signs them in and adds them to the room. This is the

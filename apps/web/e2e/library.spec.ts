@@ -18,7 +18,7 @@ test.describe('problem library', () => {
     await expect(page.locator('#interview-setup')).toContainText('No problem selected');
     await expect(page.getByRole('button', { name: 'Start interview' })).toBeDisabled();
     await expect(page.getByText('Choose a problem to start.')).toBeVisible();
-    await page.getByRole('button', { name: /Merge Intervals/ }).click();
+    await page.getByRole('button', { name: /^Merge Intervals/ }).click();
     await expect(page.getByTestId('selected-problem')).toHaveText('Merge Intervals');
     await expect(page.getByRole('button', { name: 'Start interview' })).toBeEnabled();
   });
@@ -43,7 +43,7 @@ test.describe('problem library', () => {
   }) => {
     await setup(page);
     await page.goto('/new');
-    const lru = page.getByRole('button', { name: /LRU Cache/ });
+    const lru = page.getByRole('button', { name: /^LRU Cache/ });
     await expect(lru).not.toContainText('Linked list');
     const search = page.getByRole('searchbox', { name: 'Search problems' });
     await search.fill('hash');
@@ -114,10 +114,10 @@ test.describe('problem library', () => {
     const backend = await setup(page);
     await page.goto('/new');
     await page.getByRole('radio', { name: 'Python' }).click();
-    const row = page.getByRole('button', { name: /Unique Pointer/ });
+    const row = page.getByRole('button', { name: /^Unique Pointer/ });
     await expect(row.getByTestId('language-restriction')).toHaveText('C++ only');
     await expect(
-      page.getByRole('button', { name: /LRU Cache/ }).getByTestId('language-restriction'),
+      page.getByRole('button', { name: /^LRU Cache/ }).getByTestId('language-restriction'),
     ).toHaveCount(0);
     await row.click();
     const setup_ = page.locator('#interview-setup');
@@ -129,13 +129,13 @@ test.describe('problem library', () => {
       'Unique Pointer can only be solved in C++, so this interview uses C++',
     );
     // Another problem brings the preferred language back.
-    await page.getByRole('button', { name: /LRU Cache/ }).click();
+    await page.getByRole('button', { name: /^LRU Cache/ }).click();
     await expect(langs).toHaveText(['C++', 'Python', 'Java']);
     await expect(page.getByRole('radio', { name: 'Python' })).toHaveAttribute(
       'aria-checked',
       'true',
     );
-    await page.getByRole('button', { name: /Unique Pointer/ }).click();
+    await page.getByRole('button', { name: /^Unique Pointer/ }).click();
     await page.getByRole('button', { name: 'Start interview' }).click();
     await expect(page).toHaveURL(/\/pads\/[0-9a-f-]{36}$/);
     const create = backend.requests.find((r) => r.method === 'POST' && r.path === '/api/pads');
@@ -170,7 +170,7 @@ test.describe('interview setup panel', () => {
   }) => {
     await setup(page);
     await page.goto('/new');
-    await page.getByRole('button', { name: /Two Sum/ }).click();
+    await page.getByRole('button', { name: /^Two Sum/ }).click();
     const start = page.getByRole('button', { name: 'Start interview' });
     await expect(start).toBeInViewport({ ratio: 1 });
     expect(await page.evaluate(() => window.scrollY)).toBe(0);

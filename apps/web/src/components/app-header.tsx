@@ -1,11 +1,9 @@
 'use client';
-import { PlusIcon } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { Logo } from './logo';
 import { ThemeToggle } from './theme-toggle';
-import { Button } from './ui/button';
 import { UserMenu } from './user-menu';
 
 const NAV = [
@@ -15,12 +13,6 @@ const NAV = [
 
 export function AppHeader() {
   const pathname = usePathname();
-  // Not where the page has its own button for it, nor on the quiz pages, where it would compete
-  // with "Start quiz" and "Finish quiz".
-  const hideNew =
-    ['/', '/dashboard', '/new'].includes(pathname) ||
-    pathname === '/quiz' ||
-    pathname.startsWith('/quiz/');
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-bg/90 backdrop-blur-sm">
       <div className="mx-auto flex h-13 max-w-6xl items-center gap-4 px-4 sm:px-6">
@@ -47,16 +39,6 @@ export function AppHeader() {
           })}
         </nav>
         <div className="ml-auto flex items-center gap-1.5">
-          <Button
-            asChild
-            variant="primary"
-            size="sm"
-            className={cn('hidden sm:inline-flex', hideNew && 'sm:hidden')}
-          >
-            <Link href="/new">
-              <PlusIcon /> New interview
-            </Link>
-          </Button>
           <ThemeToggle />
           <UserMenu />
         </div>

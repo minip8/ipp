@@ -30,10 +30,10 @@ for (const width of WIDTHS) {
         b.tokens.set(ROOM_TOKEN, ROOM_PAD_ID);
       });
       await page.goto('/new?mode=host');
-      await page.getByRole('button', { name: /LRU Cache/ }).click();
+      await page.getByRole('button', { name: /^LRU Cache/ }).click();
       await shoot(page, 'room-new', { fullPage: true });
       await page.goto('/dashboard');
-      await expect(page.getByRole('link', { name: 'Host an interview' })).toBeVisible();
+      await page.getByText('History').waitFor();
       await shoot(page, 'room-dashboard');
     });
 

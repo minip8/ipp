@@ -42,8 +42,8 @@ for (const width of WIDTHS) {
         await shoot(page, 'dashboard', { fullPage: true });
       }
       if (want('new')) {
-        await page.goto('/new');
-        await page.getByText('Two Sum').first().click();
+        await page.goto('/dashboard');
+        await page.getByRole('button', { name: /^Two Sum/ }).click();
         await page.waitForTimeout(600);
         await shoot(page, 'new', { fullPage: true });
       }
