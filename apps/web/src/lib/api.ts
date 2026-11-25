@@ -12,6 +12,8 @@ import {
   type CreatePadRequest,
   type CreateRunRequest,
   DeletePadResponse,
+  type DiscussionReplyRequest,
+  DiscussionReplyResponse,
   HostView,
   InviteInfo,
   Pad,
@@ -203,6 +205,8 @@ export const api = {
       method: 'POST',
       body,
     }),
+  discussionReply: (id: string, body: DiscussionReplyRequest) =>
+    request(`/quiz/attempts/${id}/discussion`, DiscussionReplyResponse, { method: 'POST', body }),
   finishAttempt: (id: string) =>
     request(`/quiz/attempts/${id}/finish`, QuizAttempt, { method: 'POST' }),
   /** Question bank: a topic's questions with the user's status, answered outside any attempt. */

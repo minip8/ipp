@@ -25,6 +25,7 @@ import {
   formatCorrect,
   formatResponse,
   GRADED_BY_LABEL,
+  MODE_LABEL,
   OUTCOME_LABEL,
   type Outcome,
   outcomeOf,
@@ -233,7 +234,8 @@ export function QuizResults({ attempt }: { attempt: QuizAttempt }) {
     mutationFn: () =>
       api.createAttempt({
         topics: [...new Set(missed.map((r) => r.q.topic))],
-        mode: 'practice',
+        // Missed open questions go back to a discussion; the rest to practice.
+        mode: attempt.mode === 'discussion' ? 'discussion' : 'practice',
         count: Math.max(missed.length, 3),
         focusWeak: true,
       }),
@@ -266,7 +268,7 @@ export function QuizResults({ attempt }: { attempt: QuizAttempt }) {
       >
         <div className="flex flex-wrap items-center gap-2 text-xs text-fg-muted">
           <Badge tone={attempt.mode === 'exam' ? 'warn' : 'accent'}>
-            {attempt.mode === 'exam' ? 'Exam' : 'Practice'}
+            {MODE_LABEL[attempt.mode]}
           </Badge>
           <span>{attempt.topics.map(titleOf).join(', ')}</span>
           {duration !== null && (
@@ -320,7 +322,9 @@ export function QuizResults({ attempt }: { attempt: QuizAttempt }) {
           {missed.length > 0 && (
             <Button variant="primary" onClick={() => retry.mutate()} disabled={retry.isPending}>
               {retry.isPending ? <Spinner /> : <RotateCcwIcon />}
-              Practice missed questions
+              {attempt.mode === 'discussion'
+                ? 'Discuss missed questions'
+                : 'Practice missed questions'}
             </Button>
           )}
           <Button asChild variant={missed.length > 0 ? 'secondary' : 'primary'}>

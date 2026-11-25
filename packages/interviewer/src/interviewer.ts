@@ -11,6 +11,7 @@ import {
   AI_PROVIDERS,
   type AiModelChoice,
   type AiProvider,
+  type DiscussionTurn,
   effectiveModel,
   type Message,
   MessageIntent,
@@ -26,7 +27,9 @@ import * as policy from './policy';
 import {
   assessmentMessages,
   buildMessages,
+  DISCUSSION_SYSTEM,
   decisionTask,
+  discussionPrompt,
   GRADING_SYSTEM,
   gradingPrompt,
   greetingTask,
@@ -40,6 +43,7 @@ import { createModelClient, defaultModelFor } from './providers';
 import { reviewMessages, roomAssessmentMessages, roomSystem } from './room-prompts';
 import type {
   AiScope,
+  DiscussionStep,
   InterviewContext,
   Interviewer,
   InterviewerConfig,
@@ -86,6 +90,8 @@ export const GradeSchema = z.object({
   errors: z.array(z.string()),
   feedback: z.string(),
 });
+
+export const DiscussSchema = GradeSchema.extend({ follow_up: z.string() });
 
 export const ReviewSchema = z.object({
   verdict: SolutionReview.shape.verdict,
@@ -1089,6 +1095,38 @@ export function createInterviewer(
     }
   }
 
+  async function discussShortAnswer(
+    userId: string,
+    question: Extract<QuizQuestion, { type: 'short' }>,
+    turns: DiscussionTurn[],
+    final: boolean,
+  ): Promise<DiscussionStep | null> {
+    try {
+      const key = await deps.resolveKey({ userId });
+      if (!key.ok) return null;
+      const res = await callModel({ userId }, key, {
+        purpose: 'grade',
+        system: [{ type: 'text', text: DISCUSSION_SYSTEM, cache_control: { type: 'ephemeral' } }],
+        messages: [{ role: 'user', content: discussionPrompt(question, turns, final) }],
+        ...CALLS.grade,
+        schema: DiscussSchema,
+      });
+      if (res.refused) return null;
+      const out = DiscussSchema.parse(JSON.parse(res.text));
+      return {
+        score: scoreGrade(out, question.keyPoints.length),
+        feedback: out.feedback.trim(),
+        followUp: final ? '' : clean(out.follow_up),
+      };
+    } catch (err) {
+      deps.log.warn(
+        { err: err instanceof Error ? err.message : String(err) },
+        'quiz discussion step failed',
+      );
+      return null;
+    }
+  }
+
   return {
     handle,
     release(padId) {
@@ -1102,6 +1140,7 @@ export function createInterviewer(
     generateRoomAssessment,
     reviewSolution,
     gradeShortAnswer,
+    discussShortAnswer,
     cachedClients: () => clients.size,
     async idle(padId) {
       for (;;) {

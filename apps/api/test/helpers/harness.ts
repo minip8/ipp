@@ -1,11 +1,18 @@
 import { randomUUID } from 'node:crypto';
-import type { AiModelOption, AiProvider, ReportAssessment, ServerEvent } from '@ipp/contracts';
+import type {
+  AiModelOption,
+  AiProvider,
+  DiscussionTurn,
+  ReportAssessment,
+  ServerEvent,
+} from '@ipp/contracts';
 import { Redis } from 'ioredis';
 import { WebSocket } from 'ws';
 import { type Api, createApi } from '../../src/app';
 import { type Config, DEFAULT_LIMITS, loadConfig } from '../../src/config';
 import type { InterviewerFactory } from '../../src/interviewer/host';
 import type {
+  DiscussionStep,
   Interviewer,
   InterviewerDeps,
   ReviewResult,
@@ -187,6 +194,25 @@ export class FakeInterviewer implements Interviewer {
     if (!(await this.model({ userId }))) return null;
     await new Promise((r) => setTimeout(r, 5));
     return this.shortGrade;
+  };
+  /** What each discussion step answers, in order; the last one repeats. Null = the model failed. */
+  discussionSteps: (DiscussionStep | null)[] = [
+    { score: 0.4, feedback: 'Partly there.', followUp: 'What happens under contention?' },
+    { score: 0.9, feedback: 'Covered the key points.', followUp: '' },
+  ];
+  discussionCalls: { turns: DiscussionTurn[]; final: boolean }[] = [];
+  discussShortAnswer = async (
+    userId: string,
+    _q: unknown,
+    turns: DiscussionTurn[],
+    final: boolean,
+  ) => {
+    if (!(await this.model({ userId }))) return null;
+    const step = this.discussionSteps[
+      Math.min(this.discussionCalls.length, this.discussionSteps.length - 1)
+    ] as DiscussionStep | null;
+    this.discussionCalls.push({ turns: [...turns], final });
+    return step && final ? { ...step, followUp: '' } : step;
   };
 }
 

@@ -72,7 +72,7 @@ Better Auth owns `user`, `session`, `account`, `verification` (text ids). App ta
 | `reports` | pad_id pk, status, stats jsonb, assessment jsonb, generated_at |
 | `quiz_topics` | slug pk, title, description |
 | `quiz_questions` | id pk (slug), topic, subtopic, difficulty, type, data jsonb (`QuizQuestion`) |
-| `quiz_attempts` | id, user_id, mode, topics, question_ids, status, score, started_at, finished_at |
+| `quiz_attempts` | id, user_id, mode, topics, question_ids, transcript jsonb (discussion turns per question), status, score, started_at, finished_at |
 | `quiz_answers` | attempt_id, question_id, response jsonb, score, correct, feedback, graded_by, answered_at |
 | `quiz_standalone_answers` | user_id, question_id (pk together), same grading columns — question-bank answers outside attempts, latest per question |
 | `ai_usage` | user_id, day, messages, input_tokens, output_tokens — spend guard |
@@ -124,6 +124,7 @@ Every body is validated with the contracts schema named below.
 | `GET /api/quiz/attempts` | | `QuizAttemptSummary[]` |
 | `GET /api/quiz/attempts/:id` | | `QuizAttempt` |
 | `POST /api/quiz/attempts/:id/answers` | `SubmitAnswerRequest` | practice: `AnswerFeedback`; exam: `{ recorded: true }` |
+| `POST /api/quiz/attempts/:id/discussion` | `DiscussionReplyRequest` | `DiscussionReplyResponse` (discussion mode: the turns so far, and `AnswerFeedback` once the question is closed) |
 | `POST /api/quiz/attempts/:id/finish` | | `QuizAttempt` (all feedback present) |
 | `GET /api/quiz/topics/:slug/questions` | | `QuizBank` (active questions as `PublicQuizQuestion` + the caller's status per question) |
 | `GET /api/quiz/questions/:id` | | `QuizBankQuestion` (latest recorded response and its feedback, both null before answering) |
@@ -445,15 +446,22 @@ Question types (`QuizQuestion`): single choice, multiple choice, output predicti
 (cppquiz-style: exact output / compile error / undefined / unspecified / runtime error), and short
 free-form answers graded by the model against key points, on the quiz taker's own API key
 (self-graded without one).
-Practice mode gives feedback after each answer; exam mode at the end. Selection favours questions
-the user has missed or not seen. Stats per topic.
+There are three modes. Practice gives feedback after each answer and exam at the end; both draw
+only on the automatically graded types, never short answers. Discussion draws only on short
+answers and needs the user's key: each question is a conversation in which the candidate may speak
+up to `DISCUSSION_MAX_TURNS` times. After each turn one model call judges everything said so far
+against the key points and either writes a follow-up (which must not give the answer away) or
+closes the question; closing records an ordinary AI-graded short answer whose text is everything
+the candidate said, so results, stats and the question bank treat it like any other answer. The
+turns are kept on the attempt (`transcript`), and nothing is stored when the model call fails.
+Selection favours questions the user has missed or not seen. Stats per topic.
 The question bank (`/quiz/topics/:slug`) holds a topic's whole bank, searchable and filterable by
 difficulty, type and status, and answers any question in place with no attempt. It opens on an
 overview of the subtopics (a card each, with progress); a subtopic (`?subtopic=`) lists its
 questions, and an open question (`?question=`) sits beside its subtopic's list, where Next walks
 on through the filtered bank from one subtopic into the next. Answering again
 replaces the previous standalone answer. Status, stats and selection all use the latest
-*countable* answer per question across standalone answers, practice-attempt answers and finished
+*countable* answer per question across standalone answers, practice and discussion answers and finished
 exams (a running exam never shows up).
 
 ## 9. Security checklist

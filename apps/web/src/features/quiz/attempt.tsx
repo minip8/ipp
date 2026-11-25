@@ -33,17 +33,17 @@ import { ApiRequestError, api } from '@/lib/api';
 import { humanize, plural } from '@/lib/format';
 import { qk, useAiKey } from '@/lib/queries';
 import { cn } from '@/lib/utils';
+import { DiscussionFlow } from './discussion';
 import {
   type Draft,
   draftForKey,
   draftFromResponse,
-  OUTCOME_LABEL,
-  type Outcome,
   outcomeOf,
   resumeIndex,
   toResponse,
 } from './logic';
-import { AnswerInput, FeedbackPanel, OUTCOME_ICON, QuestionCode, QuestionHeader } from './question';
+import { ProgressSegments, type SegState } from './progress';
+import { AnswerInput, FeedbackPanel, QuestionCode, QuestionHeader } from './question';
 import { QuizResults } from './results';
 
 export function useTopicTitles() {
@@ -108,59 +108,9 @@ export function QuizAttemptView({ id }: { id: string }) {
     );
   }
   if (attempt.data.status === 'finished') return <QuizResults attempt={attempt.data} />;
+  if (attempt.data.mode === 'discussion')
+    return <DiscussionRoute key={attempt.data.id} attempt={attempt.data} />;
   return <QuizFlow key={attempt.data.id} attempt={attempt.data} />;
-}
-
-type SegState = Outcome | 'answered' | 'empty';
-
-function ProgressSegments({
-  questions,
-  index,
-  stateOf,
-  onJump,
-}: {
-  questions: PublicQuizQuestion[];
-  index: number;
-  stateOf: (q: PublicQuizQuestion) => SegState;
-  onJump: (i: number) => void;
-}) {
-  const label: Record<SegState, string> = {
-    ...OUTCOME_LABEL,
-    answered: 'Answered',
-    empty: 'Not answered',
-  };
-  return (
-    <nav aria-label="Questions" className="flex flex-wrap gap-1.5">
-      {questions.map((q, i) => {
-        const s = stateOf(q);
-        const Icon = s === 'answered' || s === 'empty' ? null : OUTCOME_ICON[s];
-        const current = i === index;
-        return (
-          <button
-            key={q.id}
-            type="button"
-            onClick={() => onJump(i)}
-            aria-current={current ? 'step' : undefined}
-            aria-label={`Question ${i + 1}: ${label[s]}`}
-            title={`Question ${i + 1}: ${label[s]}`}
-            className={cn(
-              'flex size-7 items-center justify-center rounded-md border text-xs font-medium tabular transition-colors',
-              s === 'empty' &&
-                'border-border-strong border-dashed text-fg-subtle hover:border-fg-subtle hover:text-fg',
-              s === 'answered' && 'border-border-strong bg-surface-3 text-fg',
-              s === 'correct' && 'border-ok/40 bg-ok-soft text-ok-text',
-              s === 'incorrect' && 'border-bad/40 bg-bad-soft text-bad-text',
-              s === 'partial' && 'border-warn/50 bg-warn-soft text-warn-text',
-              s === 'pending' && 'border-accent/40 bg-accent-soft text-accent-text',
-              current && 'ring-2 ring-accent ring-offset-2 ring-offset-bg',
-            )}
-          >
-            {Icon ? <Icon className="size-3.5" strokeWidth={2.25} aria-hidden /> : i + 1}
-          </button>
-        );
-      })}
-    </nav>
-  );
 }
 
 export function isTyping(el: EventTarget | null) {
@@ -170,6 +120,11 @@ export function isTyping(el: EventTarget | null) {
     el.tagName === 'TEXTAREA' ||
     (el.tagName === 'INPUT' && (el as HTMLInputElement).type !== 'checkbox')
   );
+}
+
+function DiscussionRoute({ attempt }: { attempt: QuizAttempt }) {
+  const titleOf = useTopicTitles();
+  return <DiscussionFlow attempt={attempt} topicLine={attempt.topics.map(titleOf).join(', ')} />;
 }
 
 function QuizFlow({ attempt }: { attempt: QuizAttempt }) {

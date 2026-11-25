@@ -49,7 +49,7 @@ export const TYPE_SHORT: Record<Exclude<TypeFilter, 'all'>, string> = {
   single: 'Single choice',
   multiple: 'Multiple choice',
   output: 'Program output',
-  short: 'Short answer',
+  short: 'Open question',
 };
 
 /** A plain left click: anything else (new tab, new window) is left to the browser. */

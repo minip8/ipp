@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { aiKeyStatus, QUIZ_ATTEMPT_ID } from './fixtures';
+import { aiKeyStatus, DISCUSSION_FOLLOW_UP, QUIZ_ATTEMPT_ID } from './fixtures';
 import { QUIZ_BANK_LONG, QUIZ_BANK_TOPIC } from './fixtures-quiz-bank';
 import { setup } from './helpers';
 
@@ -18,7 +18,8 @@ test.describe('quizzes', () => {
     await page.getByRole('radio', { name: '5', exact: true }).click();
     await start.click();
     await expect(page).toHaveURL(/\/quiz\/[0-9a-f-]{36}$/);
-    await expect(page.getByTestId('quiz-counter')).toHaveText('Question 1 of 4');
+    // Open questions are left to discussions: three of the four fixtures are auto-graded.
+    await expect(page.getByTestId('quiz-counter')).toHaveText('Question 1 of 3');
     const create = backend.requests.find(
       (r) => r.method === 'POST' && r.path === '/api/quiz/attempts',
     );
@@ -181,19 +182,87 @@ test.describe('quizzes', () => {
   });
 });
 
+test.describe('quiz setup and discussions', () => {
+  test('remembers the choices after leaving the page and coming back', async ({ page }) => {
+    await setup(page);
+    await page.goto('/quiz');
+    await page.getByRole('button', { name: /^Networking/ }).click();
+    await page.getByRole('radio', { name: 'Exam' }).click();
+    await page.getByRole('radio', { name: 'Hard' }).click();
+    await page.getByRole('radio', { name: '20', exact: true }).click();
+    await page.getByRole('switch').click();
+
+    await page.getByRole('link', { name: 'Interviews' }).click();
+    await expect(page).toHaveURL(/\/dashboard$/);
+    await page.getByRole('link', { name: 'Quizzes' }).click();
+    await expect(page.getByRole('button', { name: /^Networking/ })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await expect(page.getByRole('radio', { name: 'Exam' })).toBeChecked();
+    await expect(page.getByRole('radio', { name: 'Hard' })).toBeChecked();
+    await expect(page.getByRole('radio', { name: '20', exact: true })).toBeChecked();
+    await expect(page.getByRole('switch')).not.toBeChecked();
+    // And after a full reload.
+    await page.reload();
+    await expect(page.getByRole('radio', { name: 'Exam' })).toBeChecked();
+    await expect(page.getByRole('button', { name: 'Start quiz' })).toBeEnabled();
+  });
+
+  test('a discussion talks an open question through and then grades it', async ({ page }) => {
+    const backend = await setup(page);
+    await page.goto('/quiz');
+    await page.getByRole('button', { name: /^Networking/ }).click();
+    await page.getByRole('radio', { name: 'Discussion' }).click();
+    await expect(page.getByTestId('setup-summary')).toContainText('open questions to draw from');
+    await page.getByRole('radio', { name: '3', exact: true }).click();
+    await page.getByRole('button', { name: 'Start discussion' }).click();
+    await expect(page).toHaveURL(/\/quiz\/[0-9a-f-]{36}$/);
+    expect(
+      backend.requests.find((r) => r.method === 'POST' && r.path === '/api/quiz/attempts')?.body,
+    ).toMatchObject({ topics: ['networking'], mode: 'discussion', count: 3 });
+
+    const thread = page.getByRole('list', { name: 'Conversation' });
+    await expect(page.getByTestId('quiz-counter')).toHaveText('Question 1 of 1');
+    await expect(thread).toContainText('TIME_WAIT');
+    const send = page.getByRole('button', { name: 'Send' });
+    await expect(send).toBeDisabled();
+    await page.getByLabel('Your reply').fill('So late segments from the old connection die out.');
+    await send.click();
+    await expect(thread).toContainText(DISCUSSION_FOLLOW_UP);
+    await expect(page.getByRole('region', { name: 'Feedback' })).toHaveCount(0);
+
+    await page.getByLabel('Your reply').fill('And so the final ACK can be resent.');
+    await page.getByLabel('Your reply').press('ControlOrMeta+Enter');
+    await expect(page.getByRole('region', { name: 'Feedback' })).toBeVisible();
+    await expect(page.getByLabel('Your reply')).toHaveCount(0);
+    await expect(thread.getByRole('listitem')).toHaveCount(4);
+
+    await page.getByRole('button', { name: 'See results' }).click();
+    await expect(page.getByTestId('quiz-score')).toBeVisible();
+    await expect(page.getByText('Discussion', { exact: true })).toBeVisible();
+  });
+
+  test('a discussion cannot start without an API key', async ({ page }) => {
+    await setup(page, (b) => {
+      b.aiKey = aiKeyStatus('missing');
+    });
+    await page.goto('/quiz');
+    await page.getByRole('button', { name: /^Networking/ }).click();
+    await expect(page.getByRole('button', { name: 'Start quiz' })).toBeEnabled();
+    await page.getByRole('radio', { name: 'Discussion' }).click();
+    await expect(page.getByTestId('discussion-key-prompt')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Start discussion' })).toBeDisabled();
+  });
+});
+
 test.describe('question bank', () => {
   const BANK = `/quiz/topics/${QUIZ_BANK_TOPIC}`;
 
   test('is reachable from the hub and browsed by subtopic', async ({ page }) => {
     await setup(page);
     await page.goto('/quiz');
-    await expect(
-      page.getByRole('link', { name: 'Browse Operating systems questions' }),
-    ).toBeVisible();
-    await page
-      .getByRole('region', { name: 'Browse the question bank' })
-      .getByRole('link', { name: /^Operating systems/ })
-      .click();
+    await page.getByRole('link', { name: 'Browse Operating systems questions' }).click();
     await expect(page).toHaveURL(new RegExp(`${BANK}$`));
     await expect(page.getByRole('heading', { name: 'Operating systems' })).toBeVisible();
     await expect(page.getByTestId('bank-progress')).toHaveText(

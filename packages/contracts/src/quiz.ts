@@ -86,8 +86,26 @@ export const PublicQuizQuestion = z.object({
 });
 export type PublicQuizQuestion = z.infer<typeof PublicQuizQuestion>;
 
-/** practice = feedback after each answer; exam = feedback only after finishing */
-export const QuizMode = z.enum(['practice', 'exam']);
+/**
+ * practice = feedback after each answer; exam = feedback only after finishing. Both draw only on
+ * questions that are graded automatically (never `short`).
+ * discussion = `short` questions only, each talked through with the AI interviewer, who asks
+ * follow-ups before the answer is graded. It needs the user's own AI key.
+ */
+export const QuizMode = z.enum(['practice', 'exam', 'discussion']);
+export type QuizMode = z.infer<typeof QuizMode>;
+
+/** How many times the candidate may speak on one discussion question before it is graded. */
+export const DISCUSSION_MAX_TURNS = 3;
+/** One candidate turn; three of them still fit a `short` response (4000). */
+export const DISCUSSION_TURN_MAX_CHARS = 1200;
+
+/** What was said about one discussion question after its prompt: the candidate and the follow-ups. */
+export const DiscussionTurn = z.object({
+  role: z.enum(['interviewer', 'candidate']),
+  text: z.string(),
+});
+export type DiscussionTurn = z.infer<typeof DiscussionTurn>;
 
 export const CreateAttemptRequest = z.object({
   topics: z.array(Slug).min(1),
@@ -139,11 +157,27 @@ export const QuizAttempt = z.object({
   responses: z.record(z.string(), QuizResponse),
   /** practice: feedback for answered questions; exam: empty until finished */
   feedback: z.array(AnswerFeedback),
+  /** discussion mode: questionId -> the turns so far (empty for the other modes) */
+  discussion: z.record(z.string(), z.array(DiscussionTurn)).default({}),
   score: z.number().nullable(),
   startedAt: IsoDate,
   finishedAt: IsoDate.nullable(),
 });
 export type QuizAttempt = z.infer<typeof QuizAttempt>;
+
+/** `POST /api/quiz/attempts/:id/discussion`: the candidate's next turn on one question. */
+export const DiscussionReplyRequest = z.object({
+  questionId: Slug,
+  text: z.string().trim().min(1).max(DISCUSSION_TURN_MAX_CHARS),
+});
+export type DiscussionReplyRequest = z.infer<typeof DiscussionReplyRequest>;
+
+/** The question's turns after the reply, and its feedback once the interviewer has closed it. */
+export const DiscussionReplyResponse = z.object({
+  turns: z.array(DiscussionTurn),
+  feedback: AnswerFeedback.nullable(),
+});
+export type DiscussionReplyResponse = z.infer<typeof DiscussionReplyResponse>;
 
 export const QuizAttemptSummary = QuizAttempt.pick({
   id: true,
@@ -160,6 +194,8 @@ export type QuizAttemptSummary = z.infer<typeof QuizAttemptSummary>;
 
 export const QuizTopicStats = QuizTopic.extend({
   questionCount: z.int(),
+  /** how many of them are `short` (discussion) questions; the rest are graded automatically */
+  shortCount: z.int().default(0),
   answered: z.int(),
   /** 0..1 over the user's answered questions, null if none */
   accuracy: z.number().nullable(),
