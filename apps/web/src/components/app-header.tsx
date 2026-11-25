@@ -15,6 +15,12 @@ const NAV = [
 
 export function AppHeader() {
   const pathname = usePathname();
+  // Not where the page has its own button for it, nor on the quiz pages, where it would compete
+  // with "Start quiz" and "Finish quiz".
+  const hideNew =
+    ['/', '/dashboard', '/new'].includes(pathname) ||
+    pathname === '/quiz' ||
+    pathname.startsWith('/quiz/');
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-bg/90 backdrop-blur-sm">
       <div className="mx-auto flex h-13 max-w-6xl items-center gap-4 px-4 sm:px-6">
@@ -45,10 +51,7 @@ export function AppHeader() {
             asChild
             variant="primary"
             size="sm"
-            className={cn(
-              'hidden sm:inline-flex',
-              (pathname === '/' || pathname === '/dashboard' || pathname === '/new') && 'sm:hidden',
-            )}
+            className={cn('hidden sm:inline-flex', hideNew && 'sm:hidden')}
           >
             <Link href="/new">
               <PlusIcon /> New interview
