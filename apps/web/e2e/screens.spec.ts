@@ -30,6 +30,11 @@ for (const width of WIDTHS) {
 
     test('app screens', async ({ page }) => {
       await setup(page);
+      if (want('home')) {
+        await page.goto('/');
+        await page.getByRole('button', { name: 'Account menu' }).waitFor();
+        await shoot(page, 'home-signed-in');
+      }
       if (want('dashboard')) {
         await page.goto('/dashboard');
         await page.getByText('History').waitFor();

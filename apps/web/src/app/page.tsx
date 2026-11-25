@@ -1,5 +1,4 @@
 import {
-  ArrowRightIcon,
   BrainCircuitIcon,
   CheckCircle2Icon,
   FlaskConicalIcon,
@@ -9,10 +8,8 @@ import {
   UsersIcon,
   XCircleIcon,
 } from 'lucide-react';
-import Link from 'next/link';
-import { LandingNav } from '@/components/landing-nav';
+import { LandingActions, LandingNav } from '@/components/landing-nav';
 import { Logo } from '@/components/logo';
-import { Button } from '@/components/ui/button';
 
 const FEATURES = [
   {
@@ -204,16 +201,7 @@ export default function LandingPage() {
               follow-ups and speaks up when you go quiet. Then a scorecard and a replay of how it
               went.
             </p>
-            <div className="mt-7 flex flex-wrap items-center gap-3">
-              <Button asChild variant="primary" size="lg">
-                <Link href="/sign-up">
-                  Start a practice interview <ArrowRightIcon />
-                </Link>
-              </Button>
-              <Button asChild variant="ghost" size="lg">
-                <Link href="/sign-in">I have an account</Link>
-              </Button>
-            </div>
+            <LandingActions />
           </div>
           <div className="mt-14">
             <PadPreview />

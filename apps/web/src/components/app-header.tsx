@@ -18,7 +18,7 @@ export function AppHeader() {
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-bg/90 backdrop-blur-sm">
       <div className="mx-auto flex h-13 max-w-6xl items-center gap-4 px-4 sm:px-6">
-        <Logo href="/dashboard" />
+        <Logo />
         <nav aria-label="Main" className="flex items-center gap-0.5">
           {NAV.map((n) => {
             const active =

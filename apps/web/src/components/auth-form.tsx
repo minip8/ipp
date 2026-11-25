@@ -2,10 +2,10 @@
 import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useEffect, useState } from 'react';
 import { ApiRequestError } from '@/lib/api';
 import { auth, safeNext, socialErrorMessage } from '@/lib/auth';
-import { qk, useConfig } from '@/lib/queries';
+import { qk, useConfig, useMe } from '@/lib/queries';
 import { Logo } from './logo';
 import { InlineError, useRetryCountdown } from './states';
 import { Button } from './ui/button';
@@ -59,6 +59,13 @@ export function AuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
   const wait = useRetryCountdown(error);
   const isSignUp = mode === 'sign-up';
   const hasSocial = Boolean(config.data?.githubAuth || config.data?.googleAuth);
+  // Someone who already has a session has nothing to do here: send them where they were going.
+  // A guest (in a room by its link) is the exception; this is where they get a real account.
+  const me = useMe();
+  const signedIn = Boolean(me.data && !me.data.guest);
+  useEffect(() => {
+    if (signedIn) router.replace(next);
+  }, [signedIn, next, router]);
 
   async function social(provider: 'github' | 'google') {
     try {
@@ -89,6 +96,8 @@ export function AuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
     error instanceof ApiRequestError &&
     (error.status === 401 || error.status === 422 || error.status === 400) &&
     field === 'password';
+
+  if (signedIn) return <div className="min-h-dvh bg-bg" />;
 
   return (
     <div className="flex min-h-dvh flex-col bg-bg">
