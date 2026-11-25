@@ -116,8 +116,8 @@ function CustomTestsTab({
     <div className="space-y-3 p-4">
       <div className="flex flex-wrap items-center gap-2">
         <p className="mr-auto text-sm text-fg-muted">
-          Your own inputs, run against your class. There is no expected output; you judge the
-          result.
+          Run your class on your own inputs. There is no expected output, so check the result
+          yourself.
         </p>
         <Button
           size="sm"

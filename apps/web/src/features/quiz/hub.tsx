@@ -146,8 +146,8 @@ function BrowsePanel({ topics }: { topics: QuizTopicStats[] }) {
             Browse the question bank
           </h2>
           <p className="mt-0.5 text-sm text-fg-muted">
-            Open any question in a topic and answer it straight away, with the explanation right
-            after. Nothing to set up or finish; your answers count toward your stats.
+            Answer any question on its own and see the explanation right away. Your answers still
+            count toward your stats.
           </p>
           <ul className="mt-3 flex flex-wrap gap-1.5" aria-label="Browse a topic">
             {topics.map((t) => (

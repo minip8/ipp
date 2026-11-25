@@ -342,8 +342,7 @@ function HiddenSummary({ tests }: { tests: Extract<PublicTestResult, { hidden: t
         })}
       </ul>
       <p className="mt-2 text-xs text-fg-muted">
-        Hidden test inputs are not shown, as in a real interview. Use the failing verdicts as a hint
-        about which edge cases to think about.
+        Hidden test inputs are not shown. The verdicts hint at which edge cases you missed.
       </p>
     </section>
   );

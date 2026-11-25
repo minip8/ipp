@@ -139,7 +139,7 @@ function History({ pads, onDelete }: { pads: PadSummary[]; onDelete: OnDelete })
       </CardHeader>
       {pads.length === 0 ? (
         <EmptyState icon={HistoryIcon} title="No finished interviews yet">
-          When you end an interview, it shows up here with its outcome and a full report.
+          Interviews you finish show up here, each with a report.
         </EmptyState>
       ) : (
         <div className="overflow-x-auto">
@@ -319,9 +319,6 @@ export function Dashboard() {
             {greeting()}
             {firstName ? `, ${firstName}` : ''}
           </h1>
-          <p className="mt-1 text-sm text-fg-muted">
-            Pick up a problem at random, or choose one from the library.
-          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button asChild>

@@ -360,8 +360,8 @@ export function FeedbackPanel({
         {feedback.needsSelfGrade ? (
           <>
             <p className="text-sm text-fg-muted">
-              Automatic grading is not available here. Compare your answer with the reference and
-              grade yourself honestly.
+              This one is not graded automatically. Compare your answer with the reference and grade
+              yourself.
             </p>
             <Section title="Reference answer">
               <p className="rounded-md border-l-2 border-accent bg-surface-2 px-3 py-2 text-base whitespace-pre-wrap">

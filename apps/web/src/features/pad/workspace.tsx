@@ -317,10 +317,7 @@ export function Workspace() {
       <InviteBanner />
       {!narrowDismissed && (
         <div className="flex shrink-0 items-center gap-3 border-b border-border bg-warn-soft px-4 py-1.5 text-xs text-warn-text lg:hidden">
-          <span className="flex-1">
-            The pad is built for screens at least 1024 px wide. It works here, but panels are
-            cramped.
-          </span>
+          <span className="flex-1">The pad works best on a screen at least 1024 px wide.</span>
           <Button
             size="icon-xs"
             variant="ghost"

@@ -8,7 +8,7 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: { default: 'interview++', template: '%s · interview++' },
-  description: 'Practice coding interviews with an AI interviewer in a real collaborative pad.',
+  description: 'Practice coding interviews with an AI interviewer that watches you work.',
 };
 
 export const viewport: Viewport = {
