@@ -165,7 +165,7 @@ test.describe('joining by the invite link', () => {
   test('someone with an account joins under their own name', async ({ page }) => {
     const backend = await setup(page, (b) => candidateRoom(b));
     await page.goto(`/join/${ROOM_TOKEN}`);
-    await expect(page.getByText('You are signed in as Ada Lovelace')).toBeVisible();
+    await expect(page.getByText("You'll join as Ada Lovelace")).toBeVisible();
     await expect(page.getByLabel('Your name')).toHaveCount(0);
     await page.getByRole('button', { name: 'Join the interview' }).click();
     await expect(page).toHaveURL(new RegExp(`/pads/${ROOM_PAD_ID}$`));

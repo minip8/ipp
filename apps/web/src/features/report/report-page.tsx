@@ -172,8 +172,7 @@ export function ReportPage({ id }: { id: string }) {
           {hostOnly ? (
             <Card className="mt-6">
               <EmptyState icon={LockIcon} title="This report is for the interviewer">
-                The report of an interview room, with its playback and notes, can only be opened by
-                the person who hosted it.
+                Only the person who hosted this interview can open its report.
               </EmptyState>
             </Card>
           ) : !ended ? (

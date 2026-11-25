@@ -2,9 +2,10 @@
 import { ArrowRightIcon } from 'lucide-react';
 import Link from 'next/link';
 import { useMe } from '@/lib/queries';
+import { AppHeader } from './app-header';
+import { Logo } from './logo';
 import { ThemeToggle } from './theme-toggle';
 import { Button } from './ui/button';
-import { UserMenu } from './user-menu';
 
 /**
  * The home page is the same URL signed in or out; only its links differ. A guest (in a room by
@@ -15,37 +16,27 @@ function useAccount() {
   return { loading: me.isPending, account: me.data && !me.data.guest ? me.data : null };
 }
 
-export function LandingNav() {
+/** Signed in, the home page carries the app's own header, so the links do not move about. */
+export function LandingHeader() {
   const { loading, account } = useAccount();
+  if (account) return <AppHeader />;
   return (
-    <nav className="ml-auto flex items-center gap-1.5" aria-label="Account">
-      {account ? (
-        <>
-          <Button asChild variant="ghost" size="sm">
-            <Link href="/dashboard">Interviews</Link>
-          </Button>
-          <Button asChild variant="ghost" size="sm">
-            <Link href="/quiz">Quizzes</Link>
-          </Button>
-          <ThemeToggle />
-          <UserMenu />
-        </>
-      ) : (
-        <>
-          <ThemeToggle />
-          {!loading && (
-            <>
-              <Button asChild variant="ghost" size="sm">
-                <Link href="/sign-in">Sign in</Link>
-              </Button>
-              <Button asChild variant="primary" size="sm">
-                <Link href="/sign-up">Get started</Link>
-              </Button>
-            </>
-          )}
-        </>
-      )}
-    </nav>
+    <header className="mx-auto flex h-14 max-w-6xl items-center px-4 sm:px-6">
+      <Logo />
+      <nav className="ml-auto flex items-center gap-1.5" aria-label="Account">
+        <ThemeToggle />
+        {!loading && (
+          <>
+            <Button asChild variant="ghost" size="sm">
+              <Link href="/sign-in">Sign in</Link>
+            </Button>
+            <Button asChild variant="primary" size="sm">
+              <Link href="/sign-up">Get started</Link>
+            </Button>
+          </>
+        )}
+      </nav>
+    </header>
   );
 }
 

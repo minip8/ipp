@@ -109,11 +109,6 @@ export function AuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
           <h1 className="text-xl font-semibold tracking-tight">
             {isSignUp ? 'Create your account' : 'Welcome back'}
           </h1>
-          <p className="mt-1 text-sm text-fg-muted">
-            {isSignUp
-              ? 'Start practicing interviews in under a minute.'
-              : 'Sign in to pick up where you left off.'}
-          </p>
 
           {hasSocial && (
             <>

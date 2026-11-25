@@ -47,7 +47,7 @@ export function AppHeader() {
             size="sm"
             className={cn(
               'hidden sm:inline-flex',
-              (pathname === '/dashboard' || pathname === '/new') && 'sm:hidden',
+              (pathname === '/' || pathname === '/dashboard' || pathname === '/new') && 'sm:hidden',
             )}
           >
             <Link href="/new">

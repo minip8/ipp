@@ -8,39 +8,38 @@ import {
   UsersIcon,
   XCircleIcon,
 } from 'lucide-react';
-import { LandingActions, LandingNav } from '@/components/landing-nav';
-import { Logo } from '@/components/logo';
+import { LandingActions, LandingHeader } from '@/components/landing-nav';
 
 const FEATURES = [
   {
     icon: BrainCircuitIcon,
     title: 'An interviewer that pays attention',
-    body: 'It reads your code as you type, asks about complexity and edge cases, nudges when you stall and gives hints on a ladder. It never hands you the answer.',
+    body: 'It reads your code as you type, asks about complexity and edge cases, and nudges you when you stall. You get hints, never the answer.',
   },
   {
     icon: PlayIcon,
     title: 'Run, test, submit',
-    body: 'Run the file with your own main(), check the sample tests, try custom inputs, then submit against hidden tests. Diffs show input, expected and actual side by side.',
+    body: 'Run your code, check it against the sample tests, try your own inputs, then submit against the hidden tests.',
   },
   {
     icon: UsersIcon,
-    title: 'A real shared pad',
-    body: 'C++, Python and Java with Vim or Emacs keys, live cursors for anyone you invite, a whiteboard for sketching, and notes that stay with the session.',
+    title: 'A shared editor',
+    body: 'C++, Python and Java, with Vim or Emacs keys if you like. Anyone you invite types alongside you, and there is a whiteboard for sketching.',
   },
   {
     icon: MicIcon,
     title: 'Talk it through',
-    body: 'Turn on voice and think out loud. Push to talk or go hands-free; the interviewer answers in short spoken turns, and you can interrupt.',
+    body: 'Turn on voice and think out loud. The interviewer talks back, and you can interrupt it.',
   },
   {
     icon: FlaskConicalIcon,
     title: 'A report after every session',
-    body: 'Scores across problem solving, coding, communication, testing and complexity analysis, with evidence. Replay the whole session with a scrubber.',
+    body: 'Scores for problem solving, coding, communication, testing and complexity, each with the reasons behind it. You can replay the whole session too.',
   },
   {
     icon: ListChecksIcon,
     title: 'Quizzes for the fundamentals',
-    body: 'C++ and Python semantics, what programs actually print, operating systems, networking, concurrency, architecture. Practice or exam mode.',
+    body: 'C++ and Python semantics, what a program actually prints, operating systems, networking, concurrency and architecture.',
   },
 ];
 
@@ -182,10 +181,7 @@ function PadPreview() {
 export default function LandingPage() {
   return (
     <div className="min-h-dvh bg-bg">
-      <header className="mx-auto flex h-14 max-w-6xl items-center px-4 sm:px-6">
-        <Logo />
-        <LandingNav />
-      </header>
+      <LandingHeader />
 
       <main>
         <section className="mx-auto max-w-6xl px-4 pt-14 pb-16 sm:px-6 sm:pt-20">
@@ -197,9 +193,8 @@ export default function LandingPage() {
               Practice the coding interview, not just the problem.
             </h1>
             <p className="mt-4 max-w-xl text-md text-fg-muted">
-              A real interview pad with an AI interviewer that watches your approach, asks the
-              follow-ups and speaks up when you go quiet. Then a scorecard and a replay of how it
-              went.
+              Solve a problem in a shared editor while an AI interviewer watches, asks follow-ups
+              and speaks up when you go quiet. Afterwards you get a scorecard and a replay.
             </p>
             <LandingActions />
           </div>
@@ -220,13 +215,6 @@ export default function LandingPage() {
           </div>
         </section>
       </main>
-
-      <footer className="border-t border-border">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-6 text-xs text-fg-subtle sm:px-6">
-          <span>interview++</span>
-          <span>Code runs in an isolated sandbox with no network access.</span>
-        </div>
-      </footer>
     </div>
   );
 }

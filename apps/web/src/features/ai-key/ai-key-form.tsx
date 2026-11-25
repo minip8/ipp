@@ -324,7 +324,7 @@ export function AiKeyForm({
             ? `Checking the key with ${AI_PROVIDERS[provider].label}…`
             : compact
               ? `We check it with ${AI_PROVIDERS[provider].label} before saving. `
-              : 'We make one tiny request with it to check that it works before saving it. '}
+              : 'We test it with one small request before saving. '}
           Create one in the <ConsoleLink provider={provider} />.
         </p>
       </div>

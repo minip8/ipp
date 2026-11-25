@@ -93,8 +93,8 @@ function JoinRoom({ token, invite, me }: { token: string; invite: InviteInfo; me
   return (
     <Shell title={`${invite.hostName} invited you to an interview`}>
       <p className="mt-2 text-sm text-fg-muted">
-        You will share a code editor and a chat with {invite.hostName}. Code you write and run is
-        visible to them as you type.
+        You&apos;ll share a code editor and a chat with {invite.hostName}. They see your code as you
+        type.
       </p>
       <form
         className="mt-6 space-y-4"
@@ -105,8 +105,7 @@ function JoinRoom({ token, invite, me }: { token: string; invite: InviteInfo; me
       >
         {account ? (
           <p className="rounded-md border border-border bg-surface-2 px-3 py-2 text-sm">
-            You are signed in as <span className="font-medium">{account.name}</span>, and will join
-            under that name.
+            You&apos;ll join as <span className="font-medium">{account.name}</span>.
           </p>
         ) : (
           <div className="space-y-1.5">
