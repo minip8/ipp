@@ -9,7 +9,6 @@ import {
 } from '@ipp/contracts';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import {
-  ArrowLeftIcon,
   BotIcon,
   BotOffIcon,
   CheckIcon,
@@ -19,7 +18,6 @@ import {
   UsersIcon,
   XIcon,
 } from 'lucide-react';
-import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   type RefObject,
@@ -227,11 +225,15 @@ function useFitBelow(ref: RefObject<HTMLElement | null>, gap = 16) {
       if (!frame) frame = requestAnimationFrame(measure);
     };
     measure();
+    // Content above the panel can arrive later (interviews in progress) and push it down.
+    const layout = new ResizeObserver(schedule);
+    layout.observe(document.body);
     window.addEventListener('scroll', schedule, { passive: true });
     window.addEventListener('resize', schedule);
     twoColumns.addEventListener('change', schedule);
     return () => {
       cancelAnimationFrame(frame);
+      layout.disconnect();
       window.removeEventListener('scroll', schedule);
       window.removeEventListener('resize', schedule);
       twoColumns.removeEventListener('change', schedule);
@@ -378,36 +380,11 @@ export function NewInterview() {
   const tab = CATEGORY_TABS.find((t) => t.value === category) ?? CATEGORY_TABS[0];
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
-      <Link
-        href="/dashboard"
-        className="inline-flex items-center gap-1 text-sm text-fg-muted hover:text-fg"
-      >
-        <ArrowLeftIcon className="size-3.5" /> Interviews
-      </Link>
-      <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">
-            {host ? 'Host an interview' : 'New interview'}
-          </h1>
-          <p className="mt-1 text-sm text-fg-muted">
-            {host
-              ? 'Choose the problem for your candidate. You get a link to send them; they join with just their name.'
-              : 'Choose a problem and how you want to be interviewed.'}
-          </p>
-        </div>
-        <Segmented
-          aria-label="Kind of interview"
-          value={host ? 'host' : 'practice'}
-          onValueChange={setMode}
-          options={[
-            { value: 'practice', label: 'Practise with the AI' },
-            { value: 'host', label: 'Interview someone' },
-          ]}
-        />
-      </div>
-
-      <div className="mt-6 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
+    <section aria-labelledby="new-interview-heading">
+      <h2 id="new-interview-heading" className="sr-only">
+        {host ? 'Host an interview' : 'New interview'}
+      </h2>
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
         {/* Library */}
         <section
           aria-labelledby="library-heading"
@@ -603,6 +580,19 @@ export function NewInterview() {
           // inside the panel and Start stays in view.
           className="min-w-0 scroll-mt-20 rounded-lg border border-border bg-surface lg:sticky lg:top-20 lg:max-h-[calc(100dvh-6rem)] lg:overflow-y-auto"
         >
+          {/* First, as on the quiz page: what kind of session this is. */}
+          <div className="border-b border-border p-4">
+            <Segmented
+              aria-label="Kind of interview"
+              className="flex w-full"
+              value={host ? 'host' : 'practice'}
+              onValueChange={setMode}
+              options={[
+                { value: 'practice', label: 'Practise with the AI' },
+                { value: 'host', label: 'Interview someone' },
+              ]}
+            />
+          </div>
           <div className="border-b border-border p-4">
             <h2
               id="setup-heading"
@@ -840,28 +830,28 @@ export function NewInterview() {
                 )}
               </div>
             )}
-
-            <div className="-mx-4 -mb-4 space-y-2 rounded-b-lg border-t border-border bg-surface p-4 lg:sticky lg:bottom-0">
-              <InlineError error={start.error} />
-              <Button
-                variant="primary"
-                size="lg"
-                className="w-full"
-                onClick={() => (needsKey ? setKeyDialog(true) : start.mutate({}))}
-                disabled={start.isPending || !ready}
-                aria-describedby={ready ? undefined : 'start-hint'}
-              >
-                {start.isPending ? <Spinner /> : host ? <UsersIcon /> : <CheckIcon />}
-                {host ? 'Create room' : 'Start interview'}
-              </Button>
-              {!ready && (
-                <p id="start-hint" className="text-center text-xs text-fg-muted">
-                  {host
-                    ? 'Choose a problem or a blank editor to start.'
-                    : 'Choose a problem to start.'}
-                </p>
-              )}
-            </div>
+          </div>
+          {/* A child of the panel itself, so it stays pinned however short the panel is. */}
+          <div className="space-y-2 rounded-b-lg border-t border-border bg-surface p-4 lg:sticky lg:bottom-0">
+            <InlineError error={start.error} />
+            <Button
+              variant="primary"
+              size="lg"
+              className="w-full"
+              onClick={() => (needsKey ? setKeyDialog(true) : start.mutate({}))}
+              disabled={start.isPending || !ready}
+              aria-describedby={ready ? undefined : 'start-hint'}
+            >
+              {start.isPending ? <Spinner /> : host ? <UsersIcon /> : <CheckIcon />}
+              {host ? 'Create room' : 'Start interview'}
+            </Button>
+            {!ready && (
+              <p id="start-hint" className="text-center text-xs text-fg-muted">
+                {host
+                  ? 'Choose a problem or a blank editor to start.'
+                  : 'Choose a problem to start.'}
+              </p>
+            )}
           </div>
         </section>
       </div>
@@ -906,7 +896,6 @@ export function NewInterview() {
           </Button>
         </div>
       </div>
-      <div className="h-16 lg:hidden" aria-hidden />
-    </div>
+    </section>
   );
 }

@@ -31,7 +31,7 @@ test('run, run tests and submit against the real judge', async ({ page, context 
   await page.getByRole('button', { name: 'Create account' }).click();
   await expect(page).toHaveURL(/\/dashboard/);
 
-  await page.goto('/new');
+  await page.goto('/dashboard');
   await page.getByRole('searchbox', { name: 'Search problems' }).fill('two sum');
   await page
     .getByRole('button', { name: /Two Sum/ })

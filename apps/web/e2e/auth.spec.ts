@@ -21,7 +21,7 @@ test('signed-out visitors are sent to sign-in and come back after signing in', a
   await page.getByLabel('Password').fill('correct-horse');
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('Ada');
+  await expect(page.getByRole('heading', { level: 1, name: 'Interviews' })).toBeVisible();
   expect(
     backend.requests.findLast((r) => r.path === '/api/auth/sign-in/email')?.body,
   ).toMatchObject({ email: 'ada@example.com', password: 'correct-horse' });
@@ -86,12 +86,9 @@ test('the home page is reachable when signed in and leads into the app', async (
   await expect(page).toHaveURL('/');
   await expect(page.getByRole('link', { name: 'Sign in' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Account menu' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Go to your interviews' })).toHaveAttribute(
-    'href',
-    '/dashboard',
-  );
   await page.getByRole('link', { name: 'Start a practice interview' }).click();
-  await expect(page).toHaveURL('/new');
+  await expect(page).toHaveURL('/dashboard');
+  await expect(page.getByRole('heading', { name: 'Problem library' })).toBeAttached();
 });
 
 test('the account pages send a signed-in visitor on instead of asking again', async ({ page }) => {

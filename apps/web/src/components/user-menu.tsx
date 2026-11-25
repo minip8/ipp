@@ -67,7 +67,7 @@ export function UserMenu() {
         <MenuSeparator />
         <MenuItem asChild>
           <Link href="/dashboard">
-            <LayoutGridIcon /> Dashboard
+            <LayoutGridIcon /> Interviews
           </Link>
         </MenuItem>
         <MenuItem asChild>

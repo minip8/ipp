@@ -40,12 +40,12 @@ import {
   SETUP_STORAGE_KEY,
 } from './logic';
 
-function AccuracyBar({ value }: { value: number }) {
+function ProgressBar({ value }: { value: number }) {
   return (
     <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-3" aria-hidden>
       <div
         className="h-full rounded-full bg-accent"
-        style={{ width: `${Math.round(value * 100)}%` }}
+        style={{ width: `${Math.round(Math.min(1, value) * 100)}%` }}
       />
     </div>
   );
@@ -93,30 +93,11 @@ function TopicCard({
             {selected && <CheckIcon className="size-3" strokeWidth={3} />}
           </span>
         </span>
-        <span className="mt-4 flex items-end justify-between gap-3 text-xs text-fg-muted">
-          <span className="tabular">
-            {t.answered} of {plural(t.questionCount, 'question')} answered
-          </span>
-          {t.accuracy === null ? (
-            <span className="text-fg-subtle">Not started</span>
-          ) : (
-            <span className="font-medium text-fg tabular">{formatPercent(t.accuracy)} correct</span>
-          )}
+        <span className="mt-4 block text-xs text-fg-muted tabular">
+          {t.answered} of {plural(t.questionCount, 'question')} answered
         </span>
         <span className="mt-2 block">
-          {t.accuracy === null ? (
-            <span
-              className="block h-1.5 rounded-full border border-dashed border-border-strong"
-              aria-hidden
-            />
-          ) : (
-            <AccuracyBar value={t.accuracy} />
-          )}
-        </span>
-        <span className="sr-only">
-          {t.accuracy === null
-            ? 'Not started.'
-            : `${formatPercent(t.accuracy)} accuracy, ${formatPercent(coverage)} of the bank seen.`}
+          <ProgressBar value={coverage} />
         </span>
       </button>
       <Link

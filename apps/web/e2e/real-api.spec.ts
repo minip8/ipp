@@ -54,21 +54,21 @@ test('sign up, no-key states, add a key, interview, edit, run, end, report; quiz
   await page.getByLabel('Password').fill('correct-horse-battery');
   await page.getByRole('button', { name: 'Create account' }).click();
   await expect(page).toHaveURL(/\/dashboard/);
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('Playwright');
+  await expect(page.getByRole('heading', { level: 1, name: 'Interviews' })).toBeVisible();
   await shot(page, 'dashboard');
 
   // Sign out and back in to exercise sign-in too.
   await page.getByRole('button', { name: 'Account menu' }).click();
   await page.getByRole('menuitem', { name: 'Sign out' }).click();
   await expect(page).toHaveURL('/');
-  await page.goto('/sign-in?next=/new');
+  await page.goto('/sign-in?next=/dashboard');
   await page.getByLabel('Email').fill(email);
   await page.getByLabel('Password').fill('wrong-password');
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page.locator('form [role=alert]')).toBeVisible();
   await page.getByLabel('Password').fill('correct-horse-battery');
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page).toHaveURL(/\/new/);
+  await expect(page).toHaveURL(/\/dashboard/);
 
   // New interview from the library. A new account has no key: the setup says so, and Start
   // offers to add one or to go without.

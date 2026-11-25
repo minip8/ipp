@@ -49,15 +49,15 @@ test.describe('hosting', () => {
   test('creates a room for a problem from the dashboard', async ({ page }) => {
     const backend = await setup(page);
     await page.goto('/dashboard');
-    await page.getByRole('link', { name: 'Host an interview' }).click();
-    await expect(page).toHaveURL(/\/new\?mode=host$/);
+    await page.getByRole('radio', { name: 'Interview someone' }).click();
+    await expect(page).toHaveURL(/\/dashboard\?mode=host$/);
     await expect(page.getByRole('heading', { name: 'Host an interview' })).toBeVisible();
     // No AI interviewer to configure: the host is the interviewer.
     await expect(page.getByText('You are the interviewer')).toBeVisible();
     await expect(page.getByLabel('AI interviewer')).toHaveCount(0);
     const create = page.getByRole('button', { name: 'Create room' });
     await expect(create).toBeDisabled();
-    await page.getByRole('button', { name: /LRU Cache/ }).click();
+    await page.getByRole('button', { name: /^LRU Cache/ }).click();
     await page.getByRole('radio', { name: 'Python' }).click();
     await create.click();
     await expect(page).toHaveURL(/\/pads\/[0-9a-f-]{36}$/);
@@ -98,7 +98,7 @@ test.describe('hosting', () => {
     await setup(page);
     await page.goto('/new?mode=host');
     await page.getByRole('radio', { name: 'Practise with the AI' }).click();
-    await expect(page).toHaveURL(/\/new$/);
+    await expect(page).toHaveURL(/\/dashboard$/);
     await expect(page.getByRole('heading', { name: 'New interview' })).toBeVisible();
     await expect(page.getByLabel('AI interviewer')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Start interview' })).toBeVisible();

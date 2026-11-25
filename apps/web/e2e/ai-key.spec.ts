@@ -199,7 +199,7 @@ test.describe('choosing the interviewer model', () => {
     await expect(picker).toContainText('Default: Claude Opus 5.5');
     await picker.click();
     await page.getByRole('option', { name: 'Claude Sonnet 5.5' }).click();
-    await page.getByRole('button', { name: /Two Sum/ }).click();
+    await page.getByRole('button', { name: /^Two Sum/ }).click();
     await page.getByRole('button', { name: 'Start interview' }).click();
     await expect(page).toHaveURL(/\/pads\/[0-9a-f-]{36}$/);
     const create = backend.requests.find((r) => r.method === 'POST' && r.path === '/api/pads');
@@ -216,7 +216,7 @@ test.describe('choosing the interviewer model', () => {
     });
     await page.goto('/new');
     await expect(page.getByTestId('model-picker')).toContainText('Could not get the model list');
-    await page.getByRole('button', { name: /Two Sum/ }).click();
+    await page.getByRole('button', { name: /^Two Sum/ }).click();
     await page.getByRole('button', { name: 'Start interview' }).click();
     await expect(page).toHaveURL(/\/pads\/[0-9a-f-]{36}$/);
     const create = backend.requests.find((r) => r.method === 'POST' && r.path === '/api/pads');
@@ -264,7 +264,7 @@ test.describe('starting an interview', () => {
       b.aiKey = aiKeyStatus('missing');
     });
     await page.goto('/new');
-    await page.getByRole('button', { name: /Two Sum/ }).click();
+    await page.getByRole('button', { name: /^Two Sum/ }).click();
     await expect(page.getByTestId('ai-key-prompt')).toContainText('Runs on your own AI API key');
     // Turning the interviewer off removes the prompt.
     await page.getByLabel('AI interviewer').click();
@@ -287,7 +287,7 @@ test.describe('starting an interview', () => {
       b.aiKey = aiKeyStatus('missing');
     });
     await page.goto('/new');
-    await page.getByRole('button', { name: /Two Sum/ }).click();
+    await page.getByRole('button', { name: /^Two Sum/ }).click();
     await page.getByRole('radio', { name: 'Tough' }).click();
     await page.getByRole('button', { name: 'Start interview' }).click();
     await addKeyInDialog(page, 'Save key and start');
@@ -303,7 +303,7 @@ test.describe('starting an interview', () => {
     await expect(page.getByTestId('ai-key-prompt')).toHaveCount(0);
     // Nothing is selected by default, so Start waits for a problem.
     await expect(page.getByRole('button', { name: 'Start interview' })).toBeDisabled();
-    await page.getByRole('button', { name: /Two Sum/ }).click();
+    await page.getByRole('button', { name: /^Two Sum/ }).click();
     await page.getByRole('button', { name: 'Start interview' }).click();
     await expect(page).toHaveURL(/\/pads\/[0-9a-f-]{36}$/);
   });

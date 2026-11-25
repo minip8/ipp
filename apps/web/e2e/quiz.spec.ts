@@ -8,7 +8,7 @@ test.describe('quizzes', () => {
     const backend = await setup(page);
     await page.goto('/quiz');
     await expect(page.getByRole('button', { name: /^Computer architecture/ })).toContainText(
-      'Not started',
+      '0 of 40 questions answered',
     );
     const start = page.getByRole('button', { name: 'Start quiz' });
     await expect(start).toBeDisabled();
