@@ -194,7 +194,7 @@ export function PrivateNotes({ padId, className }: { padId: string; className?: 
         placeholder={
           'Your notes on the candidate: what went well, where they needed help, what to ask next.\n\nOnly you can read these. They stay with the report after the interview.'
         }
-        className="min-h-0 flex-1 resize-none bg-transparent px-4 py-3 text-[13.5px] leading-relaxed text-fg outline-none placeholder:text-fg-subtle"
+        className="min-h-0 flex-1 resize-none bg-transparent px-4 py-3 text-[13.5px] leading-relaxed text-fg outline-none placeholder:text-fg-subtle max-lg:text-base"
       />
       <div className="flex shrink-0 items-center justify-between gap-2 border-t border-border px-4 py-1.5">
         <OnlyYou>Only you see these notes</OnlyYou>
@@ -362,13 +362,13 @@ export function SecondOpinion() {
           onChange={(e) => setQuestion(e.target.value)}
           disabled={keyState !== undefined && keyState !== 'active'}
           placeholder="Anything specific to check? (optional)"
-          className="h-8 w-full rounded-md border border-border-strong bg-surface px-2.5 text-[13.5px] outline-none placeholder:text-fg-subtle focus-visible:border-accent focus-visible:ring-3 focus-visible:ring-accent/20 disabled:opacity-60"
+          className="h-8 w-full rounded-md border border-border-strong bg-surface px-2.5 text-[13.5px] outline-none placeholder:text-fg-subtle focus-visible:border-accent focus-visible:ring-3 focus-visible:ring-accent/20 disabled:opacity-60 max-lg:h-10 max-lg:text-base"
         />
         <Button
           type="submit"
           variant="primary"
           size="sm"
-          className="w-full"
+          className="w-full max-lg:h-10"
           disabled={ask.isPending || wait > 0 || (keyState !== undefined && keyState !== 'active')}
           data-testid="review-button"
         >

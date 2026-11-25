@@ -85,7 +85,7 @@ function SavedKey({
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium">
           {providerLabel(status.provider)} key saved{' '}
-          <span className="font-mono text-fg-muted">
+          <span className="font-mono whitespace-nowrap text-fg-muted">
             {maskedKey(status.last4, status.provider)}
           </span>
         </p>
@@ -287,7 +287,7 @@ export function AiKeyForm({
             onClick={() => setShow((s) => !s)}
             aria-label={show ? 'Hide key' : 'Show key'}
             aria-pressed={show}
-            className="absolute top-1/2 right-1.5 inline-flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-fg-subtle hover:bg-surface-3 hover:text-fg"
+            className="touch-hit absolute top-1/2 right-1.5 inline-flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-fg-subtle hover:bg-surface-3 hover:text-fg"
           >
             {show ? <EyeOffIcon className="size-4" /> : <EyeIcon className="size-4" />}
           </button>
@@ -306,7 +306,7 @@ export function AiKeyForm({
                   {' '}
                   <button
                     type="button"
-                    className="font-medium text-accent-text underline underline-offset-2"
+                    className="touch-hit font-medium text-accent-text underline underline-offset-2"
                     onClick={() => {
                       setProvider(suggested);
                       input.current?.focus();

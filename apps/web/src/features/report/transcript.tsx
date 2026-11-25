@@ -212,7 +212,7 @@ export const TranscriptRow = forwardRef<
         type="button"
         onClick={() => onSeek(item.t)}
         className={cn(
-          'absolute top-0 left-0 z-10 rounded px-1 py-0.5 font-mono text-2xs text-fg-subtle tabular hover:bg-surface-3 hover:text-fg',
+          'touch-hit absolute top-0 left-0 z-10 rounded px-1 py-0.5 font-mono text-2xs text-fg-subtle tabular hover:bg-surface-3 hover:text-fg',
           current && 'text-accent-text',
           item.kind === 'event' && 'top-1/2 -translate-y-1/2',
         )}

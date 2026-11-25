@@ -7,7 +7,7 @@ export function Switch({ className, ...props }: React.ComponentProps<typeof S.Ro
   return (
     <S.Root
       className={cn(
-        'inline-flex h-[18px] w-8 shrink-0 items-center rounded-full border border-transparent bg-border-strong p-px transition-colors data-[state=checked]:bg-accent disabled:opacity-50',
+        'touch-hit inline-flex h-[18px] w-8 shrink-0 items-center rounded-full border border-transparent bg-border-strong p-px transition-colors data-[state=checked]:bg-accent disabled:opacity-50',
         className,
       )}
       {...props}

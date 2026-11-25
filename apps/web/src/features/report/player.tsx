@@ -80,7 +80,8 @@ function Marker({
           onClick={() => onSeek(item.t)}
           style={{ left: pct(item.t, span) }}
           className={cn(
-            'absolute top-0 flex size-4 -translate-x-1/2 items-center justify-center rounded-[4px] border bg-surface shadow-[0_1px_2px_oklch(0_0_0/0.1)] transition-transform hover:z-10 hover:scale-125 focus-visible:z-10',
+            // Touch: a larger invisible hit area, kept mostly out of the scrub track below.
+            'absolute top-0 flex size-4 -translate-x-1/2 items-center justify-center rounded-[4px] border bg-surface pointer-coarse:before:absolute pointer-coarse:before:-inset-x-2 pointer-coarse:before:-top-2 pointer-coarse:before:-bottom-1 shadow-[0_1px_2px_oklch(0_0_0/0.1)] transition-transform hover:z-10 hover:scale-125 focus-visible:z-10',
             tone === 'ok'
               ? 'border-ok/60'
               : tone === 'bad'
@@ -125,7 +126,7 @@ function Marker({
         onClick={() => onSeek(item.t)}
         style={{ left: pct(item.t, span) }}
         className={cn(
-          'absolute bottom-0 size-2.5 -translate-x-1/2 rounded-full border-2 transition-transform hover:z-10 hover:scale-150 focus-visible:z-10',
+          'absolute bottom-0 size-2.5 -translate-x-1/2 rounded-full border-2 pointer-coarse:before:absolute pointer-coarse:before:-inset-x-2.5 pointer-coarse:before:-top-0.5 pointer-coarse:before:-bottom-2.5 transition-transform hover:z-10 hover:scale-150 focus-visible:z-10',
           m.role === 'candidate'
             ? 'border-accent bg-accent'
             : proactive
@@ -201,7 +202,7 @@ function Timeline({
         onPointerUp={stop}
         onPointerCancel={stop}
         onKeyDown={onKeyDown}
-        className="group relative mt-1 h-9 cursor-pointer touch-none rounded-md outline-offset-2"
+        className="group relative mt-1 h-9 cursor-pointer touch-none rounded-md outline-offset-2 pointer-coarse:h-11"
       >
         <div
           className="absolute inset-0 flex items-end gap-px overflow-hidden rounded-md border border-border bg-surface-2 px-px"
@@ -231,7 +232,7 @@ function Timeline({
           className="pointer-events-none absolute -top-1 -bottom-1 w-0.5 -translate-x-1/2 rounded-full bg-accent"
           style={{ left: pct(t, span) }}
         >
-          <span className="absolute -top-1 left-1/2 size-2.5 -translate-x-1/2 rounded-full border-2 border-surface bg-accent shadow-sm transition-transform group-active:scale-125" />
+          <span className="absolute -top-1 left-1/2 size-2.5 -translate-x-1/2 rounded-full border-2 border-surface bg-accent shadow-sm transition-transform group-active:scale-125 pointer-coarse:-top-1.5 pointer-coarse:size-4" />
         </div>
       </div>
       {/* message markers lane */}
@@ -417,7 +418,7 @@ export function Player({
       <div className="grid lg:grid-cols-[minmax(0,1fr)_380px]">
         {/* code */}
         <div className="min-w-0 border-border lg:col-start-1 lg:row-start-1 lg:border-r">
-          <div className="flex min-h-11 flex-wrap items-center gap-x-4 gap-y-2 border-b border-border px-4 py-2">
+          <div className="flex min-h-11 flex-wrap items-center gap-x-4 gap-y-2 border-b border-border px-3 py-2 sm:px-4">
             <div role="tablist" aria-label="Buffer" className="flex items-center gap-1">
               {[...LANGUAGES, 'notes' as const].map((v) => (
                 <button
@@ -430,7 +431,7 @@ export function Player({
                     setManualView(v);
                   }}
                   className={cn(
-                    'h-7 rounded-md px-2.5 text-sm font-medium transition-colors',
+                    'touch-hit h-7 rounded-md px-2.5 text-sm font-medium transition-colors',
                     view === v ? 'bg-surface-3 text-fg' : 'text-fg-muted hover:text-fg',
                   )}
                 >

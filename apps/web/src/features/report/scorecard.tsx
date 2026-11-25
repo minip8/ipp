@@ -82,7 +82,8 @@ export function RecommendationScale({ value }: { value: Recommendation }) {
               key={r.value}
               aria-current={selected ? 'true' : undefined}
               className={cn(
-                'flex min-h-9 items-center justify-center gap-1 rounded-md border px-1 text-center text-2xs leading-tight font-medium sm:text-xs',
+                // Phones: five columns are ~55px wide, so the check goes above the label.
+                'flex min-h-9 items-center justify-center gap-1 rounded-md border px-1 text-center text-2xs leading-tight font-medium max-sm:flex-col max-sm:gap-0.5 max-sm:py-1 sm:text-xs',
                 selected ? toneSelected[r.tone] : 'border-border bg-surface-2 text-fg-subtle',
               )}
             >
@@ -239,7 +240,7 @@ function Notice({
   action?: ReactNode;
 }) {
   return (
-    <Card className="flex items-start gap-3 px-5 py-5">
+    <Card className="flex items-start gap-3 px-4 py-5 sm:px-5">
       <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-surface-2 text-fg-subtle">
         {icon}
       </div>
@@ -412,11 +413,11 @@ export function Assessment({
         <CardHeader>
           <CardTitle id="assessment-heading">Assessment</CardTitle>
         </CardHeader>
-        <div className="px-5 pt-4 pb-5">
+        <div className="px-4 pt-4 pb-5 sm:px-5">
           <RecommendationScale value={a.recommendation} />
           <Markdown className="mt-5 text-base leading-relaxed">{a.summary}</Markdown>
         </div>
-        <div className="border-t border-border px-5">
+        <div className="border-t border-border px-4 sm:px-5">
           <ul className="divide-y divide-border">
             {scores.map((s) => (
               <DimensionMeter

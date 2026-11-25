@@ -11,18 +11,24 @@ export const MenuSub = M.Sub;
 export const MenuRadioGroup = M.RadioGroup;
 
 const panel =
-  'z-50 min-w-44 overflow-hidden rounded-lg border border-border bg-surface p-1 text-sm text-fg shadow-overlay data-[state=open]:animate-pop-in';
+  'z-50 min-w-44 max-w-[var(--radix-dropdown-menu-content-available-width)] max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-x-hidden overflow-y-auto overscroll-contain rounded-lg border border-border bg-surface p-1 text-sm text-fg shadow-overlay data-[state=open]:animate-pop-in';
 const item =
-  'relative flex h-8 cursor-default items-center gap-2 rounded-md px-2 outline-none select-none data-[highlighted]:bg-surface-3 data-[disabled]:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:text-fg-muted';
+  'relative flex h-8 pointer-coarse:h-10 cursor-default items-center gap-2 rounded-md px-2 outline-none select-none data-[highlighted]:bg-surface-3 data-[disabled]:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:text-fg-muted';
 
 export function MenuContent({
   className,
   sideOffset = 6,
+  collisionPadding = 8,
   ...props
 }: React.ComponentProps<typeof M.Content>) {
   return (
     <M.Portal>
-      <M.Content sideOffset={sideOffset} className={cn(panel, className)} {...props} />
+      <M.Content
+        sideOffset={sideOffset}
+        collisionPadding={collisionPadding}
+        className={cn(panel, className)}
+        {...props}
+      />
     </M.Portal>
   );
 }
@@ -92,10 +98,18 @@ export function MenuSubTrigger({
     </M.SubTrigger>
   );
 }
-export function MenuSubContent({ className, ...props }: React.ComponentProps<typeof M.SubContent>) {
+export function MenuSubContent({
+  className,
+  collisionPadding = 8,
+  ...props
+}: React.ComponentProps<typeof M.SubContent>) {
   return (
     <M.Portal>
-      <M.SubContent className={cn(panel, className)} {...props} />
+      <M.SubContent
+        collisionPadding={collisionPadding}
+        className={cn(panel, className)}
+        {...props}
+      />
     </M.Portal>
   );
 }

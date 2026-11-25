@@ -14,10 +14,12 @@ const NAV = [
 export function AppHeader() {
   const pathname = usePathname();
   return (
-    <header className="sticky top-0 z-40 border-b border-border bg-bg/90 backdrop-blur-sm">
-      <div className="mx-auto flex h-13 max-w-6xl items-center gap-4 px-4 sm:px-6">
-        <Logo />
-        <nav aria-label="Main" className="flex items-center gap-0.5">
+    <header className="sticky top-0 z-40 border-b border-border bg-bg/90 pt-[env(safe-area-inset-top)] backdrop-blur-sm">
+      {/* Phones: tighter gaps, and below 375px the logo is just its mark (the word stays for
+          screen readers), so logo, both nav links, theme and account fit on one line at 360px. */}
+      <div className="mx-auto flex h-13 max-w-6xl items-center gap-2 px-4 min-[400px]:gap-3 sm:gap-4 sm:px-6">
+        <Logo wordmarkClassName="max-[374px]:sr-only" />
+        <nav aria-label="Main" className="flex min-w-0 items-center gap-0.5">
           {NAV.map((n) => {
             const active =
               pathname === n.href ||
@@ -29,7 +31,7 @@ export function AppHeader() {
                 href={n.href}
                 aria-current={active ? 'page' : undefined}
                 className={cn(
-                  'rounded-md px-2.5 py-1 text-sm font-medium transition-colors',
+                  'touch-hit rounded-md px-2.5 py-1 text-sm font-medium whitespace-nowrap transition-colors',
                   active ? 'bg-surface-3 text-fg' : 'text-fg-muted hover:text-fg',
                 )}
               >
@@ -38,7 +40,7 @@ export function AppHeader() {
             );
           })}
         </nav>
-        <div className="ml-auto flex items-center gap-1.5">
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">
           <ThemeToggle />
           <UserMenu />
         </div>

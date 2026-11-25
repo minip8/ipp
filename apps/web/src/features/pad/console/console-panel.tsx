@@ -90,7 +90,10 @@ function ArgField({
         aria-invalid={invalid || undefined}
         onChange={(e) => onChange(e.target.value)}
         placeholder="JSON, e.g. [1, 2, 3]"
-        className={cn(fieldClass, 'h-7 min-w-0 flex-1 px-2 font-mono text-xs')}
+        className={cn(
+          fieldClass,
+          'h-7 min-w-0 flex-1 px-2 font-mono text-xs max-lg:h-10 max-lg:text-base',
+        )}
       />
     </div>
   );
@@ -222,7 +225,10 @@ function CustomTestsTab({
                                 ),
                               });
                             }}
-                            className={cn(fieldClass, 'h-7 w-auto px-2 font-mono text-xs')}
+                            className={cn(
+                              fieldClass,
+                              'h-7 w-auto min-w-0 px-2 font-mono text-xs max-lg:h-10 max-lg:text-base',
+                            )}
                           >
                             {sig.methods.map((mm) => (
                               <option key={mm.name} value={mm.name}>
@@ -366,8 +372,11 @@ export function ConsolePanel({
       onValueChange={(v) => cs.setTab(v as ConsoleTab)}
       className="flex h-full flex-col bg-surface"
     >
-      <div className="flex h-9 shrink-0 items-stretch border-b border-border pr-2 pl-2">
-        <TabsList aria-label="Console">
+      <div className="flex h-9 shrink-0 items-stretch border-b border-border pr-2 pl-2 max-lg:h-10">
+        <TabsList
+          aria-label="Console"
+          className="max-lg:min-w-0 max-lg:overflow-x-auto max-lg:[scrollbar-width:none] max-lg:[&>button]:shrink-0"
+        >
           <TabsTrigger value="result">
             <SquareTerminalIcon /> Result
             {running && (
@@ -395,7 +404,7 @@ export function ConsolePanel({
             )}
           </TabsTrigger>
         </TabsList>
-        <div className="ml-auto flex items-center">
+        <div className="ml-auto flex shrink-0 items-center">
           {tab === 'result' && <RunHistory value={selectedRunId} onChange={selectRun} />}
         </div>
       </div>
@@ -439,7 +448,7 @@ export function ConsolePanel({
           placeholder={'5\n1 2 3 4 5'}
           className={cn(
             fieldClass,
-            'm-4 mt-2 min-h-0 w-auto flex-1 resize-none py-2 font-mono text-xs',
+            'm-4 mt-2 min-h-0 w-auto flex-1 resize-none py-2 font-mono text-xs max-lg:text-base',
           )}
         />
       </TabsContent>

@@ -48,10 +48,11 @@ export function AiKeySettings() {
       </p>
 
       <Card className="mt-6" aria-labelledby="key-heading">
-        <CardHeader>
+        {/* Phones: a long default model id wraps under the title instead of overflowing. */}
+        <CardHeader className="max-sm:h-auto max-sm:min-h-11 max-sm:flex-wrap max-sm:gap-y-0.5 max-sm:py-2">
           <CardTitle id="key-heading">Your key</CardTitle>
           {status.data && (
-            <span className="text-xs text-fg-muted">
+            <span className="min-w-0 text-xs [overflow-wrap:anywhere] text-fg-muted">
               {status.data.provider ? `${providerLabel(status.data.provider)} default` : 'Default'}:{' '}
               <span className="font-mono">{status.data.model}</span>
             </span>

@@ -118,7 +118,7 @@ function ProblemRow({
         onClick={onSelect}
         aria-pressed={selected}
         className={cn(
-          'flex w-full items-center gap-3 border-l-2 px-4 py-2.5 text-left transition-colors focus-visible:outline-offset-[-2px]',
+          'flex w-full items-center gap-3 border-l-2 px-4 py-2.5 text-left transition-colors focus-visible:outline-offset-[-2px] max-sm:py-3',
           selected
             ? 'border-l-accent bg-accent-soft/50'
             : 'border-l-transparent hover:bg-surface-2',
@@ -203,6 +203,25 @@ function randomHint(
 const DURATIONS = [30, 45, 60, 90] as const;
 const NO_LIMIT = 'none';
 
+/** Phones: segmented controls at a size a finger can hit (desktop keeps the compact size). */
+const TOUCH_SEGMENTS = 'max-sm:[&>*]:h-9';
+const TOUCH_SEGMENTS_SM = 'max-sm:[&>*]:h-8';
+
+/** Whether any of the element is on screen. */
+function useOnScreen(ref: RefObject<HTMLElement | null>) {
+  const [onScreen, setOnScreen] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver((entries) =>
+      setOnScreen(Boolean(entries[entries.length - 1]?.isIntersecting)),
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [ref]);
+  return onScreen;
+}
+
 /**
  * Keeps a sticky side panel no taller than the room between its top edge and the bottom of the
  * window. CSS alone cannot: before the panel sticks it starts lower on the page (under the page
@@ -248,6 +267,8 @@ export function NewInterview() {
   const [keyDialog, setKeyDialog] = useState(false);
   const setupPanel = useRef<HTMLElement>(null);
   useFitBelow(setupPanel);
+  // Phones: the bar that leads to the setup gives way once the setup itself is in view.
+  const setupOnScreen = useOnScreen(setupPanel);
   const [query, setQuery] = useState('');
   const deferredQuery = useDeferredValue(query);
   const [category, setCategory] = useState<CategoryFilter>(() =>
@@ -413,7 +434,7 @@ export function NewInterview() {
             <div className="space-y-2.5 border-b border-border p-3">
               <p className="px-0.5 text-xs text-fg-muted">{tab?.description}</p>
               <div className="flex flex-wrap items-center gap-2">
-                <div className="relative min-w-48 flex-1">
+                <div className="relative min-w-48 flex-1 max-sm:min-w-full">
                   <SearchIcon
                     className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-fg-subtle"
                     aria-hidden
@@ -424,11 +445,13 @@ export function NewInterview() {
                     aria-label="Search problems"
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    className="h-8 pl-8"
+                    // 16px on phones and tablets, or iOS zooms in on focus.
+                    className="h-8 pl-8 max-lg:text-md max-sm:h-10"
                   />
                 </div>
                 <Segmented
                   aria-label="Difficulty"
+                  className={cn('max-sm:flex max-sm:w-full', TOUCH_SEGMENTS)}
                   value={difficulty}
                   onValueChange={setDifficulty}
                   options={[
@@ -447,7 +470,10 @@ export function NewInterview() {
                     setSubtopic(ALL);
                   }}
                 >
-                  <SelectTrigger className="w-auto min-w-36 max-w-full" aria-label="Topic">
+                  <SelectTrigger
+                    className="w-auto min-w-36 max-w-full max-sm:h-10"
+                    aria-label="Topic"
+                  >
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -461,7 +487,10 @@ export function NewInterview() {
                 </Select>
                 {group !== ALL && subtopics.length > 0 && (
                   <Select value={subtopic} onValueChange={setSubtopic}>
-                    <SelectTrigger className="w-auto min-w-36 max-w-full" aria-label="Subtopic">
+                    <SelectTrigger
+                      className="w-auto min-w-36 max-w-full max-sm:h-10"
+                      aria-label="Subtopic"
+                    >
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -474,14 +503,20 @@ export function NewInterview() {
                     </SelectContent>
                   </Select>
                 )}
-                <div className="ml-auto flex items-center gap-2" title={TOPICS_HINT}>
+                <div
+                  className="ml-auto flex items-center gap-2 max-sm:min-h-10"
+                  title={TOPICS_HINT}
+                >
                   <Switch
                     id="show-topics"
                     checked={showTopics}
                     onCheckedChange={toggleTopics}
                     aria-describedby="show-topics-hint"
                   />
-                  <label htmlFor="show-topics" className="text-sm text-fg-muted select-none">
+                  <label
+                    htmlFor="show-topics"
+                    className="text-sm text-fg-muted select-none max-sm:py-2.5"
+                  >
                     Show topics
                   </label>
                   <span id="show-topics-hint" className="sr-only">
@@ -584,7 +619,7 @@ export function NewInterview() {
           <div className="border-b border-border p-4">
             <Segmented
               aria-label="Kind of interview"
-              className="flex w-full"
+              className={cn('flex w-full max-sm:[&>*]:px-1.5', TOUCH_SEGMENTS)}
               value={host ? 'host' : 'practice'}
               onValueChange={setMode}
               options={[
@@ -609,7 +644,11 @@ export function NewInterview() {
                   No statement or tests: you give the task yourself, and the code runs as a program.
                   You can switch to a library problem during the interview.
                 </p>
-                <Button size="sm" className="mt-3" onClick={() => setBlankChosen(false)}>
+                <Button
+                  size="sm"
+                  className="mt-3 max-sm:h-10"
+                  onClick={() => setBlankChosen(false)}
+                >
                   Choose a problem instead
                 </Button>
               </div>
@@ -622,11 +661,16 @@ export function NewInterview() {
                     : 'Choose one from the library, or let us pick one for you.'}
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <Button size="sm" onClick={pickAtRandom} disabled={pool.length === 0}>
+                  <Button
+                    size="sm"
+                    className="max-sm:h-10"
+                    onClick={pickAtRandom}
+                    disabled={pool.length === 0}
+                  >
                     <ShuffleIcon /> Pick one at random
                   </Button>
                   {host && (
-                    <Button size="sm" onClick={() => setBlankChosen(true)}>
+                    <Button size="sm" className="max-sm:h-10" onClick={() => setBlankChosen(true)}>
                       Start with a blank editor
                     </Button>
                   )}
@@ -647,7 +691,7 @@ export function NewInterview() {
                     <Button
                       variant="ghost"
                       size="xs"
-                      className="-mr-1"
+                      className="-mr-1 max-sm:h-9"
                       onClick={pickAtRandom}
                       disabled={pool.length === 0}
                       aria-label="Pick another random problem"
@@ -669,7 +713,7 @@ export function NewInterview() {
               <Label id={ids.lang}>Language</Label>
               <Segmented
                 aria-label="Language"
-                className="flex w-full"
+                className={cn('flex w-full', TOUCH_SEGMENTS)}
                 value={language}
                 onValueChange={(l: Language) => update({ language: l })}
                 options={offered.map((l) => ({ value: l, label: LANG_LABEL[l] }))}
@@ -686,7 +730,8 @@ export function NewInterview() {
               <Label id={ids.dur}>Duration</Label>
               <Segmented
                 aria-label="Duration"
-                className="flex w-full"
+                // Five choices: less padding, so they fit a 360px phone.
+                className={cn('flex w-full max-sm:[&>*]:px-1', TOUCH_SEGMENTS)}
                 value={prefs.durationMin === null ? NO_LIMIT : String(prefs.durationMin)}
                 onValueChange={(v) => update({ durationMin: v === NO_LIMIT ? null : Number(v) })}
                 options={[
@@ -771,7 +816,7 @@ export function NewInterview() {
                       <Segmented
                         aria-label="Interviewer style"
                         size="sm"
-                        className="flex w-full"
+                        className={cn('flex w-full', TOUCH_SEGMENTS_SM)}
                         value={prefs.interviewer.style}
                         onValueChange={(style) => updateInterviewer({ style })}
                         options={[
@@ -792,7 +837,7 @@ export function NewInterview() {
                       <Segmented
                         aria-label="Proactivity"
                         size="sm"
-                        className="flex w-full"
+                        className={cn('flex w-full', TOUCH_SEGMENTS_SM)}
                         value={prefs.interviewer.proactivity}
                         onValueChange={(proactivity) => updateInterviewer({ proactivity })}
                         options={[
@@ -831,8 +876,10 @@ export function NewInterview() {
               </div>
             )}
           </div>
-          {/* A child of the panel itself, so it stays pinned however short the panel is. */}
-          <div className="space-y-2 rounded-b-lg border-t border-border bg-surface p-4 lg:sticky lg:bottom-0">
+          {/* A child of the panel itself, so it stays pinned however short the panel is. On
+              phones it sticks to the bottom of the window while the panel is in view, so Start is
+              always in reach once the setup is. */}
+          <div className="sticky bottom-0 z-10 space-y-2 rounded-b-lg border-t border-border bg-surface p-4 pb-[calc(1rem_+_env(safe-area-inset-bottom))] lg:pb-4">
             <InlineError error={start.error} />
             <Button
               variant="primary"
@@ -877,7 +924,12 @@ export function NewInterview() {
       />
 
       {/* Phones: the setup panel sits below a long list, so keep the next step in reach. */}
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-surface/95 px-4 py-2.5 backdrop-blur-sm lg:hidden">
+      <div
+        className={cn(
+          'fixed inset-x-0 bottom-0 z-30 border-t border-border bg-surface/95 px-4 pt-2 pb-[calc(0.5rem_+_env(safe-area-inset-bottom))] backdrop-blur-sm lg:hidden',
+          setupOnScreen && 'hidden',
+        )}
+      >
         <div className="mx-auto flex max-w-6xl items-center gap-3">
           <p className="min-w-0 flex-1 truncate text-sm">
             <span className="text-fg-muted">Problem: </span>
@@ -886,7 +938,7 @@ export function NewInterview() {
             </span>
           </p>
           <Button
-            size="sm"
+            size="lg"
             variant="primary"
             onClick={() =>
               document.getElementById('interview-setup')?.scrollIntoView({ behavior: 'smooth' })

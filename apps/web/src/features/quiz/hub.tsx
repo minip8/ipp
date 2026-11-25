@@ -12,7 +12,8 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { type RefObject, useEffect, useMemo, useRef, useState } from 'react';
+import { PageTabPanel, PageTabs, usePageView } from '@/components/page-tabs';
 import { EmptyState, ErrorState, InlineError, useRetryCountdown } from '@/components/states';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -39,6 +40,27 @@ import {
   questionsFor,
   SETUP_STORAGE_KEY,
 } from './logic';
+
+/** The page's two views; the first is the default and keeps `?view=` out of the URL. */
+const VIEWS = ['start', 'history'] as const;
+
+/** Phones: segmented controls at a size a finger can hit (desktop keeps the compact size). */
+const TOUCH_SEGMENTS = 'max-sm:[&>*]:h-9';
+
+/** Whether any of the element is on screen. */
+function useOnScreen(ref: RefObject<HTMLElement | null>) {
+  const [onScreen, setOnScreen] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver((entries) =>
+      setOnScreen(Boolean(entries[entries.length - 1]?.isIntersecting)),
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [ref]);
+  return onScreen;
+}
 
 function ProgressBar({ value }: { value: number }) {
   return (
@@ -103,7 +125,7 @@ function TopicCard({
       <Link
         href={bankHref(t.slug)}
         aria-label={`Browse ${t.title} questions`}
-        className="flex items-center gap-1.5 rounded-b-lg border-t border-border px-4 py-2 text-sm font-medium text-accent-text transition-colors hover:bg-surface-2 focus-visible:outline-offset-[-2px]"
+        className="flex items-center gap-1.5 rounded-b-lg border-t border-border px-4 py-2 text-sm font-medium text-accent-text transition-colors hover:bg-surface-2 focus-visible:outline-offset-[-2px] max-sm:py-3"
       >
         <LibraryIcon className="size-3.5" />
         Browse {plural(t.questionCount, 'question')}
@@ -181,7 +203,7 @@ function SetupPanel({
           </h2>
           <Segmented
             aria-label="Mode"
-            className="flex w-full"
+            className={cn('flex w-full', TOUCH_SEGMENTS)}
             value={mode}
             onValueChange={(m) => update({ mode: m })}
             options={(['practice', 'exam', 'discussion'] as const).map((m) => ({
@@ -195,7 +217,7 @@ function SetupPanel({
           <Label>Difficulty</Label>
           <Segmented
             aria-label="Difficulty"
-            className="flex w-full"
+            className={cn('flex w-full', TOUCH_SEGMENTS)}
             value={difficulty}
             onValueChange={(d) => update({ difficulty: d })}
             options={[
@@ -211,7 +233,7 @@ function SetupPanel({
           {discussion ? (
             <Segmented
               aria-label="Number of questions"
-              className="flex w-full"
+              className={cn('flex w-full', TOUCH_SEGMENTS)}
               value={setup.discussionCount}
               onValueChange={(c) => update({ discussionCount: c })}
               options={DISCUSSION_COUNTS.map((c) => ({ value: c, label: c }))}
@@ -219,7 +241,7 @@ function SetupPanel({
           ) : (
             <Segmented
               aria-label="Number of questions"
-              className="flex w-full"
+              className={cn('flex w-full', TOUCH_SEGMENTS)}
               value={setup.count}
               onValueChange={(c) => update({ count: c })}
               options={QUIZ_COUNTS.map((c) => ({ value: c, label: c }))}
@@ -276,13 +298,14 @@ function scoreTone(score: number) {
 }
 
 function HistoryList({ topics }: { topics: QuizTopicStats[] }) {
+  // The same query as the page's tab count, so one request.
   const attempts = useQuery({ queryKey: qk.attempts, queryFn: api.attempts });
   const title = (slug: string) => topics.find((t) => t.slug === slug)?.title ?? slug;
   const items = attempts.data ?? [];
   return (
     <Card aria-labelledby="quiz-history-heading">
       <CardHeader>
-        <CardTitle id="quiz-history-heading">History</CardTitle>
+        <CardTitle id="quiz-history-heading">Past quizzes</CardTitle>
         {items.length > 0 && (
           <span className="text-xs text-fg-subtle tabular">{plural(items.length, 'attempt')}</span>
         )}
@@ -344,7 +367,9 @@ function HistoryList({ topics }: { topics: QuizTopicStats[] }) {
 }
 
 export function QuizHub() {
+  const [view, setView] = usePageView(VIEWS);
   const topics = useQuery({ queryKey: qk.quizTopics, queryFn: api.quizTopics });
+  const attempts = useQuery({ queryKey: qk.attempts, queryFn: api.attempts });
   const params = useSearchParams();
   // The choices are remembered in this browser, so leaving the page and coming back keeps them.
   // "Take a quiz instead" in the question bank links here with its topic preselected.
@@ -374,11 +399,23 @@ export function QuizHub() {
       questions: list.reduce((s, t) => s + t.questionCount, 0),
     };
   }, [topics.data]);
+  // Phones: the bar that leads to the setup gives way once the setup itself is in view.
+  const setupColumn = useRef<HTMLDivElement>(null);
+  const setupOnScreen = useOnScreen(setupColumn);
+  const showBar = view === 'start' && selected.length > 0 && !setupOnScreen;
 
   return (
-    <div className="mx-auto max-w-6xl px-4 pt-8 pb-24 sm:px-6 lg:pb-8">
+    <div
+      className={cn(
+        'mx-auto max-w-6xl px-4 pt-8 sm:px-6 lg:pb-8',
+        // Room for the bar fixed to the bottom of phones (start view only).
+        view === 'start'
+          ? 'pb-[calc(6rem_+_env(safe-area-inset-bottom))]'
+          : 'pb-[calc(2rem_+_env(safe-area-inset-bottom))]',
+      )}
+    >
       <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
+        <div className="min-w-0">
           <h1 className="text-xl font-semibold tracking-tight">Quizzes</h1>
           <p className="mt-1 text-sm text-fg-muted">
             Short drills on the fundamentals interviewers like to probe.
@@ -398,54 +435,68 @@ export function QuizHub() {
         )}
       </div>
 
-      <div className="mt-6 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-x-6 lg:gap-y-8">
-        <div className="min-w-0 space-y-3 lg:col-start-1 lg:row-start-1">
-          <h2 className="sr-only">Topics</h2>
-          {topics.isPending ? (
-            <TopicGridSkeleton />
-          ) : topics.isError ? (
-            <Card>
-              <ErrorState error={topics.error} onRetry={() => topics.refetch()} />
-            </Card>
-          ) : topics.data.length === 0 ? (
-            <Card>
-              <EmptyState icon={ListChecksIcon} title="No quiz topics yet">
-                The question bank has not been loaded on this server.
-              </EmptyState>
-            </Card>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2">
-              {topics.data.map((t) => (
-                <TopicCard
-                  key={t.slug}
-                  t={t}
-                  selected={selected.includes(t.slug)}
-                  onToggle={() => toggle(t.slug)}
-                />
-              ))}
+      <PageTabs
+        className="mt-6"
+        label="Quizzes"
+        value={view}
+        onValueChange={setView}
+        tabs={[
+          { value: 'start', label: 'Start a quiz' },
+          { value: 'history', label: 'History', count: attempts.data?.length ?? null },
+        ]}
+      >
+        {/* Kept mounted while hidden, like the setup on the Interviews page. */}
+        <PageTabPanel value="start" keepMounted className="mt-5">
+          <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+            <div className="min-w-0 space-y-3">
+              <h2 className="sr-only">Topics</h2>
+              {topics.isPending ? (
+                <TopicGridSkeleton />
+              ) : topics.isError ? (
+                <Card>
+                  <ErrorState error={topics.error} onRetry={() => topics.refetch()} />
+                </Card>
+              ) : topics.data.length === 0 ? (
+                <Card>
+                  <EmptyState icon={ListChecksIcon} title="No quiz topics yet">
+                    The question bank has not been loaded on this server.
+                  </EmptyState>
+                </Card>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {topics.data.map((t) => (
+                    <TopicCard
+                      key={t.slug}
+                      t={t}
+                      selected={selected.includes(t.slug)}
+                      onToggle={() => toggle(t.slug)}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
-          )}
-        </div>
-        <div className="lg:sticky lg:top-20 lg:col-start-2 lg:row-span-2 lg:row-start-1">
-          {topics.data && topics.data.length > 0 ? (
-            <SetupPanel topics={topics.data} setup={setup} update={update} />
-          ) : (
-            topics.isPending && <Skeleton className="h-96 w-full rounded-lg" />
-          )}
-        </div>
-        <div className="min-w-0 lg:col-start-1 lg:row-start-2">
+            <div ref={setupColumn} className="min-w-0 lg:sticky lg:top-20">
+              {topics.data && topics.data.length > 0 ? (
+                <SetupPanel topics={topics.data} setup={setup} update={update} />
+              ) : (
+                topics.isPending && <Skeleton className="h-96 w-full rounded-lg" />
+              )}
+            </div>
+          </div>
+        </PageTabPanel>
+        <PageTabPanel value="history" className="mt-5">
           <HistoryList topics={topics.data ?? []} />
-        </div>
-      </div>
-      {selected.length > 0 && (
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-surface/95 px-4 py-3 backdrop-blur-sm lg:hidden">
+        </PageTabPanel>
+      </PageTabs>
+      {showBar && (
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-surface/95 px-4 pt-2 pb-[calc(0.5rem_+_env(safe-area-inset-bottom))] backdrop-blur-sm lg:hidden">
           <div className="mx-auto flex max-w-6xl items-center gap-3">
-            <span className="flex-1 text-sm">
+            <span className="min-w-0 flex-1 truncate text-sm">
               <span className="font-medium">{plural(selected.length, 'topic')}</span> selected
             </span>
             <Button
               variant="primary"
-              size="sm"
+              size="lg"
               onClick={() =>
                 document
                   .getElementById('setup-heading')

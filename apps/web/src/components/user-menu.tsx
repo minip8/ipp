@@ -56,7 +56,7 @@ export function UserMenu() {
   const u = me.data;
   return (
     <Menu>
-      <MenuTrigger className="rounded-full" aria-label="Account menu">
+      <MenuTrigger className="touch-hit rounded-full" aria-label="Account menu">
         <Avatar name={u.name} image={u.image} />
       </MenuTrigger>
       <MenuContent align="end" className="w-56">

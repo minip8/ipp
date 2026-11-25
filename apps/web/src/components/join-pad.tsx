@@ -116,6 +116,8 @@ function JoinRoom({ token, invite, me }: { token: string; invite: InviteInfo; me
               onChange={(e) => setName(e.target.value)}
               maxLength={GUEST_NAME_MAX}
               autoComplete="name"
+              autoCapitalize="words"
+              enterKeyHint="go"
               autoFocus
               placeholder="As your interviewer should see it"
             />
@@ -186,10 +188,10 @@ function Invite({ token }: { token: string }) {
 export function JoinPad({ token }: { token: string }) {
   return (
     <div className="flex min-h-dvh flex-col">
-      <header className="flex h-14 items-center px-4">
+      <header className="flex h-14 shrink-0 items-center px-4">
         <Logo />
       </header>
-      <main className="flex flex-1 items-start justify-center pt-[15vh]">
+      <main className="flex flex-1 items-start justify-center pt-[6vh] pb-16 sm:pt-[15vh] sm:pb-0">
         <Invite token={token} />
       </main>
     </div>

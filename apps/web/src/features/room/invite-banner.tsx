@@ -22,16 +22,24 @@ export function InviteBanner() {
   };
   return (
     <div
-      className="flex shrink-0 items-center gap-3 border-b border-border bg-accent-soft/50 px-4 py-1.5 text-sm"
+      className="flex shrink-0 items-center gap-3 border-b border-border bg-accent-soft/50 px-4 py-1.5 text-sm max-lg:gap-2 max-lg:px-3"
       role="status"
       data-testid="invite-banner"
     >
       <UserPlusIcon className="size-4 shrink-0 text-accent-text" aria-hidden />
       <span className="min-w-0 flex-1">
-        Nobody has joined yet. Send your candidate the invite link: they only need to type their
-        name.
+        Nobody has joined yet.
+        <span className="max-sm:hidden">
+          {' '}
+          Send your candidate the invite link: they only need to type their name.
+        </span>
       </span>
-      <Button size="xs" variant={copied ? 'secondary' : 'primary'} onClick={copy}>
+      <Button
+        size="xs"
+        variant={copied ? 'secondary' : 'primary'}
+        onClick={copy}
+        className="max-lg:h-9 max-lg:px-3"
+      >
         {copied ? <CheckIcon /> : <CopyIcon />}
         {copied ? 'Copied' : 'Copy invite link'}
       </Button>

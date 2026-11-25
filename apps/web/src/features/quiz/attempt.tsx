@@ -43,7 +43,15 @@ import {
   toResponse,
 } from './logic';
 import { ProgressSegments, type SegState } from './progress';
-import { AnswerInput, FeedbackPanel, QuestionCode, QuestionHeader } from './question';
+import {
+  ACTION_BAR,
+  AnswerInput,
+  FeedbackPanel,
+  PHONE_FIT,
+  QuestionCode,
+  QuestionHeader,
+  revealOnNarrow,
+} from './question';
 import { QuizResults } from './results';
 
 export function useTopicTitles() {
@@ -146,6 +154,7 @@ function QuizFlow({ attempt }: { attempt: QuizAttempt }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [grading, setGrading] = useState<number | null>(null);
   const mainRef = useRef<HTMLHeadingElement>(null);
+  const feedbackRef = useRef<HTMLDivElement>(null);
 
   const q = qs[index] as PublicQuizQuestion;
   const draft = drafts[q.id] as Draft;
@@ -229,6 +238,15 @@ function QuizFlow({ attempt }: { attempt: QuizAttempt }) {
   });
 
   const setDraft = (d: Draft) => setDrafts((all) => ({ ...all, [q.id]: d }));
+
+  // On a phone the feedback lands below the choices, often off screen: bring it up.
+  const fbKey = fb ? String(fb.needsSelfGrade) : '';
+  const seenFb = useRef({ id: q.id, key: fbKey });
+  useEffect(() => {
+    const was = seenFb.current;
+    seenFb.current = { id: q.id, key: fbKey };
+    if (was.id === q.id && fbKey && was.key !== fbKey) revealOnNarrow(feedbackRef.current);
+  }, [q.id, fbKey]);
 
   const primary = useCallback(() => {
     if (submit.isPending || finish.isPending || submitWait > 0) return;
@@ -319,11 +337,11 @@ function QuizFlow({ attempt }: { attempt: QuizAttempt }) {
   const topicLine = attempt.topics.map(titleOf).join(', ');
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
+    <div className={cn('mx-auto max-w-3xl px-4 py-6 sm:px-6 max-sm:pt-3', PHONE_FIT)}>
       <div className="flex items-center gap-3">
         <Link
           href="/quiz"
-          className="inline-flex items-center gap-1 text-sm text-fg-muted hover:text-fg"
+          className="inline-flex items-center gap-1 text-sm text-fg-muted hover:text-fg max-sm:min-h-10"
         >
           <ArrowLeftIcon className="size-3.5" /> Quizzes
         </Link>
@@ -331,14 +349,14 @@ function QuizFlow({ attempt }: { attempt: QuizAttempt }) {
         <Button
           variant={exam && unanswered === 0 ? 'primary' : 'ghost'}
           size="sm"
-          className="ml-auto"
+          className="ml-auto max-sm:h-10"
           onClick={() => setConfirmOpen(true)}
         >
           <FlagIcon /> Finish quiz
         </Button>
       </div>
 
-      <div className="mt-4 rounded-lg border border-border bg-surface px-4 py-3">
+      <div className="mt-4 rounded-lg border border-border bg-surface px-4 py-3 max-sm:mt-2 max-sm:px-3">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <Badge tone={exam ? 'warn' : 'accent'}>{exam ? 'Exam' : 'Practice'}</Badge>
           <span className="min-w-0 flex-1 truncate text-sm font-medium" title={topicLine}>
@@ -358,7 +376,7 @@ function QuizFlow({ attempt }: { attempt: QuizAttempt }) {
         </p>
       </div>
 
-      <article className="mt-6" aria-labelledby={`q-${q.id}`}>
+      <article className="mt-6 max-sm:mt-5" aria-labelledby={`q-${q.id}`}>
         <QuestionHeader q={q} />
         <h1 ref={mainRef} tabIndex={-1} className="sr-only">
           Question {index + 1} of {qs.length}
@@ -393,7 +411,7 @@ function QuizFlow({ attempt }: { attempt: QuizAttempt }) {
         )}
 
         {fb && !exam && (
-          <div className="mt-5">
+          <div ref={feedbackRef} className="mt-5 max-lg:scroll-mb-24">
             <FeedbackPanel
               q={q}
               feedback={fb}
@@ -410,10 +428,11 @@ function QuizFlow({ attempt }: { attempt: QuizAttempt }) {
 
         <InlineError error={submit.error ?? finish.error} className="mt-4" />
 
-        <div className="mt-6 flex items-center gap-2 border-t border-border pt-4">
+        <div className={cn('mt-6 flex items-center gap-2 border-t border-border pt-4', ACTION_BAR)}>
           <Button
             variant="ghost"
             size="sm"
+            className="max-sm:h-10 max-sm:px-3"
             onClick={() => go(index - 1)}
             disabled={index === 0}
             aria-label="Previous question"
@@ -421,7 +440,12 @@ function QuizFlow({ attempt }: { attempt: QuizAttempt }) {
             <ChevronLeftIcon /> <span className="hidden sm:inline">Previous</span>
           </Button>
           {!settled && !locked && !exam && !last && (
-            <Button variant="ghost" size="sm" onClick={() => go(index + 1)}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="max-sm:h-10 max-sm:px-3"
+              onClick={() => go(index + 1)}
+            >
               Skip
             </Button>
           )}
@@ -429,6 +453,7 @@ function QuizFlow({ attempt }: { attempt: QuizAttempt }) {
             <Button
               variant="ghost"
               size="sm"
+              className="max-sm:h-10 max-sm:px-3"
               onClick={() => go(index + 1)}
               aria-label="Next question"
             >
@@ -439,6 +464,8 @@ function QuizFlow({ attempt }: { attempt: QuizAttempt }) {
             className={cn(
               'ml-auto hidden items-center gap-1.5 text-xs text-fg-subtle',
               !(locked && !settled) && 'md:inline-flex',
+              // Key hints are noise on a touch screen.
+              'pointer-coarse:hidden!',
             )}
           >
             {q.type === 'short' || (draft.type === 'output' && draft.kind === 'output') ? (
@@ -459,7 +486,7 @@ function QuizFlow({ attempt }: { attempt: QuizAttempt }) {
           </span>
           <Button
             variant="primary"
-            className="ml-auto md:ml-2"
+            className="ml-auto md:ml-2 max-sm:h-10 max-sm:flex-1"
             onClick={primary}
             disabled={primaryDisabled}
             data-testid="quiz-primary"
@@ -476,7 +503,7 @@ function QuizFlow({ attempt }: { attempt: QuizAttempt }) {
           </Button>
         </div>
         {exam && last && unanswered === 0 && (
-          <p className="mt-3 text-right text-sm text-fg-muted">
+          <p className="mt-3 text-right text-sm text-fg-muted max-sm:text-center">
             All questions answered.{' '}
             <button
               type="button"
@@ -506,7 +533,7 @@ function QuizFlow({ attempt }: { attempt: QuizAttempt }) {
               <InlineError error={finish.error} />
             </DialogBody>
           ) : null}
-          <DialogFooter>
+          <DialogFooter className="max-sm:[&_button]:h-10">
             <Button variant="ghost" onClick={() => setConfirmOpen(false)}>
               Keep going
             </Button>

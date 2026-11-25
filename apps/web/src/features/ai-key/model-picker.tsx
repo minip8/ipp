@@ -90,7 +90,9 @@ export function ModelPicker({
         >
           <span className="flex min-w-0 items-center gap-2">
             <CpuIcon className="size-3.5 shrink-0 text-fg-subtle" aria-hidden />
-            <SelectValue placeholder="Provider default" />
+            <span className="min-w-0 truncate">
+              <SelectValue placeholder="Provider default" />
+            </span>
           </span>
         </SelectTrigger>
         <SelectContent>

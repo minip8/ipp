@@ -43,7 +43,7 @@ import {
   type TypeFilter,
 } from './bank-logic';
 import { promptSummary } from './logic';
-import { OUTCOME_ICON, OUTCOME_TEXT } from './question';
+import { OUTCOME_ICON, OUTCOME_TEXT, PHONE_FIELD } from './question';
 
 export const TYPE_SHORT: Record<Exclude<TypeFilter, 'all'>, string> = {
   single: 'Single choice',
@@ -144,7 +144,10 @@ export function BankToolbar({
           placeholder="Search subtopics and questions"
           autoComplete="off"
           spellCheck={false}
-          className="h-8 pr-8 pl-8 text-sm [&::-webkit-search-cancel-button]:hidden"
+          className={cn(
+            'h-8 pr-8 pl-8 text-sm max-sm:h-10 max-sm:pr-10 [&::-webkit-search-cancel-button]:hidden',
+            PHONE_FIELD,
+          )}
         />
         {query ? (
           <button
@@ -154,7 +157,7 @@ export function BankToolbar({
               onQuery('');
               input.current?.focus();
             }}
-            className="absolute top-1/2 right-1.5 flex size-5 -translate-y-1/2 items-center justify-center rounded text-fg-subtle hover:bg-surface-3 hover:text-fg"
+            className="absolute top-1/2 right-1.5 flex size-5 -translate-y-1/2 items-center justify-center rounded text-fg-subtle hover:bg-surface-3 hover:text-fg max-sm:right-1 max-sm:size-8"
           >
             <XIcon className="size-3.5" />
           </button>
@@ -168,7 +171,7 @@ export function BankToolbar({
       </div>
       <Segmented<StatusFilter>
         aria-label="Status"
-        className="max-sm:flex max-sm:w-full"
+        className="max-sm:flex max-sm:w-full max-sm:[&>button]:h-9"
         value={filters.status}
         onValueChange={(status) => onChange({ status })}
         options={[
@@ -187,7 +190,7 @@ export function BankToolbar({
           value={filters.difficulty}
           onValueChange={(v) => onChange({ difficulty: v as DifficultyFilter })}
         >
-          <SelectTrigger aria-label="Difficulty" className="max-sm:flex-1 sm:w-36">
+          <SelectTrigger aria-label="Difficulty" className="max-sm:h-10 max-sm:flex-1 sm:w-36">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -198,7 +201,7 @@ export function BankToolbar({
           </SelectContent>
         </Select>
         <Select value={filters.type} onValueChange={(v) => onChange({ type: v as TypeFilter })}>
-          <SelectTrigger aria-label="Question type" className="max-sm:flex-1 sm:w-40">
+          <SelectTrigger aria-label="Question type" className="max-sm:h-10 max-sm:flex-1 sm:w-40">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -212,7 +215,7 @@ export function BankToolbar({
         </Select>
       </div>
       {onClear && (
-        <Button variant="ghost" size="sm" onClick={onClear}>
+        <Button variant="ghost" size="sm" className="max-sm:h-9" onClick={onClear}>
           <XIcon /> Clear filters
         </Button>
       )}
@@ -356,14 +359,14 @@ export function SubtopicPanel({
             </p>
             <h2 className="mt-0.5 text-base font-semibold tracking-tight text-fg">{subtopic}</h2>
           </div>
-          <div className="flex shrink-0 gap-1">
+          <div className="flex shrink-0 gap-1 max-sm:gap-2">
             <Tooltip label={prev ? `Previous: ${prev}` : 'First subtopic'}>
               <Button
                 variant="secondary"
                 size="icon-sm"
                 aria-label={prev ? `Previous subtopic: ${prev}` : 'Previous subtopic'}
                 aria-disabled={!prev}
-                className={cn(!prev && 'opacity-50')}
+                className={cn('max-sm:size-10', !prev && 'opacity-50')}
                 onClick={() => prev && onSubtopic(prev)}
               >
                 <ChevronLeftIcon />
@@ -375,7 +378,7 @@ export function SubtopicPanel({
                 size="icon-sm"
                 aria-label={next ? `Next subtopic: ${next}` : 'Next subtopic'}
                 aria-disabled={!next}
-                className={cn(!next && 'opacity-50')}
+                className={cn('max-sm:size-10', !next && 'opacity-50')}
                 onClick={() => next && onSubtopic(next)}
               >
                 <ChevronRightIcon />
@@ -454,7 +457,7 @@ export function SubtopicPanel({
             <button
               type="button"
               onClick={() => onSubtopic(next)}
-              className="group flex w-full items-center gap-2 rounded-lg border border-dashed border-border-strong px-3 py-2 text-left text-sm text-fg-muted transition-colors hover:border-solid hover:bg-surface-2 hover:text-fg focus-visible:outline-offset-[-2px]"
+              className="group flex w-full items-center gap-2 rounded-lg border border-dashed border-border-strong px-3 py-2 text-left max-sm:py-2.5 text-sm text-fg-muted transition-colors hover:border-solid hover:bg-surface-2 hover:text-fg focus-visible:outline-offset-[-2px]"
             >
               <span className="min-w-0 flex-1">
                 <span className="block text-2xs tracking-wider text-fg-subtle uppercase">

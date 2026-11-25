@@ -36,7 +36,7 @@ export function Segmented<T extends string>({
           value={o.value}
           title={o.hint}
           className={cn(
-            'flex-1 rounded-[5px] px-2.5 font-medium whitespace-nowrap text-fg-muted transition-colors hover:text-fg data-[state=on]:bg-surface data-[state=on]:text-fg data-[state=on]:shadow-[0_1px_2px_oklch(0_0_0/0.08),0_0_0_1px_var(--border)] focus-visible:outline-offset-0',
+            'touch-hit flex-1 rounded-[5px] px-2.5 font-medium whitespace-nowrap text-fg-muted transition-colors hover:text-fg data-[state=on]:bg-surface data-[state=on]:text-fg data-[state=on]:shadow-[0_1px_2px_oklch(0_0_0/0.08),0_0_0_1px_var(--border)] focus-visible:outline-offset-0',
             size === 'sm' ? 'h-6 text-xs' : 'h-7 text-sm',
           )}
         >

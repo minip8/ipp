@@ -20,14 +20,31 @@ const listeners = new Set<() => void>();
 let cache: EditorSettings | null = null;
 const DEFAULTS = EditorSettings.parse({});
 
+/** What is stored: only the settings the user changed, so defaults can differ per device. */
+function readSaved(): Record<string, unknown> {
+  const raw = storage.get<unknown>(KEY, {});
+  return raw && typeof raw === 'object' && !Array.isArray(raw)
+    ? (raw as Record<string, unknown>)
+    : {};
+}
+
 function read(): EditorSettings {
-  cache ??= EditorSettings.parse(storage.get<unknown>(KEY, {}) ?? {});
+  cache ??= EditorSettings.parse(readSaved());
   return cache;
 }
 
+/** The settings the user has set themselves (the others take their defaults). */
+export function savedEditorSettingKeys(): Set<keyof EditorSettings> {
+  const saved = readSaved();
+  return new Set(
+    (Object.keys(EditorSettings.shape) as (keyof EditorSettings)[]).filter((k) => k in saved),
+  );
+}
+
 export function updateEditorSettings(patch: Partial<EditorSettings>) {
-  cache = { ...read(), ...patch };
-  storage.set(KEY, cache);
+  const saved = { ...readSaved(), ...patch };
+  storage.set(KEY, saved);
+  cache = EditorSettings.parse(saved);
   for (const l of listeners) l();
 }
 

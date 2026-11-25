@@ -37,9 +37,15 @@ for (const width of WIDTHS) {
       }
       if (want('dashboard')) {
         await page.goto('/dashboard');
-        await page.getByText('History').waitFor();
+        await page.getByRole('region', { name: 'In progress' }).waitFor();
         await page.waitForTimeout(300);
         await shoot(page, 'dashboard', { fullPage: true });
+      }
+      if (want('dashboard-history')) {
+        await page.goto('/dashboard?view=history');
+        await page.getByRole('region', { name: 'Finished interviews' }).waitFor();
+        await page.waitForTimeout(300);
+        await shoot(page, 'dashboard-history', { fullPage: true });
       }
       if (want('new')) {
         await page.goto('/dashboard');

@@ -38,7 +38,7 @@ import { qk, useAiKey } from '@/lib/queries';
 import { cn } from '@/lib/utils';
 import { outcomeOf, resumeIndex } from './logic';
 import { ProgressSegments, type SegState } from './progress';
-import { FeedbackPanel, QuestionHeader } from './question';
+import { ACTION_BAR, FeedbackPanel, PHONE_FIELD, PHONE_FIT, QuestionHeader } from './question';
 
 function Bubble({
   who,
@@ -165,22 +165,33 @@ export function DiscussionFlow({
   const shown = said.length + (sending ? 1 : 0) + (fb ? 1 : 0);
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll when the thread grows or changes
   useEffect(() => {
-    if (shown > 0) endRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    if (shown === 0) return;
+    // Below lg the box is stuck to the foot of the screen; the thread ends at the page's end.
+    if (window.matchMedia('(max-width: 1023.98px)').matches)
+      window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
+    else endRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }, [shown, q.id]);
+  // On a touch screen focusing the box opens the keyboard over the question, so a new question
+  // waits for a tap; after a reply the box is refocused as on a desktop.
   // biome-ignore lint/correctness/useExhaustiveDependencies: refocus when the question changes
   useEffect(() => {
-    if (!fb) inputRef.current?.focus({ preventScroll: true });
+    if (fb) return;
+    // On a touch screen focusing opens the keyboard over the question, so wait until the
+    // candidate has started replying (the interviewer's opening turn also lands here).
+    if (replies === 0 && window.matchMedia('(pointer: coarse)').matches) return;
+    inputRef.current?.focus({ preventScroll: true });
   }, [q.id, said.length]);
 
   const keyState = aiKey.data?.state;
   const needsKey = keyState === 'missing' || keyState === 'rejected';
+  const composing = !fb && !needsKey;
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
+    <div className={cn('mx-auto max-w-3xl px-4 py-6 sm:px-6 max-sm:pt-3', PHONE_FIT)}>
       <div className="flex items-center gap-3">
         <Link
           href="/quiz"
-          className="inline-flex items-center gap-1 text-sm text-fg-muted hover:text-fg"
+          className="inline-flex items-center gap-1 text-sm text-fg-muted hover:text-fg max-sm:min-h-10"
         >
           <ArrowLeftIcon className="size-3.5" /> Quizzes
         </Link>
@@ -188,14 +199,14 @@ export function DiscussionFlow({
         <Button
           variant={open === 0 ? 'primary' : 'ghost'}
           size="sm"
-          className="ml-auto"
+          className="ml-auto max-sm:h-10"
           onClick={() => setConfirmOpen(true)}
         >
           <FlagIcon /> Finish
         </Button>
       </div>
 
-      <div className="mt-4 rounded-lg border border-border bg-surface px-4 py-3">
+      <div className="mt-4 rounded-lg border border-border bg-surface px-4 py-3 max-sm:mt-2 max-sm:px-3 max-sm:py-2.5">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <Badge tone="accent">Discussion</Badge>
           <span className="min-w-0 flex-1 truncate text-sm font-medium" title={topicLine}>
@@ -205,12 +216,12 @@ export function DiscussionFlow({
             Question {index + 1} of {qs.length}
           </span>
         </div>
-        <div className="mt-3">
+        <div className="mt-3 max-sm:mt-2">
           <ProgressSegments questions={qs} index={index} stateOf={stateOf} onJump={go} />
         </div>
       </div>
 
-      <article className="mt-6" aria-labelledby={`q-${q.id}`}>
+      <article className="mt-6 max-sm:mt-5" aria-labelledby={`q-${q.id}`}>
         <QuestionHeader q={q} />
         <h1 className="sr-only">
           Question {index + 1} of {qs.length}
@@ -224,13 +235,13 @@ export function DiscussionFlow({
           {said.map((t, i) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: turns are only ever appended
             <Bubble key={i} who={t.role}>
-              <p className="text-base whitespace-pre-wrap">{t.text}</p>
+              <p className="text-base break-words whitespace-pre-wrap">{t.text}</p>
             </Bubble>
           ))}
           {sending && (
             <>
               <Bubble who="candidate">
-                <p className="text-base whitespace-pre-wrap">{sending.text}</p>
+                <p className="text-base break-words whitespace-pre-wrap">{sending.text}</p>
               </Bubble>
               <li className="flex items-center gap-2 text-xs text-fg-subtle" role="status">
                 <Spinner /> Interviewer is thinking
@@ -256,74 +267,94 @@ export function DiscussionFlow({
           >
             What you have said so far is kept.
           </AiKeyPrompt>
-        ) : (
-          <div className="mt-5">
-            <label htmlFor="discussion-reply" className="sr-only">
-              Your reply
-            </label>
-            <Textarea
-              id="discussion-reply"
-              ref={inputRef}
-              rows={4}
-              value={draft}
-              maxLength={DISCUSSION_TURN_MAX_CHARS}
-              disabled={reply.isPending}
-              onChange={(e) => setDrafts((d) => ({ ...d, [q.id]: e.target.value }))}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                  e.preventDefault();
-                  send();
+        ) : null}
+
+        {/* Below lg (where the page scrolls as a whole) the reply box and the actions stick to the
+            foot of the screen, so the box stays in reach as the thread grows. From lg the wrapper
+            is `display: contents` and its children lay out as before. */}
+        <div
+          className={cn('max-lg:mt-5 max-lg:border-t max-lg:border-border lg:contents', ACTION_BAR)}
+        >
+          {composing && (
+            <div className="mt-5 max-lg:mt-0">
+              <label htmlFor="discussion-reply" className="sr-only">
+                Your reply
+              </label>
+              <Textarea
+                id="discussion-reply"
+                ref={inputRef}
+                rows={4}
+                className={cn('max-sm:h-24 max-sm:min-h-0 max-sm:resize-none', PHONE_FIELD)}
+                value={draft}
+                maxLength={DISCUSSION_TURN_MAX_CHARS}
+                disabled={reply.isPending}
+                onChange={(e) => setDrafts((d) => ({ ...d, [q.id]: e.target.value }))}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                    e.preventDefault();
+                    send();
+                  }
+                }}
+                placeholder={
+                  replies === 0 ? 'Answer as you would out loud' : 'Reply to the follow-up'
                 }
-              }}
-              placeholder={
-                replies === 0 ? 'Answer as you would out loud' : 'Reply to the follow-up'
-              }
-            />
-            <p className="mt-1.5 text-xs text-fg-muted">
-              {replies + 1 >= DISCUSSION_MAX_TURNS
-                ? 'This is your last reply on this question.'
-                : `Reply ${replies + 1} of up to ${DISCUSSION_MAX_TURNS}. The interviewer may follow up.`}
-            </p>
-          </div>
-        )}
-        <div ref={endRef} />
-
-        <InlineError error={reply.error ?? finish.error} className="mt-4" />
-
-        <div className="mt-6 flex items-center gap-2 border-t border-border pt-4">
-          {!fb && !last && (
-            <Button variant="ghost" size="sm" onClick={() => go(index + 1)}>
-              Skip
-            </Button>
+              />
+              <p className="mt-1.5 text-xs text-fg-muted">
+                {replies + 1 >= DISCUSSION_MAX_TURNS
+                  ? 'This is your last reply on this question.'
+                  : `Reply ${replies + 1} of up to ${DISCUSSION_MAX_TURNS}. The interviewer may follow up.`}
+              </p>
+            </div>
           )}
-          {fb ? (
-            <Button
-              variant="primary"
-              className="ml-auto"
-              onClick={next}
-              disabled={finish.isPending}
-              data-testid="quiz-primary"
-            >
-              {finish.isPending && <Spinner />}
-              {last ? 'See results' : 'Next question'} <ArrowRightIcon />
-            </Button>
-          ) : (
-            <>
-              <span className="ml-auto hidden items-center gap-1.5 text-xs text-fg-subtle md:inline-flex">
-                <Kbd keys="Mod+Enter" /> to send
-              </span>
+          <div ref={endRef} />
+
+          <InlineError error={reply.error ?? finish.error} className="mt-4 max-lg:mt-2" />
+
+          <div
+            className={cn(
+              'mt-6 flex items-center gap-2 border-t border-border pt-4 max-lg:border-t-0 max-lg:pt-0',
+              composing ? 'max-lg:mt-2' : 'max-lg:mt-0',
+            )}
+          >
+            {!fb && !last && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="max-sm:h-10 max-sm:px-3"
+                onClick={() => go(index + 1)}
+              >
+                Skip
+              </Button>
+            )}
+            {fb ? (
               <Button
                 variant="primary"
-                className="ml-auto md:ml-2"
-                onClick={send}
-                disabled={!canSend || needsKey}
+                className="ml-auto max-sm:h-10 max-sm:flex-1"
+                onClick={next}
+                disabled={finish.isPending}
                 data-testid="quiz-primary"
               >
-                {reply.isPending ? <Spinner /> : <SendIcon />}
-                {wait > 0 ? `Try again in ${wait}s` : 'Send'}
+                {finish.isPending && <Spinner />}
+                {last ? 'See results' : 'Next question'} <ArrowRightIcon />
               </Button>
-            </>
-          )}
+            ) : (
+              <>
+                <span className="ml-auto hidden items-center gap-1.5 text-xs text-fg-subtle md:inline-flex pointer-coarse:hidden!">
+                  <Kbd keys="Mod+Enter" /> to send
+                </span>
+                <Button
+                  variant="primary"
+                  className="ml-auto md:ml-2 max-sm:h-10 max-sm:flex-1"
+                  onClick={send}
+                  disabled={!canSend || needsKey}
+                  data-testid="quiz-primary"
+                >
+                  {reply.isPending ? <Spinner /> : <SendIcon />}
+                  {wait > 0 ? `Try again in ${wait}s` : 'Send'}
+                </Button>
+              </>
+            )}
+          </div>
         </div>
       </article>
 
@@ -337,7 +368,7 @@ export function DiscussionFlow({
                 : 'You will see your score and a review of every question.'}
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter>
+          <DialogFooter className="max-sm:[&_button]:h-10">
             <Button variant="ghost" onClick={() => setConfirmOpen(false)}>
               Keep going
             </Button>

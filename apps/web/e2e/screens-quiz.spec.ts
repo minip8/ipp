@@ -1,8 +1,9 @@
 /** Visual review screenshots for quizzes. Run with SCREENS=1 playwright test screens-quiz. */
 
+import type { QuizAttempt } from '@ipp/contracts';
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
-import { aiKeyStatus, QUIZ_ATTEMPT_ID } from './fixtures';
+import { aiKeyStatus, makeAttempt, QUIZ_ATTEMPT_ID, QUIZ_QUESTIONS } from './fixtures';
 import { QUIZ_BANK_LONG, QUIZ_BANK_TOPIC } from './fixtures-quiz-bank';
 import { shoot as rawShoot, setup } from './helpers';
 
@@ -26,6 +27,14 @@ for (const width of WIDTHS) {
       await page.getByRole('button', { name: /^Networking/ }).click();
       await page.waitForTimeout(300);
       await shoot(page, 'quiz-hub', { fullPage: true });
+    });
+
+    test('hub history', async ({ page }) => {
+      await setup(page);
+      await page.goto('/quiz?view=history');
+      await page.getByRole('region', { name: 'Past quizzes' }).getByRole('link').first().waitFor();
+      await page.waitForTimeout(300);
+      await shoot(page, 'quiz-history', { fullPage: true });
     });
 
     test('discussion', async ({ page }) => {
@@ -143,6 +152,54 @@ for (const width of WIDTHS) {
       await page.goto(`${bank}?question=os-processes-004`);
       await expect(page.getByLabel('Your answer')).toBeVisible();
       await shoot(page, 'quiz-bank-long-question', { fullPage: true });
+    });
+
+    // Phones: what one screen shows, with the answer bar or reply box stuck to its foot (a
+    // full-page capture puts sticky bars at their place in the flow instead).
+    test('phone screens', async ({ page }) => {
+      test.skip(width >= 600, 'phone widths only');
+      await setup(page, (b) => {
+        b.attempts.set(
+          'b0000000-0000-4000-8000-0000000000d1',
+          makeAttempt({
+            id: 'b0000000-0000-4000-8000-0000000000d1',
+            mode: 'discussion',
+            topics: ['networking'],
+            questions: QUIZ_QUESTIONS.filter(
+              (q) => q.type === 'short',
+            ) as unknown as QuizAttempt['questions'],
+          }),
+        );
+      });
+      await page.goto(`/quiz/${QUIZ_ATTEMPT_ID}`);
+      const primary = page.getByTestId('quiz-primary');
+      await page.getByRole('radio', { name: /page fault/ }).click();
+      await primary.click();
+      await primary.click();
+      await page.getByRole('checkbox', { name: /opposite orders/ }).click();
+      await primary.click();
+      await primary.click();
+      await page.getByRole('radio', { name: /Prints exactly/ }).click();
+      await page.getByLabel('Output').fill('ac|dd');
+      await page.getByLabel('Output').blur();
+      await shoot(page, 'quiz-phone-output');
+      await primary.click();
+      await expect(page.getByText('Incorrect', { exact: true })).toBeVisible();
+      await page.waitForTimeout(400);
+      await rawShoot(page, 'quiz-phone-output-feedback');
+
+      await page.goto('/quiz/b0000000-0000-4000-8000-0000000000d1');
+      await page.getByLabel('Your reply').fill('So late segments from the old connection die out.');
+      await page.getByRole('button', { name: 'Send' }).click();
+      await expect(page.getByText('Interviewer is thinking')).toBeHidden();
+      await page.getByLabel('Your reply').fill('And so the final ACK can be resent if it is lost.');
+      await page.getByLabel('Your reply').blur();
+      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+      await rawShoot(page, 'quiz-phone-discussion');
+
+      await page.goto(`/quiz/topics/${QUIZ_BANK_TOPIC}?question=os-virtual-memory-002`);
+      await page.getByRole('radio', { name: /page fault/ }).click();
+      await shoot(page, 'quiz-phone-bank-question');
     });
   });
 }

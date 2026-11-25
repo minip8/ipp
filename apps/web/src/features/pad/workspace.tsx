@@ -1,18 +1,23 @@
 'use client';
 import { BLANK_SCAFFOLDS, LANGUAGES, type Language } from '@ipp/contracts';
 import {
+  CodeXmlIcon,
   FileCode2Icon,
+  FileTextIcon,
   FlaskConicalIcon,
   LockIcon,
+  type LucideIcon,
+  MessagesSquareIcon,
   PenToolIcon,
   PlayIcon,
   RotateCcwIcon,
   SendIcon,
-  XIcon,
+  SquareTerminalIcon,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Group,
   Panel,
@@ -38,13 +43,27 @@ import { RoomSidePanel } from '@/features/room/side-panel';
 import { cn } from '@/lib/utils';
 import { type ChatHandle, ChatPanel } from './chat-panel';
 import { ConsolePanel, compileAll, useConsoleState } from './console/console-panel';
-import { EndDialog, ResetDialog, SettingsDialog, ShortcutsDialog } from './dialogs';
+import { EndDialog, ResetDialog, SettingsDialog, ShareDialog, ShortcutsDialog } from './dialogs';
 import { CodeEditor, type EditorCommand, type EditorHandle } from './editor/code-editor';
-import { useEditorSettings } from './editor/settings';
+import { savedEditorSettingKeys, useEditorSettings } from './editor/settings';
+import {
+  clearUnread,
+  incomingMessages,
+  initialPane,
+  NO_UNREAD,
+  newlyFinished,
+  noteActivity,
+  PANES,
+  type Pane,
+  togglePane,
+  touchEditorSettings,
+  type Unread,
+} from './layout';
 import { ProblemPanel } from './problem-panel';
 import { usePad } from './session';
 import { SHORTCUTS, type ShortcutId, useShortcuts } from './shortcuts';
 import { TopBar } from './top-bar';
+import { PortalSlot, useIsDesktop, useKeyboardBox, usePortalNode } from './use-layout';
 import { Whiteboard } from './whiteboard';
 
 const storage = typeof window === 'undefined' ? undefined : window.localStorage;
@@ -62,6 +81,64 @@ function ResizeHandle({ vertical }: { vertical?: boolean }) {
         aria-hidden
       />
     </Separator>
+  );
+}
+
+/** Under the editor on a phone: one row of big buttons where the thumb is. */
+function CompactRunButtons({
+  onRun,
+  onTests,
+  onSubmit,
+}: {
+  onRun: () => void;
+  onTests: () => void;
+  onSubmit: () => void;
+}) {
+  const { state, running, readOnly, synced } = usePad();
+  if (readOnly) return null;
+  const disabled = !synced || Boolean(running);
+  const spin = (mode: string) => running?.mode === mode;
+  return (
+    <div
+      className="flex shrink-0 items-center gap-2 border-t border-border bg-surface px-2 py-2"
+      role="toolbar"
+      aria-label="Run"
+    >
+      <Button
+        size="lg"
+        variant={state.problem ? 'secondary' : 'primary'}
+        className="min-w-0 flex-1 px-2 text-sm"
+        onClick={onRun}
+        disabled={disabled}
+        data-testid="run-file"
+      >
+        {spin('file') ? <Spinner /> : <PlayIcon className="fill-current" />} Run
+      </Button>
+      {state.problem && (
+        <>
+          <Button
+            size="lg"
+            variant="secondary"
+            className="min-w-0 flex-1 px-2 text-sm"
+            onClick={onTests}
+            disabled={disabled}
+            data-testid="run-tests"
+          >
+            {spin('samples') || spin('custom') ? <Spinner /> : <FlaskConicalIcon />} Run tests
+          </Button>
+          <Button
+            size="lg"
+            variant="primary"
+            className="min-w-0 flex-1 px-2 text-sm"
+            onClick={onSubmit}
+            disabled={disabled}
+            data-testid="submit"
+          >
+            {spin('submit') ? <Spinner /> : <SendIcon />} Submit
+          </Button>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -152,6 +229,98 @@ function StatusBar({ cursor }: { cursor: { line: number; col: number } }) {
   );
 }
 
+const PANE_ICON: Record<Pane, LucideIcon> = {
+  problem: FileTextIcon,
+  code: CodeXmlIcon,
+  console: SquareTerminalIcon,
+  chat: MessagesSquareIcon,
+};
+
+/** The phone layout's bottom bar: one tab per pane. */
+function PaneTabs({
+  pane,
+  onPane,
+  unread,
+  chatLabel,
+}: {
+  pane: Pane;
+  onPane: (p: Pane) => void;
+  unread: Unread;
+  chatLabel: string;
+}) {
+  const { running } = usePad();
+  const label: Record<Pane, string> = {
+    problem: 'Problem',
+    code: 'Code',
+    console: 'Console',
+    chat: chatLabel,
+  };
+  return (
+    <div
+      role="tablist"
+      aria-label="Pad sections"
+      className="flex shrink-0 border-t border-border bg-surface pb-[env(safe-area-inset-bottom)]"
+    >
+      {PANES.map((p) => {
+        const Icon = PANE_ICON[p];
+        const active = pane === p;
+        const busy = p === 'console' && Boolean(running);
+        const dot = p === 'console' && unread.console;
+        const count = p === 'chat' ? unread.chat : 0;
+        return (
+          <button
+            key={p}
+            type="button"
+            role="tab"
+            id={`pane-tab-${p}`}
+            aria-controls={`pane-${p}`}
+            aria-selected={active}
+            data-testid={`pane-tab-${p}`}
+            onClick={() => onPane(p)}
+            className={cn(
+              'relative flex h-14 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-medium transition-colors select-none',
+              active ? 'text-accent-text' : 'text-fg-muted active:bg-surface-3',
+            )}
+          >
+            <span
+              aria-hidden
+              className={cn(
+                'absolute inset-x-4 top-0 h-0.5 rounded-b-full',
+                active ? 'bg-accent' : 'bg-transparent',
+              )}
+            />
+            <span className="relative">
+              <Icon className="size-5" aria-hidden />
+              {busy && (
+                <span className="absolute -top-0.5 -right-1 size-2 animate-pulse rounded-full bg-accent ring-2 ring-surface" />
+              )}
+              {!busy && dot && (
+                <span
+                  className="absolute -top-0.5 -right-1 size-2 rounded-full bg-accent ring-2 ring-surface"
+                  data-testid="console-unread"
+                />
+              )}
+              {count > 0 && (
+                <span
+                  className="absolute -top-1.5 -right-2.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-2xs font-semibold text-accent-fg tabular ring-2 ring-surface"
+                  data-testid="chat-tab-unread"
+                  aria-hidden
+                >
+                  {count > 9 ? '9+' : count}
+                </span>
+              )}
+            </span>
+            <span className="max-w-full truncate px-1">{label[p]}</span>
+            {busy && <span className="sr-only">(running)</span>}
+            {!busy && dot && <span className="sr-only">(new result)</span>}
+            {count > 0 && <span className="sr-only">({count} new)</span>}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export function Workspace() {
   const pad = usePad();
   const { state, readOnly, collab, startRun, setLanguage, telemetry, running } = pad;
@@ -165,14 +334,60 @@ export function Workspace() {
   const consolePanel = useRef<PanelImperativeHandle>(null);
   const [view, setView] = useState<'code' | 'board'>('code');
   const [dialog, setDialog] = useState<
-    null | 'settings' | 'shortcuts' | 'end' | 'reset' | 'problem'
+    null | 'settings' | 'shortcuts' | 'end' | 'reset' | 'problem' | 'share'
   >(null);
   const problem = state.problem;
   const languages = problem?.languages ?? LANGUAGES;
   // In a room the telemetry is about the candidate, not about the host looking something up.
   const watched = !readOnly && !pad.isHost;
   const [cursor, setCursor] = useState({ line: 1, col: 1 });
-  const [narrowDismissed, setNarrowDismissed] = useState(false);
+
+  // Below lg the pad is one pane at a time with a tab bar (see layout.ts). The panels are rendered
+  // once, into nodes that each layout attaches where it wants them, so crossing the breakpoint
+  // (a tablet turning round, a window resized) keeps the editor, the chat and the console as they
+  // were instead of remounting them.
+  const desktop = useIsDesktop();
+  const compact = !desktop;
+  const keyboard = useKeyboardBox(compact);
+  const [pane, setPaneState] = useState<Pane>(() => initialPane(Boolean(state.problem)));
+  const paneRef = useRef(pane);
+  paneRef.current = pane;
+  const [unread, setUnread] = useState<Unread>(NO_UNREAD);
+  const setPane = (p: Pane) => {
+    setPaneState(p);
+    setUnread((u) => clearUnread(u, p));
+  };
+  const nodeClass = 'relative h-full w-full overflow-hidden';
+  const problemNode = usePortalNode(nodeClass);
+  const editorNode = usePortalNode(nodeClass);
+  const consoleNode = usePortalNode(nodeClass);
+  const chatNode = usePortalNode(nodeClass);
+
+  // What arrives on a pane that is not showing marks its tab.
+  const seenMessages = useRef(state.messages.length);
+  const finishedRuns = useRef(
+    new Set(state.runs.filter((r) => r.status === 'finished').map((r) => r.id)),
+  );
+  useEffect(() => {
+    const messages = incomingMessages(state.messages, seenMessages.current, state.me);
+    seenMessages.current = state.messages.length;
+    const finished = newlyFinished(finishedRuns.current, state.runs);
+    for (const id of finished) finishedRuns.current.add(id);
+    if (!compact) return;
+    setUnread((u) => noteActivity(u, paneRef.current, { messages, finishedRuns: finished.length }));
+  }, [state.messages, state.runs, state.me, compact]);
+
+  // Monaco measures its box; a pane that was display:none measured 0 x 0.
+  useEffect(() => {
+    if (!compact || pane !== 'code') return;
+    const f = requestAnimationFrame(() => editorRef.current?.layout());
+    return () => cancelAnimationFrame(f);
+  }, [compact, pane]);
+
+  const editorSettings = useMemo(
+    () => (compact ? touchEditorSettings(settings, savedEditorSettingKeys()) : settings),
+    [compact, settings],
+  );
 
   const mainLayout = useDefaultLayout({
     id: 'ipp-pad-main',
@@ -193,7 +408,8 @@ export function Workspace() {
 
   const showResults = () => {
     cs.setTab('result');
-    if (consolePanel.current?.isCollapsed()) consolePanel.current.expand();
+    if (compact) setPane('console');
+    else if (consolePanel.current?.isCollapsed()) consolePanel.current.expand();
   };
   const run = () => {
     showResults();
@@ -214,6 +430,7 @@ export function Workspace() {
     const c = compileAll(problem.signature, cs.drafts);
     if (!c.ok || c.tests.length === 0) {
       cs.setTab('custom');
+      if (compact) setPane('console');
       toast.error('Fix the custom tests first', {
         description:
           c.results.find((r) => r.errors.length)?.errors[0]?.message ?? 'Add at least one test.',
@@ -237,16 +454,22 @@ export function Workspace() {
       toast.message('Your code saves automatically', {
         description: 'Everyone in the pad sees every keystroke.',
       }),
-    toggleProblem: () => toggle(problemPanel.current),
-    toggleConsole: () => toggle(consolePanel.current),
-    toggleChat: () => toggle(chatPanel.current),
+    toggleProblem: () =>
+      compact ? setPane(togglePane(pane, 'problem')) : toggle(problemPanel.current),
+    toggleConsole: () =>
+      compact ? setPane(togglePane(pane, 'console')) : toggle(consolePanel.current),
+    toggleChat: () => (compact ? setPane(togglePane(pane, 'chat')) : toggle(chatPanel.current)),
     focusChat: () => {
-      if (chatPanel.current?.isCollapsed()) chatPanel.current.expand();
+      if (compact) setPane('chat');
+      else if (chatPanel.current?.isCollapsed()) chatPanel.current.expand();
       requestAnimationFrame(() => chatRef.current?.focus());
     },
     focusEditor: () => {
       setView('code');
-      editorRef.current?.focus();
+      if (compact) {
+        setPane('code');
+        requestAnimationFrame(() => editorRef.current?.focus());
+      } else editorRef.current?.focus();
     },
     toggleMic: () => chatRef.current?.toggleMic(),
     settings: () => setDialog('settings'),
@@ -285,20 +508,168 @@ export function Workspace() {
     };
   }, [watched, telemetry]);
 
+  const viewTab = (v: 'code' | 'board') =>
+    cn(
+      'flex items-center gap-1.5 border-r border-border px-3 text-sm',
+      view === v
+        ? 'bg-editor font-medium text-fg shadow-[inset_0_2px_0_var(--accent)]'
+        : 'text-fg-muted hover:text-fg',
+    );
+
+  // The four panels, each rendered once into its own node (see usePortalNode).
+  const problemContent = <ProblemPanel onChangeProblem={() => setDialog('problem')} />;
+  const editorContent = (
+    <div className="flex h-full flex-col">
+      <div
+        className={cn(
+          'flex shrink-0 items-center gap-2 border-b border-border bg-surface pr-2',
+          compact ? 'h-10' : 'h-9',
+        )}
+      >
+        <div className="flex h-full items-stretch" role="tablist" aria-label="Editor view">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === 'code'}
+            onClick={() => setView('code')}
+            className={viewTab('code')}
+          >
+            <FileCode2Icon className="size-3.5" aria-hidden /> {LANG_FILE[lang]}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === 'board'}
+            onClick={() => setView('board')}
+            className={viewTab('board')}
+          >
+            <PenToolIcon className={compact ? 'size-4' : 'size-3.5'} aria-hidden />{' '}
+            {compact ? <span className="max-[400px]:sr-only">Whiteboard</span> : 'Whiteboard'}
+          </button>
+        </div>
+        {view === 'code' && (
+          <>
+            <Select
+              value={lang}
+              onValueChange={(v) => void setLanguage(v as Language)}
+              // A language-restricted problem offers only its own languages.
+              disabled={readOnly || languages.length < 2}
+            >
+              <SelectTrigger
+                className={cn('text-xs', compact ? 'h-8 w-24 min-w-0' : 'h-7 w-28')}
+                aria-label="Language"
+                title={
+                  languages.length < LANGUAGES.length
+                    ? `This problem can only be solved in ${languages.map((l) => LANG_LABEL[l]).join(' or ')}`
+                    : undefined
+                }
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {languages.map((l) => (
+                  <SelectItem key={l} value={l}>
+                    {LANG_LABEL[l]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {!readOnly && (
+              <Tooltip label="Reset to starter code">
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  aria-label="Reset to starter code"
+                  onClick={() => setDialog('reset')}
+                  className={cn(compact && 'size-9')}
+                >
+                  <RotateCcwIcon />
+                </Button>
+              </Tooltip>
+            )}
+          </>
+        )}
+        {!compact && (
+          <div className="ml-auto">
+            <RunButtons onRun={run} onTests={runTests} onSubmit={submit} />
+          </div>
+        )}
+      </div>
+      <div className="relative min-h-0 flex-1">
+        <CodeEditor
+          ref={editorRef}
+          className={cn('absolute inset-0', view !== 'code' && 'invisible')}
+          collab={collab}
+          synced={pad.synced}
+          language={lang}
+          readOnly={readOnly}
+          settings={editorSettings}
+          commands={editorCommands}
+          diagnosticsRun={latestFinished}
+          onPaste={(chars) => chars > 0 && watched && telemetry('paste', chars)}
+          onCursor={(line, col) => setCursor({ line, col })}
+          compact={compact}
+        />
+        {view === 'board' && (
+          <div className="absolute inset-0">
+            <Whiteboard active />
+          </div>
+        )}
+      </div>
+      {compact && <CompactRunButtons onRun={run} onTests={runTests} onSubmit={submit} />}
+    </div>
+  );
+  const consoleContent = (
+    <ConsolePanel
+      cs={cs}
+      onRunCustom={runCustom}
+      onJump={(line, col) => {
+        setView('code');
+        if (compact) {
+          setPane('code');
+          requestAnimationFrame(() => {
+            editorRef.current?.layout();
+            editorRef.current?.revealLine(line, col ?? 1);
+          });
+        } else editorRef.current?.revealLine(line, col ?? 1);
+      }}
+    />
+  );
+  const chatContent = pad.isRoom ? <RoomSidePanel ref={chatRef} /> : <ChatPanel ref={chatRef} />;
+  const nodes: Record<Pane, HTMLDivElement | null> = {
+    problem: problemNode,
+    code: editorNode,
+    console: consoleNode,
+    chat: chatNode,
+  };
+
   return (
     // `relative`: visually hidden (sr-only) labels are absolutely positioned. Without a positioned
     // ancestor they sit in the document, outside every panel's clipping, at wherever their panel's
     // content put them, and one far down a scrolled panel made the whole page scrollable.
-    <div className="relative flex h-dvh flex-col overflow-hidden bg-bg">
+    // On a phone the pad is fixed to the screen, and while the on-screen keyboard is open it fits
+    // the part above it, so the chat's composer and the code being typed stay in view.
+    <div
+      className={cn(
+        'flex h-dvh flex-col overflow-hidden bg-bg',
+        // viewport-fit=cover: keep clear of the notch (landscape) and the status bar (standalone).
+        compact
+          ? 'fixed inset-x-0 top-0 pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pl-[env(safe-area-inset-left)]'
+          : 'relative',
+      )}
+      style={keyboard ? { top: keyboard.top, height: keyboard.height } : undefined}
+    >
       <TopBar
         onSettings={() => setDialog('settings')}
         onShortcuts={() => setDialog('shortcuts')}
         onEnd={() => setDialog('end')}
+        onShare={() => setDialog('share')}
+        compact={compact}
       />
 
       {readOnly && (
         <div
-          className="flex shrink-0 items-center gap-3 border-b border-border bg-accent-soft/50 px-4 py-1.5 text-sm"
+          className="flex shrink-0 items-center gap-3 border-b border-border bg-accent-soft/50 px-4 py-1.5 text-sm max-lg:flex-wrap max-lg:gap-x-2 max-lg:gap-y-0.5 max-lg:px-3"
           role="status"
         >
           <LockIcon className="size-4 text-accent-text" aria-hidden />
@@ -315,191 +686,112 @@ export function Workspace() {
         </div>
       )}
       <InviteBanner />
-      {!narrowDismissed && (
-        <div className="flex shrink-0 items-center gap-3 border-b border-border bg-warn-soft px-4 py-1.5 text-xs text-warn-text lg:hidden">
-          <span className="flex-1">The pad works best on a screen at least 1024 px wide.</span>
-          <Button
-            size="icon-xs"
-            variant="ghost"
-            aria-label="Dismiss"
-            onClick={() => setNarrowDismissed(true)}
+
+      {desktop ? (
+        <Group
+          orientation="horizontal"
+          id="ipp-pad-main"
+          className="min-h-0 flex-1"
+          defaultLayout={mainLayout.defaultLayout}
+          onLayoutChanged={mainLayout.onLayoutChanged}
+        >
+          <Panel
+            id="problem"
+            panelRef={problemPanel}
+            defaultSize="25%"
+            minSize="200px"
+            collapsible
+            collapsedSize={0}
           >
-            <XIcon />
-          </Button>
+            <PortalSlot node={problemNode} className="h-full" />
+          </Panel>
+          <ResizeHandle />
+          <Panel id="center" minSize="30%" defaultSize="50%">
+            <Group
+              orientation="vertical"
+              id="ipp-pad-center"
+              defaultLayout={centerLayout.defaultLayout}
+              onLayoutChanged={centerLayout.onLayoutChanged}
+            >
+              <Panel id="editor" minSize="120px" defaultSize="64%">
+                <PortalSlot node={editorNode} className="h-full" />
+              </Panel>
+              <ResizeHandle vertical />
+              <Panel
+                id="console"
+                panelRef={consolePanel}
+                defaultSize="36%"
+                minSize="120px"
+                collapsible
+                collapsedSize={36}
+              >
+                <PortalSlot node={consoleNode} className="h-full" />
+              </Panel>
+            </Group>
+          </Panel>
+          <ResizeHandle />
+          <Panel
+            id="chat"
+            panelRef={chatPanel}
+            defaultSize="25%"
+            minSize="260px"
+            collapsible
+            collapsedSize={0}
+          >
+            <PortalSlot node={chatNode} className="h-full" />
+          </Panel>
+        </Group>
+      ) : (
+        <div className="relative min-h-0 flex-1" data-testid="pad-panes">
+          {PANES.map((p) => (
+            <div
+              key={p}
+              id={`pane-${p}`}
+              role="tabpanel"
+              aria-labelledby={`pane-tab-${p}`}
+              hidden={pane !== p}
+              className="absolute inset-0"
+            >
+              <PortalSlot node={nodes[p]} className="h-full" />
+            </div>
+          ))}
         </div>
       )}
+      {desktop ? (
+        <StatusBar cursor={cursor} />
+      ) : (
+        // The keyboard leaves little room: the tab bar steps aside until it closes.
+        !keyboard && (
+          <PaneTabs
+            pane={pane}
+            onPane={setPane}
+            unread={unread}
+            chatLabel={pad.isRoom && pad.isHost ? 'Chat & notes' : 'Chat'}
+          />
+        )
+      )}
 
-      <Group
-        orientation="horizontal"
-        id="ipp-pad-main"
-        className="min-h-0 flex-1"
-        defaultLayout={mainLayout.defaultLayout}
-        onLayoutChanged={mainLayout.onLayoutChanged}
-      >
-        <Panel
-          id="problem"
-          panelRef={problemPanel}
-          defaultSize="25%"
-          minSize="200px"
-          collapsible
-          collapsedSize={0}
-        >
-          <ProblemPanel onChangeProblem={() => setDialog('problem')} />
-        </Panel>
-        <ResizeHandle />
-        <Panel id="center" minSize="30%" defaultSize="50%">
-          <Group
-            orientation="vertical"
-            id="ipp-pad-center"
-            defaultLayout={centerLayout.defaultLayout}
-            onLayoutChanged={centerLayout.onLayoutChanged}
-          >
-            <Panel id="editor" minSize="120px" defaultSize="64%">
-              <div className="flex h-full flex-col">
-                <div className="flex h-9 shrink-0 items-center gap-2 border-b border-border bg-surface pr-2">
-                  <div
-                    className="flex h-full items-stretch"
-                    role="tablist"
-                    aria-label="Editor view"
-                  >
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={view === 'code'}
-                      onClick={() => setView('code')}
-                      className={cn(
-                        'flex items-center gap-1.5 border-r border-border px-3 text-sm',
-                        view === 'code'
-                          ? 'bg-editor font-medium text-fg shadow-[inset_0_2px_0_var(--accent)]'
-                          : 'text-fg-muted hover:text-fg',
-                      )}
-                    >
-                      <FileCode2Icon className="size-3.5" aria-hidden /> {LANG_FILE[lang]}
-                    </button>
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={view === 'board'}
-                      onClick={() => setView('board')}
-                      className={cn(
-                        'flex items-center gap-1.5 border-r border-border px-3 text-sm',
-                        view === 'board'
-                          ? 'bg-editor font-medium text-fg shadow-[inset_0_2px_0_var(--accent)]'
-                          : 'text-fg-muted hover:text-fg',
-                      )}
-                    >
-                      <PenToolIcon className="size-3.5" aria-hidden /> Whiteboard
-                    </button>
-                  </div>
-                  {view === 'code' && (
-                    <>
-                      <Select
-                        value={lang}
-                        onValueChange={(v) => void setLanguage(v as Language)}
-                        // A language-restricted problem offers only its own languages.
-                        disabled={readOnly || languages.length < 2}
-                      >
-                        <SelectTrigger
-                          className="h-7 w-28 text-xs"
-                          aria-label="Language"
-                          title={
-                            languages.length < LANGUAGES.length
-                              ? `This problem can only be solved in ${languages.map((l) => LANG_LABEL[l]).join(' or ')}`
-                              : undefined
-                          }
-                        >
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {languages.map((l) => (
-                            <SelectItem key={l} value={l}>
-                              {LANG_LABEL[l]}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {!readOnly && (
-                        <Tooltip label="Reset to starter code">
-                          <Button
-                            size="icon-sm"
-                            variant="ghost"
-                            aria-label="Reset to starter code"
-                            onClick={() => setDialog('reset')}
-                          >
-                            <RotateCcwIcon />
-                          </Button>
-                        </Tooltip>
-                      )}
-                    </>
-                  )}
-                  <div className="ml-auto">
-                    <RunButtons onRun={run} onTests={runTests} onSubmit={submit} />
-                  </div>
-                </div>
-                <div className="relative min-h-0 flex-1">
-                  <CodeEditor
-                    ref={editorRef}
-                    className={cn('absolute inset-0', view !== 'code' && 'invisible')}
-                    collab={collab}
-                    synced={pad.synced}
-                    language={lang}
-                    readOnly={readOnly}
-                    settings={settings}
-                    commands={editorCommands}
-                    diagnosticsRun={latestFinished}
-                    onPaste={(chars) => chars > 0 && watched && telemetry('paste', chars)}
-                    onCursor={(line, col) => setCursor({ line, col })}
-                  />
-                  {view === 'board' && (
-                    <div className="absolute inset-0">
-                      <Whiteboard active />
-                    </div>
-                  )}
-                </div>
-              </div>
-            </Panel>
-            <ResizeHandle vertical />
-            <Panel
-              id="console"
-              panelRef={consolePanel}
-              defaultSize="36%"
-              minSize="120px"
-              collapsible
-              collapsedSize={36}
-            >
-              <ConsolePanel
-                cs={cs}
-                onRunCustom={runCustom}
-                onJump={(line, col) => {
-                  setView('code');
-                  editorRef.current?.revealLine(line, col ?? 1);
-                }}
-              />
-            </Panel>
-          </Group>
-        </Panel>
-        <ResizeHandle />
-        <Panel
-          id="chat"
-          panelRef={chatPanel}
-          defaultSize="25%"
-          minSize="260px"
-          collapsible
-          collapsedSize={0}
-        >
-          {pad.isRoom ? <RoomSidePanel ref={chatRef} /> : <ChatPanel ref={chatRef} />}
-        </Panel>
-      </Group>
-      <StatusBar cursor={cursor} />
+      {/* After the layout, so each node is in the document before its content's layout effects. */}
+      {problemNode && createPortal(problemContent, problemNode, 'problem')}
+      {editorNode && createPortal(editorContent, editorNode, 'editor')}
+      {consoleNode && createPortal(consoleContent, consoleNode, 'console')}
+      {chatNode && createPortal(chatContent, chatNode, 'chat')}
 
       <SettingsDialog
         open={dialog === 'settings'}
         onOpenChange={(o) => setDialog(o ? 'settings' : null)}
+        compact={compact}
       />
       <ShortcutsDialog
         open={dialog === 'shortcuts'}
         onOpenChange={(o) => setDialog(o ? 'shortcuts' : null)}
       />
+      {compact && (
+        <ShareDialog
+          open={dialog === 'share'}
+          onOpenChange={(o) => setDialog(o ? 'share' : null)}
+        />
+      )}
       <ResetDialog
         open={dialog === 'reset'}
         onOpenChange={(o) => setDialog(o ? 'reset' : null)}
