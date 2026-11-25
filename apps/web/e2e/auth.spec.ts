@@ -78,3 +78,26 @@ test('Google sign-in starts the provider flow, and a linking failure is explaine
   await expect(page).toHaveURL(/provider-visited=1/);
   void backend;
 });
+
+test('the home page is reachable when signed in and leads into the app', async ({ page }) => {
+  await setup(page);
+  await page.goto('/dashboard');
+  await page.getByRole('banner').getByRole('link', { name: 'interview++' }).click();
+  await expect(page).toHaveURL('/');
+  await expect(page.getByRole('link', { name: 'Sign in' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Account menu' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Go to your interviews' })).toHaveAttribute(
+    'href',
+    '/dashboard',
+  );
+  await page.getByRole('link', { name: 'Start a practice interview' }).click();
+  await expect(page).toHaveURL('/new');
+});
+
+test('the account pages send a signed-in visitor on instead of asking again', async ({ page }) => {
+  await setup(page);
+  await page.goto('/sign-in');
+  await expect(page).toHaveURL(/\/dashboard$/);
+  await page.goto('/sign-up?next=/quiz');
+  await expect(page).toHaveURL(/\/quiz$/);
+});
