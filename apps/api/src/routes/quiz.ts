@@ -1,6 +1,10 @@
 import {
   type AnswerFeedback,
   CreateAttemptRequest,
+  DISCUSSION_MAX_TURNS,
+  DiscussionReplyRequest,
+  type DiscussionReplyResponse,
+  type DiscussionTurn,
   type QuizAttempt,
   type QuizAttemptSummary,
   type QuizQuestion,
@@ -9,11 +13,11 @@ import {
   SubmitAnswerRequest,
 } from '@ipp/contracts';
 import { quizAnswers, quizAttempts, quizQuestions, quizTopics } from '@ipp/db';
-import { and, desc, eq, inArray, sql } from '@ipp/db/orm';
+import { and, desc, eq, inArray, ne, sql } from '@ipp/db/orm';
 import { Hono } from 'hono';
 import type { Ctx } from '../context';
 import { type Env, parseBody, requireAccount } from '../http/app';
-import { badRequest, conflict, notFound, rateLimited } from '../http/errors';
+import { badRequest, conflict, HttpError, notFound, rateLimited } from '../http/errors';
 import {
   type AnswerRow,
   applySelfGrade,
@@ -22,7 +26,7 @@ import {
   latestAnswerMap,
   latestAnswers,
 } from '../quiz/answers';
-import { publicQuestion } from '../quiz/grade';
+import { CORRECT_THRESHOLD, publicQuestion } from '../quiz/grade';
 import { quizBankRoutes } from './quiz-bank';
 
 type AttemptRow = typeof quizAttempts.$inferSelect;
@@ -76,7 +80,7 @@ export function quizRoutes(ctx: Ctx) {
     let feedback: AnswerFeedback[] = [];
     if (attempt.status === 'finished')
       feedback = ordered.map((q) => feedbackOf(q, answers.get(q.id)));
-    else if (attempt.mode === 'practice') {
+    else if (attempt.mode !== 'exam') {
       feedback = ordered
         .filter((q) => answers.has(q.id))
         .map((q) => feedbackOf(q, answers.get(q.id)));
@@ -89,6 +93,7 @@ export function quizRoutes(ctx: Ctx) {
       questions: ordered.map(publicQuestion),
       responses,
       feedback,
+      discussion: attempt.transcript,
       score: attempt.score,
       startedAt: attempt.startedAt.toISOString(),
       finishedAt: attempt.finishedAt?.toISOString() ?? null,
@@ -113,6 +118,10 @@ export function quizRoutes(ctx: Ctx) {
         description: quizTopics.description,
         questionCount:
           sql<number>`count(${quizQuestions.id}) filter (where ${quizQuestions.active})`.mapWith(
+            Number,
+          ),
+        shortCount:
+          sql<number>`count(${quizQuestions.id}) filter (where ${quizQuestions.active} and ${quizQuestions.type} = 'short')`.mapWith(
             Number,
           ),
         answered: sql<number>`count(${latest.questionId})`.mapWith(Number),
@@ -148,6 +157,10 @@ export function quizRoutes(ctx: Ctx) {
         and(
           inArray(quizQuestions.topic, topics),
           eq(quizQuestions.active, true),
+          // Practice and exam are graded automatically; open questions belong to a discussion.
+          body.mode === 'discussion'
+            ? eq(quizQuestions.type, 'short')
+            : ne(quizQuestions.type, 'short'),
           body.difficulty ? eq(quizQuestions.difficulty, body.difficulty) : undefined,
         ),
       );
@@ -210,6 +223,8 @@ export function quizRoutes(ctx: Ctx) {
     const body = await parseBody(c, SubmitAnswerRequest);
     if (!attempt.questionIds.includes(body.questionId))
       throw badRequest('Question is not part of this attempt');
+    if (attempt.mode === 'discussion')
+      throw badRequest('A discussion is answered in conversation', 'discussion_attempt');
     const wait = await ctx.limiter.hit([
       { key: `quiz:u:${user.id}`, ...ctx.config.limits.quizAnswers.userBurst },
     ]);
@@ -255,6 +270,74 @@ export function quizRoutes(ctx: Ctx) {
     if (attempt.mode === 'exam' && attempt.status === 'active')
       return c.json({ recorded: true as const });
     return c.json(feedbackOf(q, saved));
+  });
+
+  /**
+   * Discussion mode: the candidate's next turn on one question. The interviewer (on the user's
+   * own key) either asks a follow-up or closes the question, which records the graded answer.
+   * Nothing is stored when the model cannot answer, so the same turn can be sent again.
+   */
+  r.post('/quiz/attempts/:id/discussion', async (c) => {
+    const user = requireAccount(c);
+    const attempt = await loadAttempt(c.req.param('id'), user.id);
+    const body = await parseBody(c, DiscussionReplyRequest);
+    if (attempt.mode !== 'discussion')
+      throw badRequest('This attempt is not a discussion', 'not_a_discussion');
+    if (attempt.status === 'finished')
+      throw conflict('attempt_finished', 'This attempt is finished');
+    if (!attempt.questionIds.includes(body.questionId))
+      throw badRequest('Question is not part of this attempt');
+    const wait = await ctx.limiter.hit([
+      { key: `quiz:u:${user.id}`, ...ctx.config.limits.quizAnswers.userBurst },
+    ]);
+    if (wait > 0) throw rateLimited(wait);
+    const q = (await questionsOf([body.questionId])).get(body.questionId);
+    if (q?.type !== 'short') throw notFound('Question');
+    if ((await answersOf(attempt.id)).has(q.id))
+      throw conflict('already_answered', 'This question has already been answered');
+
+    const turns: DiscussionTurn[] = [
+      ...(attempt.transcript[q.id] ?? []),
+      { role: 'candidate', text: body.text },
+    ];
+    const said = turns.filter((t) => t.role === 'candidate');
+    const final = said.length >= DISCUSSION_MAX_TURNS;
+    const step = await ctx.ai.discussShortAnswer(user.id, q, turns, final);
+    if (!step) {
+      if ((await ctx.ai.keyState(user.id)) !== 'active')
+        throw conflict('ai_key_missing', 'Add your AI API key first');
+      throw new HttpError(
+        503,
+        'interviewer_unavailable',
+        'The interviewer could not reply. Try again.',
+      );
+    }
+    const closed = final || !step.followUp;
+    if (!closed) turns.push({ role: 'interviewer', text: step.followUp });
+    await db
+      .update(quizAttempts)
+      .set({ transcript: { ...attempt.transcript, [q.id]: turns } })
+      .where(eq(quizAttempts.id, attempt.id));
+    const out: DiscussionReplyResponse = { turns, feedback: null };
+    if (closed) {
+      const score = Math.max(0, Math.min(1, step.score));
+      const [saved] = await db
+        .insert(quizAnswers)
+        .values({
+          attemptId: attempt.id,
+          questionId: q.id,
+          // Everything the candidate said, so results and the question bank read like any answer.
+          response: { type: 'short', text: said.map((t) => t.text).join('\n\n') },
+          score,
+          correct: score >= CORRECT_THRESHOLD,
+          feedback: step.feedback,
+          gradedBy: 'ai',
+          needsSelfGrade: false,
+        })
+        .returning();
+      out.feedback = feedbackOf(q, saved);
+    }
+    return c.json(out);
   });
 
   r.post('/quiz/attempts/:id/finish', async (c) => {

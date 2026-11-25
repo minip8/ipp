@@ -4,6 +4,7 @@ import type {
   Language,
   OutputAnswer,
   PublicQuizQuestion,
+  QuizMode,
   QuizResponse,
 } from '@ipp/contracts';
 
@@ -178,7 +179,7 @@ export const TYPE_LABEL: Record<PublicQuizQuestion['type'], string> = {
   single: 'Single choice',
   multiple: 'Select all that apply',
   output: 'What does this program do?',
-  short: 'Short answer',
+  short: 'Open question',
 };
 
 export const GRADED_BY_LABEL: Record<AnswerFeedback['gradedBy'], string> = {
@@ -238,7 +239,7 @@ export function resumeIndex(
   questions: PublicQuizQuestion[],
   responses: Record<string, QuizResponse>,
   feedback: AnswerFeedback[],
-  mode: 'practice' | 'exam',
+  mode: QuizMode,
 ): number {
   const done = (q: PublicQuizQuestion) => {
     if (mode === 'exam') return Boolean(responses[q.id]);
@@ -247,4 +248,69 @@ export function resumeIndex(
   };
   const i = questions.findIndex((q) => !done(q));
   return i === -1 ? Math.max(0, questions.length - 1) : i;
+}
+
+// ---------------------------------------------------------------- quiz setup (the hub's choices)
+
+export const MODE_LABEL: Record<QuizMode, string> = {
+  practice: 'Practice',
+  exam: 'Exam',
+  discussion: 'Discussion',
+};
+
+export const MODE_HINT: Record<QuizMode, string> = {
+  practice: 'Multiple choice and "what does this print". You see the answer after each question.',
+  exam: 'The same kind of questions, with the answers held back until you finish.',
+  discussion:
+    'Open questions, talked through with an AI interviewer who asks follow-ups and then grades you.',
+};
+
+export const QUIZ_COUNTS = ['5', '10', '20', '30'] as const;
+/** A discussion question takes a few minutes, so fewer of them. */
+export const DISCUSSION_COUNTS = ['3', '5', '10'] as const;
+
+/** What the hub remembers between visits (kept in this browser). */
+export interface QuizSetup {
+  topics: string[];
+  mode: QuizMode;
+  difficulty: 'any' | 'easy' | 'medium' | 'hard';
+  count: (typeof QUIZ_COUNTS)[number];
+  discussionCount: (typeof DISCUSSION_COUNTS)[number];
+  focusWeak: boolean;
+}
+
+export const DEFAULT_SETUP: QuizSetup = {
+  topics: [],
+  mode: 'practice',
+  difficulty: 'any',
+  count: '10',
+  discussionCount: '5',
+  focusWeak: true,
+};
+
+export const SETUP_STORAGE_KEY = 'ipp.quiz.setup';
+
+/** A stored setup, field by field: anything missing or no longer valid falls back to the default. */
+export function parseSetup(raw: unknown): QuizSetup {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const pick = <T extends string>(v: unknown, allowed: readonly T[], fallback: T): T =>
+    allowed.includes(v as T) ? (v as T) : fallback;
+  return {
+    topics: Array.isArray(r.topics)
+      ? [...new Set(r.topics.filter((t): t is string => typeof t === 'string'))]
+      : [],
+    mode: pick(r.mode, ['practice', 'exam', 'discussion'], DEFAULT_SETUP.mode),
+    difficulty: pick(r.difficulty, ['any', 'easy', 'medium', 'hard'], DEFAULT_SETUP.difficulty),
+    count: pick(r.count, QUIZ_COUNTS, DEFAULT_SETUP.count),
+    discussionCount: pick(r.discussionCount, DISCUSSION_COUNTS, DEFAULT_SETUP.discussionCount),
+    focusWeak: typeof r.focusWeak === 'boolean' ? r.focusWeak : DEFAULT_SETUP.focusWeak,
+  };
+}
+
+/** How many questions a topic has for a mode: open ones for a discussion, the rest otherwise. */
+export function questionsFor(
+  t: { questionCount: number; shortCount: number },
+  mode: QuizMode,
+): number {
+  return mode === 'discussion' ? t.shortCount : t.questionCount - t.shortCount;
 }

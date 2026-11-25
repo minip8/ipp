@@ -58,8 +58,14 @@ describe('quiz', () => {
     });
     expect(res.status).toBe(200);
     const attempt = QuizAttempt.parse(res.json);
-    expect(attempt.questions).toHaveLength(4);
+    // Open (short) questions are never part of a practice quiz or an exam.
+    expect(attempt.questions.map((q) => q.id).sort()).toEqual([
+      'tq-multiple',
+      'tq-output',
+      'tq-single',
+    ]);
     expect(attempt.feedback).toEqual([]);
+    expect(attempt.discussion).toEqual({});
     noLeak(res.text);
 
     const single = await c.post(`/api/quiz/attempts/${attempt.id}/answers`, {
@@ -111,34 +117,17 @@ describe('quiz', () => {
       correctAnswer: { kind: 'output', output: '1 2\n3' },
     });
 
-    const short = await c.post(`/api/quiz/attempts/${attempt.id}/answers`, {
-      questionId: 'tq-short',
-      response: RIGHT['tq-short'],
-    });
-    expect(short.json).toMatchObject({
-      gradedBy: 'ai',
-      score: 0.9,
-      correct: true,
-      feedback: 'Covered the key point.',
-      correctAnswer: 'REFERENCE-SHORT',
-      needsSelfGrade: false,
-    });
-
     // Reload: answered questions have feedback, the unanswered one does not leak.
     const reload = await c.get(`/api/quiz/attempts/${attempt.id}`);
     const view = QuizAttempt.parse(reload.json);
-    expect(view.feedback.map((f) => f.questionId).sort()).toEqual([
-      'tq-output',
-      'tq-short',
-      'tq-single',
-    ]);
-    expect(Object.keys(view.responses).sort()).toEqual(['tq-output', 'tq-short', 'tq-single']);
+    expect(view.feedback.map((f) => f.questionId).sort()).toEqual(['tq-output', 'tq-single']);
+    expect(Object.keys(view.responses).sort()).toEqual(['tq-output', 'tq-single']);
     expect(reload.text).not.toContain('EXPLAIN-MULTIPLE');
 
     const fin = QuizAttempt.parse((await c.post(`/api/quiz/attempts/${attempt.id}/finish`)).json);
     expect(fin.status).toBe('finished');
-    expect(fin.feedback).toHaveLength(4);
-    expect(fin.score).toBeCloseTo((0 + 1 + 0.9 + 0) / 4);
+    expect(fin.feedback).toHaveLength(3);
+    expect(fin.score).toBeCloseTo((0 + 1 + 0) / 3);
     expect(
       (
         await c.post(`/api/quiz/attempts/${attempt.id}/answers`, {
@@ -154,7 +143,7 @@ describe('quiz', () => {
 
     const list = await c.get('/api/quiz/attempts');
     expect(list.json).toEqual([
-      expect.objectContaining({ id: attempt.id, status: 'finished', questionCount: 4 }),
+      expect.objectContaining({ id: attempt.id, status: 'finished', questionCount: 3 }),
     ]);
 
     const stats = (await c.get('/api/quiz/topics')).json.map((t: unknown) =>
@@ -166,8 +155,9 @@ describe('quiz', () => {
         title: 'Test topic',
         description: 'Questions for the API tests',
         questionCount: 4,
-        answered: 3,
-        accuracy: expect.closeTo(1.9 / 3, 5),
+        shortCount: 1,
+        answered: 2,
+        accuracy: expect.closeTo(1 / 2, 5),
       },
     ]);
   });
@@ -207,7 +197,7 @@ describe('quiz', () => {
 
     const fin = await c.post(`/api/quiz/attempts/${attempt.id}/finish`);
     const done = QuizAttempt.parse(fin.json);
-    expect(done.feedback).toHaveLength(4);
+    expect(done.feedback).toHaveLength(3);
     const byId = Object.fromEntries(done.feedback.map((f) => [f.questionId, f]));
     expect(byId['tq-single']).toMatchObject({ correct: true, score: 1 });
     expect(byId['tq-multiple']).toMatchObject({ correct: false, score: 0.5 });
@@ -216,71 +206,16 @@ describe('quiz', () => {
       score: 0,
       feedback: 'Not answered.',
     });
-    expect(done.score).toBeCloseTo(1.5 / 4);
+    expect(done.score).toBeCloseTo(1.5 / 3);
     const statsAfter = (await c.get('/api/quiz/topics')).json;
     expect(statsAfter[0]).toMatchObject({ answered: 2 });
   });
 
-  it('short answers fall back to self-grading without a key', async () => {
-    const c = await user('SelfGrade', false);
-    const attempt = QuizAttempt.parse(
-      (await c.post('/api/quiz/attempts', { topics: ['test-topic'], count: 4 })).json,
-    );
-    const first = await c.post(`/api/quiz/attempts/${attempt.id}/answers`, {
-      questionId: 'tq-short',
-      response: { type: 'short', text: 'RAII ties lifetime' },
-    });
-    expect(first.json).toMatchObject({
-      needsSelfGrade: true,
-      gradedBy: 'self',
-      score: 0,
-      correctAnswer: 'REFERENCE-SHORT',
-    });
-    const graded = await c.post(`/api/quiz/attempts/${attempt.id}/answers`, {
-      questionId: 'tq-short',
-      response: { type: 'short', text: 'ignored', selfGrade: 1 },
-    });
-    expect(graded.json).toMatchObject({
-      needsSelfGrade: false,
-      gradedBy: 'self',
-      score: 1,
-      correct: true,
-    });
-    const view = QuizAttempt.parse((await c.get(`/api/quiz/attempts/${attempt.id}`)).json);
-    expect(view.responses['tq-short']).toEqual({
-      type: 'short',
-      text: 'RAII ties lifetime',
-      selfGrade: 1,
-    });
-
-    // Exam: self-grade after finishing.
-    const exam = QuizAttempt.parse(
-      (await c.post('/api/quiz/attempts', { topics: ['test-topic'], count: 4, mode: 'exam' })).json,
-    );
-    await c.post(`/api/quiz/attempts/${exam.id}/answers`, {
-      questionId: 'tq-short',
-      response: { type: 'short', text: 'x' },
-    });
-    const fin = QuizAttempt.parse((await c.post(`/api/quiz/attempts/${exam.id}/finish`)).json);
-    expect(fin.feedback.find((f) => f.questionId === 'tq-short')?.needsSelfGrade).toBe(true);
-    expect(fin.score).toBe(0);
-    const late = await c.post(`/api/quiz/attempts/${exam.id}/answers`, {
-      questionId: 'tq-short',
-      response: { type: 'short', text: 'x', selfGrade: 0.5 },
-    });
-    expect(late.json).toMatchObject({ score: 0.5, correct: false, needsSelfGrade: false });
-    expect((await c.get(`/api/quiz/attempts/${exam.id}`)).json.score).toBeCloseTo(0.5 / 4);
-  });
-
-  it('a failed grading call also falls back to self-grading', async () => {
+  it('a failed grading call falls back to self-grading', async () => {
     fake.shortGrade = null;
     try {
       const c = await user('ModelDown');
-      const attempt = QuizAttempt.parse(
-        (await c.post('/api/quiz/attempts', { topics: ['test-topic'], count: 4 })).json,
-      );
-      const res = await c.post(`/api/quiz/attempts/${attempt.id}/answers`, {
-        questionId: 'tq-short',
+      const res = await c.post('/api/quiz/questions/tq-short/answers', {
         response: RIGHT['tq-short'],
       });
       expect(res.json).toMatchObject({ needsSelfGrade: true, gradedBy: 'self' });
@@ -292,11 +227,7 @@ describe('quiz', () => {
   it('short-answer grading is charged to the user and refused over the daily budget', async () => {
     const c = await user('Budgeted');
     const me = (await c.get('/api/me')).json.user.id as string;
-    const a = QuizAttempt.parse(
-      (await c.post('/api/quiz/attempts', { topics: ['test-topic'], count: 4 })).json,
-    );
-    const graded = await c.post(`/api/quiz/attempts/${a.id}/answers`, {
-      questionId: 'tq-short',
+    const graded = await c.post('/api/quiz/questions/tq-short/answers', {
       response: RIGHT['tq-short'],
     });
     expect(graded.json.gradedBy).toBe('ai');
@@ -306,16 +237,143 @@ describe('quiz', () => {
     });
     h.api.ctx.config.aiDailyMessageLimit = 1;
     try {
-      const b = QuizAttempt.parse(
-        (await c.post('/api/quiz/attempts', { topics: ['test-topic'], count: 4 })).json,
-      );
-      const over = await c.post(`/api/quiz/attempts/${b.id}/answers`, {
-        questionId: 'tq-short',
+      const over = await c.post('/api/quiz/questions/tq-short/answers', {
         response: RIGHT['tq-short'],
       });
       expect(over.json).toMatchObject({ gradedBy: 'self', needsSelfGrade: true });
     } finally {
       h.api.ctx.config.aiDailyMessageLimit = 300;
+    }
+  });
+
+  it('discussion: open questions only, follow-ups, then a graded answer', async () => {
+    const c = await user('Talker');
+    fake.discussionCalls = [];
+    const created = await c.post('/api/quiz/attempts', {
+      topics: ['test-topic'],
+      count: 5,
+      mode: 'discussion',
+    });
+    const attempt = QuizAttempt.parse(created.json);
+    expect(attempt.mode).toBe('discussion');
+    expect(attempt.questions.map((q) => q.id)).toEqual(['tq-short']);
+    noLeak(created.text);
+    const say = (text: string, questionId = 'tq-short') =>
+      c.post(`/api/quiz/attempts/${attempt.id}/discussion`, { questionId, text });
+
+    // A discussion is not answered through the ordinary endpoint.
+    expect(
+      (
+        await c.post(`/api/quiz/attempts/${attempt.id}/answers`, {
+          questionId: 'tq-short',
+          response: RIGHT['tq-short'],
+        })
+      ).status,
+    ).toBe(400);
+    expect((await say('x', 'tq-single')).status).toBe(400);
+    expect((await say('   ')).status).toBe(400);
+
+    const first = await say('It is about lifetimes.');
+    expect(first.status).toBe(200);
+    expect(first.json).toEqual({
+      turns: [
+        { role: 'candidate', text: 'It is about lifetimes.' },
+        { role: 'interviewer', text: 'What happens under contention?' },
+      ],
+      feedback: null,
+    });
+    // A follow-up reveals nothing, and nothing counts yet.
+    noLeak(first.text);
+    const mid = await c.get(`/api/quiz/attempts/${attempt.id}`);
+    noLeak(mid.text);
+    expect(QuizAttempt.parse(mid.json)).toMatchObject({
+      feedback: [],
+      responses: {},
+      discussion: { 'tq-short': first.json.turns },
+    });
+    expect((await c.get('/api/quiz/topics')).json[0]).toMatchObject({ answered: 0 });
+
+    const second = await say('Resources are released in destructors.');
+    expect(second.json.turns).toHaveLength(3);
+    expect(AnswerFeedback.parse(second.json.feedback)).toMatchObject({
+      gradedBy: 'ai',
+      score: 0.9,
+      correct: true,
+      feedback: 'Covered the key points.',
+      correctAnswer: 'REFERENCE-SHORT',
+      needsSelfGrade: false,
+    });
+    // The model saw the whole conversation, follow-up included.
+    expect(fake.discussionCalls.map((x) => [x.turns.length, x.final])).toEqual([
+      [1, false],
+      [3, false],
+    ]);
+    expect((await say('more')).status).toBe(409);
+
+    // The recorded answer is everything the candidate said; it counts at once, like practice.
+    const view = QuizAttempt.parse((await c.get(`/api/quiz/attempts/${attempt.id}`)).json);
+    expect(view.responses['tq-short']).toEqual({
+      type: 'short',
+      text: 'It is about lifetimes.\n\nResources are released in destructors.',
+    });
+    expect(view.feedback).toHaveLength(1);
+    expect((await c.get('/api/quiz/topics')).json[0]).toMatchObject({ answered: 1 });
+    const fin = QuizAttempt.parse((await c.post(`/api/quiz/attempts/${attempt.id}/finish`)).json);
+    expect(fin.score).toBeCloseTo(0.9);
+    expect(fin.discussion['tq-short']).toHaveLength(3);
+  });
+
+  it('discussion: the last turn closes the question whatever the model wants to ask', async () => {
+    const c = await user('Stubborn');
+    fake.discussionCalls = [];
+    const saved = fake.discussionSteps;
+    fake.discussionSteps = [{ score: 0.2, feedback: 'Thin.', followUp: 'And then?' }];
+    try {
+      const attempt = QuizAttempt.parse(
+        (await c.post('/api/quiz/attempts', { topics: ['test-topic'], mode: 'discussion' })).json,
+      );
+      const say = (text: string) =>
+        c.post(`/api/quiz/attempts/${attempt.id}/discussion`, { questionId: 'tq-short', text });
+      expect((await say('one')).json.feedback).toBeNull();
+      expect((await say('two')).json.feedback).toBeNull();
+      const last = await say('three');
+      expect(last.json.turns).toHaveLength(5);
+      expect(last.json.feedback).toMatchObject({ score: 0.2, correct: false, feedback: 'Thin.' });
+      expect(fake.discussionCalls.map((x) => x.final)).toEqual([false, false, true]);
+    } finally {
+      fake.discussionSteps = saved;
+    }
+  });
+
+  it('discussion: needs a key, and a failed reply stores nothing', async () => {
+    const keyless = await user('NoKey', false);
+    const a = QuizAttempt.parse(
+      (await keyless.post('/api/quiz/attempts', { topics: ['test-topic'], mode: 'discussion' }))
+        .json,
+    );
+    const refused = await keyless.post(`/api/quiz/attempts/${a.id}/discussion`, {
+      questionId: 'tq-short',
+      text: 'hello',
+    });
+    expect(refused.status).toBe(409);
+    expect(refused.json.error.code).toBe('ai_key_missing');
+
+    const c = await user('ModelDownTalk');
+    const saved = fake.discussionSteps;
+    fake.discussionSteps = [null];
+    try {
+      const b = QuizAttempt.parse(
+        (await c.post('/api/quiz/attempts', { topics: ['test-topic'], mode: 'discussion' })).json,
+      );
+      const down = await c.post(`/api/quiz/attempts/${b.id}/discussion`, {
+        questionId: 'tq-short',
+        text: 'hello',
+      });
+      expect(down.status).toBe(503);
+      const view = QuizAttempt.parse((await c.get(`/api/quiz/attempts/${b.id}`)).json);
+      expect(view.discussion).toEqual({});
+    } finally {
+      fake.discussionSteps = saved;
     }
   });
 
@@ -329,7 +387,7 @@ describe('quiz', () => {
       questionId: 'tq-single',
       response: { type: 'single', choice: 'a' },
     });
-    for (const id of ['tq-multiple', 'tq-output', 'tq-short'] as const) {
+    for (const id of ['tq-multiple', 'tq-output'] as const) {
       await c.post(`/api/quiz/attempts/${a.id}/answers`, { questionId: id, response: RIGHT[id] });
     }
     for (let i = 0; i < 5; i++) {
@@ -342,6 +400,6 @@ describe('quiz', () => {
       (await c.post('/api/quiz/attempts', { topics: ['test-topic'], count: 4, focusWeak: false }))
         .json,
     );
-    expect(random.questions).toHaveLength(4);
+    expect(random.questions).toHaveLength(3);
   });
 });

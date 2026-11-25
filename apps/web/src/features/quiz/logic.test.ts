@@ -2,6 +2,7 @@ import type { AnswerFeedback, PublicQuizQuestion } from '@ipp/contracts';
 import { describe, expect, it } from 'vitest';
 import {
   choiceIndexForKey,
+  DEFAULT_SETUP,
   draftForKey,
   draftFromResponse,
   emptyDraft,
@@ -9,7 +10,9 @@ import {
   formatResponse,
   outcomeOf,
   outputKindsFor,
+  parseSetup,
   promptSummary,
+  questionsFor,
   resumeIndex,
   toResponse,
 } from './logic';
@@ -164,5 +167,40 @@ describe('choice shortcuts', () => {
     expect(draftForKey(output, emptyDraft(output), '3')).toMatchObject({ kind: 'undefined' });
     expect(draftForKey(output, emptyDraft(output), '9')).toBeNull();
     expect(draftForKey(short, emptyDraft(short), 'a')).toBeNull();
+  });
+});
+
+describe('quiz setup', () => {
+  it('keeps what is valid in a stored setup and defaults the rest', () => {
+    expect(parseSetup(null)).toEqual(DEFAULT_SETUP);
+    expect(parseSetup('nonsense')).toEqual(DEFAULT_SETUP);
+    expect(
+      parseSetup({
+        topics: ['cpp', 'cpp', 7, 'python'],
+        mode: 'discussion',
+        difficulty: 'hard',
+        count: '30',
+        discussionCount: '3',
+        focusWeak: false,
+      }),
+    ).toEqual({
+      topics: ['cpp', 'python'],
+      mode: 'discussion',
+      difficulty: 'hard',
+      count: '30',
+      discussionCount: '3',
+      focusWeak: false,
+    });
+    expect(parseSetup({ mode: 'speedrun', count: 10, difficulty: 'easy' })).toEqual({
+      ...DEFAULT_SETUP,
+      difficulty: 'easy',
+    });
+  });
+
+  it('counts open questions for a discussion and the rest otherwise', () => {
+    const t = { questionCount: 84, shortCount: 20 };
+    expect(questionsFor(t, 'discussion')).toBe(20);
+    expect(questionsFor(t, 'practice')).toBe(64);
+    expect(questionsFor(t, 'exam')).toBe(64);
   });
 });

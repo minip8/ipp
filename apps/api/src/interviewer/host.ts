@@ -6,6 +6,7 @@ import {
   type AiKeyProblem,
   type AiKeyState,
   type AiModelChoice,
+  type DiscussionTurn,
   effectiveModel,
   type InterviewerModel,
   type InterviewerSettings,
@@ -21,6 +22,7 @@ import { toInterviewerRun } from '../runs/redact';
 import { messageView, padView, storedRun } from '../views';
 import type {
   AiScope,
+  DiscussionStep,
   InterviewContext,
   Interviewer,
   InterviewerDeps,
@@ -453,6 +455,26 @@ export class InterviewerHost {
         set: { messages: sql`${aiUsage.messages} + 1` },
       });
     return grade;
+  }
+
+  /** One step of a quiz discussion, on the quiz taker's own key and counted like a grading call. */
+  async discussShortAnswer(
+    userId: string,
+    question: QuizQuestionShort,
+    turns: DiscussionTurn[],
+    final: boolean,
+  ): Promise<DiscussionStep | null> {
+    if ((await this.keyState(userId)) !== 'active') return null;
+    if (await this.overDailyLimit(userId)) return null;
+    const step = await this.interviewer.discussShortAnswer(userId, question, turns, final);
+    await this.ctx.db
+      .insert(aiUsage)
+      .values({ userId, day: utcDay(), messages: 1 })
+      .onConflictDoUpdate({
+        target: [aiUsage.userId, aiUsage.day],
+        set: { messages: sql`${aiUsage.messages} + 1` },
+      });
+    return step;
   }
 
   async checkBudget(padId: string): Promise<{ ok: true } | { ok: false; reason: string }> {

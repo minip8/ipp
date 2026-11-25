@@ -28,6 +28,23 @@ for (const width of WIDTHS) {
       await shoot(page, 'quiz-hub', { fullPage: true });
     });
 
+    test('discussion', async ({ page }) => {
+      await setup(page);
+      await page.goto('/quiz');
+      await page.getByRole('button', { name: /^Networking/ }).click();
+      await page.getByRole('radio', { name: 'Discussion' }).click();
+      await page.waitForTimeout(300);
+      await shoot(page, 'quiz-hub-discussion', { fullPage: true });
+      await page.getByRole('button', { name: 'Start discussion' }).click();
+      await page.getByLabel('Your reply').fill('So late segments from the old connection die out.');
+      await page.getByRole('button', { name: 'Send' }).click();
+      await page.getByLabel('Your reply').fill('And so the final ACK can be resent if it is lost.');
+      await shoot(page, 'quiz-discussion', { fullPage: true });
+      await page.getByRole('button', { name: 'Send' }).click();
+      await page.getByRole('region', { name: 'Feedback' }).waitFor();
+      await shoot(page, 'quiz-discussion-feedback', { fullPage: true });
+    });
+
     test('practice flow', async ({ page }) => {
       await setup(page);
       await page.goto(`/quiz/${QUIZ_ATTEMPT_ID}`);

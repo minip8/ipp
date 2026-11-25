@@ -17,6 +17,8 @@ import {
   CreateAttemptRequest,
   CreatePadRequest,
   CreateRunRequest,
+  DiscussionReplyRequest,
+  type DiscussionTurn,
   effectiveModel,
   type HostView,
   type InviteInfo,
@@ -41,6 +43,7 @@ import {
   aiKeyStatus,
   aiModelList,
   DEFAULT_MODELS,
+  DISCUSSION_FOLLOW_UP,
   ENDED_PAD_ID,
   GUEST,
   HOST_VIEWS,
@@ -56,6 +59,7 @@ import {
   PROBLEMS,
   QUIZ_FEEDBACK,
   QUIZ_HISTORY,
+  QUIZ_QUESTIONS,
   QUIZ_TOPICS,
   REPORT_PENDING,
   REPORT_READY,
@@ -628,7 +632,15 @@ export class MockBackend {
     if (path === '/api/quiz/attempts' && method === 'GET') return QUIZ_HISTORY;
     if (path === '/api/quiz/attempts' && method === 'POST') {
       const req = CreateAttemptRequest.parse(body);
-      const a = makeAttempt({ id: uuid(), mode: req.mode, topics: req.topics });
+      const a = makeAttempt({
+        id: uuid(),
+        mode: req.mode,
+        topics: req.topics,
+        // As on the server: open questions only in a discussion, never otherwise.
+        questions: QUIZ_QUESTIONS.filter(
+          (q) => (q.type === 'short') === (req.mode === 'discussion'),
+        ) as unknown as QuizAttempt['questions'],
+      });
       this.attempts.set(a.id, a);
       return a;
     }
@@ -671,6 +683,27 @@ export class MockBackend {
         }
         a.feedback = [...a.feedback.filter((f) => f.questionId !== req.questionId), feedback];
         return feedback;
+      }
+      if (rest === '/discussion' && method === 'POST') {
+        const req = DiscussionReplyRequest.parse(body);
+        if (this.aiKey.state !== 'active')
+          return this.status(409, 'ai_key_missing', 'Add your AI API key first');
+        const turns: DiscussionTurn[] = [
+          ...(a.discussion[req.questionId] ?? []),
+          { role: 'candidate', text: req.text },
+        ];
+        const said = turns.filter((t) => t.role === 'candidate');
+        // One follow-up, then the question is closed and graded.
+        const closed = said.length >= 2;
+        if (!closed) turns.push({ role: 'interviewer', text: DISCUSSION_FOLLOW_UP });
+        a.discussion = { ...a.discussion, [req.questionId]: turns };
+        if (!closed) return { turns, feedback: null };
+        const response = { type: 'short' as const, text: said.map((t) => t.text).join('\n\n') };
+        const feedback = QUIZ_FEEDBACK[req.questionId]?.(response);
+        if (!feedback) return this.status(400, 'bad_question', 'Unknown question.');
+        a.responses[req.questionId] = response;
+        a.feedback = [...a.feedback, feedback];
+        return { turns, feedback };
       }
       if (rest === '/finish' && method === 'POST') {
         const feedback = a.questions.map((qq) => {

@@ -1012,6 +1012,7 @@ export const QUIZ_TOPICS = QuizTopicStats.array().parse([
     description:
       'Language rules, the standard library, object lifetime, templates, and what programs actually print.',
     questionCount: 84,
+    shortCount: 21,
     answered: 31,
     accuracy: 0.71,
   },
@@ -1020,6 +1021,7 @@ export const QUIZ_TOPICS = QuizTopicStats.array().parse([
     title: 'Python',
     description: 'Language semantics, the data model, the standard library, and common gotchas.',
     questionCount: 62,
+    shortCount: 15,
     answered: 12,
     accuracy: 0.83,
   },
@@ -1028,6 +1030,7 @@ export const QUIZ_TOPICS = QuizTopicStats.array().parse([
     title: 'Computer architecture',
     description: 'CPUs, caches, memory hierarchy, pipelines, data representation, and performance.',
     questionCount: 40,
+    shortCount: 10,
     answered: 0,
     accuracy: null,
   },
@@ -1036,6 +1039,7 @@ export const QUIZ_TOPICS = QuizTopicStats.array().parse([
     title: 'Operating systems',
     description: 'Processes, threads, scheduling, virtual memory, file systems, and system calls.',
     questionCount: 55,
+    shortCount: 13,
     answered: 20,
     accuracy: 0.55,
   },
@@ -1044,6 +1048,7 @@ export const QUIZ_TOPICS = QuizTopicStats.array().parse([
     title: 'Networking',
     description: 'TCP/IP, UDP, DNS, HTTP, TLS, sockets, and how packets get from A to B.',
     questionCount: 48,
+    shortCount: 12,
     answered: 6,
     accuracy: 0.5,
   },
@@ -1052,6 +1057,7 @@ export const QUIZ_TOPICS = QuizTopicStats.array().parse([
     title: 'Concurrency',
     description: 'Threads, locks, atomics, memory models, lock-free structures, and classic bugs.',
     questionCount: 37,
+    shortCount: 9,
     answered: 0,
     accuracy: null,
   },
@@ -1130,6 +1136,9 @@ int main() {
     code: null,
   },
 ] as const;
+
+/** What the mock interviewer asks after the first reply in a discussion. */
+export const DISCUSSION_FOLLOW_UP = 'And what would go wrong for the next connection without it?';
 
 export function makeAttempt(over: Partial<QuizAttempt> = {}): QuizAttempt {
   return QuizAttempt.parse({

@@ -7,6 +7,7 @@ import type {
   AiKeyProblem,
   AiModelChoice,
   AiProvider,
+  DiscussionTurn,
   Language,
   Message,
   MessageIntent,
@@ -161,6 +162,11 @@ export interface ShortAnswerGrade {
   feedback: string;
 }
 
+/** One step of a discussion: the grade so far, and the follow-up to ask ("" closes the question). */
+export interface DiscussionStep extends ShortAnswerGrade {
+  followUp: string;
+}
+
 export interface Interviewer {
   handle(padId: string, trigger: Trigger): void;
   /** Drop in-memory state for a pad (after session_ended or when the last client leaves). */
@@ -180,6 +186,16 @@ export interface Interviewer {
     question: Extract<QuizQuestion, { type: 'short' }>,
     answer: string,
   ): Promise<ShortAnswerGrade | null>;
+  /**
+   * Quiz discussion mode: judges what the candidate has said on one question so far and writes
+   * the next follow-up. `final` asks for no follow-up. Null as for `gradeShortAnswer`.
+   */
+  discussShortAnswer(
+    userId: string,
+    question: Extract<QuizQuestion, { type: 'short' }>,
+    turns: DiscussionTurn[],
+    final: boolean,
+  ): Promise<DiscussionStep | null>;
 }
 
 export type CreateInterviewer = (config: InterviewerConfig, deps: InterviewerDeps) => Interviewer;

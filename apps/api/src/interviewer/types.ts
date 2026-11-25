@@ -4,6 +4,7 @@ import type { QuizQuestion } from '@ipp/contracts';
 export type {
   AiScope,
   CreateInterviewer,
+  DiscussionStep,
   InterviewContext,
   Interviewer,
   InterviewerConfig,

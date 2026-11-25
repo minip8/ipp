@@ -27,8 +27,11 @@ export type Graded = Pick<
 /** The grading columns both answer tables share. */
 export type RecordedAnswer = Graded & Pick<AnswerRow, 'questionId' | 'response' | 'answeredAt'>;
 
-/** Attempt answers that may influence stats and selection: practice answers, and exam answers once finished. */
-export const COUNTABLE = sql`(${quizAttempts.mode} = 'practice' or ${quizAttempts.status} = 'finished')`;
+/**
+ * Attempt answers that may influence stats and selection: practice and discussion answers (their
+ * feedback is given at once), and exam answers once the exam is finished.
+ */
+export const COUNTABLE = sql`(${quizAttempts.mode} <> 'exam' or ${quizAttempts.status} = 'finished')`;
 
 export function feedbackOf(q: QuizQuestion, a: Graded | undefined): AnswerFeedback {
   return {

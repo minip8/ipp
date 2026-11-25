@@ -5,6 +5,7 @@
  * Column names are snake_case; the Drizzle field names are what Better Auth's adapter uses.
  */
 import type {
+  DiscussionTurn,
   InterviewerSettings,
   JudgeResult,
   Language,
@@ -354,7 +355,9 @@ export const quizAttempts = pgTable(
     userId: text('user_id')
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
-    mode: text('mode').$type<'practice' | 'exam'>().notNull(),
+    mode: text('mode').$type<'practice' | 'exam' | 'discussion'>().notNull(),
+    /** discussion mode: questionId -> turns so far (candidate replies and interviewer follow-ups). */
+    transcript: jsonb('transcript').$type<Record<string, DiscussionTurn[]>>().notNull().default({}),
     topics: text('topics').array().notNull(),
     questionIds: text('question_ids').array().notNull(),
     status: text('status').$type<'active' | 'finished'>().notNull().default('active'),

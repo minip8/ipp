@@ -5,7 +5,7 @@
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { AiKeyStatus, AiModelList, PadDetail, QuizAttempt, Report } from '@ipp/contracts';
+import { AiKeyStatus, AiModelList, PadDetail, Report } from '@ipp/contracts';
 import { sql } from '@ipp/db/orm';
 import { Redis } from 'ioredis';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -327,12 +327,8 @@ describe('whose key', () => {
     ws.close();
 
     // Quiz grading uses the quiz taker's key.
-    const attempt = QuizAttempt.parse(
-      (await collab.c.post('/api/quiz/attempts', { topics: ['test-topic'], count: 4 })).json,
-    );
     fake.keysUsed = [];
-    const graded = await collab.c.post(`/api/quiz/attempts/${attempt.id}/answers`, {
-      questionId: 'tq-short',
+    const graded = await collab.c.post('/api/quiz/questions/tq-short/answers', {
       response: { type: 'short', text: 'Destructors release resources.' },
     });
     expect(graded.json.gradedBy).toBe('ai');
@@ -480,12 +476,8 @@ describe('without a key, and when Anthropic rejects it', () => {
 
   it('quiz grading without a key falls back to self-grading without calling the model', async () => {
     const { c } = await user('NoKeyQuiz');
-    const attempt = QuizAttempt.parse(
-      (await c.post('/api/quiz/attempts', { topics: ['test-topic'], count: 4 })).json,
-    );
     fake.keysUsed = [];
-    const res = await c.post(`/api/quiz/attempts/${attempt.id}/answers`, {
-      questionId: 'tq-short',
+    const res = await c.post('/api/quiz/questions/tq-short/answers', {
       response: { type: 'short', text: 'something' },
     });
     expect(res.json).toMatchObject({ gradedBy: 'self', needsSelfGrade: true });

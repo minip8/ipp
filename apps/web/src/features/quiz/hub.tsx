@@ -7,11 +7,12 @@ import {
   HistoryIcon,
   LibraryIcon,
   ListChecksIcon,
+  MessagesSquareIcon,
   PlayIcon,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { EmptyState, ErrorState, InlineError, useRetryCountdown } from '@/components/states';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -21,19 +22,23 @@ import { Segmented } from '@/components/ui/segmented';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
 import { Switch } from '@/components/ui/switch';
+import { AiKeyPrompt } from '@/features/ai-key/ai-key-prompt';
 import { api } from '@/lib/api';
 import { formatPercent, formatRelative, plural } from '@/lib/format';
-import { qk } from '@/lib/queries';
+import { qk, useAiKey } from '@/lib/queries';
+import { storage } from '@/lib/storage';
 import { cn } from '@/lib/utils';
 import { bankHref } from './bank-logic';
-
-type Mode = 'practice' | 'exam';
-type Diff = 'any' | 'easy' | 'medium' | 'hard';
-
-const MODE_HINT: Record<Mode, string> = {
-  practice: 'See whether you were right, and why, after every question.',
-  exam: 'Answer everything first. Feedback comes when you finish.',
-};
+import {
+  DISCUSSION_COUNTS,
+  MODE_HINT,
+  MODE_LABEL,
+  parseSetup,
+  QUIZ_COUNTS,
+  type QuizSetup,
+  questionsFor,
+  SETUP_STORAGE_KEY,
+} from './logic';
 
 function AccuracyBar({ value }: { value: number }) {
   return (
@@ -127,49 +132,6 @@ function TopicCard({
   );
 }
 
-/** The question bank as a first-class way in: any question, answered right away. */
-function BrowsePanel({ topics }: { topics: QuizTopicStats[] }) {
-  return (
-    <section
-      aria-labelledby="browse-heading"
-      className="rounded-lg border border-border bg-surface p-4"
-    >
-      <div className="flex items-start gap-3">
-        <span
-          aria-hidden
-          className="flex size-8 shrink-0 items-center justify-center rounded-md bg-accent-soft text-accent-text"
-        >
-          <LibraryIcon className="size-4" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <h2 id="browse-heading" className="font-medium">
-            Browse the question bank
-          </h2>
-          <p className="mt-0.5 text-sm text-fg-muted">
-            Answer any question on its own and see the explanation right away. Your answers still
-            count toward your stats.
-          </p>
-          <ul className="mt-3 flex flex-wrap gap-1.5" aria-label="Browse a topic">
-            {topics.map((t) => (
-              <li key={t.slug}>
-                <Link
-                  href={bankHref(t.slug)}
-                  className="inline-flex h-7 items-center gap-1 rounded-md border border-border-strong bg-surface px-2.5 text-sm font-medium transition-colors hover:bg-surface-3"
-                >
-                  {t.title}
-                  <span className="text-xs font-normal text-fg-subtle tabular">
-                    {t.questionCount}
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </div>
-    </section>
-  );
-}
-
 function TopicGridSkeleton() {
   return (
     <div
@@ -193,19 +155,23 @@ function TopicGridSkeleton() {
 
 function SetupPanel({
   topics,
-  selected,
-  onClear,
+  setup,
+  update,
 }: {
   topics: QuizTopicStats[];
-  selected: string[];
-  onClear: () => void;
+  setup: QuizSetup;
+  update: (patch: Partial<QuizSetup>) => void;
 }) {
   const router = useRouter();
   const qc = useQueryClient();
-  const [mode, setMode] = useState<Mode>('practice');
-  const [difficulty, setDifficulty] = useState<Diff>('any');
-  const [count, setCount] = useState('10');
-  const [focusWeak, setFocusWeak] = useState(true);
+  const aiKey = useAiKey();
+  const { mode, difficulty, focusWeak } = setup;
+  const selected = setup.topics;
+  const discussion = mode === 'discussion';
+  const count = discussion ? setup.discussionCount : setup.count;
+  // A discussion is a conversation with the model, so it cannot start without a working key.
+  const keyState = aiKey.data?.state;
+  const needsKey = discussion && (keyState === 'missing' || keyState === 'rejected');
   const start = useMutation({
     mutationFn: () =>
       api.createAttempt({
@@ -222,52 +188,25 @@ function SetupPanel({
     },
   });
   const wait = useRetryCountdown(start.error);
-  const names = selected.map((s) => topics.find((t) => t.slug === s)?.title ?? s);
+  const chosen = topics.filter((t) => selected.includes(t.slug));
+  const available = chosen.reduce((n, t) => n + questionsFor(t, mode), 0);
 
   return (
     <section aria-labelledby="setup-heading" className="rounded-lg border border-border bg-surface">
-      <div className="border-b border-border p-4">
-        <h2
-          id="setup-heading"
-          className="scroll-mt-20 text-2xs font-medium tracking-wider text-fg-subtle uppercase"
-        >
-          New quiz
-        </h2>
-        {selected.length === 0 ? (
-          <p className="mt-2 text-sm text-fg-muted">
-            Select one or more topics to build a quiz from.
-          </p>
-        ) : (
-          <div className="mt-2">
-            <div className="flex flex-wrap gap-1.5">
-              {names.map((n) => (
-                <Badge key={n} tone="accent">
-                  {n}
-                </Badge>
-              ))}
-            </div>
-            <button
-              type="button"
-              onClick={onClear}
-              className="mt-2 text-xs text-fg-muted hover:text-fg hover:underline"
-            >
-              Clear selection
-            </button>
-          </div>
-        )}
-      </div>
       <div className="space-y-5 p-4">
         <div className="space-y-1.5">
-          <Label>Mode</Label>
+          <h2 id="setup-heading" className="scroll-mt-20 text-sm font-medium">
+            Mode
+          </h2>
           <Segmented
             aria-label="Mode"
             className="flex w-full"
             value={mode}
-            onValueChange={setMode}
-            options={[
-              { value: 'practice', label: 'Practice' },
-              { value: 'exam', label: 'Exam' },
-            ]}
+            onValueChange={(m) => update({ mode: m })}
+            options={(['practice', 'exam', 'discussion'] as const).map((m) => ({
+              value: m,
+              label: MODE_LABEL[m],
+            }))}
           />
           <p className="text-xs text-fg-muted">{MODE_HINT[mode]}</p>
         </div>
@@ -277,7 +216,7 @@ function SetupPanel({
             aria-label="Difficulty"
             className="flex w-full"
             value={difficulty}
-            onValueChange={setDifficulty}
+            onValueChange={(d) => update({ difficulty: d })}
             options={[
               { value: 'any', label: 'Any' },
               { value: 'easy', label: 'Easy' },
@@ -288,34 +227,64 @@ function SetupPanel({
         </div>
         <div className="space-y-1.5">
           <Label>Questions</Label>
-          <Segmented
-            aria-label="Number of questions"
-            className="flex w-full"
-            value={count}
-            onValueChange={setCount}
-            options={['5', '10', '20', '30'].map((c) => ({ value: c, label: c }))}
+          {discussion ? (
+            <Segmented
+              aria-label="Number of questions"
+              className="flex w-full"
+              value={setup.discussionCount}
+              onValueChange={(c) => update({ discussionCount: c })}
+              options={DISCUSSION_COUNTS.map((c) => ({ value: c, label: c }))}
+            />
+          ) : (
+            <Segmented
+              aria-label="Number of questions"
+              className="flex w-full"
+              value={setup.count}
+              onValueChange={(c) => update({ count: c })}
+              options={QUIZ_COUNTS.map((c) => ({ value: c, label: c }))}
+            />
+          )}
+        </div>
+        <div className="flex items-center gap-3">
+          <label htmlFor="focus-weak" className="min-w-0 flex-1 text-sm font-medium">
+            Prefer questions I missed or haven&apos;t seen
+          </label>
+          <Switch
+            id="focus-weak"
+            checked={focusWeak}
+            onCheckedChange={(v) => update({ focusWeak: v })}
           />
         </div>
-        <div className="flex items-start gap-3">
-          <div className="min-w-0 flex-1">
-            <label htmlFor="focus-weak" className="block text-sm font-medium">
-              Prefer questions I missed or haven't seen
-            </label>
-            <p className="text-xs text-fg-muted">Turn off for a uniform sample of the topic.</p>
-          </div>
-          <Switch id="focus-weak" checked={focusWeak} onCheckedChange={setFocusWeak} />
-        </div>
+        {needsKey && (
+          <AiKeyPrompt
+            size="sm"
+            testId="discussion-key-prompt"
+            state={keyState}
+            title={
+              keyState === 'rejected'
+                ? 'Your API key was rejected'
+                : 'A discussion runs on your own AI API key'
+            }
+          />
+        )}
         <InlineError error={start.error} />
-        <Button
-          variant="primary"
-          size="lg"
-          className="w-full"
-          disabled={selected.length === 0 || start.isPending || wait > 0}
-          onClick={() => start.mutate()}
-        >
-          {start.isPending ? <Spinner /> : <PlayIcon />}
-          {wait > 0 ? `Try again in ${wait}s` : 'Start quiz'}
-        </Button>
+        <div>
+          <Button
+            variant="primary"
+            size="lg"
+            className="w-full"
+            disabled={selected.length === 0 || needsKey || start.isPending || wait > 0}
+            onClick={() => start.mutate()}
+          >
+            {start.isPending ? <Spinner /> : discussion ? <MessagesSquareIcon /> : <PlayIcon />}
+            {wait > 0 ? `Try again in ${wait}s` : discussion ? 'Start discussion' : 'Start quiz'}
+          </Button>
+          <p className="mt-2 text-center text-xs text-fg-muted" data-testid="setup-summary">
+            {selected.length === 0
+              ? 'Select one or more topics first.'
+              : `${chosen.map((t) => t.title).join(', ')} · ${plural(available, discussion ? 'open question' : 'question')} to draw from`}
+          </p>
+        </div>
       </div>
     </section>
   );
@@ -346,7 +315,7 @@ function HistoryList({ topics }: { topics: QuizTopicStats[] }) {
         <ErrorState error={attempts.error} onRetry={() => attempts.refetch()} compact />
       ) : items.length === 0 ? (
         <EmptyState icon={HistoryIcon} title="No quizzes yet">
-          Pick a topic above and start a quiz. Your scores and answers show up here.
+          Quizzes and discussions you start show up here with their scores.
         </EmptyState>
       ) : (
         <ul className="divide-y divide-border">
@@ -361,7 +330,7 @@ function HistoryList({ topics }: { topics: QuizTopicStats[] }) {
                     {a.topics.map(title).join(', ')}
                   </span>
                   <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-fg-muted">
-                    <Badge tone="outline">{a.mode === 'exam' ? 'Exam' : 'Practice'}</Badge>
+                    <Badge tone="outline">{MODE_LABEL[a.mode]}</Badge>
                     <span>{plural(a.questionCount, 'question')}</span>
                     <span aria-hidden>·</span>
                     <span>{formatRelative(a.startedAt)}</span>
@@ -396,17 +365,24 @@ function HistoryList({ topics }: { topics: QuizTopicStats[] }) {
 export function QuizHub() {
   const topics = useQuery({ queryKey: qk.quizTopics, queryFn: api.quizTopics });
   const params = useSearchParams();
+  // The choices are remembered in this browser, so leaving the page and coming back keeps them.
   // "Take a quiz instead" in the question bank links here with its topic preselected.
-  const [selected, setSelected] = useState<string[]>(() => {
+  const [setup, setSetup] = useState<QuizSetup>(() => {
+    const stored = parseSetup(storage.get<unknown>(SETUP_STORAGE_KEY, null));
     const t = params.get('topic');
-    return t ? [t] : [];
+    return t ? { ...stored, topics: [t] } : stored;
   });
-  // Ignore a preselected slug that is not a topic.
+  useEffect(() => storage.set(SETUP_STORAGE_KEY, setup), [setup]);
+  const update = (patch: Partial<QuizSetup>) => setSetup((s) => ({ ...s, ...patch }));
+  const selected = setup.topics;
+  // Ignore a remembered or preselected slug that is not a topic.
   const known = topics.data;
   if (known && selected.some((s) => !known.some((t) => t.slug === s)))
-    setSelected(selected.filter((s) => known.some((t) => t.slug === s)));
+    update({ topics: selected.filter((s) => known.some((t) => t.slug === s)) });
   const toggle = (slug: string) =>
-    setSelected((s) => (s.includes(slug) ? s.filter((x) => x !== slug) : [...s, slug]));
+    update({
+      topics: selected.includes(slug) ? selected.filter((x) => x !== slug) : [...selected, slug],
+    });
   const totals = useMemo(() => {
     const list = topics.data ?? [];
     const answered = list.reduce((s, t) => s + t.answered, 0);
@@ -443,7 +419,6 @@ export function QuizHub() {
 
       <div className="mt-6 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-x-6 lg:gap-y-8">
         <div className="min-w-0 space-y-3 lg:col-start-1 lg:row-start-1">
-          {topics.data && topics.data.length > 0 && <BrowsePanel topics={topics.data} />}
           <h2 className="sr-only">Topics</h2>
           {topics.isPending ? (
             <TopicGridSkeleton />
@@ -472,7 +447,7 @@ export function QuizHub() {
         </div>
         <div className="lg:sticky lg:top-20 lg:col-start-2 lg:row-span-2 lg:row-start-1">
           {topics.data && topics.data.length > 0 ? (
-            <SetupPanel topics={topics.data} selected={selected} onClear={() => setSelected([])} />
+            <SetupPanel topics={topics.data} setup={setup} update={update} />
           ) : (
             topics.isPending && <Skeleton className="h-96 w-full rounded-lg" />
           )}
@@ -496,7 +471,7 @@ export function QuizHub() {
                   ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
               }
             >
-              Set up quiz
+              Choose mode
             </Button>
           </div>
         </div>
