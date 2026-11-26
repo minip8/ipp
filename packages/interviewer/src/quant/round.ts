@@ -16,7 +16,8 @@
  * Failure rules: a failed, refused or unparseable call on a candidate message gets the canned
  * reply and changes nothing; a close the clock requires still closes, with a canned line and no
  * verdict; a candidate message aborts an in-flight clock turn and its reply does what the clock
- * required; a refused step (`stale`, …) posts nothing.
+ * required; a step refused because the round moved on (`stale`, …) posts nothing, and one refused
+ * for its own content gets the canned reply.
  */
 import type {
   AiProvider,
@@ -73,6 +74,9 @@ export const QUANT_CALLS = {
   verdict: { effort: 'medium', maxTokens: 8_000, timeoutMs: 90_000 },
   assessment: { effort: 'high', maxTokens: 32_000, timeoutMs: 240_000 },
 } as const;
+
+/** Refusals that mean the round moved on under a turn, as opposed to the turn being wrong. */
+const MOVED_ON: ReadonlySet<string> = new Set(['stale', 'ended', 'wrong_index', 'wrong_phase']);
 
 /** What is said when the model cannot say it (no key, out of budget, failed or refused). */
 export const QUANT_MESSAGES = {
@@ -582,8 +586,12 @@ export function createQuantRuntime<R extends QuantPad>(core: QuantCore<R>) {
         }),
         { ...base, turn: r.turn },
       );
-      // The round could not be written at all (not a refusal): still answer them.
-      if (res === null) await saveCanned(rt, core.messages.replyFailed);
+      // The round could not be written at all, or it refused the step for a reason of its own
+      // (a hint the books do not allow, say): still answer them. When the round has simply moved
+      // on (another write won, the question closed, the pad ended) someone has just spoken, and a
+      // "say that again" under the next question would only confuse.
+      if (res === null || (res.ok === false && !MOVED_ON.has(res.reason)))
+        await saveCanned(rt, core.messages.replyFailed);
     } finally {
       thinking(rt, false);
     }

@@ -378,6 +378,22 @@ describe('failure rules', () => {
     expect(h.round.questions[0]?.hintRungs).toEqual([1]);
   });
 
+  it('a typed message whose step the round refuses on its content still gets a reply', async () => {
+    const h = quantHarness({
+      respond: scripted({
+        reply: () => turn({ action: 'hint', hint_rung: 1, message: 'Count outcomes.' }),
+      }),
+    });
+    await started(h);
+    // The books allow fewer hints than the interviewer was shown.
+    const q = h.round.questions[0];
+    if (q) q.hintsAvailable = 0;
+    await h.say('help');
+    expect(h.steps.at(-1)?.result).toEqual({ ok: false, reason: 'hint_rung' });
+    expect(h.saved).toEqual([expect.objectContaining({ kind: 'chat', intent: 'answer' })]);
+    expect(h.round.questions[0]?.hintRungs).toEqual([]);
+  });
+
   it('a chosen model the provider refuses falls back to the default and keeps the key', async () => {
     const inner = new FakeModel(defaultQuantRespond);
     const h = quantHarness({

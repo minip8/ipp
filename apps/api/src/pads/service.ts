@@ -131,9 +131,11 @@ export async function computeStats(ctx: Ctx, pad: PadRow): Promise<Report['stats
       candidate: sql<number>`count(*) filter (where ${messages.role} = 'candidate')`.mapWith(
         Number,
       ),
-      interviewer: sql<number>`count(*) filter (where ${messages.role} = 'interviewer')`.mapWith(
-        Number,
-      ),
+      // What the interviewer said; a round's questions are posted by the platform, not said.
+      interviewer:
+        sql<number>`count(*) filter (where ${messages.role} = 'interviewer' and ${messages.intent} is distinct from 'question')`.mapWith(
+          Number,
+        ),
     })
     .from(messages)
     .where(eq(messages.padId, pad.id));
