@@ -1,7 +1,7 @@
 /**
  * Pure rules for a quant pad: which question is current, its clock, what the panel heads it
  * with, and the phone layout's panes. The view (`QuantRoundView`) is all the browser knows about
- * the round; it never has verdicts or how a question was closed.
+ * the round: how each question closed, but never a verdict.
  */
 import type { QuantQuestionView, QuantRoundView } from '@ipp/contracts';
 import { formatClock, plural } from '@/lib/format';
@@ -17,6 +17,21 @@ export function currentQuestion(round: QuantRoundView): QuantQuestionView | null
 export function earlierQuestions(round: QuantRoundView): QuantQuestionView[] {
   const current = currentQuestion(round);
   return round.questions.filter((q) => q !== current);
+}
+
+/**
+ * What an earlier question's row says about how it closed: only the clock's doing is worth a
+ * word (one the interviewer closed was simply answered, or given up on together).
+ */
+export function closedLabel(q: Pick<QuantQuestionView, 'closedBy'>): string | null {
+  switch (q.closedBy) {
+    case 'timeout':
+      return 'Timed out';
+    case 'round_time':
+      return 'Out of time';
+    default:
+      return null;
+  }
 }
 
 /** "Question 2 of 4" for the current question; otherwise what the round is doing. */

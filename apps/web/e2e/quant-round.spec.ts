@@ -178,6 +178,9 @@ test.describe('the quant pad', () => {
     const scratch = await page.getByRole('textbox', { name: 'Scratchpad' }).boundingBox();
     expect(q && chat && scratch && q.x < chat.x && chat.x < scratch.x).toBe(true);
     await expect(page.getByTestId('question-message')).toHaveCount(1);
+    // The topic's title comes with the round: no topic list is fetched for it.
+    await expect(page.getByTestId('question-topic')).toHaveText('Probability');
+    expect(b.requests.filter((r) => r.path === '/api/quiz/topics')).toEqual([]);
     // Nothing of a coding pad.
     await expect(page.getByRole('combobox', { name: 'Language' })).toHaveCount(0);
     await expect(page.getByTestId('run-file')).toHaveCount(0);
@@ -276,6 +279,12 @@ test.describe('the quant pad', () => {
     await b.quant.timeout(id);
     await expect(heading(page)).toHaveText('Question 3 of 4');
     await expect(page.getByTestId('proactive-message').last()).toContainText(LINES.timeout);
+    // The pad says it timed out (newest first); the one the interviewer closed says nothing.
+    await expect(earlier.locator('details')).toHaveCount(2);
+    await expect(earlier.getByTestId('question-closed-by')).toHaveText(['Timed out']);
+    await expect(
+      earlier.locator('details').first().getByTestId('question-closed-by'),
+    ).toBeVisible();
     // The follow-up, asked once.
     await say(page, 'follow me: E = 7?');
     await expect(page.getByTestId('interviewer-message').last()).toContainText('weighted');
@@ -368,6 +377,8 @@ test.describe('the quant pad', () => {
       await b.quant.close(QUANT_PAD_ID);
       await expect(heading(page)).toHaveText('Question 2 of 4');
       await expect(page.getByTestId('question-message')).toHaveCount(2);
+      // Numbered by its id in the round, whichever came first.
+      await expect(page.getByTestId('question-message').last()).toContainText('Question 2');
       await expect(page.getByTestId('earlier-questions').locator('details')).toHaveCount(1);
     });
   }
@@ -467,7 +478,7 @@ test.describe('the quant report', () => {
   test('scores the round and reviews every question, with its status and solution', async ({
     page,
   }) => {
-    await setup(page);
+    const b = await setup(page);
     await page.goto(`/pads/${QUANT_ENDED_PAD_ID}/report`);
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Trader quant round');
     await expect(page.getByTestId('quant-badge')).toHaveText('Quant');
@@ -477,9 +488,12 @@ test.describe('the quant report', () => {
     const stats = page.getByTestId('quant-stats');
     await expect(stats).toContainText('Answered');
     await expect(stats).toContainText('1 of 4');
+    await expect(stats).toContainText('3 asked · 1 timed out · 1 not reached');
     await expect(stats).toContainText('Mean score');
     await expect(stats).toContainText('Hints used');
-    await expect(page.getByText('Runs', { exact: true })).toHaveCount(0);
+    // A quant pad has no runs: no run figures, not even zeros.
+    for (const label of ['Runs', 'Submissions', 'Result'])
+      await expect(page.getByText(label, { exact: true })).toHaveCount(0);
 
     // The five quant dimensions, in order, with their labels.
     const assessment = page.getByRole('region', { name: 'Assessment' });
@@ -519,6 +533,10 @@ test.describe('the quant report', () => {
     await expect(fourth.getByText('Put-call parity')).toBeHidden();
     await fourth.getByText('Question 4').click();
     await expect(fourth.getByText(/Put-call parity/)).toBeVisible();
+    // Topic titles come with the report, not from a topic list.
+    await expect(first).toContainText('· Probability');
+    await expect(fourth).toContainText('· Options & finance');
+    expect(b.requests.filter((r) => r.path === '/api/quiz/topics')).toEqual([]);
 
     // The playback is the scratchpad's; the transcript shows the questions, typeset.
     const playback = page.getByRole('region', { name: 'Playback' });
@@ -565,17 +583,19 @@ test.describe('formats kept apart', () => {
     await expect(page.getByTestId('quant-review').locator('.katex').first()).toBeVisible();
   });
 
-  test('the dashboard shows a quant pad as Quant, never as a language', async ({ page }) => {
+  test('the dashboard shows a quant pad as Quant with its path, never as a language', async ({
+    page,
+  }) => {
     await setup(page, (b) => b.quant.listOnDashboard());
     await page.goto('/dashboard');
     const active = page.getByRole('region', { name: 'In progress' });
     const row = active.getByRole('listitem').filter({ hasText: 'Trader quant round' });
-    await expect(row.getByTestId('quant-badge')).toHaveText('Quant');
+    await expect(row.getByTestId('quant-badge')).toHaveText('Quant · Trader');
     await expect(row).not.toContainText('Python');
     await page.goto('/dashboard?view=history');
     const table = page.getByRole('table');
     const ended = table.getByRole('row').filter({ hasText: 'Trader quant round' });
-    await expect(ended.getByTestId('quant-badge')).toHaveText('Quant');
+    await expect(ended.getByTestId('quant-badge')).toHaveText('Quant · Trader');
     await expect(ended).not.toContainText('Python');
     await expect(ended).toContainText('Scored in the report');
     // A coding pad keeps its language.

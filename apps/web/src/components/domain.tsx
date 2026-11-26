@@ -221,14 +221,14 @@ export function QuantPathBadge({ path, className }: { path: QuantPath; className
 }
 
 /**
- * What a pad is in a list: its language, or "Quant" for a quant round (whose stored language
- * means nothing).
+ * What a pad is in a list: its language, or "Quant · Trader" for a quant round (whose stored
+ * language means nothing), with its path when the summary has one.
  */
 export function PadTag({
   pad,
   className,
 }: {
-  pad: { format: PadFormat; language: Language };
+  pad: { format: PadFormat; language: Language; quantPath?: QuantPath | null };
   className?: string;
 }) {
   if (pad.format !== 'quant') return <LanguageTag language={pad.language} className={className} />;
@@ -238,7 +238,7 @@ export function PadTag({
       className={cn('inline-flex items-center gap-1.5 text-sm text-fg-muted', className)}
     >
       <SigmaIcon aria-hidden className="size-3.5 text-accent-text" />
-      Quant
+      {pad.quantPath ? `Quant · ${QUANT_PATH_INFO[pad.quantPath].label}` : 'Quant'}
     </span>
   );
 }

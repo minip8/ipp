@@ -5,17 +5,14 @@
  * `next/dynamic` from the report page, so KaTeX loads only with a quant pad's report. Hints are
  * counts only; the hints actually given are in the transcript, in the interviewer's words.
  */
-import type { QuantQuestionReview, QuantReport, QuizTopicStats } from '@ipp/contracts';
-import { useQuery } from '@tanstack/react-query';
+import type { QuantQuestionReview, QuantReport } from '@ipp/contracts';
 import { ChevronRightIcon, ClockIcon, LightbulbIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { DifficultyBadge, toneText } from '@/components/domain';
 import { MathMarkdown } from '@/components/math-markdown';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
-import { api } from '@/lib/api';
-import { humanize, plural } from '@/lib/format';
-import { qk } from '@/lib/queries';
+import { plural } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { hintsLabel, STATUS_LABEL, STATUS_TONE, scoreView, timeLabel } from './quant-logic';
 
@@ -60,14 +57,14 @@ function Solution({ q }: { q: QuantQuestionReview }) {
   );
 }
 
-function QuestionReview({ q, topic }: { q: QuantQuestionReview; topic: string }) {
+function QuestionReview({ q }: { q: QuantQuestionReview }) {
   const time = timeLabel(q);
   const score = q.verdict && scoreView(q.verdict.score);
   const reached = q.status !== 'not_reached';
   const head = (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
       <h3 className="font-medium">Question {q.index + 1}</h3>
-      <span className="text-sm text-fg-muted">· {topic}</span>
+      <span className="text-sm text-fg-muted">· {q.topicTitle}</span>
       <DifficultyBadge difficulty={q.difficulty} />
       <Badge tone={STATUS_TONE[q.status]} data-testid="review-status">
         {STATUS_LABEL[q.status]}
@@ -143,13 +140,6 @@ function QuestionReview({ q, topic }: { q: QuantQuestionReview; topic: string })
 }
 
 export function QuantReview({ quant }: { quant: QuantReport }) {
-  const topics = useQuery({
-    queryKey: qk.quizTopics,
-    queryFn: api.quizTopics,
-    staleTime: Number.POSITIVE_INFINITY,
-  });
-  const title = (slug: string) =>
-    topics.data?.find((t: QuizTopicStats) => t.slug === slug)?.title ?? humanize(slug);
   return (
     <Card aria-labelledby="quant-review-heading" data-testid="quant-review">
       <CardHeader>
@@ -160,7 +150,7 @@ export function QuantReview({ quant }: { quant: QuantReport }) {
       </CardHeader>
       <ol className="divide-y divide-border">
         {quant.questions.map((q) => (
-          <QuestionReview key={q.index} q={q} topic={title(q.topic)} />
+          <QuestionReview key={q.index} q={q} />
         ))}
       </ol>
     </Card>

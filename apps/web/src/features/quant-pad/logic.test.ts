@@ -2,6 +2,7 @@ import type { QuantQuestionView, QuantRoundView } from '@ipp/contracts';
 import { describe, expect, it } from 'vitest';
 import {
   clearQuantUnread,
+  closedLabel,
   currentQuestion,
   earlierQuestions,
   minutesPerQuestion,
@@ -17,13 +18,16 @@ const at = (sec: number) => new Date(T + sec * 1000).toISOString();
 const question = (index: number, over: Partial<QuantQuestionView> = {}): QuantQuestionView => ({
   index,
   topic: 'probability',
+  topicTitle: 'Probability',
   difficulty: 'easy',
   prompt: `Q${index + 1}`,
   unit: null,
   posedAt: at(index * 600),
   budgetSec: 420,
   closedAt: null,
+  closedBy: null,
   hintsGiven: 0,
+  posedMessageId: null,
   ...over,
 });
 const round = (over: Partial<QuantRoundView> = {}): QuantRoundView => ({
@@ -58,6 +62,13 @@ describe('the round as the panel shows it', () => {
 
   it('counts what the round has done for the end dialog', () => {
     expect(roundProgress(round())).toEqual({ posed: 2, closed: 1, hints: 3, total: 4 });
+  });
+
+  it('says when an earlier question was closed by the clock, and nothing otherwise', () => {
+    expect(closedLabel(question(0, { closedBy: 'timeout' }))).toBe('Timed out');
+    expect(closedLabel(question(0, { closedBy: 'round_time' }))).toBe('Out of time');
+    expect(closedLabel(question(0, { closedBy: 'interviewer' }))).toBeNull();
+    expect(closedLabel(question(0))).toBeNull();
   });
 
   it('shares the round evenly in whole minutes', () => {
