@@ -2,7 +2,7 @@ import type * as React from 'react';
 
 /**
  * The top of a track tab (Interviews, Practice, Roadmap): title and one line on the left, a few
- * figures on the right. The software Interviews page (features/dashboard) draws the same.
+ * figures on the right.
  */
 export function PageHeader({
   title,

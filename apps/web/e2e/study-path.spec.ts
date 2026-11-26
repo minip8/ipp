@@ -190,11 +190,11 @@ test.describe('actions', () => {
   test('Roadmap opens the topic maps on that topic, in the same track', async ({ page }) => {
     await setup(page);
     await page.goto('/quant/roadmap?path=researcher');
-    await expect(page.getByRole('link', { name: 'Statistics roadmap' })).toHaveAttribute(
+    await expect(page.getByRole('link', { name: 'Statistics topic map' })).toHaveAttribute(
       'href',
       '/quant/roadmap?view=maps&roadmap=statistics',
     );
-    await page.getByRole('link', { name: 'Probability roadmap' }).click();
+    await page.getByRole('link', { name: 'Probability topic map' }).click();
     await expect(page).toHaveURL(/\/quant\/roadmap\?view=maps&roadmap=probability$/);
     await expect(page.getByRole('tab', { name: 'Topic maps' })).toHaveAttribute(
       'aria-selected',
@@ -207,7 +207,7 @@ test.describe('actions', () => {
     await expect(headings(page)).toHaveText(RESEARCHER);
 
     await page.goto('/software/roadmap');
-    await expect(page.getByRole('link', { name: 'Python roadmap' })).toHaveAttribute(
+    await expect(page.getByRole('link', { name: 'Python topic map' })).toHaveAttribute(
       'href',
       '/software/roadmap?view=maps&roadmap=python',
     );

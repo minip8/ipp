@@ -1,7 +1,7 @@
 'use client';
 /**
  * The AI interviewer's options when setting up a session: style, how often it speaks up, the
- * model, the saved key and voice. Shared by the coding interview setup and the Quant page's live
+ * model, the saved key and voice. Shared by the coding interview setup and the Quant track's live
  * round, so both offer the same choices in the same words.
  */
 import type { InterviewerSettings } from '@ipp/contracts';

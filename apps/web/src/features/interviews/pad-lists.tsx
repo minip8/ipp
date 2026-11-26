@@ -1,6 +1,11 @@
 'use client';
-import type { PadSummary } from '@ipp/contracts';
-import { useQuery } from '@tanstack/react-query';
+/**
+ * The Interviews tab's lists of pads, the same in both tracks: what is under way, and the finished
+ * ones (cards on a phone, a table from `md` up). The columns follow the track: a coding pad has a
+ * language and is solved or not; a quant round has its path and is scored in its report, a quant
+ * room the host's verdicts.
+ */
+import type { PadSummary, Track } from '@ipp/contracts';
 import {
   CircleCheckIcon,
   CircleDashedIcon,
@@ -10,41 +15,32 @@ import {
   UsersIcon,
 } from 'lucide-react';
 import Link from 'next/link';
-import { useState } from 'react';
 import { DifficultyBadge, PadTag } from '@/components/domain';
-import { PageTabPanel, PageTabs, usePageView } from '@/components/page-tabs';
-import { EmptyState, ErrorState } from '@/components/states';
+import { EmptyState } from '@/components/states';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
-import { DeletePadButton, DeletePadDialog } from '@/features/delete-pad/delete-pad-dialog';
+import { DeletePadButton } from '@/features/delete-pad/delete-pad-dialog';
 import type { DeleteTarget } from '@/features/delete-pad/logic';
-import { NewInterview } from '@/features/new/new-interview';
-import { api } from '@/lib/api';
 import { formatDuration, formatRelative } from '@/lib/format';
-import { qk } from '@/lib/queries';
-import { cn } from '@/lib/utils';
+import { canOpenReport, padLength, padName } from './logic';
 
-type OnDelete = (t: DeleteTarget) => void;
+export type OnDelete = (t: DeleteTarget) => void;
 
-/** The page's two views; the first is the default and keeps `?view=` out of the URL. */
-const VIEWS = ['start', 'history'] as const;
-
-/** What a pad is called in lists: its problem, or its own title when it has none (a blank room). */
-const padName = (p: PadSummary) => p.problemTitle ?? p.title;
-const deleteTarget = (p: PadSummary): DeleteTarget => ({
+export const deleteTarget = (p: PadSummary): DeleteTarget => ({
   id: p.id,
   problemTitle: padName(p),
   status: p.status,
   role: p.role,
 });
-/** A room's report is its host's; a candidate with an account only gets the pad back. */
-const canOpenReport = (p: PadSummary) => p.kind !== 'room' || p.role === 'owner';
+
 const padHref = (p: PadSummary) => (canOpenReport(p) ? `/pads/${p.id}/report` : `/pads/${p.id}`);
-/** Seconds from start to end, or null while it has not ended. */
-const padLength = (p: PadSummary) =>
-  p.endedAt ? (Date.parse(p.endedAt) - Date.parse(p.startedAt)) / 1000 : null;
+
+/** What each track's history calls its columns. */
+const COLUMNS: Record<Track, { name: string; kind: string }> = {
+  software: { name: 'Problem', kind: 'Language' },
+  quant: { name: 'Interview', kind: 'Kind' },
+};
 
 function RoomBadge({ p }: { p: PadSummary }) {
   if (p.kind !== 'room') return null;
@@ -83,7 +79,7 @@ function Outcome({ p }: { p: PadSummary }) {
   );
 }
 
-function ActivePads({ pads, onDelete }: { pads: PadSummary[]; onDelete: OnDelete }) {
+export function ActivePads({ pads, onDelete }: { pads: PadSummary[]; onDelete: OnDelete }) {
   if (pads.length === 0) return null;
   return (
     <section aria-labelledby="active-heading" className="mt-8">
@@ -94,6 +90,7 @@ function ActivePads({ pads, onDelete }: { pads: PadSummary[]; onDelete: OnDelete
         {pads.map((p) => (
           <li
             key={p.id}
+            data-testid="active-pad"
             // Phones: the actions get a row of their own, with full-size tap targets.
             className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-lg border border-accent/40 bg-accent-soft/30 px-4 py-3"
           >
@@ -189,14 +186,23 @@ function HistoryCards({ pads, onDelete }: { pads: PadSummary[]; onDelete: OnDele
 }
 
 /** From `md` up: a table, with fewer columns on smaller screens. */
-function HistoryTable({ pads, onDelete }: { pads: PadSummary[]; onDelete: OnDelete }) {
+function HistoryTable({
+  track,
+  pads,
+  onDelete,
+}: {
+  track: Track;
+  pads: PadSummary[];
+  onDelete: OnDelete;
+}) {
+  const columns = COLUMNS[track];
   return (
     <div className="hidden overflow-x-auto md:block">
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-border text-left text-xs text-fg-subtle">
-            <th className="px-4 py-2 font-medium">Problem</th>
-            <th className="hidden px-4 py-2 font-medium md:table-cell">Language</th>
+            <th className="px-4 py-2 font-medium">{columns.name}</th>
+            <th className="hidden px-4 py-2 font-medium md:table-cell">{columns.kind}</th>
             <th className="hidden px-4 py-2 font-medium sm:table-cell">When</th>
             <th className="hidden px-4 py-2 font-medium lg:table-cell">Length</th>
             <th className="px-4 py-2 font-medium">Outcome</th>
@@ -255,7 +261,20 @@ function HistoryTable({ pads, onDelete }: { pads: PadSummary[]; onDelete: OnDele
   );
 }
 
-function History({ pads, onDelete }: { pads: PadSummary[]; onDelete: OnDelete }) {
+const EMPTY: Record<Track, string> = {
+  software: 'Interviews you finish show up here, each with a report.',
+  quant: 'Rounds and quant rooms you finish show up here, each with a report.',
+};
+
+export function PadHistory({
+  track,
+  pads,
+  onDelete,
+}: {
+  track: Track;
+  pads: PadSummary[];
+  onDelete: OnDelete;
+}) {
   return (
     <Card aria-labelledby="history-heading">
       <CardHeader>
@@ -266,91 +285,15 @@ function History({ pads, onDelete }: { pads: PadSummary[]; onDelete: OnDelete })
       </CardHeader>
       {pads.length === 0 ? (
         <EmptyState icon={HistoryIcon} title="No finished interviews yet">
-          Interviews you finish show up here, each with a report.
+          {EMPTY[track]}
         </EmptyState>
       ) : (
         // Only one of the two is displayed at a time (and so in the accessibility tree).
         <>
           <HistoryCards pads={pads} onDelete={onDelete} />
-          <HistoryTable pads={pads} onDelete={onDelete} />
+          <HistoryTable track={track} pads={pads} onDelete={onDelete} />
         </>
       )}
     </Card>
-  );
-}
-
-export function Dashboard() {
-  const [view, setView] = usePageView(VIEWS);
-  const pads = useQuery({ queryKey: qk.pads, queryFn: api.pads });
-  const active = pads.data?.filter((p) => p.status === 'active') ?? [];
-  const ended = pads.data?.filter((p) => p.status === 'ended') ?? [];
-  const solved = ended.filter((p) => p.accepted).length;
-  const [toDelete, setToDelete] = useState<DeleteTarget | null>(null);
-
-  // The same shape as the quiz page: what is under way, then a switch between starting
-  // something new and what you did before.
-  return (
-    <div
-      className={cn(
-        'mx-auto max-w-6xl px-4 pt-8 sm:px-6 lg:pb-8',
-        // Room for the setup bar fixed to the bottom of phones (start view only).
-        view === 'start'
-          ? 'pb-[calc(6rem_+_env(safe-area-inset-bottom))]'
-          : 'pb-[calc(2rem_+_env(safe-area-inset-bottom))]',
-      )}
-    >
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div className="min-w-0">
-          <h1 className="text-xl font-semibold tracking-tight">Interviews</h1>
-          <p className="mt-1 text-sm text-fg-muted">
-            Solve a problem with the AI interviewer, or interview someone yourself.
-          </p>
-        </div>
-        {pads.data && (
-          <dl className="flex gap-6 text-right">
-            <div>
-              <dt className="text-xs text-fg-muted">Interviews</dt>
-              <dd className="text-lg font-semibold tabular">{ended.length}</dd>
-            </div>
-            <div>
-              <dt className="text-xs text-fg-muted">Solved</dt>
-              <dd className="text-lg font-semibold tabular">{solved}</dd>
-            </div>
-          </dl>
-        )}
-      </div>
-
-      {pads.data && <ActivePads pads={active} onDelete={setToDelete} />}
-
-      <PageTabs
-        className="mt-6"
-        label="Interviews"
-        value={view}
-        onValueChange={setView}
-        tabs={[
-          { value: 'start', label: 'New interview' },
-          { value: 'history', label: 'History', count: pads.data ? ended.length : null },
-        ]}
-      >
-        {/* Kept mounted while hidden: the problem and setup chosen survive a look at History. */}
-        <PageTabPanel value="start" keepMounted className="mt-5">
-          <NewInterview />
-        </PageTabPanel>
-        <PageTabPanel value="history" className="mt-5">
-          {pads.isPending ? (
-            <div role="status" aria-busy="true" aria-label="Loading interviews">
-              <Skeleton className="h-64 w-full" />
-            </div>
-          ) : pads.isError ? (
-            <Card>
-              <ErrorState error={pads.error} onRetry={() => pads.refetch()} compact />
-            </Card>
-          ) : (
-            <History pads={ended} onDelete={setToDelete} />
-          )}
-        </PageTabPanel>
-      </PageTabs>
-      <DeletePadDialog target={toDelete} onClose={() => setToDelete(null)} />
-    </div>
   );
 }

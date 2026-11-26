@@ -1,8 +1,9 @@
 /**
  * Visual review of the tracks: the first-visit question, the header in each track (and its
- * phone menu), and each tab in both tracks: Interviews, Practice (start and history), Roadmap
- * (study path and topic maps). Run with SCREENS=1 playwright test screens-tracks
- * (`ONLY=practice` and `SCREEN_WIDTHS=1440` narrow it).
+ * phone menu), and each tab in both tracks under the same names, to compare side by side:
+ * Interviews (practising, hosting, history, with pads under way), Practice (quizzes, Software's
+ * problems, history), Roadmap (study path and topic maps). Run with SCREENS=1 playwright test
+ * screens-tracks (`ONLY=interviews` and `SCREEN_WIDTHS=1440` narrow it).
  */
 import { type Page, test } from '@playwright/test';
 import { setup, shoot } from './helpers';
@@ -32,7 +33,12 @@ for (const width of WIDTHS) {
     });
 
     test('the tabs in both tracks', async ({ page }) => {
-      await setup(page);
+      await setup(page, (b) => {
+        // Pads of both tracks, under way and finished.
+        b.useRoomBank();
+        b.quant.listOnDashboard();
+        b.quantRooms.listOnDashboard();
+      });
       for (const track of ['software', 'quant'] as const) {
         if (want(`${track}-interviews`)) {
           await page.goto(`/${track}/interviews`);
@@ -42,7 +48,18 @@ for (const width of WIDTHS) {
             : page.getByRole('region', { name: 'Problem library' })
           ).waitFor();
           await settle(page);
-          await shoot(page, `${track}-interviews`, { fullPage: true });
+          await shoot(page, `${track}-interviews`, { fullPage: !phone });
+          await page.goto(`/${track}/interviews?mode=host`);
+          await (track === 'quant'
+            ? page.getByTestId('bank-row').first()
+            : page.getByRole('region', { name: 'Problem library' })
+          ).waitFor();
+          await settle(page);
+          await shoot(page, `${track}-interviews-host`, { fullPage: !phone });
+          await page.goto(`/${track}/interviews?view=history`);
+          await page.getByRole('region', { name: 'Finished interviews' }).waitFor();
+          await settle(page);
+          await shoot(page, `${track}-interviews-history`, { fullPage: true });
         }
         if (want(`${track}-practice`)) {
           await page.goto(`/${track}/practice`);
@@ -53,6 +70,16 @@ for (const width of WIDTHS) {
           await page.getByRole('region', { name: 'Past quizzes' }).waitFor();
           await settle(page);
           await shoot(page, `${track}-practice-history`, { fullPage: true });
+          if (track === 'software') {
+            await page.goto('/software/practice?view=problems');
+            await page.getByRole('region', { name: 'Problem library' }).waitFor();
+            await settle(page);
+            await shoot(page, 'software-practice-problems', { fullPage: !phone });
+            await page.getByRole('button', { name: /^Trapping Rain Water/ }).click();
+            await page.getByTestId('problem-card').getByRole('link').waitFor();
+            await settle(page);
+            await shoot(page, 'software-practice-problem', { fullPage: !phone });
+          }
         }
         if (want(`${track}-roadmap`)) {
           await page.goto(`/${track}/roadmap`);

@@ -134,7 +134,7 @@ test.describe('joining by the invite link', () => {
     await expect(page.getByRole('tab', { name: 'Shared notes' })).toBeVisible();
     await expect(page.getByTestId('invite-banner')).toHaveCount(0);
     // A guest has no dashboard to go back to.
-    await expect(page.getByRole('link', { name: 'interview++ dashboard' })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'Back to interviews' })).toHaveCount(0);
     expect(backend.requests.some((r) => r.path.endsWith('/host'))).toBe(false);
 
     await page.getByPlaceholder('Message your interviewer…').fill('Hi, ready when you are.');

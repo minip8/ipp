@@ -48,11 +48,11 @@ test.describe('quiz roadmap', () => {
     );
     await expect(page.getByTestId('roadmap-overview')).toContainText('Next up');
 
-    // Quant: its own topics and the shared Python, the same progress in both.
+    // Quant: its own topics first, the first chosen, then the shared Python, the same progress
+    // in both.
     await page.goto('/quant/roadmap?view=maps');
-    await expect(switcher.getByRole('radio')).toHaveText([/^Python/, /^Probability/]);
-    await switcher.getByRole('radio', { name: /^Probability/ }).click();
-    await expect(page).toHaveURL(/\/quant\/roadmap\?view=maps&roadmap=probability$/);
+    await expect(switcher.getByRole('radio')).toHaveText([/^Probability/, /^Python/]);
+    await expect(switcher.getByRole('radio', { checked: true })).toHaveText(/^Probability/);
     await switcher.getByRole('radio', { name: /^Python/ }).click();
     await expect(page).toHaveURL(/\/quant\/roadmap\?view=maps&roadmap=python$/);
     await expect(page.getByTestId('roadmap-summary')).toHaveText(

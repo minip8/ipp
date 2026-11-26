@@ -127,11 +127,11 @@ for (const width of WIDTHS) {
     test('dashboard', async ({ page }) => {
       test.skip(!want('quant-dashboard'));
       await setup(page, (b) => b.quant.listOnDashboard());
-      await page.goto('/software/interviews');
+      await page.goto('/quant/interviews');
       await page.getByRole('region', { name: 'In progress' }).waitFor();
       await page.waitForTimeout(300);
       await shoot(page, 'quant-dashboard');
-      await page.goto('/software/interviews?view=history');
+      await page.goto('/quant/interviews?view=history');
       await page.getByRole('region', { name: 'Finished interviews' }).waitFor();
       await page.waitForTimeout(300);
       await shoot(page, 'quant-dashboard-history');

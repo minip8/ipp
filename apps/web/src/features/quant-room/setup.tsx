@@ -1,17 +1,18 @@
 'use client';
 /**
  * Setting up a quant room (ARCHITECTURE §8.4): the host interviews someone on questions of the
- * bank. They may line questions up now (browsing and searching the bank, both tracks), reorder
- * and remove them, or start with an empty room and pick as they go, or never, and just talk over
- * the scratchpad and whiteboard. No AI key is needed.
+ * bank. They may line questions up now (browsing and searching the bank, any topic of either
+ * track), reorder and remove them, or start with an empty room and pick as they go, or never, and
+ * just talk over the scratchpad and whiteboard. No AI key is needed.
  *
  * Self-contained so it can move to another page in one piece: it fetches what it needs itself
  * (the quiz topics and each topic's public bank, prompts only: a room's bank search with the
  * solutions needs the room) and creates the room with `POST /api/pads`. Its parent may put
- * something at the top of the setup panel (`header`: the dashboard's kind-of-interview switch)
- * and decide what happens once the room exists (`onCreated`; by default it is opened).
+ * something at the top of the setup panel (`header`: the Interviews tab's kind-of-interview
+ * switch), start the bank on a site track (`track`: the Quant tab starts it on Quant) and decide
+ * what happens once the room exists (`onCreated`; by default it is opened).
  */
-import { type Pad, QUANT_QUEUE_MAX, type QuizBank } from '@ipp/contracts';
+import { type Pad, QUANT_QUEUE_MAX, type QuizBank, type Track } from '@ipp/contracts';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowDownIcon,
@@ -144,10 +145,13 @@ function QueueList({
 
 export function QuantRoomSetup({
   header,
+  track,
   onCreated,
 }: {
-  /** Shown at the top of the setup panel (the dashboard puts its kind-of-interview switch here). */
+  /** Shown at the top of the setup panel (the Interviews tab puts its kind-of-interview switch here). */
   header?: ReactNode;
+  /** The site track the bank's filter starts on; every question stays a click away. */
+  track?: Track;
   /** After the room is created; by default the browser goes to it. */
   onCreated?: (pad: Pad) => void;
 }) {
@@ -155,7 +159,9 @@ export function QuantRoomSetup({
   const qc = useQueryClient();
   const ids = { dur: useId() };
   const bank = usePublicBank();
-  const [query, setQuery] = useState<BankQuery>(NO_BANK_FILTERS);
+  const [query, setQuery] = useState<BankQuery>(() =>
+    track ? { ...NO_BANK_FILTERS, track } : NO_BANK_FILTERS,
+  );
   const [picks, setPicks] = useState<QueuedPick[]>([]);
   const [durationMin, setDurationMin] = useState<number | null>(45);
   const queued = useMemo(() => picks.map((p) => p.id), [picks]);
@@ -209,7 +215,7 @@ export function QuantRoomSetup({
             Question bank
           </h2>
           <p className="mt-0.5 text-xs text-fg-muted">
-            Line up questions for the interview, quant and fundamentals alike. Optional: you can
+            Line up questions for the interview, from any topic of either track. Optional: you can
             pick more, or all of them, in the room, where each one shows its answer and hints.
           </p>
         </div>

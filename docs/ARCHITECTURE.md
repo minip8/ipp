@@ -2,7 +2,7 @@
 
 A prep site for quant and software interviews: CoderPad-style coding pads (C++, Python, Java)
 with an AI interviewer that watches and speaks up unprompted, plus quizzes (§8): quant question
-banks, which the Quant page orders into trader and researcher paths (`QUANT_PATHS`), and
+banks, which the Quant track orders into trader and researcher paths (`QUANT_PATHS`), and
 fundamentals for developers. Strangers can sign up and run code, so untrusted-code execution is
 designed as a hostile-input problem. The operator pays for no model usage: the AI features run
 only on an API key each user saves themselves, from Anthropic, OpenAI, Google Gemini or
@@ -44,6 +44,44 @@ If this document and the contracts disagree, the contracts win; fix the document
 Rust lives in a Cargo workspace at the repo root (`Cargo.toml`, members `apps/judge`, `crates/*`).
 
 Ports in development: web 3000, api 4000, postgres 5432, redis 6379.
+
+### 1.1 Web pages and tracks
+
+The header's switch chooses a site track (`Track`: Software | Quant, §8) and holds the same three
+tabs in each: `/{track}/interviews`, `/{track}/practice` and `/{track}/roadmap` (and
+`/quant/practice/drill`, §8.1). Everything below the header is scoped to the track; each tab is one
+page component taking the track. The switch goes to the same tab of the other track, keeping
+`?view=history`, `?view=maps` and Interviews' `?mode=host` and nothing else. Arriving on a track
+page remembers its track (`PUT /api/me/track`, `user.track`, §3); a page of no track (a pad, its
+report, a quiz, a question bank, settings) shows the remembered one. URLs are built and read by
+the pure `apps/web/src/lib/track.ts`.
+
+- **Interviews** (`features/interviews`): the track's pads under way, then "New interview" and
+  "History" (`?view=history`). A pad is in a track by its format (`padTrack`: coding pads and
+  coding rooms Software, quant rounds and quant rooms Quant), and so are the figures (Software:
+  finished and solved; Quant: rounds finished) and the history's columns. The setup opens with
+  "Practise with the AI | Interview someone" (`?mode=host`). Software: the problem library and a
+  coding pad, or a coding room (§4.1); `?problem=` preselects a problem. Quant: a live round on a
+  path (`?path=`, §8.2), or a quant room (§8.4), offered only there. Its bank browser filters by
+  site track (`topicInTrack`, starting on Quant) and still offers every question; the host's desk
+  in the room, which searches on the server by a topic's home (`HostBankQuery.track`), has no
+  track filter.
+- **Practice** (`features/quiz/hub.tsx`): the track's quiz topics and the quiz setup (Quant adds
+  the drill), Software's problem library (`?view=problems`: a problem's card leads to its
+  Interviews setup with the problem chosen), and the history of attempts with a topic of the track.
+- **Roadmap** (`features/roadmap`): the study path (Quant's two, `?path=`) and the topic maps
+  (`?view=maps&roadmap=<topic>&node=<id>`, §8).
+
+A topic is in a track by `topicInTrack` (its home's track and `also`, §8); every list of a track's
+topics (`topicsOf`) has the track's own topics first, then those shared into it, each in study
+order. A URL naming a topic of the other track only goes on to that track. A pad's and its
+report's way back is the Interviews tab of the pad's track. `/dashboard` stays the app's home
+(sign-in lands there): it goes on to the remembered track's Interviews with the query kept, a
+coding query (`problem`, `category`, `difficulty`, `random`) meaning Software and `format=quant`
+Quant whatever is remembered (`format` is dropped, `homeTarget`); with no track remembered it first
+asks which, the header then showing no track and no tab as current. `/new` does the same;
+`/quiz` and `/quiz/topics` go to the current track's Practice (`?view=roadmap` to its topic maps);
+`/software` and `/quant` to their Interviews.
 
 ## 2. Repository conventions
 
@@ -173,8 +211,9 @@ queued, through `GET …/host` and `…/host/round/*` only (§8.4).
 ### 4.1 Interview rooms
 
 A pad of kind `room` is hosted by its owner, who is the interviewer; whoever joins by the invite
-link is a candidate (role `collaborator`). The web app offers it as "Host an interview"
-(`/dashboard?mode=host`, `src/features/room`; `/new` redirects to `/dashboard` with its query).
+link is a candidate (role `collaborator`). The web app offers it as "Interview someone" on the
+Software track's Interviews tab (`/software/interviews?mode=host`, `src/features/room`; §1.1), a
+quant room on the Quant track's.
 
 - **Guests.** A candidate needs no account: `POST /api/pads/join-guest` creates a guest user
   (`is_anonymous`) with the name they typed, signs them in and adds them to the room. This is the
@@ -758,7 +797,7 @@ the quiz history and stay; they are kept even when the round's pad is deleted. B
 an account, act only on the caller's rows (anyone else's id is a 404, as is a repeat) and share
 the `historyDeletes` limit with the drill's deletes.
 
-The roadmap (the Quizzes page's Roadmap view, `?view=roadmap&roadmap=<topic>&node=<id>`) draws each
+The roadmap (the Roadmap tab's topic maps, `/{track}/roadmap?view=maps&roadmap=<topic>&node=<id>`) draws each
 topic as a layered graph of study areas. `quiz/roadmap.yaml` maps each topic to its nodes
 (`QuizRoadmapNode`: id, short title, one-line description, the question `subtopics` it groups,
 `requires`, the nodes of the same topic to learn first, and `related`, nodes of other topics that
@@ -799,7 +838,7 @@ history left, so a deleted best falls to the next highest full-mix run of its du
 
 ### 8.2 Live quant round
 
-A practice pad of format `quant` (`POST /api/pads/quant`, from the Quant page): the AI interviewer
+A practice pad of format `quant` (`POST /api/pads/quant`, from the Quant track's Interviews tab): the AI interviewer
 asks a few questions of a quant path one after another, out loud or in chat, under the pad's
 clock. (A room of format `quant`, whose round a person runs with no clock, is §8.4; everything
 below is about the AI-run round, `mode` absent or `'ai'`, unless it says otherwise.) There is no problem, no code and no runs; the candidate works on the scratchpad
@@ -867,7 +906,7 @@ joining by the link, as on any practice pad) see exactly what the owner sees.
   by which the chat and voice number question messages); never a question id, a subtopic, a
   verdict or a question still to come. How a question closed is not sensitive (everyone saw it
   happen), so the pad says "Timed out" without waiting for the report. `PadSummary.quantPath`
-  gives the dashboard the round's path ("Quant · Trader"). The report (`Report.quant`, only after
+  gives the Interviews tab the round's path ("Quant · Trader"). The report (`Report.quant`, only after
   the pad ended) is built when read from the state and the bank: per question its status
   (`answered`, `timed_out`, `unfinished`, `not_reached`), topic title, solution, key points,
   explanation, verdict, time and budget, and hints as counts. The text of hints and follow-ups

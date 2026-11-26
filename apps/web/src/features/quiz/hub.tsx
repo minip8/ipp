@@ -1,8 +1,10 @@
 'use client';
 /**
- * The Practice tab, the same page in both tracks: the track's quiz topics as one grid in study
- * order with the quiz setup beside it (and, in Quant, the mental math drill), and the history of
- * attempts that include a topic of the track. The setup is remembered per track in this browser.
+ * The Practice tab, the same page in both tracks: the track's quiz topics as one grid (its own
+ * topics, then those shared into it, each in study order) with the quiz setup beside it (and, in
+ * Quant, the mental math drill), and the history of attempts that include a topic of the track.
+ * Software also has the problem library (`?view=problems`, problems-view.tsx), where a session on
+ * one problem starts. The setup is remembered per track in this browser.
  */
 import type { QuizAttemptSummary, QuizTopicStats, Track } from '@ipp/contracts';
 import { useQuery } from '@tanstack/react-query';
@@ -18,7 +20,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { type RefObject, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { PageHeader } from '@/components/page-header';
 import { PageTabPanel, PageTabs, usePageView } from '@/components/page-tabs';
 import { EmptyState, ErrorState, InlineError, useRetryCountdown } from '@/components/states';
@@ -44,9 +46,10 @@ import {
 import { DrillCard } from '@/features/drill/drill-card';
 import { api } from '@/lib/api';
 import { formatPercent, formatRelative, plural } from '@/lib/format';
+import { useOnScreen } from '@/lib/layout-hooks';
 import { qk } from '@/lib/queries';
 import { storage } from '@/lib/storage';
-import { misplacedTopic, PRACTICE_VIEWS, tabHref, topicsOf } from '@/lib/track';
+import { misplacedTopic, PRACTICE_VIEWS, type PracticeView, tabHref, topicsOf } from '@/lib/track';
 import { cn } from '@/lib/utils';
 import { bankHref } from './bank-logic';
 import {
@@ -61,6 +64,7 @@ import {
   questionsFor,
   setupStorageKey,
 } from './logic';
+import { ProblemsView } from './problems-view';
 import { DiscussionKeyPrompt, useDiscussionKey, useStartAttempt } from './start';
 import { TopicProgress } from './topic-progress';
 
@@ -72,21 +76,6 @@ const BLURB: Record<Track, string> = {
 
 /** Phones: segmented controls at a size a finger can hit (desktop keeps the compact size). */
 const TOUCH_SEGMENTS = 'max-sm:[&>*]:h-9';
-
-/** Whether any of the element is on screen. */
-function useOnScreen(ref: RefObject<HTMLElement | null>) {
-  const [onScreen, setOnScreen] = useState(false);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el || typeof IntersectionObserver === 'undefined') return;
-    const io = new IntersectionObserver((entries) =>
-      setOnScreen(Boolean(entries[entries.length - 1]?.isIntersecting)),
-    );
-    io.observe(el);
-    return () => io.disconnect();
-  }, [ref]);
-  return onScreen;
-}
 
 function TopicCard({
   t,
@@ -411,7 +400,11 @@ function HistoryList({
 }
 
 export function QuizHub({ track }: { track: Track }) {
-  const [view, setView] = usePageView(PRACTICE_VIEWS);
+  const views: readonly [PracticeView, ...PracticeView[]] = PRACTICE_VIEWS[track];
+  const [view, setView] = usePageView(views);
+  // The library loads the first time its view is shown, then stays mounted (its filters too).
+  const [problemsSeen, setProblemsSeen] = useState(view === 'problems');
+  if (view === 'problems' && !problemsSeen) setProblemsSeen(true);
   const topics = useQuery({ queryKey: qk.quizTopics, queryFn: api.quizTopics });
   const attempts = useQuery({ queryKey: qk.attempts, queryFn: api.attempts });
   const params = useSearchParams();
@@ -470,10 +463,10 @@ export function QuizHub({ track }: { track: Track }) {
     <div
       className={cn(
         'mx-auto max-w-6xl px-4 pt-8 sm:px-6 lg:pb-8',
-        // Room for the bar fixed to the bottom of phones (start view only).
-        view === 'start'
-          ? 'pb-[calc(6rem_+_env(safe-area-inset-bottom))]'
-          : 'pb-[calc(2rem_+_env(safe-area-inset-bottom))]',
+        // Room for the bar fixed to the bottom of phones (the quizzes and the library).
+        view === 'history'
+          ? 'pb-[calc(2rem_+_env(safe-area-inset-bottom))]'
+          : 'pb-[calc(6rem_+_env(safe-area-inset-bottom))]',
       )}
     >
       <PageHeader
@@ -489,14 +482,14 @@ export function QuizHub({ track }: { track: Track }) {
         }
       />
 
-      {/* Room for another view (the problem library) beside these later. */}
       <PageTabs
         className="mt-6"
         label="Practice"
         value={view}
         onValueChange={setView}
         tabs={[
-          { value: 'start', label: 'Start a quiz' },
+          { value: 'start', label: 'Quizzes' },
+          ...(track === 'software' ? [{ value: 'problems' as const, label: 'Problems' }] : []),
           { value: 'history', label: 'History', count: history?.length ?? null },
         ]}
       >
@@ -535,6 +528,11 @@ export function QuizHub({ track }: { track: Track }) {
             </div>
           </div>
         </PageTabPanel>
+        {track === 'software' && (
+          <PageTabPanel value="problems" keepMounted={problemsSeen} className="mt-5">
+            <ProblemsView />
+          </PageTabPanel>
+        )}
         <PageTabPanel value="history" className="mt-5">
           <HistoryList track={track} topics={topics.data ?? []} pending={topics.isPending} />
         </PageTabPanel>

@@ -1,20 +1,30 @@
 'use client';
 import { TRACK_INFO, TRACKS, type Track } from '@ipp/contracts';
-import { CheckIcon, ChevronDownIcon, CodeXmlIcon, type LucideIcon, SigmaIcon } from 'lucide-react';
+import {
+  CheckIcon,
+  ChevronDownIcon,
+  CodeXmlIcon,
+  LayersIcon,
+  type LucideIcon,
+  SigmaIcon,
+} from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
 import { switchHref } from '@/lib/track';
-import { useTrack } from '@/lib/track-hooks';
+import { useChosenTrack } from '@/lib/track-hooks';
 import { cn } from '@/lib/utils';
 import { Menu, MenuContent, MenuItem, MenuLabel, MenuTrigger } from './ui/menu';
 
 export const TRACK_ICON: Record<Track, LucideIcon> = { software: CodeXmlIcon, quant: SigmaIcon };
 
-/** From `sm` up: both tracks side by side, the current one raised (the Segmented look). */
+/**
+ * From `sm` up: both tracks side by side, the current one raised (the Segmented look). Before a
+ * track is chosen (`useChosenTrack` null) neither is.
+ */
 function Segments({ search }: { search: string }) {
   const pathname = usePathname();
-  const current = useTrack();
+  const current = useChosenTrack();
   return (
     <nav
       aria-label="Track"
@@ -57,16 +67,19 @@ function Segments({ search }: { search: string }) {
  */
 function Compact({ search }: { search: string }) {
   const pathname = usePathname();
-  const current = useTrack();
-  const Icon = TRACK_ICON[current];
+  const current = useChosenTrack();
+  const Icon = current ? TRACK_ICON[current] : LayersIcon;
   return (
     <Menu>
       <MenuTrigger
-        aria-label={`Track: ${TRACK_INFO[current].label}`}
+        aria-label={current ? `Track: ${TRACK_INFO[current].label}` : 'Track: none chosen'}
         data-testid="track-menu"
         className="touch-hit flex h-8 shrink-0 items-center gap-0.5 rounded-md border border-border-strong bg-surface-2 pr-1 pl-1.5 text-fg transition-colors data-[state=open]:bg-surface-3 sm:hidden"
       >
-        <Icon aria-hidden className="size-4 text-accent-text" />
+        <Icon
+          aria-hidden
+          className={cn('size-4', current ? 'text-accent-text' : 'text-fg-muted')}
+        />
         <ChevronDownIcon aria-hidden className="size-3.5 text-fg-muted" />
       </MenuTrigger>
       <MenuContent align="start" className="w-72">
