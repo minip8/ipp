@@ -39,7 +39,7 @@ counterparty: |
   lopsided: a ten (the commonest card) moves the fair value up by only 3.46, an ace down by 5.54.
   Whenever fair is outside the market, trade the full size against it. Otherwise trade one lot,
   on the opposite side to your stage 1 trade if you made one. Ask why the market moved by as
-  much as it did. Then reveal Card 2.
+  much as it did. Reveal Card 2 after the first trade of this stage.
 
   Stage 3, Cards 1 and 2 shown (sd 3.15): you are now informed and trade on the true value. Lift
   the offer for the full size if it is below the true value, hit the bid for the full size if it

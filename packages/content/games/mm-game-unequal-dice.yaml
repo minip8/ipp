@@ -34,7 +34,8 @@ counterparty: |
   anyway). If the fair value is outside the market, trade the full size against it. Otherwise
   trade the quote's full size on the side of your choice: the point is the position they carry
   into the big reveal. Then, before revealing, ask what their position is and how much the next
-  reveal could move its value. After their answer, reveal the twenty-sided die.
+  reveal could move its value. Reveal the twenty-sided die after their answer, or with your reply
+  to their next message if they do not answer.
 
   Stage 2, the twenty-sided die shown: still uninformed, against the new public fair value, which
   has moved by the die minus 10.5 (as much as 9.5 either way). A market not re-centred is

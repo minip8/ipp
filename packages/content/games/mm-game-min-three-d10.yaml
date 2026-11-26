@@ -30,8 +30,8 @@ counterparty: |
   or on a third of 10. If the market is wider than 3, ask for a tighter one (at most twice, then
   trade it anyway). If the fair value is outside the market, trade the full size against it.
   Otherwise lift the offer for one lot, so the candidate is short the long upper tail, and ask
-  how much they could lose on that contract and how much they could make. After their answer,
-  reveal Die 1.
+  how much they could lose on that contract and how much they could make. Reveal Die 1 after
+  their answer, or with your reply to their next message if they do not answer.
 
   Stage 2, Die 1 shown: still uninformed, against the new public fair value. If Die 1 is a 1, the
   contract is decided at 1: ask what it is worth now and what a market on it should look like,

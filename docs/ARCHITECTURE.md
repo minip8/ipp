@@ -860,11 +860,11 @@ contract on hidden values the server draws and keeps, on which the candidate mak
 built from independent discrete components; sequential betting games (bankroll and stakes) are
 out of scope, and nothing below depends on the payoff being one of today's four.
 
-The pieces, and what is **built** and **not yet built**:
+The pieces:
 
 | | where | state |
 |---|---|---|
-| content format, loader, checks, two sample games | `packages/content/games/`, `src/load.ts`, `src/games.ts` | built |
+| content format, loader, checks, nine games | `packages/content/games/`, `src/load.ts`, `src/games.ts` | built |
 | engine, view, books, review | `packages/contracts/src/quant-game.ts` | built |
 | steps and refusals in the round | `packages/contracts/src/quant-round.ts` (`advanceRound`) | built |
 | `quant_games` table and seed | `packages/db` | built |
@@ -873,7 +873,7 @@ The pieces, and what is **built** and **not yet built**:
 | the assembly rule (one game in a trader round's second slot) and `includeGame` | `apps/api/src/quant/assemble.ts` | built |
 | the interviewer's seam: a game's entry in `QuantContext.questions` (content and books) | `packages/interviewer/src/types.ts`, `InterviewerHost.loadQuantContext` | built |
 | the interviewer's moves, the facts it posts, its books in the prompt, the review in the verdict and the assessment | `packages/interviewer/src/quant/` (`game.ts`, §7.3) | built |
-| the quote widget, the blotter, the report's game section | `apps/web` | **not yet** |
+| the game panel (components, quote form, blotter, settlement), the setup option, the report's game section, `game` rows in the transcript | `apps/web/src/features/quant-game/`, `features/report/game-review.tsx` | built |
 
 A round without a game behaves exactly as before (its stored state is byte-for-byte what it
 was, and so is its assembly: the same draws from the same generator).
@@ -1056,14 +1056,22 @@ was, and so is its assembly: the same draws from the same generator).
   its stream is discarded, the new quote is answered at its own price); closes for time and failed
   calls on a game; voice; nothing hidden ever streamed before its step, and nothing hidden, fair,
   marked or from the playbook in any socket event before the settlement.
-- **To build next** (specified, not implemented):
-  - The browser tests' mock (`apps/web/e2e/mock-quant-round.ts`) must mirror the route and post
-    the same `formatQuote` text.
-  - The API's sweeper closes an unattended game with `cannedCloseLine` alone; the settlement is
-    on the panel but not stated in the chat, as the interviewer's closes state it.
-  - Web: a quote widget (bid, ask, size, checked with `quoteProblem`), the components and the
-    blotter from `QuantQuestionView.game`, and the report's game section from
-    `QuantQuestionReview.game`.
+- **Web** (`apps/web/src/features/quant-game/`, pure logic in its `logic.ts`): the panel under
+  the current question shows the components (a "?" tile until shown), the market's state (none,
+  live, traded, withdrawn), the quote form (bid, offer, size; checked as typed with the
+  contract's `quoteProblem`, posted to the quote route, the returned view applied like a
+  `round.updated`), position, cash and a blotter from the candidate's side, and the settlement
+  when the question closes. Nothing in the browser computes a fair value or a mark. The setup
+  card sends `includeGame` (on by default for the trader path, off for the researcher path). The
+  report's game section (`features/report/game-review.tsx`, derivations in `quant-logic.ts`) is
+  where fair value appears: each market against the fair value at the time, each reveal's effect
+  on fair value and on the candidate's mid, the position carried, and the expected edge beside
+  the realised P&L. `game` timeline events render as rows in the report's transcript. The
+  browser tests' mock (`e2e/mock-quant-round.ts`) mirrors the quote route and plays a scripted
+  counterparty with the real `advanceRound`.
+- **Known gaps**: the API's sweeper closes an unattended game with `cannedCloseLine` alone, so
+  the settlement is on the panel but not stated in the chat as the interviewer's closes state
+  it; on a phone the quote form is on the Question tab, not beside the chat.
 
 ## 9. Security checklist
 

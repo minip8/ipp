@@ -27,8 +27,9 @@ counterparty: |
   value. The trap is the skew: the median product is 10 and the most common values are 6 and 12,
   so a candidate who centres on 9 or 10 is quoting below fair. If 12.25 is outside the market,
   trade the full size against it (lift an offer below it, hit a bid above it). If the market is
-  wider than 6, ask for a tighter one first. Otherwise trade one lot on either side. Ask how they
-  chose the mid, and why the mean and the median differ here. After a trade, reveal Die 1.
+  wider than 6, ask for a tighter one first (at most twice, then trade it anyway). Otherwise trade
+  one lot on either side. Ask how they chose the mid, and why the mean and the median differ
+  here. After a trade, reveal Die 1.
 
   Stage 2, Die 1 shown: you are now informed and trade on the true value. The new fair value is
   3.5 times the die shown and the spread of outcomes scales with it, so a good market moves a

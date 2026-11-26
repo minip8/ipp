@@ -47,7 +47,8 @@ counterparty: |
 
   Stage 3, Dice 1 and 2 shown: sell into one market on the rule. Then, before revealing, ask what
   their position is, how much the twenty-sided die can move its value, and whether they are
-  happy to hold it through that reveal. After their answer, reveal the twenty-sided die.
+  happy to hold it through that reveal. Reveal the twenty-sided die after their answer, or with
+  your reply to their next message if they do not answer.
 
   Stage 4, the twenty-sided die shown (sd 1.71): the order is done and you trade both ways,
   still uninformed, against the public fair value. If fair is outside the market, trade the full
