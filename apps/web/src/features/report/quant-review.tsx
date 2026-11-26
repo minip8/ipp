@@ -3,7 +3,9 @@
  * A quant round's questions in its report, one by one: the prompt, how it ended, the
  * interviewer's verdict, and the solution with its key points and explanation. Loaded with
  * `next/dynamic` from the report page, so KaTeX loads only with a quant pad's report. Hints are
- * counts only; the hints actually given are in the transcript, in the interviewer's words.
+ * counts only; the hints actually given are in the transcript, in the interviewer's words. A
+ * market-making game adds its review (game-review.tsx), and its solution is a plain line of
+ * figures.
  */
 import type { QuantQuestionReview, QuantReport } from '@ipp/contracts';
 import { ChevronRightIcon, ClockIcon, LightbulbIcon } from 'lucide-react';
@@ -14,6 +16,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { plural } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { GameReview } from './game-review';
 import { hintsLabel, STATUS_LABEL, STATUS_TONE, scoreView, timeLabel } from './quant-logic';
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
@@ -28,11 +31,15 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 function Solution({ q }: { q: QuantQuestionReview }) {
   return (
     <div className="space-y-4 rounded-md border border-border bg-surface-2/60 px-4 py-3.5">
-      <Section title="Solution">
+      <Section title={q.type === 'game' ? 'Before anything was shown' : 'Solution'}>
         <div data-testid="review-solution">
-          <MathMarkdown className="text-sm leading-relaxed">
-            {q.unit && q.type === 'numeric' ? `${q.solution} (${q.unit})` : q.solution}
-          </MathMarkdown>
+          {q.type === 'game' ? (
+            <p className="text-sm leading-relaxed tabular">{q.solution}</p>
+          ) : (
+            <MathMarkdown className="text-sm leading-relaxed">
+              {q.unit && q.type === 'numeric' ? `${q.solution} (${q.unit})` : q.solution}
+            </MathMarkdown>
+          )}
         </div>
       </Section>
       {q.keyPoints.length > 0 && (
@@ -134,6 +141,7 @@ function QuestionReview({ q }: { q: QuantQuestionReview }) {
       ) : (
         <p className="text-sm text-fg-muted">No verdict was written for this answer.</p>
       )}
+      {q.game && <GameReview game={q.game} />}
       <Solution q={q} />
     </li>
   );

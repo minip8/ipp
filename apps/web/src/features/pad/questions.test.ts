@@ -29,6 +29,7 @@ const posed = (index: number, messageId: string): QuantQuestionView => ({
   closedBy: null,
   hintsGiven: 0,
   posedMessageId: messageId,
+  game: null,
 });
 
 const round = (questions: QuantQuestionView[], phase: QuantRoundView['phase'] = 'asking') => ({

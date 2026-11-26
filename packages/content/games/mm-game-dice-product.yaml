@@ -1,0 +1,60 @@
+# A market-making game played live in a trader round (ARCHITECTURE §8.3). The server draws the
+# dice, keeps the books and settles; the interviewer only trades and reveals.
+id: mm-game-dice-product
+topic: betting-market-making
+title: Product of two dice
+difficulty: medium
+prompt: |
+  Two fair six-sided dice have been rolled where neither of us can see them. A contract settles
+  at their product, $D_1 \times D_2$.
+
+  Make me a two-sided market on it: a bid, an offer and a size of up to 5 contracts, in steps of
+  0.25. I may buy from you, sell to you, or ask for another market. At some point I will show you
+  the first die; your market is then withdrawn and you make a new one. At the end the second die
+  is shown and the contract settles.
+components:
+  - { label: Die 1, faces: [1, 2, 3, 4, 5, 6] }
+  - { label: Die 2, faces: [1, 2, 3, 4, 5, 6] }
+payoff: product
+reveal: [0]
+tick: 0.25
+maxSize: 5
+counterparty: |
+  Your books show the public fair value, the true value and your edge against both at the
+  candidate's bid and offer. Never say the fair value, a hidden die or the candidate's P&L.
+
+  Stage 1, nothing shown (fair 12.25): you are uninformed and trade only on the public fair
+  value. The trap is the skew: the median product is 10 and the most common values are 6 and 12,
+  so a candidate who centres on 9 or 10 is quoting below fair. If 12.25 is outside the market,
+  trade the full size against it (lift an offer below it, hit a bid above it). If the market is
+  wider than 6, ask for a tighter one first (at most twice, then trade it anyway). Otherwise trade
+  one lot on either side. Ask how they chose the mid, and why the mean and the median differ
+  here. After a trade, reveal Die 1.
+
+  Stage 2, Die 1 shown: you are now informed and trade on the true value. The new fair value is
+  3.5 times the die shown and the spread of outcomes scales with it, so a good market moves a
+  long way and changes width (narrow after a 1, wide after a 6). Lift the offer for the full size
+  if it is below the true value, hit the bid if it is above, otherwise trade one lot on the side
+  that is better for you. Ask how their position should change the new quote. Close once this
+  market has been traded or passed, or when time is short.
+hints:
+  - Are the two dice independent? What does that give you for the expected product?
+  - Is the product's distribution symmetric about its mean? Where is the median?
+  - Once one die is shown, the product is that number times a single die. What is its mean, and how spread out is it?
+explanation: |
+  The dice are independent, so the fair value is $E[D_1]E[D_2] = 3.5^2 = 12.25$. The
+  distribution is skewed to the right: the median is 10, only $13/36$ of outcomes exceed 12.25,
+  and the range is 1 to 36, with standard deviation
+  $\sqrt{(91/6)^2 - 12.25^2} \approx 8.94$. A sensible opening market is centred on 12.25, not
+  on the median or on a common value, and fairly wide: 10 at 14.5, say.
+
+  Once Die 1 shows $d$, the product is $d$ times one die: fair $3.5d$ with standard deviation
+  $d\sqrt{35/12} \approx 1.71d$. The mid has to jump to $3.5d$ (3.5 after a 1, 21 after a 6) and
+  the width should scale with $d$, which is the point of the game: updating the whole market on
+  information, not nudging the old one. From then on the counterparty is informed, so a market
+  that is not centred on the new fair value is traded against for the full size.
+expect:
+  fair: 49/4
+  sd: 8.942
+  min: 1
+  max: 36

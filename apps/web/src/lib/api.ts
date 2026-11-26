@@ -23,8 +23,10 @@ import {
   PadProblem,
   PadSummary,
   Playback,
+  type PostQuantQuoteRequest,
   ProblemDetail,
   ProblemSummary,
+  QuantRoundView,
   QuizAttempt,
   QuizAttemptSummary,
   QuizBank,
@@ -194,6 +196,9 @@ export const api = {
       method: 'POST',
       body: question ? { question } : {},
     }),
+  /** A market on the current question's game (§8.3): the round as it now is, or a 409 refusal. */
+  postQuote: (id: string, body: PostQuantQuoteRequest) =>
+    request(`/pads/${id}/round/quote`, QuantRoundView, { method: 'POST', body }),
   report: (id: string) => request(`/pads/${id}/report`, Report),
   requestAssessment: (id: string) =>
     request(`/pads/${id}/report/assessment`, Report, { method: 'POST' }),

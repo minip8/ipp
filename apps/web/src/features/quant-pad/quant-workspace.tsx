@@ -23,6 +23,7 @@ import { PortalSlot, useIsDesktop, useKeyboardBox, usePortalNode } from '@/featu
 import { cn } from '@/lib/utils';
 import {
   clearQuantUnread,
+  gameMoves,
   NO_QUANT_UNREAD,
   noteQuantActivity,
   QUANT_PANES,
@@ -145,14 +146,18 @@ export function QuantWorkspace() {
   const seenMessages = useRef(state.messages.length);
   const seenQuestions = useRef(state.round?.questions.length ?? 0);
   const posed = state.round?.questions.length ?? 0;
+  // A game's trades and reveals happen on the question pane too.
+  const moves = gameMoves(state.round);
+  const seenMoves = useRef(moves);
   useEffect(() => {
     const messages = incomingMessages(state.messages, seenMessages.current, state.me);
     seenMessages.current = state.messages.length;
-    const newQuestion = posed > seenQuestions.current;
+    const newQuestion = posed > seenQuestions.current || moves > seenMoves.current;
     seenQuestions.current = posed;
+    seenMoves.current = moves;
     if (!compact) return;
     setUnread((u) => noteQuantActivity(u, paneRef.current, { messages, newQuestion }));
-  }, [state.messages, state.me, posed, compact]);
+  }, [state.messages, state.me, posed, moves, compact]);
 
   const mainLayout = useDefaultLayout({
     id: 'ipp-quant-main',

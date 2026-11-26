@@ -10,7 +10,7 @@
  *
  * Not part of index.ts: it needs katex and remark, which only the checks (tests, `check`) load.
  */
-import { isMathSpan, type QuizQuestion, type QuizTrack } from '@ipp/contracts';
+import { isMathSpan, type QuantGame, type QuizQuestion, type QuizTrack } from '@ipp/contracts';
 import katex from 'katex';
 import remarkMath from 'remark-math';
 import remarkParse from 'remark-parse';
@@ -141,5 +141,20 @@ export function quizMathErrors(
     for (const { field, text } of quizMarkdownFields(q))
       for (const e of markdownMathErrors(text, track)) errors.push(`${q.id} ${field}: ${e}`);
   }
+  return errors;
+}
+
+/**
+ * Math problems in market-making games (ARCHITECTURE §8.3), as "game-id field: message" strings.
+ * A game belongs to a quant topic, so its prompt (posted word for word as the question) and its
+ * explanation (shown in the report) are checked as quant Markdown: every formula must typeset.
+ */
+export function quantGameMathErrors(
+  games: readonly Pick<QuantGame, 'id' | 'prompt' | 'explanation'>[],
+): string[] {
+  const errors: string[] = [];
+  for (const g of games)
+    for (const field of ['prompt', 'explanation'] as const)
+      for (const e of markdownMathErrors(g[field], 'quant')) errors.push(`${g.id} ${field}: ${e}`);
   return errors;
 }

@@ -361,10 +361,10 @@ export const MODE_LABEL: Record<QuizMode, string> = {
 
 export const MODE_HINT: Record<QuizMode, string> = {
   practice:
-    'Multiple choice, numeric answers and "what does this print". You see the answer after each question.',
+    'Multiple choice, numeric answers and "what does this print". You see the answer after each question. For speed at arithmetic, the Quant page has a mental math drill.',
   exam: 'The same kind of questions, with the answers held back until you finish.',
   discussion:
-    'Open questions, talked through with an AI interviewer who asks follow-ups and then grades you.',
+    'Open questions, talked through with an AI interviewer who asks follow-ups and then grades you. For a timed round of quant questions, start a live round from the Quant page.',
 };
 
 export const QUIZ_COUNTS = ['5', '10', '20', '30'] as const;

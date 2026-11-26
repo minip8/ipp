@@ -1,0 +1,79 @@
+# A market-making game played live in a trader round (ARCHITECTURE §8.3). The server draws the
+# cards, keeps the books and settles; the interviewer only trades and reveals. Each card comes
+# from its own deck, so the cards are independent: 13 ranks with tens weighted four times.
+id: mm-game-three-cards
+topic: betting-market-making
+title: Three cards at blackjack values
+difficulty: medium
+prompt: |
+  Three cards have been dealt face down, each from its own full, well-shuffled 52-card deck, so
+  each card is equally likely to be any of the 52, independently of the others. Each card counts
+  as in blackjack, with an ace as 1: an ace is 1, two to ten are worth their number, and a jack,
+  queen or king is worth 10. A contract settles at the total of the three cards.
+
+  Make me a two-sided market on it: a bid, an offer and a size of up to 5 contracts, in steps of
+  0.25. I may buy from you, sell to you, or ask for another market. I will turn over Card 1 and
+  then Card 2, showing its value; each time your market is withdrawn and you make a new one.
+  Card 3 is turned over only at the end, when the contract settles.
+components:
+  - { label: Card 1, faces: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 10, 10] }
+  - { label: Card 2, faces: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 10, 10] }
+  - { label: Card 3, faces: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 10, 10] }
+payoff: sum
+reveal: [0, 1]
+tick: 0.25
+maxSize: 5
+counterparty: |
+  Your books show the public fair value and standard deviation, the true value and your edge
+  against both at the candidate's bid and offer. Never say the fair value, a hidden card or the
+  candidate's P&L.
+
+  Stage 1, nothing shown (fair 19.62, sd 5.46): you are uninformed and trade only on the public
+  fair value. The traps are 16.5 (forgetting the picture cards: 5.5 a card), 21 (7 a card, the
+  median card) and 30 (three tens). If the market is wider than 5, ask for a tighter one (at most
+  twice, then trade it anyway). If the fair value is outside the market, trade the full size
+  against it. Otherwise trade one lot on either side. Ask how they got their mid, and which value
+  a single card is most likely to have. Then reveal Card 1.
+
+  Stage 2, Card 1 shown: still uninformed, against the new public fair value. The move is
+  lopsided: a ten (the commonest card) moves the fair value up by only 3.46, an ace down by 5.54.
+  Whenever fair is outside the market, trade the full size against it. Otherwise trade one lot,
+  on the opposite side to your stage 1 trade if you made one. Ask why the market moved by as
+  much as it did. Reveal Card 2 after the first trade of this stage.
+
+  Stage 3, Cards 1 and 2 shown (sd 3.15): you are now informed and trade on the true value. Lift
+  the offer for the full size if it is below the true value, hit the bid for the full size if it
+  is above it, and pass otherwise. Ask what their position is and what Card 3 can do to it: the
+  worst case and the most likely case. There is no reveal left: close once this market has been
+  traded or passed, or when time is short.
+hints:
+  - Of the 13 ranks, how many are worth 10?
+  - What is the expected value of one card? Is it the middle of 1 to 10?
+  - Once a card is shown, the other two are still random and independent of it. What is the new expected total?
+explanation: |
+  Four of the 13 ranks (ten, jack, queen, king) are worth 10, so a card is 10 with probability
+  $4/13 \approx 30.8\%$ and each of 1 to 9 with probability $1/13$. Its expected value is
+  $(1 + 2 + \dots + 9 + 4 \times 10)/13 = 85/13 \approx 6.54$, its variance
+  $685/13 - (85/13)^2 = 1680/169 \approx 9.94$ and its standard deviation about 3.15. The total
+  of three independent cards has fair value $255/13 \approx 19.62$ and standard deviation
+  $\sqrt{3 \times 1680/169} \approx 5.46$, over a range of 3 to 30. A market such as 18.5 at
+  20.75 (width 2.25, about 0.4 standard deviations) is a sensible opening.
+
+  Each card's distribution is lopsided: its mean (6.54) is above the middle of the range (5.5)
+  and below both its median (7) and its most likely value (10). So a shown card moves the market
+  asymmetrically: when Card 1 shows $c$ the fair value is $c + 170/13 \approx c + 13.08$ (23.08
+  after a ten, 14.08 after an ace), a move of $c - 6.54$, and the standard deviation falls to
+  $\sqrt 2 \times 3.15 \approx 4.46$. With two cards $c_1, c_2$ shown it is
+  $c_1 + c_2 + 6.54$, with standard deviation 3.15 (26.54 after two tens, 12.54 after an ace and a
+  five).
+
+  The lesson is weighting. The faces are not equally likely, so the mean is not the midpoint:
+  quoting 16.5 from "5.5 a card" sits more than half a standard deviation below fair and is lifted
+  every time, and good news (a ten) moves the market less than bad news (an ace) because it was
+  already expected. In the last stage the counterparty knows Card 3, so its trades there measure
+  adverse selection.
+expect:
+  fair: 255/13
+  sd: 5.461
+  min: 3
+  max: 30

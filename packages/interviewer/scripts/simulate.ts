@@ -9,7 +9,9 @@
  * questions, thinking aloud, a hint, a follow-up, a stall, a close for time, a market to make,
  * then the verdicts and the assessment. `--no-assessment` skips the assessment in both. With
  * `--quant`, `--dump <file>` appends every model request and its raw output to a JSONL file (no
- * key in it), for diffing prompts between turns.
+ * key in it), for diffing prompts between turns. `--game <id>` puts that market-making game
+ * (`packages/content/games/<id>.yaml`) in the round's second slot and plays it with a scripted
+ * candidate who posts quotes through the quote step (`--values 6,2,5` fixes its hidden values).
  *
  * Reads ANTHROPIC_API_KEY or ANTHROPIC_KEY from the environment or the repo-root .env.
  * The key is never printed. Uses a virtual clock: time jumps between scripted steps, so a
@@ -461,7 +463,15 @@ async function main() {
 }
 
 (args.includes('--quant')
-  ? simulateQuant({ config, devKey, settings, skipAssessment, dump: flag('dump', '') || undefined })
+  ? simulateQuant({
+      config,
+      devKey,
+      settings,
+      skipAssessment,
+      dump: flag('dump', '') || undefined,
+      gameId: flag('game', '') || undefined,
+      gameValues: flag('values', '') ? flag('values', '').split(',').map(Number) : undefined,
+    })
   : main()
 ).catch((err) => {
   console.error(err);

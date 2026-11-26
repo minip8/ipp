@@ -15,6 +15,9 @@ import type {
   ProblemContent,
   QuantClock,
   QuantClosedBy,
+  QuantGameBooks,
+  QuantGameMechanics,
+  QuantGameState,
   QuantPath,
   QuantPhase,
   QuantStep,
@@ -92,6 +95,66 @@ export interface RoomContext {
 export type QuantQuestion = Extract<QuizQuestion, { type: 'short' | 'numeric' }>;
 
 /**
+ * A market-making game's content (ARCHITECTURE §8.3, `QuantGame` in `quant_games`), as the
+ * interviewer may use it. SERVER-ONLY: `counterparty`, `hints` and `explanation` are its private
+ * material. `prompt` is what was posted; `mechanics` is the snapshot the round plays (the same as
+ * the content's unless the content changed since). Built from the round's snapshot alone, with
+ * empty notes, hints and explanation, when the game's row is gone.
+ */
+export interface QuantGameContent {
+  id: string;
+  topic: string;
+  title: string;
+  difficulty: QuizDifficulty;
+  prompt: string;
+  /** How to trade against the candidate: informed or not, when to ask for a tighter market, when to reveal. */
+  counterparty: string;
+  /** The hint ladder, gentlest first, cut to the rungs the round was built with (`hintsAvailable`). */
+  hints: string[];
+  /** For the report: fair value, a sensible width, how the market moves on each reveal. */
+  explanation: string;
+  mechanics: QuantGameMechanics;
+}
+
+/** What a question entry of `QuantContext.questions` shares, a bank question's or a game's. */
+interface QuantEntryBase {
+  index: number;
+  /** As in `QuantRoundQuestion.hintRungs`. */
+  hintRungs: number[];
+  followUpAsked: boolean;
+}
+
+/** A bank question of the round. `kind` is absent in entries made before games existed. */
+export interface QuantBankEntry extends QuantEntryBase {
+  kind?: 'question';
+  question: QuantQuestion;
+}
+
+/**
+ * A slot that holds a market-making game. `books` is `gameBooks(state)`, the interviewer's private
+ * view of the game as it is now: every hidden value, the public fair value, the true value, the
+ * live quote with the edges against it, position and cash marked to both. `state` is the game's
+ * state itself, as the round holds it at the context load: the interviewer plays its moves on it
+ * with the engine's own transitions (`tradeQuote`, `revealNext`, `settleGame`), so the facts it
+ * posts are the figures the server then records, and builds `gameReview(state)` from it for the
+ * verdict and the assessment. Neither may ever be said or written where the candidate can see it.
+ */
+export interface QuantGameSlotEntry extends QuantEntryBase {
+  kind: 'game';
+  game: QuantGameContent;
+  books: QuantGameBooks;
+  state: QuantGameState;
+}
+
+/**
+ * One posed question of `QuantContext.questions`: a bank question (`kind` absent or `question`,
+ * with `question`) or a game (`kind: 'game'`, with `game` and `books`). Narrow on `kind` before
+ * reading either: a game is not a short or numeric question and has no answer, reference or key
+ * points. `entryHints`, `entryTopic`, … in `quant/entry.ts` read what both have.
+ */
+export type QuantContextEntry = QuantBankEntry | QuantGameSlotEntry;
+
+/**
  * A quant pad as the interviewer sees it (`InterviewerDeps.loadQuantContext`). Unlike
  * `InterviewContext` there is no problem and no code: the round's questions, the scratchpad and
  * the transcript. Later questions are never in it, in any form, until they are posed.
@@ -124,15 +187,9 @@ export interface QuantContext {
   /**
    * scope `current`: only the current question (empty unless asking), in full. scope `all` (the
    * assessment): every posed question. Includes the answer, key points, explanation, hints and
-   * follow-ups (server-only fields).
+   * follow-ups (server-only fields); a game's entry its content and books (`QuantGameSlotEntry`).
    */
-  questions: {
-    index: number;
-    question: QuantQuestion;
-    /** As in `QuantRoundQuestion.hintRungs`. */
-    hintRungs: number[];
-    followUpAsked: boolean;
-  }[];
+  questions: QuantContextEntry[];
   /** scope `current`: the messages since the current question was posed; `all`: the last 200. */
   transcript: Message[];
   /** The scratchpad (`YDOC.notes`). */

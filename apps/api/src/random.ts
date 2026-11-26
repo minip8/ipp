@@ -1,4 +1,5 @@
 /** Randomness shared by the quiz selection and the quant round's assembly. */
+import { randomBytes } from 'node:crypto';
 
 /** A source of numbers in [0, 1), like `Math.random`. */
 export type Rand = () => number;
@@ -12,6 +13,12 @@ export function shuffle<T>(xs: readonly T[], rand: Rand = Math.random): T[] {
   }
   return a;
 }
+
+/**
+ * Numbers in [0, 1) from the operating system's cryptographic generator (48 bits each): what
+ * draws a market-making game's hidden values, which a predictable generator would give away.
+ */
+export const secureRand: Rand = () => randomBytes(6).readUIntBE(0, 6) / 2 ** 48;
 
 /** A small seeded generator (mulberry32), so a selection can be replayed from its seed. */
 export function seededRand(seed: number): Rand {

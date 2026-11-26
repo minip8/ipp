@@ -142,7 +142,17 @@ browser ── /api/* (Next rewrite, same origin, cookie session) ──▶ apps
   `apps/api/src/quant/assemble.ts`; the interviewer's side is `packages/interviewer/src/quant/`
   (one structured turn per message, the books and the clock kept in code); the web's is
   `apps/web/src/features/quant-pad/`, loaded only for a quant pad. A route or event that assumes code or a problem must refuse a
-  quant pad (409 `wrong_format`).
+  quant pad (409 `wrong_format`). A slot may hold a market-making game (ARCHITECTURE §8.3,
+  `packages/contracts/src/quant-game.ts`): its hidden values, quotes, position and P&L live in the
+  round's state and change only through `advanceRound`; a stored trade names the interviewer's
+  side, everything shown names the candidate's, and the browser gets `gameView` only (never a
+  hidden value or the fair value). A trader round has one in its second slot
+  (`includeGame` overrides); the candidate quotes through `POST /api/pads/:id/round/quote`, posted
+  as their chat message and handed to the interviewer as one, a refusal being 409 with the
+  round's reason as the code; every step's game entries become `game` timeline events. The
+  interviewer reads a game's slot as a `kind: 'game'` entry of `QuantContext.questions` (content
+  and `gameBooks`), whose books, counterparty notes and explanation stay out of every prompt
+  until it can make moves.
 - **`apps/web`** is UI only. Read `apps/web/AGENTS.md` first: this Next.js version differs from
   older ones, and the relevant guide under `apps/web/node_modules/next/dist/docs/` should be read
   before writing Next-specific code. Features live in `src/features/<name>/`, with pure logic in
@@ -180,6 +190,15 @@ browser ── /api/* (Next rewrite, same origin, cookie session) ──▶ apps
   recurrence, or simulate; never restate the explanation's formula). The content check runs them
   (`scripts/verify-quant-quiz.py [topic]` runs them alone) and a content test fails when one is
   missing.
+- A market-making game (ARCHITECTURE §8.3) is one file, `packages/content/games/<id>.yaml`
+  (`QuantGame`; `mm-game-dice-sum` shows the shape): the id is the file name and no quiz
+  question's, the topic a quant topic, and its prompt and explanation quant Markdown (every
+  formula must typeset). `expect` (fair value, sd, min and max before anything is shown; fair,
+  min and max exact, sd to four significant figures) must be what the engine computes from the
+  game's components, and every game needs a `@check("<id>")` in
+  `packages/content/scripts/quant_checks/games.py` that recomputes them by its own enumeration or
+  simulation of the game as its prompt describes it (returning `GameFigures`); the content check
+  and a content test fail otherwise. `counterparty`, `hints` and `expect` are server-only.
 - After changing content: run the content check, then `pnpm db:seed`.
 
 ## Database

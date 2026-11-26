@@ -15,6 +15,8 @@
  *   quiz/topics.yaml                QuizTopic[] in study order; `track` (fundamentals | quant)
  *                                   defaults to fundamentals
  *   quiz/<topic>/<anything>.yaml    QuizQuestion[] (topic must equal the directory name)
+ *   games/<id>.yaml                 QuantGame, one market-making game per file (the id is the
+ *                                   file name; its topic a quant topic of quiz/topics.yaml)
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -25,6 +27,7 @@ import {
   groupOfTag,
   type Language,
   ProblemContent,
+  QuantGame,
   QuizQuestion,
   QuizTopic,
   TestCase,
@@ -189,3 +192,39 @@ export function loadQuizQuestions(root = CONTENT_ROOT): QuizQuestion[] {
 }
 
 export { TestCase };
+
+/** The game files under games/, sorted: `<id>.yaml`. */
+export function listQuantGameFiles(root = CONTENT_ROOT): string[] {
+  const dir = join(root, 'games');
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .filter((f) => f.endsWith('.yaml'))
+    .sort();
+}
+
+/**
+ * One game file, parsed and checked against the rules the schema cannot see: its id is its file
+ * name, and its topic is a quant topic of `quantTopics` (slugs of quiz/topics.yaml's `quant` track).
+ * Whether `expect` matches the engine is `quantGameErrors` (`check` and the tests), not this.
+ */
+export function loadQuantGame(file: string, quantTopics: ReadonlySet<string>, root = CONTENT_ROOT) {
+  const where = `games/${file}`;
+  const parsed = QuantGame.safeParse(parseYaml(read(join(root, 'games', file))));
+  if (!parsed.success) return fail(where, parsed.error);
+  const game = parsed.data;
+  if (`${game.id}.yaml` !== file)
+    throw new Error(`${where}: id "${game.id}" must match the file name`);
+  if (!quantTopics.has(game.topic))
+    throw new Error(`${where}: topic "${game.topic}" is not a quant topic of quiz/topics.yaml`);
+  return game;
+}
+
+/** Every market-making game under games/ (ARCHITECTURE §8.3). */
+export function loadQuantGames(root = CONTENT_ROOT): QuantGame[] {
+  const quant = new Set(
+    loadQuizTopics(root)
+      .filter((t) => t.track === 'quant')
+      .map((t) => t.slug),
+  );
+  return listQuantGameFiles(root).map((f) => loadQuantGame(f, quant, root));
+}

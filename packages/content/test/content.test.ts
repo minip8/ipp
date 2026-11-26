@@ -11,12 +11,16 @@ import {
 import { afterAll, describe, expect, it } from 'vitest';
 import {
   CONTENT_ROOT,
+  gameIdCollisions,
   loadProblems,
+  loadQuantGames,
   loadQuizQuestions,
   loadQuizTopics,
+  quantGameErrors,
   resultsEqual,
   untaxonomizedTags,
 } from '../src';
+import { quantGameMathErrors } from '../src/math';
 
 let cached: ReturnType<typeof loadProblems> | undefined;
 const problems = () => {
@@ -47,6 +51,15 @@ describe('content', () => {
   it('every quiz question validates', () => {
     expect(() => loadQuizTopics()).not.toThrow();
     expect(() => loadQuizQuestions()).not.toThrow();
+  });
+  it('every market-making game validates, typesets and has the figures the engine computes', () => {
+    const games = loadQuantGames();
+    expect(games.length).toBeGreaterThanOrEqual(2);
+    expect(games.flatMap(quantGameErrors)).toEqual([]);
+    expect(quantGameMathErrors(games)).toEqual([]);
+    expect(gameIdCollisions(games, loadQuizQuestions())).toEqual([]);
+    // A game on the trader path, so the assembler has one to put in a trader round.
+    expect(games.some((g) => QUANT_PATH_INFO.trader.topics.includes(g.topic))).toBe(true);
   });
 });
 
@@ -104,6 +117,65 @@ describe('quiz loading', () => {
   });
 });
 
+describe('game loading', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ipp-games-'));
+  afterAll(() => rmSync(root, { recursive: true, force: true }));
+  mkdirSync(join(root, 'quiz'), { recursive: true });
+  mkdirSync(join(root, 'games'), { recursive: true });
+  writeFileSync(
+    join(root, 'quiz', 'topics.yaml'),
+    '- { slug: f, title: F, description: d }\n- { slug: q, title: Q, description: d, track: quant }\n',
+  );
+  const game = (over = '') =>
+    `id: g-1
+topic: q
+title: Two coins
+difficulty: easy
+prompt: Make me a market on the number of heads, $H$.
+components: [{ label: Coin 1, faces: [0, 1] }, { label: Coin 2, faces: [0, 1] }]
+payoff: sum
+reveal: [0]
+tick: 0.25
+maxSize: 2
+counterparty: Uninformed.
+explanation: Fair is 1.
+expect: { fair: 1, sd: 0.7071, min: 0, max: 2 }
+${over}`;
+  const write = (name: string, text: string) => {
+    rmSync(join(root, 'games'), { recursive: true, force: true });
+    mkdirSync(join(root, 'games'));
+    writeFileSync(join(root, 'games', name), text);
+  };
+
+  it('reads one game per file, its figures checked by the engine', () => {
+    write('g-1.yaml', game());
+    const [g] = loadQuantGames(root);
+    expect(g).toMatchObject({ id: 'g-1', payoff: 'sum', hints: [], expect: { fair: '1' } });
+    expect(quantGameErrors(g as NonNullable<typeof g>)).toEqual([]);
+    const wrong = {
+      ...(g as NonNullable<typeof g>),
+      expect: { fair: '1/2', sd: 0.5, min: '0', max: '2' },
+    };
+    expect(quantGameErrors(wrong)).toEqual([
+      'g-1: expect.fair is 1/2, the engine computes 1',
+      'g-1: expect.sd is 0.5, the engine computes 0.707106781187 (give at least four significant figures)',
+    ]);
+    expect(gameIdCollisions([wrong], [{ id: 'g-1' }])).toEqual(['g-1']);
+  });
+  it('the id is the file name, and the topic a quant topic', () => {
+    write('other.yaml', game());
+    expect(() => loadQuantGames(root)).toThrow(/must match the file name/);
+    write('g-1.yaml', game().replace('topic: q', 'topic: f'));
+    expect(() => loadQuantGames(root)).toThrow(/not a quant topic/);
+    write('g-1.yaml', game().replace('reveal: [0]', 'reveal: [2]'));
+    expect(() => loadQuantGames(root)).toThrow(/no component 2/);
+  });
+  it('a prompt whose formula does not typeset', () => {
+    write('g-1.yaml', game().replace('$H$', '$\\frac{H$'));
+    expect(quantGameMathErrors(loadQuantGames(root))[0]).toMatch(/^g-1 prompt: .*does not typeset/);
+  });
+});
+
 describe('resultsEqual', () => {
   it('exact', () => {
     expect(resultsEqual([1, 2], [1, 2], 'exact')).toBe(true);
@@ -136,10 +208,13 @@ describe('quant answer checks', () => {
       for (const m of readFileSync(join(dir, f), 'utf8').matchAll(/^@check\("([^"]+)"\)/gm))
         checked.add(m[1] as string);
     const questions = loadQuizQuestions().filter((q) => quant.has(q.topic));
-    const ids = new Set(questions.map((q) => q.id));
+    const games = loadQuantGames();
+    const ids = new Set([...questions.map((q) => q.id), ...games.map((g) => g.id)]);
     expect(
       questions.filter((q) => q.type === 'numeric' && !checked.has(q.id)).map((q) => q.id),
     ).toEqual([]);
+    // Every game's fair value is recomputed too, in scripts/quant_checks/games.py.
+    expect(games.filter((g) => !checked.has(g.id)).map((g) => g.id)).toEqual([]);
     expect([...checked].filter((id) => !ids.has(id))).toEqual([]);
   });
 });

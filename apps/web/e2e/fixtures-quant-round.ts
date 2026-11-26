@@ -4,7 +4,13 @@
  * path and length, and the interviewer's scripted lines. Kept apart from fixtures.ts; the mock
  * that plays a round is mock-quant-round.ts.
  */
-import type { QuantPath, QuantPick, QuizDifficulty } from '@ipp/contracts';
+import {
+  QuantGame,
+  type QuantPath,
+  type QuantPick,
+  type QuizDifficulty,
+  quantGamePick,
+} from '@ipp/contracts';
 import { iso, QUIZ_TOPICS, uuid } from './fixtures';
 
 /** A question in the bank, as the API reads it when the round is assembled and reported. */
@@ -231,14 +237,79 @@ const PICKS: Record<QuantPath, Record<number, string[]>> = {
   },
 };
 
-export function roundPicks(path: QuantPath, count: number): BankQuestion[] {
+export function roundPicks(path: QuantPath, count: number, game = false): QuantPick[] {
   const ids = PICKS[path][count] ?? PICKS[path][4] ?? [];
-  return ids.map((id) => {
+  const picks: QuantPick[] = ids.map((id) => {
     const b = ROUND_BANK[id];
     if (!b) throw new Error(`no bank question ${id}`);
     return b;
   });
+  // As the API's assembler: the game takes the second slot (§8.3).
+  if (game) picks[1] = gamePick();
+  return picks;
 }
+
+// ---------------------------------------------------------------- the market-making game
+
+/** packages/content/games/mm-game-dice-sum.yaml, as the seed loads it (the explanation shortened). */
+export const DICE_SUM_GAME: QuantGame = QuantGame.parse({
+  id: 'mm-game-dice-sum',
+  topic: 'betting-market-making',
+  title: 'Sum of three dice',
+  difficulty: 'easy',
+  prompt:
+    'Three fair six-sided dice have been rolled where neither of us can see them. A contract settles at their sum, $D_1 + D_2 + D_3$.\n\nMake me a two-sided market on it: a bid, an offer and a size of up to 5 contracts, in steps of 0.5. I may buy from you, sell to you, or ask for another market. As we go I will show you some of the dice, one at a time; each time your market is withdrawn and you make a new one. At the end every die is shown and the contract settles.',
+  components: [1, 2, 3].map((i) => ({ label: `Die ${i}`, faces: [1, 2, 3, 4, 5, 6] })),
+  payoff: 'sum',
+  reveal: [0, 1],
+  tick: 0.5,
+  maxSize: 5,
+  counterparty: 'Trade on the public fair value; reveal a die after a trade.',
+  hints: [
+    'What is the expected value of one die, and of three?',
+    'Against someone who knows no more than you, what does each trade earn you on average?',
+    'Once a die is shown, only the other two are still random. What is the new expected sum?',
+  ],
+  explanation:
+    'Before anything is shown the fair value is $3 \\times 3.5 = 10.5$, with standard deviation $\\sqrt{3 \\times 35/12} \\approx 2.96$. A market such as 9.5 at 11.5 earns 1 per contract against an uninformed counterparty.\n\nWhen Die 1 shows $d$, the fair value becomes $d + 7$: move the mid by $d - 3.5$ at once. In the last stage the counterparty knows the answer, so its trades measure adverse selection rather than skill.',
+  expect: { fair: '10.5', sd: 2.958, min: '3', max: '18' },
+});
+
+/** The game's content by id, as the API's report reads `quant_games`. */
+export const ROUND_GAMES: Record<string, QuantGame> = { [DICE_SUM_GAME.id]: DICE_SUM_GAME };
+
+/** The dice the mock always draws: Die 1 = 6, Die 2 = 2, Die 3 = 5, so the contract is worth 13. */
+export const GAME_VALUES = [6, 2, 5];
+
+/** The game's slot, drawn through the contract's `quantGamePick` (a "PRNG" that gives the dice). */
+export function gamePick(): QuantPick {
+  let i = 0;
+  const rand = () => ((GAME_VALUES[i++] ?? 1) - 1) / 6 + 0.01;
+  const topicTitle = QUIZ_TOPICS.find((t) => t.slug === DICE_SUM_GAME.topic)?.title ?? '';
+  return quantGamePick(DICE_SUM_GAME, topicTitle, rand);
+}
+
+/** A round in progress whose second question, the game, has just been posed. */
+export const QUANT_GAME_PAD_ID = uuid(1203);
+/** A round with a game, played and ended a day ago, for the report. */
+export const QUANT_GAME_ENDED_PAD_ID = uuid(1204);
+export const QUANT_GAME_ENDED_STARTED_AT = iso(-86400 + 1800);
+
+/** What the scripted interviewer says in a game. */
+export const GAME_LINES = {
+  tighten: "That's a bit wide for me. Can you tighten it up?",
+  /**
+   * The interviewer's side, as the platform states it before the model's words (`tradeLine` in
+   * packages/interviewer/src/quant/game.ts): "I buy 2 at your offer of 11.5."
+   */
+  trade: (side: 'buy' | 'sell', quantity: number, price: string) =>
+    `I ${side} ${quantity} at your ${side === 'buy' ? 'offer' : 'bid'} of ${price}.`,
+  again: 'Make me a new market.',
+  /** `revealLine`: "Die 1 shows 6." */
+  shown: (label: string, value: number) => `${label} shows ${value}.`,
+  withdrawn: 'Your market is withdrawn; make me a new one.',
+  nothingLeft: 'Nothing more is shown before the end.',
+} as const;
 
 /** A round in progress (the dashboard lists it; screens open it). */
 export const QUANT_PAD_ID = uuid(1201);

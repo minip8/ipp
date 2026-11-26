@@ -1,0 +1,82 @@
+# A market-making game played live in a trader round (ARCHITECTURE §8.3). The server draws the
+# dice, keeps the books and settles; the interviewer only trades and reveals.
+id: mm-game-unequal-dice
+topic: betting-market-making
+title: A four-, an eight- and a twenty-sided die
+difficulty: medium
+prompt: |
+  Three fair dice have been rolled where neither of us can see them: a four-sided die (1 to 4),
+  an eight-sided die (1 to 8) and a twenty-sided die (1 to 20). A contract settles at their sum,
+  $D_4 + D_8 + D_{20}$.
+
+  Make me a two-sided market on it: a bid, an offer and a size of up to 5 contracts, in steps of
+  0.5. I may buy from you, sell to you, or ask for another market. I will show you the
+  twenty-sided die first and then the eight-sided die; each time your market is withdrawn and
+  you make a new one. The four-sided die is shown only at the end, when the contract settles.
+components:
+  - { label: Four-sided die, faces: [1, 2, 3, 4] }
+  - { label: Eight-sided die, faces: [1, 2, 3, 4, 5, 6, 7, 8] }
+  - {
+      label: Twenty-sided die,
+      faces: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
+    }
+payoff: sum
+reveal: [2, 1]
+tick: 0.5
+maxSize: 5
+counterparty: |
+  Your books show the public fair value and standard deviation, the true value and your edge
+  against both at the candidate's bid and offer. Never say the fair value, a hidden die or the
+  candidate's P&L.
+
+  Stage 1, nothing shown (fair 17.5, sd 6.30): you are uninformed and trade only on the public
+  fair value. If the market is wider than 6, ask for a tighter one (at most twice, then trade it
+  anyway). If the fair value is outside the market, trade the full size against it. Otherwise
+  trade the quote's full size on the side of your choice: the point is the position they carry
+  into the big reveal. Then, before revealing, ask what their position is and how much the next
+  reveal could move its value. Reveal the twenty-sided die after their answer, or with your reply
+  to their next message if they do not answer.
+
+  Stage 2, the twenty-sided die shown: still uninformed, against the new public fair value, which
+  has moved by the die minus 10.5 (as much as 9.5 either way). A market not re-centred is
+  picked off: whenever fair is outside it, trade the full size against it. The standard
+  deviation is now 2.55, so if the market is still wider than 4, ask whether it needs to be,
+  given what is left to come (at most once), then trade it. Otherwise trade one lot on either
+  side. Ask why one reveal took most of the risk away. Then reveal the eight-sided die.
+
+  Stage 3, the twenty- and eight-sided dice shown (sd 1.12): you are now informed and trade on
+  the true value. Lift the offer for the full size if it is below the true value, hit the bid for
+  the full size if it is above it, and pass otherwise. Ask how they would have quoted if I had
+  shown the four-sided die first instead. There is no reveal left: close once this market has
+  been traded or passed, or when time is short.
+hints:
+  - What is the expected value of each die, and of the sum?
+  - The variance of a fair die on $1, \dots, n$ is $(n^2 - 1)/12$. Which die carries most of the risk?
+  - After the twenty-sided die is shown, how much uncertainty is left, and how wide does your market need to be?
+explanation: |
+  The fair value is $2.5 + 4.5 + 10.5 = 17.5$, with range 3 to 32. A fair die on $1, \dots, n$ has
+  variance $(n^2 - 1)/12$: $1.25$, $5.25$ and $33.25$ for the three dice, so the sum has
+  variance $39.75$ and standard deviation $\sqrt{39.75} \approx 6.30$. The twenty-sided die
+  carries 84% of that variance. A market such as 15.5 at 19.5 (width 4, about 0.6 standard
+  deviations) is reasonable to open, in a size small enough to sit through the next reveal: a
+  position of 5 contracts gains or loses $5 \times 5.77 \approx 29$ in standard deviation from
+  the twenty-sided die alone, against an edge of 2 a contract.
+
+  When the twenty-sided die shows $d$, the fair value becomes $d + 7$ (a move of $d - 10.5$, up
+  to 9.5 either way) and the standard deviation falls to $\sqrt{6.5} \approx 2.55$: after a 1
+  the market should be around 8 and after a 20 around 27, and it can be much tighter, about 1.5
+  to 2 wide. When the eight-sided die then shows $e$, the fair value is $d + e + 2.5$ (a move of
+  $e - 4.5$, at most 3.5) and the standard deviation $\sqrt{1.25} \approx 1.12$, so a width of
+  about 1 is enough.
+
+  The lesson is that components are not equal: one reveal can take most of the risk away, so a
+  good market-maker sizes and quotes ahead of that reveal knowing it is coming, moves the whole
+  market on it, and tightens sharply after it. Had the four-sided die come first, the first
+  reveal would have moved the fair value by at most 1.5 and the standard deviation only from
+  6.30 to 6.20. In the last stage the counterparty is informed, so its trades there measure
+  adverse selection.
+expect:
+  fair: 35/2
+  sd: 6.305
+  min: 3
+  max: 32

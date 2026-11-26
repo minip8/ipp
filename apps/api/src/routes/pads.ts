@@ -12,8 +12,10 @@ import {
   type PadDetail,
   type PadSummary,
   type Playback,
+  PostQuantQuoteRequest,
   QUANT_PATH_INFO,
   type QuantPath,
+  type QuantRefusal,
   type Report,
   ReviewRequest,
   UpdateHostNotesRequest,
@@ -54,11 +56,31 @@ import {
   wrongFormat,
 } from '../pads/service';
 import { assembleForUser } from '../quant/assemble';
-import { quantReport, roundView } from '../quant/round';
+import { postQuote, quantReport, roundView } from '../quant/round';
 import { toPublicRun } from '../runs/redact';
 import { eventView, messageView, padView, storedRun } from '../views';
 
 const JoinRequest = z.object({ shareToken: z.string().min(1).max(200) });
+
+/**
+ * Why the round refused a quote, for a person to read. Fixed text: nothing of the game's state
+ * (a hidden value, the fair value) can end up in an error.
+ */
+const QUOTE_REFUSALS: Partial<Record<QuantRefusal, string>> = {
+  ended: 'The round is over',
+  wrong_phase: 'The round has not started yet',
+  wrong_index: 'That question is no longer the current one',
+  not_game: 'The current question takes no quotes',
+  bad_quote:
+    'That market cannot be posted: prices on the tick, the bid below the offer, and a whole size up to the maximum',
+  quote_limit: 'No quotes are left on this game',
+  game_settled: 'This game has settled',
+  stale: 'The round changed in the meantime; try again',
+};
+
+/** 409 with the round's refusal as the error code (§8.3). */
+const quoteRefused = (reason: QuantRefusal) =>
+  conflict(reason, QUOTE_REFUSALS[reason] ?? 'The quote was refused');
 
 type ReportRow = typeof reports.$inferSelect;
 
@@ -196,7 +218,9 @@ export function padRoutes(ctx: Ctx) {
     await padCreateLimit(user.id);
     if ((await ctx.ai.keyState(user.id)) !== 'active')
       throw conflict('ai_key_missing', 'Add your AI API key first: the interviewer runs the round');
-    const picks = await assembleForUser(ctx, user.id, body.path, body.durationMin);
+    const picks = await assembleForUser(ctx, user.id, body.path, body.durationMin, {
+      includeGame: body.includeGame,
+    });
     const row = await db.transaction(async (tx) => {
       const [pad] = await tx
         .insert(pads)
@@ -224,6 +248,33 @@ export function padRoutes(ctx: Ctx) {
       return pad;
     });
     return c.json(padView(row, user.id));
+  });
+
+  // The candidate's market on the round's current game (§8.3). Any member may quote (a
+  // collaborator does what the owner does on a practice pad); it is limited as a chat message is,
+  // since it is posted as one and the interviewer answers it as one.
+  r.post('/pads/:id/round/quote', async (c) => {
+    const user = requireUser(c);
+    const body = await parseBody(c, PostQuantQuoteRequest);
+    const { pad } = await padForMember(ctx, c.req.param('id'), user.id);
+    if (pad.format !== 'quant')
+      throw conflict('wrong_format', 'Only a quant round has a market to quote');
+    if (pad.status !== 'active') throw quoteRefused('ended');
+    const l = ctx.config.limits.chat;
+    const wait = await ctx.limiter.hit([
+      { key: `chat:u:${user.id}:burst`, ...l.userBurst },
+      { key: `chat:u:${user.id}:day`, ...l.userDaily },
+    ]);
+    if (wait > 0) throw rateLimited(wait);
+    const out = await postQuote(ctx, pad.id, user.id, body);
+    if (!out.ok) throw quoteRefused(out.reason);
+    ctx.ai.trigger(pad.id, {
+      type: 'candidate_message',
+      text: out.message.text,
+      via: 'text',
+      userId: user.id,
+    });
+    return c.json(out.view);
   });
 
   r.get('/pads', async (c) => {

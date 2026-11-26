@@ -1,0 +1,89 @@
+# A market-making game played live in a trader round (ARCHITECTURE §8.3). The server draws the
+# dice, keeps the books and settles; the interviewer only trades and reveals. The counterparty
+# is an uninformed seller with a large order, so the candidate's problem is inventory, held
+# into the reveal that carries most of the risk (the twenty-sided die, shown last).
+id: mm-game-inventory-d20
+topic: betting-market-making
+title: Three dice and a twenty-sided die
+difficulty: hard
+prompt: |
+  Three fair six-sided dice and a fair twenty-sided die (1 to 20) have been rolled where neither
+  of us can see them. A contract settles at their sum, $D_1 + D_2 + D_3 + D_{20}$.
+
+  Make me a two-sided market on it: a bid, an offer and a size of up to 20 contracts, in steps of
+  0.5. I may buy from you, sell to you, or ask for another market. I will show you Die 1, then
+  Die 2, then the twenty-sided die; each time your market is withdrawn and you make a new one.
+  Die 3 is shown only at the end, when the contract settles.
+components:
+  - { label: Die 1, faces: [1, 2, 3, 4, 5, 6] }
+  - { label: Die 2, faces: [1, 2, 3, 4, 5, 6] }
+  - { label: Die 3, faces: [1, 2, 3, 4, 5, 6] }
+  - {
+      label: Twenty-sided die,
+      faces: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
+    }
+payoff: sum
+reveal: [0, 1, 3]
+tick: 0.5
+maxSize: 20
+counterparty: |
+  Your books show the public fair value and standard deviation, the true value and your edge
+  against both at the candidate's bid and offer. Never say the fair value, a hidden die or the
+  candidate's P&L.
+
+  Until the twenty-sided die is shown you are an uninformed customer with about 40 contracts to
+  sell, who cares more about getting them done than about price. Trade only on the public fair
+  value and only ever sell: if the bid is no more than 2 below the public fair value (your edge
+  at the bid against fair is −2 or better), hit it for the quote's full size; if the bid is
+  lower than that, hit it for 2 lots (1 if the size is 1). Never lift the offer, however low it
+  is. Once you have sold 40 contracts in all, stop selling and pass. If the market is for fewer
+  than 5 contracts, say once that you have a lot to sell and ask whether they can make it bigger.
+
+  Stage 1, nothing shown (fair 21, sd 6.48): sell into the first two markets on that rule, then
+  reveal Die 1.
+
+  Stage 2, Die 1 shown: the same, two markets, then reveal Die 2. Ask once how much the die just
+  shown reduced their risk, and whether their market should be tighter for it.
+
+  Stage 3, Dice 1 and 2 shown: sell into one market on the rule. Then, before revealing, ask what
+  their position is, how much the twenty-sided die can move its value, and whether they are
+  happy to hold it through that reveal. Reveal the twenty-sided die after their answer, or with
+  your reply to their next message if they do not answer.
+
+  Stage 4, the twenty-sided die shown (sd 1.71): the order is done and you trade both ways,
+  still uninformed, against the public fair value. If fair is outside the market, trade the full
+  size against it. Otherwise, if the candidate is long and the offer is no more than 1 above
+  fair, lift it for the full size (they may unwind); if they are short and the bid is no more
+  than 1 below fair, hit it for the full size; else trade one lot on either side. Ask how their
+  position changed the way they quoted. There is no reveal left: close after two markets in this
+  stage, or when time is short.
+hints:
+  - What is the fair value of the sum, and which die carries most of its risk?
+  - You keep buying. Is each trade a good one on its own? What about all of them together?
+  - What does a position of $N$ contracts do to your P&L when the twenty-sided die is shown?
+  - If you want to buy less, without refusing to trade, where would you move your bid and your offer?
+explanation: |
+  The fair value is $3 \times 3.5 + 10.5 = 21$, with range 4 to 38. The variances are
+  $35/12 \approx 2.92$ for each six-sided die and $399/12 = 33.25$ for the twenty-sided die, so
+  the sum has variance 42 and standard deviation $\sqrt{42} \approx 6.48$; the twenty-sided die
+  is 79% of that variance. Showing the six-sided dice barely changes the risk: after Die 1 the
+  standard deviation is $\sqrt{39.08} \approx 6.25$, after Die 2 $\sqrt{36.17} \approx 6.01$,
+  and only the twenty-sided die brings it down, to $\sqrt{35/12} \approx 1.71$. Each six-sided
+  die $d$ moves the fair value by $d - 3.5$ (after a 4 and a 5, 23), the twenty-sided die
+  $e$ by $e - 10.5$ (23 then becomes 32.5 after a 20 and 15.5 after a 3).
+
+  Every sale the customer makes is good for the candidate on average: a bid 1 below fair earns
+  1 a contract. But the flow is all one way, so the position grows, and its risk grows with it:
+  long 40 contracts going into the last reveal, the P&L has a standard deviation of about
+  $40 \times 6.01 \approx 240$, against an expected edge of perhaps 40. That is the lesson: past
+  a point inventory, not edge, decides the outcome. The good responses are to skew the market
+  down (bid and offer both lower, so each further contract is bought cheaper and fewer are
+  bought), to cut the size as the position grows, and to plan for the last reveal, where most of
+  the risk sits, rather than quote through it with a full position. After the twenty-sided die,
+  with the standard deviation at 1.71, the position is cheap to carry and a fair offer lets the
+  candidate unwind.
+expect:
+  fair: 21
+  sd: 6.481
+  min: 4
+  max: 38

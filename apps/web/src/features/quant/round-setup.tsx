@@ -15,6 +15,7 @@ import { Card } from '@/components/ui/card';
 import { Label } from '@/components/ui/input';
 import { Segmented } from '@/components/ui/segmented';
 import { Spinner } from '@/components/ui/spinner';
+import { Switch } from '@/components/ui/switch';
 import { AiKeyDialog } from '@/features/ai-key/ai-key-dialog';
 import { AiKeyPrompt } from '@/features/ai-key/ai-key-prompt';
 import { rejectedTitle } from '@/features/ai-key/logic';
@@ -23,6 +24,7 @@ import { ApiRequestError, api } from '@/lib/api';
 import { loadStartPrefs } from '@/lib/prefs';
 import { qk, useAiKey } from '@/lib/queries';
 import {
+  includesGame,
   loadRoundPrefs,
   ROUND_OPTIONS,
   type RoundPrefs,
@@ -42,6 +44,7 @@ export function RoundSetup({ path }: { path: QuantPath }) {
   const aiKey = useAiKey();
   const voiceOk = useSpeechSupported();
   const durationId = useId();
+  const gameId = useId();
   const [prefs, setPrefs] = useState<RoundPrefs>(initialPrefs);
   const [keyDialog, setKeyDialog] = useState(false);
   // Unknown (loading or failed) counts as usable: the server says so if it is not.
@@ -49,6 +52,7 @@ export function RoundSetup({ path }: { path: QuantPath }) {
   const needsKey = keyState !== 'active';
   const questions = quantQuestionCount(prefs.durationMin);
   const info = QUANT_PATH_INFO[path];
+  const game = includesGame(prefs, path);
 
   const update = (patch: Partial<RoundPrefs>) => setPrefs((p) => ({ ...p, ...patch }));
   const start = useMutation({
@@ -58,6 +62,7 @@ export function RoundSetup({ path }: { path: QuantPath }) {
         path,
         durationMin: prefs.durationMin,
         interviewer: prefs.interviewer,
+        includeGame: game,
       });
     },
     onSuccess: (pad) => {
@@ -111,6 +116,24 @@ export function RoundSetup({ path }: { path: QuantPath }) {
               {roundShape(prefs.durationMin)}. Time you save on one question carries over to the
               next.
             </p>
+          </div>
+          <div className="flex items-start gap-3" data-testid="round-game">
+            <Switch
+              id={gameId}
+              checked={game}
+              onCheckedChange={(on) =>
+                setPrefs((p) => ({ ...p, games: { ...p.games, [path]: on } }))
+              }
+              aria-describedby={`${gameId}-hint`}
+              className="mt-0.5"
+            />
+            <div className="min-w-0 space-y-0.5">
+              <Label htmlFor={gameId}>Include a market-making game</Label>
+              <p id={`${gameId}-hint`} className="text-xs text-fg-muted">
+                One question becomes a live market on hidden dice: you quote, the interviewer trades
+                against you, and the report shows the edge of every trade.
+              </p>
+            </div>
           </div>
         </div>
         <div className="min-w-0 space-y-3 lg:col-start-2 lg:row-span-2 lg:row-start-1">

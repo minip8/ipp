@@ -11,6 +11,7 @@ import {
   pads,
   problems,
   problemTests,
+  quantGames,
   quantRounds,
   quizAnswers,
   quizAttempts,
@@ -29,6 +30,7 @@ const counts = async () => ({
   tests: (await h.db.select({ n: count() }).from(problemTests))[0]?.n,
   topics: (await h.db.select({ n: count() }).from(quizTopics))[0]?.n,
   questions: (await h.db.select({ n: count() }).from(quizQuestions))[0]?.n,
+  games: (await h.db.select({ n: count() }).from(quantGames))[0]?.n,
 });
 
 beforeAll(async () => {
@@ -193,16 +195,93 @@ describe('seed', () => {
     }
   });
 
+  it('seeds games, skips a broken one, and retires a removed one', async () => {
+    writeFileSync(
+      join(root, 'quiz', 'topics.yaml'),
+      '- { slug: cpp, title: C++, description: d }\n- { slug: mm, title: MM, description: d, track: quant }\n',
+    );
+    const dir = join(root, 'games');
+    mkdirSync(dir, { recursive: true });
+    const game = (id: string, title = 'Two coins') =>
+      `id: ${id}
+topic: mm
+title: ${title}
+difficulty: easy
+prompt: Make me a market on the number of heads.
+components: [{ label: Coin 1, faces: [0, 1] }, { label: Coin 2, faces: [0, 1] }]
+payoff: sum
+reveal: [0]
+tick: 0.25
+maxSize: 2
+counterparty: Uninformed.
+hints: [Count the heads.]
+explanation: Fair is 1.
+expect: { fair: 1, sd: 0.7071, min: 0, max: 2 }
+`;
+    try {
+      writeFileSync(join(dir, 'g-1.yaml'), game('g-1'));
+      writeFileSync(
+        join(dir, 'broken.yaml'),
+        game('broken').replace('payoff: sum', 'payoff: mean'),
+      );
+      writeFileSync(join(dir, 'g-x.yaml'), game('g-3'));
+      const first = await seed(h.db, { root });
+      expect(first.games).toBe(1);
+      expect(first.skipped.map((s) => s.where)).toEqual(
+        expect.arrayContaining(['games/broken.yaml', 'games/g-x.yaml']),
+      );
+      const [row] = await h.db.select().from(quantGames).where(eq(quantGames.id, 'g-1'));
+      expect(row).toMatchObject({ topic: 'mm', difficulty: 'easy', active: true });
+      expect(row?.data).toMatchObject({ title: 'Two coins', hints: ['Count the heads.'] });
+      // Exact figures are kept as text, as a numeric answer is.
+      expect(row?.data.expect).toMatchObject({ fair: '1', min: '0', max: '2' });
+      // Idempotent, and an edit is written over the row.
+      writeFileSync(join(dir, 'g-1.yaml'), game('g-1', 'Two fair coins'));
+      const before = await counts();
+      await seed(h.db, { root });
+      expect(await counts()).toEqual(before);
+      const [edited] = await h.db.select().from(quantGames).where(eq(quantGames.id, 'g-1'));
+      expect(edited?.data.title).toBe('Two fair coins');
+      // While a game file is broken nothing is retired; once all load, a removed game is.
+      rmSync(join(dir, 'g-1.yaml'));
+      writeFileSync(join(dir, 'g-2.yaml'), game('g-2'));
+      await seed(h.db, { root });
+      expect(
+        (await h.db.select().from(quantGames).where(eq(quantGames.id, 'g-1')))[0]?.active,
+      ).toBe(true);
+      rmSync(join(dir, 'broken.yaml'));
+      rmSync(join(dir, 'g-x.yaml'));
+      const last = await seed(h.db, { root });
+      expect(last.skipped.filter((s) => s.where.startsWith('games/'))).toEqual([]);
+      const rows = await h.db
+        .select({ id: quantGames.id, active: quantGames.active })
+        .from(quantGames)
+        .orderBy(quantGames.id);
+      expect(rows).toEqual([
+        { id: 'g-1', active: false },
+        { id: 'g-2', active: true },
+      ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      writeFileSync(
+        join(root, 'quiz', 'topics.yaml'),
+        '- { slug: cpp, title: C++, description: d }\n',
+      );
+    }
+  });
+
   it('seeds the real content twice with identical row counts', async () => {
     // Snapshot first: content is being edited concurrently.
     const snap = mkdtempSync(join(tmpdir(), 'ipp-content-'));
-    for (const d of ['problems', 'quiz'])
+    for (const d of ['problems', 'quiz', 'games'])
       cpSync(join(CONTENT_ROOT, d), join(snap, d), { recursive: true });
     const a = await seed(h.db, { root: snap });
     const before = await counts();
     const b = await seed(h.db, { root: snap });
     rmSync(snap, { recursive: true, force: true });
     expect(b.problems).toBe(a.problems);
+    expect(a.games).toBeGreaterThanOrEqual(2);
+    expect(a.skipped.filter((s) => s.where.startsWith('games/'))).toEqual([]);
     expect(await counts()).toEqual(before);
     const cats = Object.fromEntries(
       (

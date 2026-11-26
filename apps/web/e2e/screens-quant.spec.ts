@@ -1,12 +1,19 @@
 /**
  * Visual review of the live quant round: the setup card on the Quant page, the quant pad (the
- * first question, mid-round after a hint, the round finished), the dashboard listing quant pads
- * and the quant report. Run with
+ * first question, mid-round after a hint, the round finished), a market-making game (fresh, with
+ * problems in the form, traded, live, settled) and its review in the report, the dashboard
+ * listing quant pads and the quant report. Run with
  * SCREENS=1 playwright test screens-quant (`ONLY=quant-pad` and `SCREEN_WIDTHS=1440` narrow it).
  */
 import { expect, type Page, test } from '@playwright/test';
 import { aiKeyStatus } from './fixtures';
-import { QUANT_ENDED_PAD_ID, QUANT_PAD_ID } from './fixtures-quant-round';
+import {
+  QUANT_ENDED_PAD_ID,
+  QUANT_GAME_ENDED_PAD_ID,
+  QUANT_GAME_PAD_ID,
+  QUANT_PAD_ID,
+  VERDICTS,
+} from './fixtures-quant-round';
 import { setup, shoot } from './helpers';
 import type { MockBackend } from './mock-api';
 
@@ -128,6 +135,64 @@ for (const width of WIDTHS) {
       await page.getByRole('region', { name: 'Finished interviews' }).waitFor();
       await page.waitForTimeout(300);
       await shoot(page, 'quant-dashboard-history');
+    });
+
+    test('game', async ({ page }) => {
+      test.skip(!want('quant-game'));
+      const b = await setup(page);
+      await page.goto(`/pads/${QUANT_GAME_PAD_ID}`);
+      await expect(page.getByTestId('round-heading')).toHaveText('Question 2 of 4');
+      await expect.poll(() => b.sockets.length).toBeGreaterThan(0);
+      await page.waitForTimeout(400);
+      await shoot(page, 'quant-game-fresh');
+      if (phone) await tab(page, 'Question').tap();
+      const p = page.getByTestId('game-panel');
+      if (phone) await shoot(page, 'quant-game-fresh-question');
+      // A market with problems, said beside each field.
+      await p.getByLabel('Bid', { exact: true }).fill('11.3');
+      await p.getByLabel('Offer', { exact: true }).fill('10');
+      await p.getByLabel('Size', { exact: true }).fill('8');
+      await shoot(page, 'quant-game-invalid');
+      // Two markets: the first lifted, the second lifted with the first die shown.
+      await p.getByLabel('Bid', { exact: true }).fill('9.5');
+      await p.getByLabel('Offer', { exact: true }).fill('11.5');
+      await p.getByLabel('Size', { exact: true }).fill('2');
+      await p.getByLabel('Size', { exact: true }).press('Enter');
+      await expect(page.getByTestId('quote-status')).toHaveAttribute('data-state', 'traded');
+      await p.getByRole('button', { name: 'Move the market up a tick' }).click();
+      await p.getByLabel('Bid', { exact: true }).press('Enter');
+      await expect(p.getByTestId('game-position')).toHaveText('Short 2');
+      await shoot(page, 'quant-game-traded');
+      // A live market waiting.
+      await p.getByLabel('Bid', { exact: true }).fill('12');
+      await p.getByLabel('Offer', { exact: true }).fill('14');
+      b.quant.gameReply = 'off';
+      await p.getByLabel('Bid', { exact: true }).press('Enter');
+      await expect(page.getByTestId('quote-status')).toHaveAttribute('data-state', 'working');
+      await page.waitForTimeout(300);
+      await shoot(page, 'quant-game-live');
+      if (phone) {
+        await tab(page, 'Chat').tap();
+        await shoot(page, 'quant-game-chat');
+      }
+      // The question closes: the game settles.
+      await b.quant.close(QUANT_GAME_PAD_ID, VERDICTS.good, 'Die 2 is a 2 and Die 3 a 5: 13.');
+      await expect(page.getByTestId('round-heading')).toHaveText('Question 3 of 4');
+      if (phone) await tab(page, 'Question').tap();
+      await page.waitForTimeout(400);
+      await shoot(page, 'quant-game-settled');
+    });
+
+    test('game report', async ({ page }) => {
+      test.skip(!want('quant-game-report'));
+      await setup(page);
+      await page.goto(`/pads/${QUANT_GAME_ENDED_PAD_ID}/report`);
+      await page.getByTestId('game-review').waitFor();
+      await page.getByTestId('quant-review').locator('.katex').first().waitFor();
+      await page.waitForTimeout(500);
+      await page.getByTestId('game-review').scrollIntoViewIfNeeded();
+      await shoot(page, 'quant-game-report-review');
+      await shoot(page, 'quant-game-report', { fullPage: true });
     });
 
     test('report', async ({ page }) => {

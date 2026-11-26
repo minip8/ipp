@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { AiKeyState, AiModelChoice, InterviewerModel } from './ai';
 import { Id, IsoDate, Language, Slug } from './common';
 import { Difficulty, ProblemDetail } from './problem';
+import { QuantGameEntry } from './quant-game';
 import { QuantReport, QuantRoundDuration, QuantRoundView } from './quant-round';
 import { QuantPath } from './quiz';
 import { Run } from './run';
@@ -106,6 +107,12 @@ export const CreateQuantPadRequest = z.object({
     voice: false,
   }),
   title: z.string().max(120).optional(),
+  /**
+   * Whether the round includes a market-making game (§8.3): true asks for one when one is
+   * available, false for none; absent, the path decides (a trader round has one in its second
+   * slot, a researcher round none).
+   */
+  includeGame: z.boolean().optional(),
 });
 export type CreateQuantPadRequest = z.infer<typeof CreateQuantPadRequest>;
 
@@ -247,6 +254,8 @@ export const TimelineEvent = z.object({
     z.object({ type: z.literal('problem'), problemSlug: Slug.nullable(), title: z.string() }),
     /** A quant round posed its question `index` (0-based) of `total`. */
     z.object({ type: z.literal('question'), index: z.int().min(0), total: z.int().min(1) }),
+    /** Something happened in the game of question `index`: a quote, trade, reveal or settlement. */
+    z.object({ type: z.literal('game'), index: z.int().min(0), entry: QuantGameEntry }),
     z.object({ type: z.literal('ended') }),
   ]),
 });

@@ -3,6 +3,10 @@ import {
   advanceRound,
   CreateQuantPadRequest,
   createQuantRound,
+  formatQuote,
+  gameSolution,
+  gameStats,
+  gameView,
   MessageIntent,
   Pad,
   PadDetail,
@@ -12,15 +16,21 @@ import {
   QUANT_REPORT_DIMENSIONS,
   type QuantAdvance,
   type QuantEffects,
+  QuantGame,
+  type QuantGameMove,
   type QuantPick,
+  QuantQuestionReview,
   QuantQuestionView,
   type QuantRefusal,
+  type QuantRoundQuestion,
   type QuantRoundState,
   QuantRoundState as QuantRoundStateSchema,
   type QuantRoundStep,
   QuantRoundView,
   quantBudgetSec,
   quantClock,
+  quantGamePick,
+  quantGameReview,
   quantGraceSec,
   quantPhase,
   quantQuestionCount,
@@ -446,7 +456,14 @@ describe('advanceRound: refusals', () => {
     r.apply(close(r.v, 0, 'interviewer', null), 100);
     expect(r.refuse(v(0, 2), 101)).toBe('invalid');
     const fx = r.apply(v(0), 101);
-    expect(fx).toEqual({ say: null, reveal: null, note: null, finished: false });
+    expect(fx).toEqual({
+      say: null,
+      reveal: null,
+      note: null,
+      finished: false,
+      quote: null,
+      game: null,
+    });
     expect(r.state.questions[0]?.verdict).toEqual(verdict(0.5));
     expect(r.refuse(v(0), 102)).toBe('has_verdict');
     // A question closed with a verdict already has one.
@@ -574,7 +591,14 @@ describe('advanceRound: a round played through', () => {
     r.apply(start(0), 0);
     r.apply(close(r.v, 0), 100);
     const fx = r.apply({ type: 'end' }, 200);
-    expect(fx).toEqual({ say: null, reveal: null, note: null, finished: true });
+    expect(fx).toEqual({
+      say: null,
+      reveal: null,
+      note: null,
+      finished: true,
+      quote: null,
+      game: null,
+    });
     expect(r.state.questions.map(quantQuestionStatus)).toEqual([
       'answered',
       'unfinished',
@@ -645,6 +669,8 @@ describe('advanceRound: a round played through', () => {
       reveal: null,
       note: 'slow on Bayes',
       finished: false,
+      quote: null,
+      game: null,
     });
     const fx = r.apply(close(r.v, 0), 5);
     expect(fx.say?.intent).toBe('feedback');
@@ -718,6 +744,7 @@ describe('publicRound', () => {
         closedBy: 'interviewer',
         hintsGiven: 1,
         posedMessageId: r.state.questions[0]?.posedMessageId,
+        game: null,
       },
       {
         index: 1,
@@ -732,6 +759,7 @@ describe('publicRound', () => {
         closedBy: null,
         hintsGiven: 0,
         posedMessageId: r.state.questions[1]?.posedMessageId,
+        game: null,
       },
     ]);
     // Each question carries the id of the message that posed it, so the chat numbers by identity.
@@ -828,5 +856,411 @@ describe('publicRound', () => {
     // The walk reached every kind of step and rounds that finished at every stage.
     expect([...accepted].sort()).toEqual(['close', 'end', 'start', 'turn', 'verdict']);
     expect(finishedWith.size).toBeGreaterThanOrEqual(5);
+  }, 30_000);
+});
+
+// ---------------------------------------------------------------- market-making games in a round
+
+const GAME = QuantGame.parse({
+  id: 'secret-game-id',
+  topic: 'betting-market-making',
+  title: 'Three dice',
+  difficulty: 'medium',
+  prompt: 'GAME-PROMPT: make me a market on the sum of three dice.',
+  components: [1, 2, 3].map((i) => ({ label: `Die ${i}`, faces: [1, 2, 3, 4, 5, 6] })),
+  payoff: 'sum',
+  reveal: [0, 1],
+  tick: 0.5,
+  maxSize: 5,
+  counterparty: 'COUNTERPARTY-SECRET',
+  hints: ['HINT-SECRET'],
+  explanation: 'EXPLANATION-SECRET',
+  expect: { fair: 10.5, sd: 2.958, min: 3, max: 18 },
+});
+
+/** A 30-minute round whose second slot is GAME, its dice drawn as 6, 2 and 5 (value 13). */
+function gameRound() {
+  const r = round(30);
+  const ps = picks(4);
+  const draws = [5.5 / 6, 1.5 / 6, 4.5 / 6];
+  let k = 0;
+  ps[1] = quantGamePick(GAME, 'Betting & market making', () => draws[k++] ?? 0);
+  r.state = createQuantRound('trader', 30, ps);
+  return r;
+}
+const quote = (index: number, bid: number, ask: number, size = 1): QuantRoundStep => ({
+  type: 'quote',
+  index,
+  bid,
+  ask,
+  size,
+});
+const move = (
+  version: number,
+  index: number,
+  game: QuantGameMove,
+  say: string | null = 'Done.',
+): QuantRoundStep => turn(version, index, { game, say });
+const buy = (quantity = 1) => ({ trade: { interviewerSide: 'buy' as const, quantity } });
+const sell = (quantity = 1) => ({ trade: { interviewerSide: 'sell' as const, quantity } });
+const gameOf = (s: QuantRoundState, i: number) => {
+  const g = s.questions[i]?.game;
+  if (!g) throw new Error(`question ${i} has no game`);
+  return g;
+};
+
+describe('a game in a round', () => {
+  it('its slot snapshots the game and its draw; a bank question’s slot has no game at all', () => {
+    const r = gameRound();
+    const q = r.state.questions[1];
+    expect(q).toMatchObject({
+      questionId: 'secret-game-id',
+      topic: 'betting-market-making',
+      topicTitle: 'Betting & market making',
+      difficulty: 'medium',
+      prompt: GAME.prompt,
+      unit: null,
+      hintsAvailable: 1,
+    });
+    expect(q?.game).toMatchObject({ title: 'Three dice', values: [6, 2, 5], revealed: 0 });
+    expect(JSON.stringify(q?.game)).not.toMatch(/SECRET/);
+    expect('game' in (r.state.questions[0] as object)).toBe(false);
+    expect(() => QuantRoundStateSchema.parse(r.state)).not.toThrow();
+  });
+
+  it('the view shows a posed game and nothing hidden', () => {
+    const r = gameRound();
+    r.apply(start(0), 0);
+    expect(publicRound(r.state, r.v).questions[0]?.game).toBeNull();
+    const fx = r.apply(close(r.v, 0), 60);
+    expect(fx.reveal).toMatchObject({ index: 1, text: GAME.prompt });
+    r.apply(quote(1, 9.5, 11.5, 2), 70);
+    const view = publicRound(r.state, r.v);
+    expect(QuantRoundView.parse(view)).toEqual(view);
+    expect(view.questions[1]?.game).toEqual(gameView(gameOf(r.state, 1)));
+    expect(view.questions[1]?.game?.components.map((c) => c.value)).toEqual([null, null, null]);
+    const json = JSON.stringify(view);
+    expect(json).not.toMatch(/secret-game-id|SECRET|"(values|fair|sd|interviewerSide|spec)"/);
+  });
+
+  it('quotes: only on the current question, only on a game, never versioned', () => {
+    const r = gameRound();
+    expect(r.refuse(quote(0, 9.5, 11.5), 0)).toBe('wrong_phase');
+    r.apply(start(0), 0);
+    expect(r.refuse(quote(0, 9.5, 11.5), 1)).toBe('not_game');
+    expect(r.refuse(quote(1, 9.5, 11.5), 1)).toBe('wrong_index');
+    expect(r.refuse(move(r.v, 0, buy()), 1)).toBe('not_game');
+    expect(r.refuse(move(r.v, 0, { reveal: true }), 1)).toBe('not_game');
+    // An empty move is no move.
+    r.apply(move(r.v, 0, {}), 2);
+    r.apply(move(r.v, 0, { reveal: false }), 3);
+    r.apply(close(r.v, 0), 60);
+
+    const before = r.v;
+    const fx = r.apply(quote(1, 9.5, 11.5, 2), 70);
+    expect(r.v).toBe(before + 1);
+    expect(fx).toEqual({
+      say: null,
+      reveal: null,
+      note: null,
+      finished: false,
+      quote: { index: 1, text: '9.5 bid, 11.5 offered, 2 lots' },
+      game: {
+        index: 1,
+        entries: [{ kind: 'quote', at: at(70).toISOString(), bid: 9.5, ask: 11.5, size: 2 }],
+      },
+    });
+    expect(r.refuse(quote(1, 11.5, 9.5), 71)).toBe('bad_quote');
+    expect(r.refuse(quote(1, 9.25, 11.5), 71)).toBe('bad_quote');
+    expect(r.refuse(quote(1, 9.5, 11.5, 6), 71)).toBe('bad_quote');
+    // A replacement on a tick that floating point makes awkward still goes through, snapped.
+    const tenth = r.apply(quote(1, (0.1 + 0.2) * 35, 11, 1), 72);
+    expect(tenth.quote?.text).toBe('10.5 bid, 11 offered, 1 lot');
+    expect(gameOf(r.state, 1).quote).toMatchObject({ bid: 10.5, ask: 11, size: 1 });
+  });
+
+  it('trades and reveals ride on turns, and a refused part refuses the whole step', () => {
+    const r = gameRound();
+    r.apply(start(0), 0);
+    r.apply(close(r.v, 0), 60);
+    expect(r.refuse(move(r.v, 1, buy()), 61)).toBe('no_quote');
+    r.apply(quote(1, 9.5, 11.5, 2), 62);
+    expect(r.refuse(move(r.v, 1, buy(3)), 63)).toBe('bad_quantity');
+    expect(r.refuse(move(r.v, 1, buy(0)), 63)).toBe('bad_quantity');
+    expect(
+      r.refuse(move(r.v, 1, { trade: { interviewerSide: 'hold' as 'buy', quantity: 1 } }), 63),
+    ).toBe('invalid');
+    // A stale turn with a move is stale, as any turn.
+    expect(r.refuse(move(r.v - 1, 1, buy()), 63)).toBe('stale');
+
+    // "I buy two at your offer. Now the first die is shown: it is a 6."
+    const fx = r.apply(move(r.v, 1, { ...buy(2), reveal: true }, 'I buy two. Die 1 is a 6.'), 64);
+    expect(fx.say).toEqual({ text: 'I buy two. Die 1 is a 6.', kind: 'chat', intent: 'answer' });
+    expect(fx.quote).toBeNull();
+    expect(fx.game).toEqual({
+      index: 1,
+      entries: [
+        {
+          kind: 'trade',
+          at: at(64).toISOString(),
+          candidateSide: 'sell',
+          price: 11.5,
+          quantity: 2,
+        },
+        { kind: 'reveal', at: at(64).toISOString(), component: 0, label: 'Die 1', value: 6 },
+      ],
+    });
+    expect(gameOf(r.state, 1)).toMatchObject({ position: -2, cash: 23, revealed: 1, quote: null });
+    expect(publicRound(r.state, r.v).questions[1]?.game?.components.map((c) => c.value)).toEqual([
+      6,
+      null,
+      null,
+    ]);
+
+    // A reveal on its own (a hint may ride along), then nothing left to reveal.
+    r.apply(move(r.v, 1, { reveal: true }), 70);
+    r.apply(quote(1, 11, 12, 1), 80);
+    const busy = turn(r.v, 1, { action: 'hint', hintRung: 1, game: { ...sell(1), reveal: true } });
+    expect(r.refuse(busy, 81)).toBe('nothing_to_reveal');
+    // The trade of the refused step was not booked, and neither was its hint.
+    expect(gameOf(r.state, 1)).toMatchObject({ position: -2, quote: { bid: 11, ask: 12 } });
+    expect(r.state.questions[1]?.hintRungs).toEqual([]);
+    const ok = r.apply(turn(r.v, 1, { action: 'hint', hintRung: 1, game: sell(1) }), 82);
+    expect(ok.say?.intent).toBe('hint');
+    expect(gameOf(r.state, 1)).toMatchObject({ position: -1, cash: 12, quote: null });
+  });
+
+  it('closing settles the game: P&L = cash + position × value', () => {
+    const r = gameRound();
+    r.apply(start(0), 0);
+    r.apply(close(r.v, 0), 60);
+    r.apply(quote(1, 9.5, 11.5, 2), 62);
+    r.apply(move(r.v, 1, buy(2)), 63); // the candidate is short 2 at 11.5
+    r.apply(quote(1, 10, 11, 1), 64); // left live: closing withdraws it
+    const fx = r.apply(close(r.v, 1), 120);
+    expect(fx.say?.intent).toBe('feedback');
+    expect(fx.game).toEqual({
+      index: 1,
+      entries: [{ kind: 'settle', at: at(120).toISOString(), value: 13, pnl: 23 - 2 * 13 }],
+    });
+    expect(fx.reveal?.index).toBe(2);
+    const g = gameOf(r.state, 1);
+    expect(g.settlement).toEqual({ at: at(120).toISOString(), value: 13, pnl: -3 });
+    expect(g.quote).toBeNull();
+    // Everyone sees the dice once it settled.
+    const view = publicRound(r.state, r.v).questions[1]?.game;
+    expect(view?.components.map((c) => c.value)).toEqual([6, 2, 5]);
+    expect(view?.settlement?.pnl).toBe(-3);
+    // The game is no longer current.
+    expect(r.refuse(quote(1, 9.5, 11.5), 121)).toBe('wrong_index');
+    expect(r.refuse(quote(2, 9.5, 11.5), 121)).toBe('not_game');
+    // The report's review.
+    const review = QuantQuestionReview.parse({
+      index: 1,
+      questionId: GAME.id,
+      topic: GAME.topic,
+      topicTitle: 'Betting & market making',
+      subtopic: '',
+      difficulty: GAME.difficulty,
+      type: 'game',
+      prompt: GAME.prompt,
+      unit: null,
+      solution: gameSolution(gameStats(GAME)),
+      keyPoints: [],
+      explanation: GAME.explanation,
+      status: 'answered',
+      verdict: null,
+      hintsGiven: 0,
+      hintsAvailable: 1,
+      timeSec: 60,
+      budgetSec: 560,
+      game: quantGameReview(r.state.questions[1] as QuantRoundQuestion),
+    });
+    expect(review.game).toMatchObject({ value: 13, pnl: -3, finalPosition: -2, expectedEdge: 2 });
+    expect(quantGameReview(r.state.questions[0] as QuantRoundQuestion)).toBeNull();
+    expect(quantGameReview(r.state.questions[3] as QuantRoundQuestion)).toBeNull();
+  });
+
+  it('a close may carry a last trade, made before the game settles; a refused one refuses the close', () => {
+    const r = gameRound();
+    r.apply(start(0), 0);
+    expect(r.refuse({ ...close(r.v, 0), game: buy() }, 10)).toBe('not_game');
+    // An empty move on a bank question's close is no move.
+    r.apply({ ...close(r.v, 0), game: {} }, 60);
+    expect(r.refuse({ ...close(r.v, 1), game: buy() }, 61)).toBe('no_quote');
+    r.apply(quote(1, 9.5, 11.5, 2), 62);
+    expect(r.refuse({ ...close(r.v, 1), game: buy(3) }, 63)).toBe('bad_quantity');
+    // The refused close changed nothing: the question is open, the quote live.
+    expect(r.state.current).toBe(1);
+    expect(gameOf(r.state, 1)).toMatchObject({ position: 0, quote: { bid: 9.5, ask: 11.5 } });
+    // "I lift you for two; that's the game." The candidate sells 2 at 11.5; the dice are 13.
+    const fx = r.apply({ ...close(r.v, 1), game: buy(2) }, 120);
+    expect(fx.game?.entries).toEqual([
+      { kind: 'trade', at: at(120).toISOString(), candidateSide: 'sell', price: 11.5, quantity: 2 },
+      { kind: 'settle', at: at(120).toISOString(), value: 13, pnl: 23 - 26 },
+    ]);
+    expect(fx.say?.intent).toBe('feedback');
+    expect(fx.reveal?.index).toBe(2);
+    expect(gameOf(r.state, 1)).toMatchObject({ position: -2, cash: 23, settlement: { pnl: -3 } });
+    // A close for time may carry one too (its own checks come first).
+    const t = gameRound();
+    t.apply(start(0), 0);
+    t.apply(close(t.v, 0), 60);
+    t.apply(quote(1, 9.5, 11.5, 1), 61);
+    expect(t.refuse({ ...close(t.v, 1, 'timeout', null), game: sell(1) }, 62)).toBe('too_early');
+    const budget = t.state.questions[1]?.budgetSec ?? 0;
+    const late = t.apply({ ...close(t.v, 1, 'timeout', null), game: sell(1) }, 60 + budget);
+    expect(late.game?.entries.map((e) => e.kind)).toEqual(['trade', 'settle']);
+    expect(gameOf(t.state, 1).settlement?.pnl).toBe(3.5);
+  });
+
+  it('every other way the question closes settles it too', () => {
+    const settledBy = (finish: (r: ReturnType<typeof gameRound>) => QuantEffects) => {
+      const r = gameRound();
+      r.apply(start(0), 0);
+      r.apply(close(r.v, 0), 60);
+      r.apply(quote(1, 9.5, 11.5, 1), 61);
+      r.apply(move(r.v, 1, sell(1)), 62); // long 1 at 9.5
+      const fx = finish(r);
+      expect(fx.game?.entries).toEqual([
+        expect.objectContaining({ kind: 'settle', value: 13, pnl: 3.5 }),
+      ]);
+      expect(gameOf(r.state, 1).settlement?.pnl).toBe(3.5);
+      return r;
+    };
+    settledBy((r) => {
+      const budget = r.state.questions[1]?.budgetSec ?? 0;
+      return r.apply(close(r.v, 1, 'timeout', null), 60 + budget);
+    });
+    settledBy((r) => r.apply(close(r.v, 1, 'round_time', null), 1800));
+    const ended = settledBy((r) => r.apply({ type: 'end' }, 300));
+    expect(quantPhase(ended.state)).toBe('finished');
+    expect(ended.refuse(quote(1, 9.5, 11.5), 301)).toBe('ended');
+    // A game never posed is never settled (nor shown).
+    const early = gameRound();
+    early.apply(start(0), 0);
+    early.apply({ type: 'end' }, 10);
+    expect(gameOf(early.state, 1).settlement).toBeNull();
+    expect(publicRound(early.state, early.v).questions).toHaveLength(1);
+  });
+
+  it('a round stored before games: no `game` anywhere, and quotes are refused', () => {
+    const r = round();
+    r.apply(start(0), 0);
+    const old = JSON.parse(JSON.stringify(r.state)) as QuantRoundState;
+    for (const q of old.questions) expect('game' in q).toBe(false);
+    expect(QuantRoundStateSchema.safeParse(old).success).toBe(true);
+    expect(publicRound(old, r.v).questions[0]?.game).toBeNull();
+    r.state = old;
+    expect(r.refuse(quote(0, 9.5, 11.5), 1)).toBe('not_game');
+    // Views, reports and events from before games parse with their defaults.
+    const { game: _g, ...view } = publicRound(old, r.v).questions[0] as QuantQuestionView;
+    expect(QuantQuestionView.parse(view).game).toBeNull();
+  });
+
+  it('timeline events, the quote request and the round’s flag', () => {
+    const entry = {
+      kind: 'trade',
+      at: at(1).toISOString(),
+      candidateSide: 'buy',
+      price: 9.5,
+      quantity: 1,
+    };
+    expect(
+      TimelineEvent.parse({
+        id: PAD_ID,
+        padId: PAD_ID,
+        at: at(1).toISOString(),
+        event: { type: 'game', index: 1, entry },
+      }).event,
+    ).toEqual({ type: 'game', index: 1, entry });
+    expect(CreateQuantPadRequest.parse({ path: 'trader', includeGame: false }).includeGame).toBe(
+      false,
+    );
+    expect(CreateQuantPadRequest.parse({ path: 'trader' })).not.toHaveProperty('includeGame');
+    expect(formatQuote({ bid: 9.5, ask: 11.5, size: 1 })).toBe('9.5 bid, 11.5 offered, 1 lot');
+  });
+
+  it('never throws, keeps the books straight and leaks nothing, for any reachable state', () => {
+    const accepted = new Set<string>();
+    const refusals = new Set<string>();
+    for (let seed = 1; seed <= 80; seed++) {
+      const rand = rng(1000 + seed);
+      const r = gameRound();
+      let t = 0;
+      for (let i = 0; i < 80; i++) {
+        t += Math.floor(rand() * 40);
+        const idx = rand() < 0.9 ? Math.max(0, r.cur) : Math.floor(rand() * 5) - 1;
+        const version = rand() < 0.95 ? r.v : r.v - 1;
+        const roll = rand();
+        // Mostly a sound market on the 0.5 tick; sometimes off it, crossed or too large.
+        const grain = rand() < 0.9 ? 2 : 4;
+        const bid = Math.round((8 + rand() * 6) * grain) / grain;
+        const ask = rand() < 0.85 ? bid + 0.5 * (1 + Math.floor(rand() * 4)) : bid - 0.5;
+        let step: QuantRoundStep;
+        if (roll < 0.05) step = start(version);
+        else if (roll < 0.4) step = quote(idx, bid, ask, 1 + Math.floor(rand() * 6));
+        else if (roll < 0.85)
+          step = move(version, idx, {
+            ...(rand() < 0.7
+              ? {
+                  trade: {
+                    interviewerSide: rand() < 0.5 ? 'buy' : 'sell',
+                    quantity: Math.floor(rand() * 4),
+                  },
+                }
+              : {}),
+            ...(rand() < 0.3 ? { reveal: true } : {}),
+          });
+        else if (roll < 0.97) step = close(version, idx, 'interviewer', null);
+        else step = { type: 'end' };
+        let res: QuantAdvance;
+        try {
+          res = r.try(step, t);
+        } catch (err) {
+          throw new Error(`seed ${seed}: threw on ${JSON.stringify(step)}: ${String(err)}`);
+        }
+        if (res.ok) {
+          accepted.add(
+            step.type === 'turn' && (step.game?.trade || step.game?.reveal) ? 'move' : step.type,
+          );
+          r.state = res.state;
+          r.version = res.version;
+        } else refusals.add(res.reason);
+        checkInvariants(r.state);
+
+        const q = r.state.questions[1];
+        const g = q?.game;
+        if (!q || !g) throw new Error('lost the game');
+        // The books add up from the log.
+        let position = 0;
+        let cash = 0;
+        for (const e of g.events)
+          if (e.kind === 'trade') {
+            position += e.interviewerSide === 'buy' ? -e.quantity : e.quantity;
+            cash += e.interviewerSide === 'buy' ? e.price * e.quantity : -e.price * e.quantity;
+          }
+        expect(g.position).toBe(position);
+        expect(g.cash).toBeCloseTo(cash, 9);
+        expect(g.settlement !== null).toBe(q.closedAt !== null);
+        const last = g.events.at(-1);
+        if (last && last.kind !== 'quote') expect(g.quote).toBeNull();
+        expect(() => QuantRoundStateSchema.parse(r.state)).not.toThrow();
+
+        const view = publicRound(r.state, r.version);
+        const json = JSON.stringify(view);
+        expect(json).not.toMatch(/secret-game-id|SECRET|"(values|fair|sd|interviewerSide|spec)"/);
+        const gv = view.questions[1]?.game;
+        if (gv) {
+          const shown = new Set(g.spec.reveal.slice(0, g.revealed));
+          gv.components.forEach((c, ci) => {
+            expect(c.value).toBe(g.settlement || shown.has(ci) ? g.values[ci] : null);
+          });
+        }
+      }
+    }
+    expect([...accepted].sort()).toEqual(['close', 'end', 'move', 'quote', 'start', 'turn']);
+    for (const reason of ['not_game', 'no_quote', 'bad_quantity', 'bad_quote', 'nothing_to_reveal'])
+      expect(refusals).toContain(reason);
   }, 30_000);
 });

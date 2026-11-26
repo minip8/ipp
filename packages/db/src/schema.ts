@@ -16,7 +16,9 @@ import type {
   ProblemCategory,
   ProblemLimits,
   ProblemSignature,
+  QuantGame,
   QuantRoundState,
+  QuizDifficulty,
   QuizQuestion,
   QuizResponse,
   QuizRoadmapNode,
@@ -377,6 +379,27 @@ export const quizQuestions = pgTable(
     active: boolean('active').notNull().default(true),
   },
   (t) => [index('quiz_questions_topic_idx').on(t.topic)],
+);
+
+/**
+ * Market-making games (packages/content/games, ARCHITECTURE §8.3), played in quant rounds. Not
+ * quiz questions: never in the question bank, a quiz attempt or the stats. SERVER-ONLY (`data`
+ * holds the counterparty notes, hints and figures). A round snapshots what it plays, so a game
+ * removed from content is only marked inactive, like a quiz question.
+ */
+export const quantGames = pgTable(
+  'quant_games',
+  {
+    id: text('id').primaryKey(),
+    topic: text('topic')
+      .notNull()
+      .references(() => quizTopics.slug),
+    difficulty: text('difficulty').$type<QuizDifficulty>().notNull(),
+    data: jsonb('data').$type<QuantGame>().notNull(),
+    /** false when the game was removed from content. */
+    active: boolean('active').notNull().default(true),
+  },
+  (t) => [index('quant_games_topic_idx').on(t.topic)],
 );
 
 export const quizAttempts = pgTable(

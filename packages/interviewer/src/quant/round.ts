@@ -48,6 +48,8 @@ import {
   verdictRequest,
 } from './assessment';
 import { budgetUp, closingEndsRound, QUANT_RETRY_MS, type QuantDue, quantDue } from './clock';
+import { isGameEntry } from './entry';
+import { claimsTrade, hasMove, moveFacts, withFacts } from './game';
 import { parseModelJson } from './latex';
 import {
   afterRoundTask,
@@ -60,7 +62,7 @@ import {
   replyTask,
   stallTask,
 } from './prompts';
-import { MessageStream } from './stream';
+import { MessageStream, type StreamGate } from './stream';
 import {
   normaliseTurn,
   parseTurn,
@@ -70,6 +72,7 @@ import {
   QuantVerdictSchema,
   sayOf,
   type TurnBooks,
+  turnGameMove,
   verdictOf,
 } from './turn';
 
@@ -102,6 +105,11 @@ export const QUANT_MESSAGES = {
   wrapUp:
     'That was the last question. Thanks for working through these with me; the written report has the full solutions and feedback.',
   refused: "Let's keep our focus on the question. Where are you with it right now?",
+  /** A game's nudge: the budget is up, one last market. */
+  gameNudge: "We're at the time I'd planned for this game. Give me one last market.",
+  /** A failed call on a game: nothing was traded or shown, and their market (if any) stands. */
+  gameReplyFailed:
+    'Sorry, I lost my train of thought there for a second (connection hiccup). Could you say that again, or post your market again?',
 } as const;
 
 /**
@@ -153,6 +161,8 @@ export type QuantTraceEvent = {
   step?: string;
   why?: string;
   turn?: QuantTurn | null;
+  /** A game: what of the model's move was changed or dropped, and words that claim a trade. */
+  adjusted?: string[];
   latencyMs?: number;
   ttftMs?: number | null;
   usage?: ModelResponse['usage'];
@@ -290,9 +300,48 @@ export function createQuantRuntime<R extends QuantPad>(core: QuantCore<R>) {
 
   const booksOf = (entry: QuantContext['questions'][number]): TurnBooks => ({
     hintRungs: entry.hintRungs,
-    hintsAvailable: (entry.question.hints ?? []).length,
+    hintsAvailable: (entry.kind === 'game' ? entry.game.hints : (entry.question.hints ?? []))
+      .length,
     followUpAsked: entry.followUpAsked,
+    game: isGameEntry(entry) ? entry.state : null,
   });
+
+  /**
+   * Whether a reply's message may stream, decided on its head (`TurnHead`): always on a bank
+   * question; on a game only when the move is known before the message and shows nothing hidden
+   * (no reveal and no close, whose facts carry values the step has not made public yet), with the
+   * facts of its trade shown first. The gate decides on the normalisation the posted step uses,
+   * so the streamed text is the posted one.
+   */
+  function gateOf(entry: QuantContext['questions'][number], forced: boolean): StreamGate | null {
+    if (!isGameEntry(entry)) return null;
+    const state = entry.state;
+    return (head) => {
+      if (forced || head.action === 'close') return null;
+      if (head.trade === null || head.quantity === null || head.reveal === null) return null;
+      const trade = head.trade === 'buy' || head.trade === 'sell' ? head.trade : 'none';
+      const { move } = turnGameMove(
+        { trade, quantity: head.quantity, reveal: head.reveal },
+        state,
+        false,
+      );
+      if (move.reveal) return null;
+      return moveFacts(state, move, false).join(' ');
+    };
+  }
+
+  /** The trace's note of a move: what normalisation changed, and words that claim a trade. */
+  function adjustedOf(
+    entry: QuantContext['questions'][number],
+    move: QuantMove,
+  ): Pick<QuantTraceEvent, 'adjusted'> {
+    const notes = [...(move.type !== 'invalid' && move.adjusted ? move.adjusted : [])];
+    if (isGameEntry(entry) && 'say' in move && claimsTrade(move.say)) {
+      const made = (move.type === 'turn' || move.type === 'close') && hasMove(move.game);
+      notes.push(made ? 'words claim a trade' : 'words claim a trade, none made');
+    }
+    return notes.length ? { adjusted: notes } : {};
+  }
 
   function stateOf(rt: R, ctx: QuantContext): string {
     return quantStateText(ctx, {
@@ -316,13 +365,15 @@ export function createQuantRuntime<R extends QuantPad>(core: QuantCore<R>) {
       extra?: QuantPad['replyQueue'];
       /** Stream the turn's message to the pad as it is written. */
       stream?: boolean;
+      /** Whether (and with what first) the message may stream, once its head is read. */
+      gate?: StreamGate | null;
     },
   ): Promise<CallResult> {
     const abort = new AbortController();
     rt.inflight = abort;
     rt.inflightKind = o.inflight;
     const stream: Streamed | null = o.stream ? { id: randomUUID(), shown: false } : null;
-    const reader = stream ? new MessageStream() : null;
+    const reader = stream ? new MessageStream(o.gate ?? null) : null;
     // Local only: the request the provider gets is the same with or without it.
     const onText =
       stream && reader
@@ -383,11 +434,15 @@ export function createQuantRuntime<R extends QuantPad>(core: QuantCore<R>) {
 
   // ------------------------------------------------------------ steps
 
+  const moveName = (step: QuantStep) => {
+    const g = step.type === 'turn' || step.type === 'close' ? step.game : undefined;
+    return `${g?.trade ? `+${g.trade.interviewerSide}:${g.trade.quantity}` : ''}${g?.reveal ? '+reveal' : ''}`;
+  };
   const stepName = (step: QuantStep) =>
     step.type === 'turn'
-      ? `turn:${step.action}${step.action === 'hint' ? `:${step.hintRung}` : ''}${step.nudge ? ':nudge' : ''}`
+      ? `turn:${step.action}${step.action === 'hint' ? `:${step.hintRung}` : ''}${step.nudge ? ':nudge' : ''}${moveName(step)}`
       : step.type === 'close'
-        ? `close:${step.by}`
+        ? `close:${step.by}${moveName(step)}`
         : step.type;
 
   /** Asks the round to take one step; updates the mirror and the policy when it is taken. */
@@ -455,7 +510,10 @@ export function createQuantRuntime<R extends QuantPad>(core: QuantCore<R>) {
 
   /**
    * The step a move asks for. A close without a closing line gets a canned one. `messageId`: the
-   * id the message was streamed under, which the posted message takes.
+   * id the message was streamed under, which the posted message takes. On a game the message
+   * opens with the platform's facts of the move (`moveFacts`: the trade, the reveal, and on any
+   * close the settlement), played on the state the turn was decided on, so the words on the
+   * screen and the books cannot disagree on a figure.
    */
   function stepOf(
     ctx: QuantContext,
@@ -465,6 +523,9 @@ export function createQuantRuntime<R extends QuantPad>(core: QuantCore<R>) {
     const entry = ctx.questions[0] as QuantContext['questions'][number];
     const note = o.note.trim() || undefined;
     const id = o.messageId ? { messageId: o.messageId } : {};
+    const closing = move.type === 'close';
+    const game = isGameEntry(entry) && hasMove(move.game) ? move.game : undefined;
+    const facts = isGameEntry(entry) ? moveFacts(entry.state, game ?? {}, closing) : [];
     if (move.type === 'close') {
       return {
         type: 'close',
@@ -472,9 +533,10 @@ export function createQuantRuntime<R extends QuantPad>(core: QuantCore<R>) {
         index: entry.index,
         kind: o.kind,
         by: move.by,
-        say: move.say || cannedClose(ctx, move.by),
+        say: withFacts(facts, move.say || cannedClose(ctx, move.by)),
         verdict: move.verdict,
         note,
+        ...(game ? { game } : {}),
         ...id,
       };
     }
@@ -483,11 +545,12 @@ export function createQuantRuntime<R extends QuantPad>(core: QuantCore<R>) {
       version: ctx.round.version,
       index: entry.index,
       kind: o.kind,
-      say: move.say,
+      say: withFacts(facts, move.say),
       action: move.action,
       ...(move.action === 'hint' ? { hintRung: move.hintRung ?? 0 } : {}),
       ...(o.nudge ? { nudge: true } : {}),
       note,
+      ...(game ? { game } : {}),
       ...id,
     };
   }
@@ -604,15 +667,19 @@ export function createQuantRuntime<R extends QuantPad>(core: QuantCore<R>) {
       const forced = due === 'timeout' || due === 'round_time' ? due : null;
       const nudge = !forced && !clock.nudged && budgetUp(clock, t);
       const voice = via === 'voice' || ctx.pad.interviewer.voice;
+      const game = isGameEntry(entry);
       const r = await call(rt, ctx, key, {
-        task: replyTask({ via, voice, nudge, forced }),
+        task: replyTask({ via, voice, nudge, forced, game }),
         inflight: 'reply',
         extra: queued,
         stream: true,
+        gate: gateOf(entry, forced !== null),
       });
       const s = r.stream;
       if (rt.released) return discard(rt, s);
       const base = { trigger: 'reply', ...perf(r) };
+      // Nothing was traded or shown: on a game they may simply post their market again.
+      const failed = game ? QUANT_MESSAGES.gameReplyFailed : core.messages.replyFailed;
       if (!r.ok) {
         if (r.why === 'aborted') return discard(rt, s);
         core.trace(rt.padId, {
@@ -644,7 +711,7 @@ export function createQuantRuntime<R extends QuantPad>(core: QuantCore<R>) {
             ? QUANT_MESSAGES.refused
             : r.error?.keyFailure === 'rate_limited'
               ? core.messages.rateLimited(key.provider)
-              : core.messages.replyFailed,
+              : failed,
           s,
         );
         return;
@@ -658,13 +725,19 @@ export function createQuantRuntime<R extends QuantPad>(core: QuantCore<R>) {
           why: move.why,
           turn: r.turn,
         });
-        await saveCanned(rt, core.messages.replyFailed, s);
+        await saveCanned(rt, failed, s);
         return;
       }
       if (move.type === 'silent') {
         discard(rt, s);
         if (r.turn.note.trim()) await core.note(rt.padId, r.turn.note.trim());
-        core.trace(rt.padId, { type: 'quant', ...base, outcome: 'silent', turn: r.turn });
+        core.trace(rt.padId, {
+          type: 'quant',
+          ...base,
+          outcome: 'silent',
+          turn: r.turn,
+          ...adjustedOf(entry, move),
+        });
         return;
       }
       const res = await apply(
@@ -675,7 +748,7 @@ export function createQuantRuntime<R extends QuantPad>(core: QuantCore<R>) {
           note: r.turn.note,
           messageId: streamedId(s),
         }),
-        { ...base, turn: r.turn },
+        { ...base, turn: r.turn, ...adjustedOf(entry, move) },
       );
       // The round could not be written at all, or it refused the step for a reason of its own
       // (a hint the books do not allow, say): still answer them, in place of what was streamed.
@@ -683,7 +756,7 @@ export function createQuantRuntime<R extends QuantPad>(core: QuantCore<R>) {
       // ended) someone has just spoken, and a "say that again" under the next question would
       // only confuse: what was streamed is dropped.
       if (res === null || (res.ok === false && !MOVED_ON.has(res.reason)))
-        await saveCanned(rt, core.messages.replyFailed, s);
+        await saveCanned(rt, failed, s);
       else if (!res.ok) discard(rt, s);
     } finally {
       thinking(rt, false);
@@ -789,6 +862,8 @@ export function createQuantRuntime<R extends QuantPad>(core: QuantCore<R>) {
     if (!entry || !clock || quantDue(clock, t) !== due || rt.replyQueue.length > 0) return;
     const forced = due === 'nudge' ? null : due;
     const voice = ctx.pad.interviewer.voice;
+    const game = isGameEntry(entry);
+    const nudgeLine = game ? QUANT_MESSAGES.gameNudge : QUANT_MESSAGES.nudge;
     const key = await core.padKey(rt);
     let r: CallResult | null = null;
     let move: QuantMove | null = null;
@@ -801,7 +876,7 @@ export function createQuantRuntime<R extends QuantPad>(core: QuantCore<R>) {
       thinking(rt, true);
       try {
         r = await call(rt, ctx, key, {
-          task: forced ? forcedCloseTask(forced, voice) : nudgeTask(voice),
+          task: forced ? forcedCloseTask(forced, voice, game) : nudgeTask(voice, game),
           inflight: 'decision',
         });
       } finally {
@@ -823,7 +898,7 @@ export function createQuantRuntime<R extends QuantPad>(core: QuantCore<R>) {
         move = normaliseTurn(r.turn, booksOf(entry), {
           forced,
           via: null,
-          fallback: forced ? null : QUANT_MESSAGES.nudge,
+          fallback: forced ? null : nudgeLine,
         });
     }
     const canned = !move || move.type === 'silent' || move.type === 'invalid';
@@ -832,7 +907,7 @@ export function createQuantRuntime<R extends QuantPad>(core: QuantCore<R>) {
         ? move
         : forced
           ? { type: 'close', by: forced, say: '', verdict: null }
-          : { type: 'turn', action: 'stay', say: QUANT_MESSAGES.nudge };
+          : { type: 'turn', action: 'stay', say: nudgeLine };
     await apply(
       rt,
       stepOf(ctx, final, {
@@ -845,6 +920,7 @@ export function createQuantRuntime<R extends QuantPad>(core: QuantCore<R>) {
         ...perf(r),
         turn: r?.ok ? r.turn : null,
         ...(canned ? { why: r ? (r.ok ? 'nothing usable' : r.why) : 'no usable model' } : {}),
+        ...(move ? adjustedOf(entry, move) : {}),
       },
       canned,
     );
@@ -898,7 +974,7 @@ export function createQuantRuntime<R extends QuantPad>(core: QuantCore<R>) {
     const epoch = rt.epoch;
     const decidedFrom = core.now();
     const r = await call(rt, ctx, key, {
-      task: stallTask(m.detail, ctx.pad.interviewer.voice),
+      task: stallTask(m.detail, ctx.pad.interviewer.voice, isGameEntry(entry)),
       inflight: 'decision',
     });
     const base = { trigger: 'stall', ...perf(r) };
@@ -931,6 +1007,7 @@ export function createQuantRuntime<R extends QuantPad>(core: QuantCore<R>) {
     await apply(rt, stepOf(ctx, move, { kind: 'proactive', nudge: false, note: r.turn.note }), {
       ...base,
       turn: r.turn,
+      ...adjustedOf(entry, move),
     });
   }
 

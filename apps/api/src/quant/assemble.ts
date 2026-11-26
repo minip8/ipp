@@ -1,9 +1,10 @@
 /**
- * Which questions a quant round asks, and in what order (ARCHITECTURE §8.2).
+ * Which questions a quant round asks, and in what order (ARCHITECTURE §8.2, §8.3).
  *
- * `assembleRound` is pure and seeded (unit-tested over many seeds); `assembleForUser` loads its
- * inputs: the path's eligible questions, the owner's latest quiz answers (weak first, as the
- * quiz's "focus weak" selection) and the questions posed in the owner's last rounds.
+ * `assembleRound` and `assembleWithGame` are pure and seeded (unit-tested over many seeds);
+ * `assembleForUser` loads their inputs: the path's eligible questions, the active market-making
+ * games, the owner's latest quiz answers (weak first, as the quiz's "focus weak" selection) and
+ * the questions and games posed in the owner's last rounds.
  *
  * Rules, in priority order:
  *  - eligible: active `short` questions, and `numeric` ones with a hint ladder or follow-ups, in
@@ -18,21 +19,33 @@
  *    recently first
  *  - an empty cell relaxes the topic first, then the difficulty (nearest first), and only then
  *    allows a repeated subtopic
+ *
+ * A game (§8.3), when the round has one (`CreateQuantPadRequest.includeGame`: absent, a trader
+ * round has one and a researcher round none; true, one whenever an active game exists; false,
+ * none), takes the second slot (the first in a one-question round): an active game not posed in
+ * the owner's last rounds unless no other is left, of the slot's difficulty or else the nearest,
+ * at random among equals, its hidden values drawn by the same generator. The other slots are
+ * filled by the rules above as a round one question shorter whose slots keep their own
+ * difficulties, from the path's other topics (the game is the round's question on its own
+ * topic; that topic's bank questions come back only when the others cannot fill the slots).
+ * Without a game the round is exactly what it was before games existed.
  */
 import {
   QUANT_PATH_INFO,
+  type QuantGame,
   type QuantPath,
   type QuantPick,
   type QuizDifficulty,
   type QuizQuestion,
+  quantGamePick,
   quantQuestionCount,
 } from '@ipp/contracts';
-import { pads, quantRounds, quizQuestions, quizTopics } from '@ipp/db';
+import { pads, quantGames, quantRounds, quizQuestions, quizTopics } from '@ipp/db';
 import { and, desc, eq, inArray, sql } from '@ipp/db/orm';
 import type { Ctx } from '../context';
 import { conflict } from '../http/errors';
 import { latestAnswerMap, type RecordedAnswer, weakFirst } from '../quiz/answers';
-import { type Rand, shuffle } from '../random';
+import { type Rand, secureRand, shuffle } from '../random';
 
 /** Questions posed in this many of the owner's latest rounds are not asked again. */
 export const RECENT_ROUNDS = 5;
@@ -57,6 +70,11 @@ export interface AssembleInput<Q extends PoolQuestion = PoolQuestion> {
   /** The path's topics. */
   topics: readonly string[];
   rand: Rand;
+  /**
+   * The difficulty of each of the `n` slots; `difficultySlots(n)` when absent. A round with a
+   * game passes the slots left once the game has taken its own.
+   */
+  difficulties?: readonly QuizDifficulty[];
 }
 
 const LEVEL: Record<QuizDifficulty, number> = { easy: 0, medium: 1, hard: 2 };
@@ -78,6 +96,8 @@ const subtopicKey = (q: PoolQuestion) => `${q.topic}\u0000${q.subtopic}`;
 export function assembleRound<Q extends PoolQuestion>(input: AssembleInput<Q>): Q[] | null {
   const { pool, seen, recent, n, rand } = input;
   if (n <= 0 || pool.length < n) return null;
+  const difficulties = input.difficulties ?? difficultySlots(n);
+  if (difficulties.length !== n) throw new Error('assembleRound: one difficulty per slot');
 
   // Recently posed questions are left out while enough others remain; otherwise they come last.
   const fresh = pool.filter((q) => !recent.has(q.id));
@@ -98,7 +118,7 @@ export function assembleRound<Q extends PoolQuestion>(input: AssembleInput<Q>): 
   // A pool topic the list does not name (none, when loaded from the path) takes part too.
   for (const q of base) if (!present.includes(q.topic)) present.push(q.topic);
   const topicOrder = shuffle(present, rand);
-  const slots = difficultySlots(n).map((difficulty, i) => ({
+  const slots = difficulties.map((difficulty, i) => ({
     difficulty,
     topic: topicOrder[i % topicOrder.length] as string,
   }));
@@ -181,6 +201,96 @@ export function assembleRound<Q extends PoolQuestion>(input: AssembleInput<Q>): 
     .map(({ q }) => q);
 }
 
+/** The slot a game takes: the second, or the first in a one-question round. */
+export const gameSlot = (n: number) => (n <= 1 ? 0 : 1);
+
+/**
+ * The game for a slot of `difficulty`: none in `recent` while another is left, the slot's
+ * difficulty or else the nearest, at random among equals (put in id order first, so the choice
+ * depends on the seed and not on the order the database returned them in). Null without games.
+ */
+export function chooseGame<G extends { id: string; difficulty: QuizDifficulty }>(
+  games: readonly G[],
+  recent: ReadonlySet<string>,
+  difficulty: QuizDifficulty,
+  rand: Rand,
+): G | null {
+  const fresh = games.filter((g) => !recent.has(g.id));
+  const base = fresh.length > 0 ? fresh : games;
+  if (base.length === 0) return null;
+  const distance = (g: G) => Math.abs(LEVEL[g.difficulty] - LEVEL[difficulty]);
+  const nearest = Math.min(...base.map(distance));
+  const equals = base
+    .filter((g) => distance(g) === nearest)
+    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const r = rand();
+  const i = Number.isFinite(r) ? Math.floor(r * equals.length) : 0;
+  return equals[Math.min(equals.length - 1, Math.max(0, i))] ?? null;
+}
+
+export interface AssembleWithGameInput<Q extends PoolQuestion = PoolQuestion>
+  extends Omit<AssembleInput<Q>, 'difficulties'> {
+  /** The active games (`quant_games`); with none, or `wantGame` false, the round has no game. */
+  games: readonly QuantGame[];
+  wantGame: boolean;
+  /** The title of a game's topic, snapshotted into the round with it. */
+  topicTitle: (slug: string) => string;
+}
+
+export interface AssembledRound<Q extends PoolQuestion = PoolQuestion> {
+  /** The bank questions in the order they are asked, without the game's slot. */
+  questions: Q[];
+  /** The game and the slot it takes, its hidden values drawn (`quantGamePick`); null: none. */
+  game: { index: number; pick: QuantPick } | null;
+}
+
+/**
+ * The round, with its game when it has one (the module comment gives the rule); null when the
+ * bank cannot fill the other slots. Without a game this is `assembleRound` itself, drawing the
+ * same numbers from `rand`, so the round is exactly what it was before games existed.
+ */
+export function assembleWithGame<Q extends PoolQuestion>(
+  input: AssembleWithGameInput<Q>,
+): AssembledRound<Q> | null {
+  const { games, wantGame, topicTitle, ...bank } = input;
+  if (!wantGame || games.length === 0) {
+    const questions = assembleRound(bank);
+    return questions && { questions, game: null };
+  }
+  const slots = difficultySlots(bank.n);
+  const index = gameSlot(bank.n);
+  const game = chooseGame(games, bank.recent, slots[index] ?? 'medium', bank.rand);
+  if (!game) {
+    const questions = assembleRound(bank);
+    return questions && { questions, game: null };
+  }
+  const rest = { ...bank, n: bank.n - 1, difficulties: slots.filter((_, i) => i !== index) };
+  // The game is the round's question on its topic: the bank's slots go to the other topics, so
+  // a market-making question is not asked back to back with a market-making game. Only when
+  // those cannot fill them does the game's own topic come back.
+  const elsewhere = {
+    ...rest,
+    pool: bank.pool.filter((q) => q.topic !== game.topic),
+    topics: bank.topics.filter((t) => t !== game.topic),
+  };
+  const questions = rest.n === 0 ? [] : (assembleRound(elsewhere) ?? assembleRound(rest));
+  if (!questions) return null;
+  return {
+    questions,
+    game: { index, pick: quantGamePick(game, topicTitle(game.topic), bank.rand) },
+  };
+}
+
+/** The round's picks in the order they are asked: the game in its slot. */
+export function roundPicks<Q extends PoolQuestion>(
+  round: AssembledRound<Q>,
+  pickOfQuestion: (q: Q) => QuantPick,
+): QuantPick[] {
+  const picks = round.questions.map(pickOfQuestion);
+  if (round.game) picks.splice(round.game.index, 0, round.game.pick);
+  return picks;
+}
+
 type EligibleRow = PoolQuestion & { data: QuizQuestion };
 
 /** The path's eligible questions (see the module comment). */
@@ -245,40 +355,66 @@ export function pickOf(q: QuizQuestion, topicTitle: string = q.topic): QuantPick
   };
 }
 
-/** The questions of a new round for `userId`; 409 `quant_unavailable` when there are too few. */
+/** The active market-making games (§8.3), as authored. */
+export async function activeGames(ctx: Ctx): Promise<QuantGame[]> {
+  const rows = await ctx.db
+    .select({ data: quantGames.data })
+    .from(quantGames)
+    .where(eq(quantGames.active, true));
+  return rows.map((r) => r.data);
+}
+
+/**
+ * The questions of a new round for `userId`, with a game when the round has one (`includeGame`,
+ * see the module comment); 409 `quant_unavailable` when there are too few. One generator draws
+ * the questions, the game and its hidden values: the tests pass a seeded one, the server a
+ * cryptographic one by default, so the dice cannot be worked out from what the round shows.
+ */
 export async function assembleForUser(
   ctx: Ctx,
   userId: string,
   path: QuantPath,
   durationMin: number,
-  rand: Rand = Math.random,
+  opts: { includeGame?: boolean; rand?: Rand } = {},
 ): Promise<QuantPick[]> {
+  const rand = opts.rand ?? secureRand;
   const n = quantQuestionCount(durationMin);
-  const [pool, recent, titles] = await Promise.all([
+  const wantGame = opts.includeGame ?? path === 'trader';
+  const [pool, recent, games] = await Promise.all([
     eligibleQuestions(ctx, path),
     recentlyPosed(ctx, userId),
-    ctx.db
-      .select({ slug: quizTopics.slug, title: quizTopics.title })
-      .from(quizTopics)
-      .where(inArray(quizTopics.slug, [...QUANT_PATH_INFO[path].topics])),
+    wantGame ? activeGames(ctx) : Promise.resolve([] as QuantGame[]),
   ]);
+  const titles = await ctx.db
+    .select({ slug: quizTopics.slug, title: quizTopics.title })
+    .from(quizTopics)
+    .where(
+      inArray(quizTopics.slug, [
+        ...new Set([...QUANT_PATH_INFO[path].topics, ...games.map((g) => g.topic)]),
+      ]),
+    );
+  // With a game the bank fills one slot fewer.
+  const needed = wantGame && games.length > 0 ? n - 1 : n;
   const seen =
-    pool.length >= n
+    pool.length >= needed && pool.length > 0
       ? await latestAnswerMap(ctx.db, userId, { questionIds: pool.map((q) => q.id) })
       : new Map();
-  const chosen = assembleRound({
+  const title = new Map(titles.map((t) => [t.slug, t.title]));
+  const round = assembleWithGame({
     pool,
     seen,
     recent,
     n,
     topics: QUANT_PATH_INFO[path].topics,
     rand,
+    games,
+    wantGame,
+    topicTitle: (slug) => title.get(slug) ?? slug,
   });
-  if (!chosen)
+  if (!round)
     throw conflict(
       'quant_unavailable',
       `There are not enough questions for a ${durationMin}-minute ${QUANT_PATH_INFO[path].label.toLowerCase()} round yet`,
     );
-  const title = new Map(titles.map((t) => [t.slug, t.title]));
-  return chosen.map((q) => pickOf(q.data, title.get(q.data.topic)));
+  return roundPicks(round, (q) => pickOf(q.data, title.get(q.data.topic)));
 }
