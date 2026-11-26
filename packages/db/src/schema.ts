@@ -6,6 +6,9 @@
  */
 import type {
   DiscussionTurn,
+  DrillCategory,
+  DrillCategoryResult,
+  DrillLevel,
   InterviewerSettings,
   JudgeResult,
   Language,
@@ -426,6 +429,36 @@ export const quizStandaloneAnswers = pgTable(
     primaryKey({ columns: [t.userId, t.questionId] }),
     index('quiz_standalone_answers_question_idx').on(t.questionId),
   ],
+);
+
+// ---------------------------------------------------------------- mental math drill
+
+/**
+ * One finished drill run. Questions are generated and marked in the browser, so this is the
+ * client's result (checked for consistency by the contract); the totals and score are computed
+ * by the API. `full_mix` (every category) marks the runs that count towards a best.
+ */
+export const drillRuns = pgTable(
+  'drill_runs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    durationSec: integer('duration_sec').notNull(),
+    level: text('level').$type<DrillLevel>().notNull(),
+    /** In `DRILL_CATEGORIES` order. */
+    categories: text('categories').array().$type<DrillCategory[]>().notNull(),
+    fullMix: boolean('full_mix').notNull(),
+    byCategory: jsonb('by_category').$type<DrillCategoryResult[]>().notNull(),
+    correct: integer('correct').notNull(),
+    wrong: integer('wrong').notNull(),
+    skipped: integer('skipped').notNull(),
+    score: integer('score').notNull(),
+    elapsedMs: integer('elapsed_ms').notNull(),
+    finishedAt: tsz('finished_at').notNull().defaultNow(),
+  },
+  (t) => [index('drill_runs_user_idx').on(t.userId, t.finishedAt.desc())],
 );
 
 // ---------------------------------------------------------------- spend guard

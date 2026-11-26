@@ -77,6 +77,7 @@ Better Auth owns `user`, `session`, `account`, `verification` (text ids). App ta
 | `quiz_attempts` | id, user_id, mode, topics, question_ids, transcript jsonb (discussion turns per question), status, score, started_at, finished_at |
 | `quiz_answers` | attempt_id, question_id, response jsonb, score, correct, feedback, graded_by, answered_at |
 | `quiz_standalone_answers` | user_id, question_id (pk together), same grading columns — question-bank answers outside attempts, latest per question |
+| `drill_runs` | id, user_id, duration_sec, level, categories text[], full_mix, by_category jsonb, correct, wrong, skipped, score, elapsed_ms, finished_at — one finished mental math drill run (§8.1) |
 | `ai_usage` | user_id, day, messages, input_tokens, output_tokens — spend guard |
 
 `user.is_anonymous` marks a guest (Better Auth's anonymous plugin): someone who joined a room by
@@ -132,6 +133,8 @@ Every body is validated with the contracts schema named below.
 | `GET /api/quiz/topics/:slug/questions` | | `QuizBank` (active questions as `PublicQuizQuestion` + the caller's status per question) |
 | `GET /api/quiz/questions/:id` | | `QuizBankQuestion` (latest recorded response and its feedback, both null before answering) |
 | `POST /api/quiz/questions/:id/answers` | `SubmitStandaloneAnswerRequest` | `AnswerFeedback` (graded like attempt answers; same rate limit) |
+| `POST /api/drill/runs` | `RecordDrillRunRequest` (config, results per category, `elapsedMs`) | `RecordDrillRunResponse` (the stored `DrillRun`, totals and score computed by the server, and `newBest`); 429 |
+| `GET /api/drill/runs` | | `DrillHistory` (the latest `DRILL_HISTORY_LIMIT` runs newest first, bests per duration and level, `totalRuns`) |
 | `GET /healthz`, `GET /readyz` | | liveness / dependencies reachable |
 
 Authorization: a pad is visible to its members only. Runs and chat require membership and an active pad.
@@ -512,6 +515,26 @@ on the roadmap of a requested topic and narrows that topic's pool to the node's 
 requested topics stay whole), then selects as usual. The web client lays the graph out itself
 (`features/quiz/roadmap-logic.ts`: longest-path layers, dummy lanes for long edges, barycentre
 ordering, a least-squares x placement) and sizes it to the container, compact on phones.
+
+### 8.1 Mental math drill
+
+A timed run (60, 120 or 300 s) of generated arithmetic questions on chosen categories and a
+level. The browser generates and marks the questions (`apps/web/src/features/drill`); the server
+keeps only the result of each finished run, for the user's own history and bests, so there is no
+leaderboard and the result is the client's word. `RecordDrillRunRequest` checks that it is
+self-consistent and humanly possible: every category in `byCategory` is part of the config and
+listed once, `elapsedMs` is at most the duration plus `DRILL_GRACE_MS`, and there are at most
+`DRILL_MAX_ANSWERS_PER_SEC` answers (right or wrong; skips are not counted) per second of the time
+played. The API ignores any totals or score
+the client sends: it adds up the categories, scores correct minus wrong (`drillScore`) and stamps
+`finished_at` with its own clock (`apps/api/src/drill/bests.ts`, unit-tested).
+
+Only a full-mix run (every category, `full_mix`) is comparable, so only those count towards a
+best: the highest score per duration and level, the earliest run on a tie. `newBest` on recording
+is true when a full-mix run scores strictly higher than every earlier full-mix run of its duration
+and level (the first one when it scores above 0). Both routes need an account (a guest gets
+`account_required`) and act only on the caller's runs; recording is limited per user
+(`limits.drillRuns`: 6 a minute, 200 a day).
 
 ## 9. Security checklist
 

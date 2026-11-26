@@ -21,6 +21,7 @@ export const qk = {
   attempt: (id: string) => ['quiz', 'attempt', id] as const,
   quizBank: (topic: string) => ['quiz', 'bank', topic] as const,
   quizBankQuestion: (id: string) => ['quiz', 'question', id] as const,
+  drillRuns: ['drill', 'runs'] as const,
 };
 
 export function useMe() {

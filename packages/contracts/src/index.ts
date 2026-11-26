@@ -1,5 +1,6 @@
 export * from './ai';
 export * from './common';
+export * from './drill';
 export * from './harness';
 export * from './judge';
 export * from './limits';

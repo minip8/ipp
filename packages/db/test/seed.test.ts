@@ -6,6 +6,7 @@ import { count, eq, inArray } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createDb, type DbHandle, ensureDatabase, runMigrations } from '../src/client';
 import {
+  drillRuns,
   problems,
   problemTests,
   quizAnswers,
@@ -213,5 +214,31 @@ describe('seed', () => {
       'text-justification': 'implementation',
       'two-sum': 'dsa',
     });
+  });
+});
+
+describe('drill_runs', () => {
+  it('stores a run and goes when its user is deleted', async () => {
+    await h.db.insert(user).values({ id: 'u-drill', name: 'n', email: 'drill@example.com' });
+    const [run] = await h.db
+      .insert(drillRuns)
+      .values({
+        userId: 'u-drill',
+        durationSec: 60,
+        level: 'standard',
+        categories: ['multiply'],
+        fullMix: false,
+        byCategory: [{ category: 'multiply', correct: 3, wrong: 1, skipped: 0 }],
+        correct: 3,
+        wrong: 1,
+        skipped: 0,
+        score: 2,
+        elapsedMs: 60_000,
+      })
+      .returning();
+    expect(run?.finishedAt).toBeInstanceOf(Date);
+    expect(run?.categories).toEqual(['multiply']);
+    await h.db.delete(user).where(eq(user.id, 'u-drill'));
+    expect(await h.db.select().from(drillRuns).where(eq(drillRuns.userId, 'u-drill'))).toEqual([]);
   });
 });

@@ -19,9 +19,14 @@ import {
   CreateRunRequest,
   DiscussionReplyRequest,
   type DiscussionTurn,
+  DRILL_HISTORY_LIMIT,
+  type DrillHistory,
+  type DrillRun,
+  drillScore,
   effectiveModel,
   type HostView,
   type InviteInfo,
+  isFullMix,
   JoinGuestRequest,
   LANGUAGE_LABELS,
   type Language,
@@ -32,6 +37,8 @@ import {
   QuizAttempt,
   type QuizRoadmapTopic,
   type QuizTopicStats,
+  RecordDrillRunRequest,
+  type RecordDrillRunResponse,
   ReviewRequest,
   type Run,
   ServerEvent,
@@ -71,6 +78,7 @@ import {
   USER,
   uuid,
 } from './fixtures';
+import { DRILL_RUNS, drillBests } from './fixtures-drill';
 import { QUANT_FOLLOW_UP, QUANT_QUESTIONS, QUANT_TOPIC } from './fixtures-quiz-quant';
 import { QUIZ_ROADMAP } from './fixtures-quiz-roadmap';
 import { MockQuizBank } from './mock-quiz-bank';
@@ -123,6 +131,8 @@ export class MockBackend {
   quizRoadmap: QuizRoadmapTopic[] = QUIZ_ROADMAP;
   /** GET /api/quiz/topics (QUIZ_TOPICS_FUNDAMENTALS for the site before any quant content). */
   quizTopics: QuizTopicStats[] = QUIZ_TOPICS;
+  /** Mental math drill runs, newest first (`[]` for a first visit). */
+  drillRuns: DrillRun[] = structuredClone(DRILL_RUNS);
 
   constructor() {
     this.pads.set(ACTIVE_PAD_ID, makePadDetail());
@@ -391,7 +401,10 @@ export class MockBackend {
     if (path === '/api/me') return { user: this.me };
     if (
       this.me.guest &&
-      (path === '/api/pads' || path.startsWith('/api/ai-key') || path.startsWith('/api/quiz'))
+      (path === '/api/pads' ||
+        path.startsWith('/api/ai-key') ||
+        path.startsWith('/api/quiz') ||
+        path.startsWith('/api/drill'))
     )
       return this.status(403, 'account_required', 'Sign in with an account to do this');
 
@@ -632,6 +645,45 @@ export class MockBackend {
     if (r) return this.runs.get(r[1] ?? '') ?? this.status(404, 'not_found', 'Run not found.');
     if (path === '/api/ws-ticket')
       return { ticket: `t_${Math.random().toString(36).slice(2)}`, expiresInSec: 30 };
+
+    // mental math drill
+    if (path === '/api/drill/runs' && method === 'GET') {
+      const history: DrillHistory = {
+        runs: this.drillRuns.slice(0, DRILL_HISTORY_LIMIT),
+        bests: drillBests(this.drillRuns),
+        totalRuns: this.drillRuns.length,
+      };
+      return history;
+    }
+    if (path === '/api/drill/runs' && method === 'POST') {
+      // As on the server: the body must pass the contract (self-consistent, humanly possible).
+      const parsed = RecordDrillRunRequest.safeParse(body);
+      if (!parsed.success)
+        return this.status(400, 'invalid_body', parsed.error.issues[0]?.message ?? 'Invalid run');
+      const req = parsed.data;
+      const sum = (k: 'correct' | 'wrong' | 'skipped') =>
+        req.byCategory.reduce((n, c) => n + c[k], 0);
+      const correct = sum('correct');
+      const wrong = sum('wrong');
+      const run: DrillRun = {
+        id: uuid(),
+        config: req.config,
+        byCategory: req.byCategory,
+        correct,
+        wrong,
+        skipped: sum('skipped'),
+        score: drillScore({ correct, wrong }),
+        elapsedMs: req.elapsedMs,
+        finishedAt: new Date().toISOString(),
+      };
+      const prior = drillBests(this.drillRuns).find(
+        (b) => b.durationSec === req.config.durationSec && b.level === req.config.level,
+      );
+      const newBest = isFullMix(req.config) && (!prior || run.score > prior.score);
+      this.drillRuns = [run, ...this.drillRuns];
+      const res: RecordDrillRunResponse = { run, newBest };
+      return new Response(JSON.stringify(res), { status: 201 });
+    }
 
     // quizzes
     if (path === '/api/quiz/topics') return this.quizTopics;

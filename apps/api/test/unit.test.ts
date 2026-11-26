@@ -3,6 +3,7 @@ import { createRequire } from 'node:module';
 import { JudgeResult, QuizQuestion } from '@ipp/contracts';
 import { describe, expect, it } from 'vitest';
 import type { Ctx } from '../src/context';
+import { drillBests, drillTotals, isNewBest, orderByCategory } from '../src/drill/bests';
 import { clientIp, jsonDeeperThan } from '../src/http/app';
 import { correctAnswer, gradeAuto, normalizeOutput, publicQuestion } from '../src/quiz/grade';
 import {
@@ -211,5 +212,53 @@ describe('jsonDeeperThan', () => {
     expect(jsonDeeperThan({ a: [[1, { b: 2 }]] }, 4)).toBe(false);
     expect(jsonDeeperThan({ a: [[1, { b: [] }]] }, 4)).toBe(true);
     expect(jsonDeeperThan('x', 0)).toBe(false);
+  });
+});
+
+describe('drill bests', () => {
+  const at = (s: number) => new Date(Date.UTC(2026, 0, 1, 0, 0, s));
+
+  it('totals the categories and scores correct minus wrong', () => {
+    expect(
+      drillTotals([
+        { category: 'multiply', correct: 10, wrong: 3, skipped: 1 },
+        { category: 'divide', correct: 4, wrong: 5, skipped: 2 },
+      ]),
+    ).toEqual({ correct: 14, wrong: 8, skipped: 3, score: 6 });
+    expect(drillTotals([])).toEqual({ correct: 0, wrong: 0, skipped: 0, score: 0 });
+    expect(
+      orderByCategory([
+        { category: 'estimation', correct: 1, wrong: 0, skipped: 0 },
+        { category: 'add-subtract', correct: 1, wrong: 0, skipped: 0 },
+      ]).map((c) => c.category),
+    ).toEqual(['add-subtract', 'estimation']);
+  });
+
+  it('keeps the highest score per duration and level, the earliest on a tie, in contract order', () => {
+    const bests = drillBests([
+      { durationSec: 300, level: 'warmup', score: 4, finishedAt: at(1) },
+      { durationSec: 60, level: 'hard', score: 7, finishedAt: at(2) },
+      { durationSec: 60, level: 'hard', score: 9, finishedAt: at(5) },
+      { durationSec: 60, level: 'hard', score: 9, finishedAt: at(3) },
+      { durationSec: 60, level: 'hard', score: 9, finishedAt: at(4) },
+      { durationSec: 60, level: 'warmup', score: -2, finishedAt: at(6) },
+      { durationSec: 90, level: 'warmup', score: 50, finishedAt: at(7) },
+    ]);
+    expect(bests).toEqual([
+      { durationSec: 60, level: 'warmup', score: -2, finishedAt: at(6).toISOString() },
+      { durationSec: 60, level: 'hard', score: 9, finishedAt: at(3).toISOString() },
+      { durationSec: 300, level: 'warmup', score: 4, finishedAt: at(1).toISOString() },
+    ]);
+    expect(drillBests([])).toEqual([]);
+  });
+
+  it('a new best is strictly higher than the earlier ones, and above 0 for the first', () => {
+    expect(isNewBest(1, null)).toBe(true);
+    expect(isNewBest(0, null)).toBe(false);
+    expect(isNewBest(-1, null)).toBe(false);
+    expect(isNewBest(10, 9)).toBe(true);
+    expect(isNewBest(9, 9)).toBe(false);
+    expect(isNewBest(8, 9)).toBe(false);
+    expect(isNewBest(-1, -3)).toBe(true);
   });
 });

@@ -14,6 +14,7 @@ import {
   DeletePadResponse,
   type DiscussionReplyRequest,
   DiscussionReplyResponse,
+  DrillHistory,
   HostView,
   InviteInfo,
   Pad,
@@ -30,6 +31,8 @@ import {
   type QuizResponse,
   QuizRoadmapTopic,
   QuizTopicStats,
+  type RecordDrillRunRequest,
+  RecordDrillRunResponse,
   Report,
   Run,
   SolutionReview,
@@ -221,6 +224,10 @@ export const api = {
       method: 'POST',
       body: { response },
     }),
+  /** The mental math drill: the user's recent runs and bests, and recording a finished run. */
+  drillRuns: () => request('/drill/runs', DrillHistory),
+  recordDrillRun: (body: RecordDrillRunRequest) =>
+    request('/drill/runs', RecordDrillRunResponse, { method: 'POST', body }),
 };
 
 /** Human message for any error, with rate-limit timing when known. */

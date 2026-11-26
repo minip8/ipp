@@ -3,7 +3,8 @@
  * The Quant page: the guided way into the quant track. Two paths (trader, researcher), each a
  * short sequence of topics to work through in order, with the same progress the Quizzes page shows
  * and one-click ways into practice, the topic's bank and its roadmap, plus a discussion of the
- * path's open questions. The Quizzes page stays the full bank of every topic.
+ * path's open questions, and the mental math drill. The Quizzes page stays the full bank of every
+ * topic.
  */
 import { QUANT_PATH_INFO, type QuantPath, type QuizTopicStats } from '@ipp/contracts';
 import { useQuery } from '@tanstack/react-query';
@@ -23,6 +24,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
+import { DrillCard } from '@/features/drill/drill-card';
 import { DISCUSSION_ROUND, PRACTICE_ROUND } from '@/features/quiz/logic';
 import { COMPLETE_ACCURACY } from '@/features/quiz/roadmap-logic';
 import { DiscussionKeyPrompt, useDiscussionKey, useStartAttempt } from '@/features/quiz/start';
@@ -246,8 +248,9 @@ function PathView({ path, topics }: { path: QuantPath; topics: QuizTopicStats[] 
           ))}
         </ol>
       </section>
-      <div className="min-w-0 lg:sticky lg:top-20 lg:mt-9">
+      <div className="min-w-0 space-y-4 lg:sticky lg:top-20 lg:mt-9">
         <DiscussionCard steps={steps} start={start} blocked={blocked} />
+        <DrillCard />
       </div>
     </div>
   );
