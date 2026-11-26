@@ -1,0 +1,83 @@
+# A market-making game played live in a trader round (ARCHITECTURE §8.3). The server draws the
+# coins, keeps the books and settles; the interviewer only trades and reveals.
+id: mm-game-coin-count
+topic: betting-market-making
+title: Heads in eight coins
+difficulty: easy
+prompt: |
+  Eight fair coins have been tossed where neither of us can see them. A contract settles at the
+  number of heads, from 0 to 8. Each coin shows 1 for heads and 0 for tails.
+
+  Make me a two-sided market on it: a bid, an offer and a size of up to 5 contracts, in steps of
+  0.25. I may buy from you, sell to you, or ask for another market. As we go I will show you
+  Coins 1 to 5, one at a time and in that order; each time your market is withdrawn and you make
+  a new one. Coins 6, 7 and 8 stay hidden until the end, when every coin is shown and the
+  contract settles.
+components:
+  - { label: Coin 1, faces: [0, 1] }
+  - { label: Coin 2, faces: [0, 1] }
+  - { label: Coin 3, faces: [0, 1] }
+  - { label: Coin 4, faces: [0, 1] }
+  - { label: Coin 5, faces: [0, 1] }
+  - { label: Coin 6, faces: [0, 1] }
+  - { label: Coin 7, faces: [0, 1] }
+  - { label: Coin 8, faces: [0, 1] }
+payoff: sum
+reveal: [0, 1, 2, 3, 4]
+tick: 0.25
+maxSize: 5
+counterparty: |
+  Your books show the public fair value and standard deviation, the true value and your edge
+  against both at the candidate's bid and offer. Never say the fair value, a hidden coin or the
+  candidate's P&L. There are six markets to get through (one before any coin and one after each
+  of the five reveals), so keep each stage to one trade and reveal the next coin in the same turn
+  as the trade ("I sell you one at your bid. Coin 2: heads.").
+
+  Stage 1, nothing shown (fair 4, sd 1.41): you are uninformed and trade only on the public fair
+  value. If the market is wider than 2, ask for a tighter one (at most twice, then trade it
+  anyway). If the fair value is outside the market, trade the full size against it (lift an
+  offer below it, hit a bid above it). Otherwise trade one lot on either side. Then reveal
+  Coin 1.
+
+  Stages 2 to 5, one to four coins shown: still uninformed, the same rules against the new public
+  fair value. Every coin moves the fair value by exactly half a point, so a market left where it
+  was is off fair by 0.5 and is traded for the full size. Alternate the side you take when the
+  choice is yours, so that the position goes both ways. After three coins are shown, if the
+  market is still wider than 1.5, ask whether it needs to be that wide now. Once, around Coin 3,
+  ask what their position is and how far the contract can still move with the coins left. After
+  each trade, reveal the next coin.
+
+  Stage 6, five coins shown (sd 0.87): you are now informed and trade on the true value. Lift the
+  offer for the full size if it is below the true value, hit the bid for the full size if it is
+  above it, and pass otherwise. If you pass, ask what a pass tells them. Ask how much of the
+  original uncertainty is left with three coins hidden, and whether that surprises them. Coins 6
+  to 8 are never shown before the close: there is no reveal left. Close once this market has
+  been traded or passed, or when time is short.
+hints:
+  - How many heads do you expect from eight fair coins, and how spread out is the count?
+  - One coin has variance $1/4$. What does that make the variance of eight, and of the coins still hidden?
+  - Once some coins are shown, only the hidden ones are random. What is the expected count now?
+explanation: |
+  Before anything is shown the count of heads is binomial with $n = 8$, $p = \tfrac12$: fair value
+  4, variance $8 \times \tfrac14 = 2$, standard deviation $\sqrt 2 \approx 1.41$, range 0 to 8. A
+  market such as 3.5 at 4.5 (width 1, about 0.7 standard deviations) earns half a point on
+  whichever side an uninformed counterparty trades.
+
+  After $k$ coins are shown with $h$ heads among them, the fair value is $h + (8 - k)/2$ and the
+  standard deviation $\sqrt{8 - k}/2$: 1.32, 1.22, 1.12, 1.00 and 0.87 after one to five coins.
+  Each coin moves the fair value by exactly $\pm\tfrac12$, so the mid should move by half a point
+  on every reveal (to 4.5 after a first head, back to 4 after a tail, and so on), and the width
+  can come in slowly.
+
+  The lesson is how slowly that happens. Uncertainty shrinks with the square root of what is left:
+  with five of the eight coins shown, 62.5% of the variance is gone but the standard deviation
+  has fallen only from 1.41 to 0.87, about 39%. A candidate who halves the width after the first
+  couple of coins is quoting tighter than the risk warrants; one who never moves the mid is
+  picked off by half a point a contract on every reveal. In the last stage the counterparty knows
+  the answer, so its trades are adverse selection; with three coins still hidden there is real
+  risk left at the settlement either way.
+expect:
+  fair: 4
+  sd: 1.414
+  min: 0
+  max: 8
