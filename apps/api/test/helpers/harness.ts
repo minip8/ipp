@@ -376,7 +376,13 @@ export interface Harness {
 }
 
 export async function startApi(
-  opts: { config?: Partial<Config>; fake?: FakeInterviewer; captureLogs?: boolean } = {},
+  opts: {
+    config?: Partial<Config>;
+    fake?: FakeInterviewer;
+    /** Another interviewer than the fake (e.g. the real one, helpers/real-interviewer.ts). */
+    interviewerFactory?: InterviewerFactory;
+    captureLogs?: boolean;
+  } = {},
 ): Promise<Harness> {
   const config = testConfig(opts.captureLogs ? { logLevel: 'trace', ...opts.config } : opts.config);
   const fake = opts.fake ?? new FakeInterviewer();
@@ -389,7 +395,7 @@ export async function startApi(
   const api = await createApi({
     config,
     log,
-    interviewerFactory: fake.factory,
+    interviewerFactory: opts.interviewerFactory ?? fake.factory,
     verifyAiKey: verifier.verify,
     listAiModels: lister.list,
   });
