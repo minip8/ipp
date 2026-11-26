@@ -15,19 +15,6 @@ export const QUIZ_TRACKS = ['fundamentals', 'quant'] as const;
 export const QuizTrack = z.enum(QUIZ_TRACKS);
 export type QuizTrack = z.infer<typeof QuizTrack>;
 
-export const QUIZ_TRACK_INFO: Record<QuizTrack, { label: string; description: string }> = {
-  fundamentals: {
-    label: 'Fundamentals',
-    description:
-      'Languages and systems: what a developer interview asks beyond the coding problem.',
-  },
-  quant: {
-    label: 'Quant',
-    description:
-      'Probability, statistics, markets and puzzles for trading and research interviews.',
-  },
-};
-
 /**
  * The Quant page's guided paths through the quant track: topic slugs in the order to study them.
  * A topic the server does not have is skipped by the page, so a path may name one before its
