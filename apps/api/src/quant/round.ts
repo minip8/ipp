@@ -4,7 +4,8 @@
  * compare-and-swap on `quant_rounds.version` and posts what the step says (the interviewer's
  * message, then the question it reveals, with its timeline event); after the commit everyone in
  * the pad gets `message.created` for each, then `round.updated`. A refused or stale step changes
- * nothing and posts nothing.
+ * nothing and posts nothing. A step's time (the state's times, its messages' `created_at`) is
+ * the database's clock (`Ctx.dbNow`), the one every other message and the pad's start are on.
  *
  * Once the pad has ended, every question with a verdict is also one of the owner's quiz answers
  * (`quant_round_answers`), written in the transaction that finishes the round and by any later
@@ -107,7 +108,10 @@ async function tryStep(ctx: Ctx, padId: string, step: QuantRoundStep): Promise<S
     if (pad.status !== 'active' && step.type !== 'end' && step.type !== 'verdict')
       return { ok: false, reason: 'ended' } as const;
 
-    const now = new Date();
+    // The database's clock, read after the lock: what stamps every other message (`now()`) and
+    // the pad's start, so the round's messages sort among the candidate's whatever the API
+    // host's clock says, and its times compare with `startedAt` on one clock.
+    const now = await ctx.dbNow(tx);
     const roundEndsAt = quantRoundEndsAt(pad.startedAt, row.state.durationMin);
     const next = advanceRound(row.state, step, {
       version: row.version,
@@ -147,10 +151,11 @@ async function tryStep(ctx: Ctx, padId: string, step: QuantRoundStep): Promise<S
         })
         .returning();
       if (m) posted.push(messageView(m));
-      // The interviewer's own words count against the owner's daily messages, as saveMessage does.
+      // The interviewer's own words count against the owner's daily messages, as saveMessage
+      // does, on the day the budget check reads (the API's clock, as `utcDay`).
       await tx
         .insert(aiUsage)
-        .values({ userId: pad.ownerId, day: now.toISOString().slice(0, 10), messages: 1 })
+        .values({ userId: pad.ownerId, day: new Date().toISOString().slice(0, 10), messages: 1 })
         .onConflictDoUpdate({
           target: [aiUsage.userId, aiUsage.day],
           set: { messages: sql`${aiUsage.messages} + 1` },

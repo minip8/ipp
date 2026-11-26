@@ -647,16 +647,26 @@ joining by the link, as on any practice pad) see exactly what the owner sees.
   it ended), the next state behind a compare-and-swap on `version`, the interviewer's message,
   the revealed question's message (intent `question`, the bank's exact prompt, `createdAt` 1 ms
   after the message before it, its id recorded as `posedMessageId`) with a `question` timeline
-  event, and the interviewer's private note. After the commit the room gets `message.created` for
+  event, and the interviewer's private note. Every time a step writes (its `now`, so `posedAt`,
+  `nudgedAt`, `closedAt`, and its messages' `created_at`) is the database's clock, read in the
+  transaction after the lock (`clock_timestamp()` rounded up to the millisecond, `Ctx.dbNow`):
+  the clock Postgres stamps every other message and `pads.started_at` with, so the round's
+  messages sort among the candidate's whatever the API host's clock says. After the commit the room gets `message.created` for
   each message, then `round.updated`. A step decided on an older version (`stale`), or refused by
   the transition (`QuantRefusal`), posts nothing; once the pad has ended only `end` and `verdict`
   are accepted. The interviewer's message counts against the owner's daily AI messages; a posted
   question counts against neither that nor the per-pad cap.
 - **Clock**: the round ends at `startedAt + durationMin`; each question's budget is set when it is
-  posed (`quantBudgetSec`, unused time rolls forward). The round finishing (last question closed,
-  or closed for `round_time`) does not end the pad; the owner does. Ending the pad
-  (`endPad`) closes the open question as `ended` before `session_ended`, and the assessment
-  (`generateQuantAssessment`, quant dimensions) first judges questions closed without a verdict.
+  posed (`quantBudgetSec`, unused time rolls forward). All of these are on the database's clock;
+  the interviewer decides when the clock is due on the API's (`deps.now`), and a close for time
+  it asks for up to `QUANT_CLOCK_SKEW_MS` (5 s) early is accepted, so a small skew either way
+  only moves a close by that much: an API behind closes a little late, one ahead by more than
+  that is refused `too_early` and retries after 30 s (a timeout also has its grace, 30 to 90 s,
+  in hand). The browser counts down from `posedAt` on its own clock, as before. The round
+  finishing (last question closed, or closed for `round_time`) does not end the pad; the owner
+  does. Ending the pad (`endPad`) closes the open question as `ended` before `session_ended`, and
+  the assessment (`generateQuantAssessment`, quant dimensions) first judges questions closed
+  without a verdict.
 - **What the browser sees**: `PadDetail.round` and `round.updated` carry `publicRound(state,
   version)`, the posed questions only (topic, difficulty, prompt, unit, times, hints given as a
   count); never a question id, a subtopic, a verdict, how a question closed or a question still to

@@ -396,16 +396,22 @@ describe('advanceRound: refusals', () => {
   it('closing for time needs the time to be up; a verdict must be in 0..1', () => {
     const r = round();
     r.apply(start(0), 0);
-    expect(r.refuse(close(r.v, 0, 'timeout'), 434)).toBe('too_early');
-    expect(r.refuse(close(r.v, 0, 'round_time'), 1799)).toBe('too_early');
+    // Up to QUANT_CLOCK_SKEW_MS (5 s) early is allowed: the asker's clock may be ahead.
+    expect(r.refuse(close(r.v, 0, 'timeout'), 429)).toBe('too_early');
+    expect(r.refuse(close(r.v, 0, 'round_time'), 1794)).toBe('too_early');
     expect(r.refuse(close(r.v, 0, 'interviewer', { score: 1.5, summary: 's' }), 10)).toBe(
       'invalid',
     );
     expect(r.refuse(close(r.v, 0, 'interviewer', { score: Number.NaN, summary: 's' }), 10)).toBe(
       'invalid',
     );
-    r.apply(close(r.v, 0, 'timeout', null), 435);
+    r.apply(close(r.v, 0, 'timeout', null), 430);
     expect(r.state.questions[0]?.closedBy).toBe('timeout');
+    expect(r.state.questions[0]?.closedAt).toBe(at(430).toISOString());
+    const late = round(20);
+    late.apply(start(0), 0);
+    late.apply(close(late.v, 0, 'round_time', null), 1195);
+    expect(late.state.questions[0]?.closedBy).toBe('round_time');
   });
 
   it('a verdict only for a closed question without one', () => {

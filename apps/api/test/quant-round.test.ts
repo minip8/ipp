@@ -20,7 +20,7 @@ import {
   quizTopics,
   timelineEvents,
 } from '@ipp/db';
-import { and, asc, eq, inArray, like } from '@ipp/db/orm';
+import { and, asc, eq, inArray, like, sql } from '@ipp/db/orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { WebSocket } from 'ws';
 import * as Y from 'yjs';
@@ -1006,6 +1006,91 @@ describe('a round, step by step', () => {
       s.close();
     });
   });
+});
+
+// ---------------------------------------------------------------- one clock
+
+/** Shifts the API process's clock (`Date`) by `ms`; the database's stays as it is. */
+function skewApiClock(ms: number): () => void {
+  const RealDate = globalThis.Date;
+  globalThis.Date = new Proxy(RealDate, {
+    construct(target, args, newTarget) {
+      return Reflect.construct(target, args.length === 0 ? [RealDate.now() + ms] : args, newTarget);
+    },
+    apply() {
+      return new RealDate(RealDate.now() + ms).toString();
+    },
+    get(target, prop, receiver) {
+      if (prop === 'now') return () => RealDate.now() + ms;
+      return Reflect.get(target, prop, receiver);
+    },
+  }) as DateConstructor;
+  return () => {
+    globalThis.Date = RealDate;
+  };
+}
+
+describe('the round’s clock', () => {
+  for (const skewMin of [-3, 3]) {
+    it(`stamps the round on the database’s clock with the API’s ${skewMin} min off`, async () => {
+      const owner = await account(`Skew${skewMin < 0 ? 'Behind' : 'Ahead'}`);
+      const pad = await createRound(owner, { path: 'trader', durationMin: 20 });
+      const id = pad.id;
+      await manual(async () => {
+        const s = await openEvents(owner, id);
+        await s.waitFor('round.updated');
+        expect(
+          await fake.deps.applyQuantStep?.(id, { type: 'start', version: 0, say: 'Hi.' }),
+        ).toMatchObject({ ok: true });
+        const restore = skewApiClock(skewMin * 60_000);
+        try {
+          // The candidate answers (stamped by Postgres); the interviewer closes the question and
+          // the next is posted; the candidate goes on under it.
+          s.send({ type: 'chat.send', text: 'answer: seven' });
+          await s.waitFor('round.updated', (e) => e.round.version === 2);
+          s.send({ type: 'chat.send', text: 'on to the next' });
+          await s.waitFor('round.updated', (e) => e.round.version === 3);
+          // A close for time decided on the skewed clock is still judged on the database's.
+          expect(
+            await fake.deps.applyQuantStep?.(id, {
+              type: 'close',
+              version: 3,
+              index: 1,
+              kind: 'proactive',
+              say: 'Time.',
+              by: 'timeout',
+              verdict: null,
+            }),
+          ).toEqual({ ok: false, reason: 'too_early' });
+        } finally {
+          restore();
+        }
+        const rows = await db()
+          .select({ text: messages.text, role: messages.role, intent: messages.intent })
+          .from(messages)
+          .where(eq(messages.padId, id))
+          .orderBy(asc(messages.createdAt));
+        const state = (await roundRow(id)).state;
+        expect(rows.map((m) => (m.role === 'candidate' ? m.text : m.intent))).toEqual([
+          'greeting',
+          'question',
+          'answer: seven',
+          'feedback',
+          'question',
+          'on to the next',
+          'answer',
+        ]);
+        expect(rows[4]?.text).toBe(state.questions[1]?.prompt);
+        // posedAt is the database's time, not the API's.
+        const [{ now } = { now: '' }] = await db().execute<{ now: string }>(
+          sql`select to_json(now())#>>'{}' as now`,
+        );
+        const posed = Date.parse(state.questions[1]?.posedAt ?? '');
+        expect(Math.abs(posed - Date.parse(now))).toBeLessThan(10_000);
+        s.close();
+      });
+    });
+  }
 });
 
 // ---------------------------------------------------------------- ending and the report

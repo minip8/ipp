@@ -119,7 +119,7 @@ beforeAll(async () => {
   await flushRedis();
   rig = new RealInterviewerRig(testConfig());
   h = await startApi({ interviewerFactory: rig.factory, captureLogs: true });
-  clock = new TestClock(h.api.ctx.db);
+  clock = new TestClock(h.api.ctx);
   await clock.install();
   const db = h.api.ctx.db;
   await db

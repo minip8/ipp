@@ -14,6 +14,7 @@ import { createAuth } from './auth';
 import type { Config } from './config';
 import type { Ctx } from './context';
 import { createHttpApp, originAllowed } from './http/app';
+import { readDbClock } from './pg';
 import { type InterviewerFactory, InterviewerHost } from './interviewer/host';
 import { defaultModelLister, type KeyVerifier, type ModelLister } from './interviewer/wiring';
 import { RateLimiter } from './ratelimit';
@@ -68,6 +69,7 @@ export async function createApi(opts: ApiOptions): Promise<Api> {
     ),
     verifyAiKey: opts.verifyAiKey,
     listAiModels: opts.listAiModels ?? defaultModelLister(config),
+    dbNow: readDbClock,
   } as Ctx;
   ctx.collab = new Collab(ctx);
   ctx.runs = new RunService(ctx);
