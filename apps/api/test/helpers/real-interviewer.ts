@@ -182,8 +182,11 @@ export type Reply =
   | string
   | { refused: true; text?: string }
   | { error: 'transient' | 'permanent' }
-  /** Waits until `release` is called (with the reply), or the call is aborted. */
-  | { hang: true };
+  /**
+   * Waits until `release` is called (with the reply), or the call is aborted. `partial` is
+   * streamed first (and the rest of the released text, if it goes on from there).
+   */
+  | { hang: true; partial?: string };
 
 export interface RecordedCall<S = unknown> {
   req: ModelRequest;
@@ -332,9 +335,17 @@ export class ScriptedModel<S = unknown> implements ModelClient {
     };
     this.calls.push(rec);
     for (const l of [...this.listeners]) l(rec);
+    const stream = (t: string) => {
+      for (const chunk of t.match(/.{1,16}/gs) ?? []) req.onText?.(chunk);
+    };
+    let sent = '';
     try {
       let r: Exclude<Reply, { hang: true }>;
       if (typeof reply === 'object' && 'hang' in reply) {
+        if (reply.partial) {
+          stream(reply.partial);
+          sent = reply.partial;
+        }
         r = await new Promise<Exclude<Reply, { hang: true }>>((resolve, reject) => {
           const onAbort = () => {
             rec.aborted = true;
@@ -349,8 +360,7 @@ export class ScriptedModel<S = unknown> implements ModelClient {
         throw new ModelError(r.error, `scripted ${r.error} failure`, 500);
       const refused = typeof r === 'object' && 'refused' in r;
       const text = typeof r === 'string' ? r : (r.text ?? '');
-      if (req.onText && !refused)
-        for (const chunk of text.match(/.{1,16}/gs) ?? []) req.onText(chunk);
+      if (!refused) stream(!sent ? text : text.startsWith(sent) ? text.slice(sent.length) : '');
       return {
         text,
         stopReason: refused ? 'refusal' : 'end_turn',

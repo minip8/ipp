@@ -54,6 +54,63 @@ export function segmentsToMarkdown(segments: Segment[]): string {
 /** Plain text as Markdown that renders as written apart from its `$…$` math. */
 export const escapeOutsideMath = (text: string) => segmentsToMarkdown(splitMath(text));
 
+/** How long an unclosed `$` may hold the rest back before it is taken for a plain dollar. */
+const HOLD_MAX = 200;
+
+/**
+ * Text that is still being written (a streaming message), cut before a formula that has not
+ * closed yet, so `$\frac{5}{` never shows as raw source or a KaTeX error that then jumps into a
+ * formula: it appears whole once its closing dollar arrives. Also held back: a trailing `\` (it
+ * may become `\$`). An inline `$` with a space after it, or whose line has ended, is no opener
+ * (as in `isMathSpan`), and one that has held more than 200 characters is let go as a dollar.
+ * Code spans are left alone.
+ */
+export function settledMath(text: string): string {
+  const n = text.length;
+  let i = 0;
+  while (i < n) {
+    const c = text[i];
+    if (c === '\\') {
+      if (i === n - 1) return text.slice(0, i);
+      i += 2;
+      continue;
+    }
+    if (c === '`') {
+      let k = i;
+      while (text[k] === '`') k++;
+      const fence = text.slice(i, k);
+      const close = text.indexOf(fence, k);
+      i = close === -1 ? k : close + fence.length;
+      continue;
+    }
+    if (c !== '$') {
+      i++;
+      continue;
+    }
+    if (text[i + 1] === '$') {
+      const close = text.indexOf('$$', i + 2);
+      if (close === -1) return n - i <= HOLD_MAX ? text.slice(0, i) : text;
+      i = close + 2;
+      continue;
+    }
+    let j = i + 1;
+    while (j < n && text[j] !== '$' && text[j] !== '\n') j += text[j] === '\\' ? 2 : 1;
+    if (j < n && text[j] === '$') {
+      i = j + 1;
+      continue;
+    }
+    if (j < n) {
+      // The line ended first: not math.
+      i = j;
+      continue;
+    }
+    const next = text[i + 1];
+    if ((next === undefined || !/\s/.test(next)) && n - i <= HOLD_MAX) return text.slice(0, i);
+    i++;
+  }
+  return text;
+}
+
 // ---------------------------------------------------------------- the rehype step
 
 /** The few hast fields this step reads (hast's own types are not a dependency of the app). */

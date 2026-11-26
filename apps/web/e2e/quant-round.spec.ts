@@ -455,6 +455,68 @@ test.describe('the quant pad', () => {
         'Try the probability of A given B equals 1 over 6 first; each win pays 10 dollars.',
       ]);
     await expect(page.getByTestId('proactive-message').last().locator('.katex')).toHaveCount(1);
+
+    // Streamed text is never spoken: a discarded stream says nothing, a posted one is said once.
+    const dropped = uuid(1302);
+    await b.quant.streamDeltas(dropped, 'Let me think about');
+    await expect(page.getByTestId('streaming-message')).toContainText('Let me think about');
+    b.quant.discard(dropped);
+    await expect(page.getByTestId('streaming-message')).toHaveCount(0);
+    const posted = uuid(1303);
+    await b.quant.streamDeltas(posted, 'Good. Is that $\\frac{1}{6}$ final?');
+    await b.quant.hint(id, 'Good. Is that $\\frac{1}{6}$ final?', posted);
+    await expect.poll(async () => (await spoken()).length).toBe(4);
+    await page.waitForTimeout(300);
+    expect((await spoken()).slice(3)).toEqual(['Good. Is that 1 over 6 final?']);
+  });
+
+  test('a streamed message appears as it is written, half-written math held back, and the posted one replaces it', async ({
+    page,
+  }) => {
+    const b = await openQuantPad(page);
+    const streaming = page.getByTestId('streaming-message');
+    const id = uuid(1310);
+    await b.quant.streamDeltas(id, 'Think about $\\frac{5}{');
+    await expect(streaming).toContainText('Think about');
+    // The formula is not shown until it closes: no raw source, no KaTeX error.
+    await expect(streaming).not.toContainText('frac');
+    await expect(streaming.locator('.katex, .katex-error')).toHaveCount(0);
+    await b.quant.streamDeltas(id, '36}$ first, then');
+    await expect(streaming.locator('.katex')).toHaveCount(1);
+    await expect(streaming).toContainText('first, then');
+    const text = 'Think about $\\frac{5}{36}$ first, then the complement.';
+    await b.quant.hint(QUANT_PAD_ID, text, id);
+    await expect(streaming).toHaveCount(0);
+    const posted = page.getByTestId('proactive-message').filter({ hasText: 'the complement' });
+    await expect(posted).toHaveCount(1);
+    await expect(posted.locator('.katex')).toHaveCount(1);
+    // One message, not the stream and the post side by side.
+    await expect(page.getByText(/Think about/)).toHaveCount(1);
+  });
+
+  test('a streamed message that is discarded disappears, and a reply streams in its place', async ({
+    page,
+  }) => {
+    const b = await openQuantPad(page);
+    const streaming = page.getByTestId('streaming-message');
+    const id = uuid(1320);
+    await b.quant.streamDeltas(id, 'Before you answer, what is');
+    await expect(streaming).toContainText('Before you answer');
+    b.quant.discard(id);
+    await expect(streaming).toHaveCount(0);
+    await expect(page.getByText('Before you answer')).toHaveCount(0);
+
+    // A scripted reply streamed by the mock as the API does, then posted under the same id.
+    b.quant.streamMessages = true;
+    b.quant.streamChunkMs = 60;
+    await say(page, 'hint please');
+    await expect(streaming).toBeVisible();
+    await expect(streaming).toHaveCount(0, { timeout: 10_000 });
+    await expect(
+      page
+        .getByTestId('interviewer-message')
+        .filter({ hasText: 'count the outcomes rather than the sums' }),
+    ).toHaveCount(1);
   });
 
   test('runs and language changes are refused for a quant pad', async ({ page }) => {

@@ -194,7 +194,9 @@ Two WebSocket endpoints on the API origin (`NEXT_PUBLIC_WS_URL`), both authentic
 single-use ticket (`POST /api/ws-ticket`, 30 s TTL, stored in Redis, bound to user and pad):
 
 - `/ws/pads/:padId?ticket=` — JSON events, `ServerEvent` / `ClientEvent` in `contracts/src/ws.ts`.
-  Run progress and results, chat, streamed interviewer replies, pad updates, and
+  Run progress and results, chat, streamed interviewer replies (`message.delta` under an id the
+  posted `message.created` then takes, replacing the streamed text in place; or
+  `message.discarded` when nothing will be posted under it), pad updates, and
   `interviewer.status` when the pad owner's key is saved, removed, expires or is rejected (so the
   interviewer panel changes without a reload). Rooms add `member.joined` and `pad.problem`. A quant
   pad adds `round.updated` (the whole `QuantRoundView`) after every change to its round and to each
@@ -494,8 +496,29 @@ a fresh start for stalls and the unanswered count, as after a step of its own.
 - **One structured call per turn**, the same for replies, the opening, nudges, stalls and closes
   for time: purpose `turn`, `QuantTurnSchema` (`action` silent / stay / hint / follow_up / close,
   `hint_rung`, `message`, `score`, `summary`, `note`, `reason`) and `QUANT_CALLS.turn` (medium
-  effort), so the cached prefix is never invalidated by a change of effort or schema. Messages are
-  posted whole when the step is taken (no `message.delta`).
+  effort), so the cached prefix is never invalidated by a change of effort or schema.
+- **Streaming** (`quant/stream.ts`): replies (after the round too) and the opening stream their
+  `message` while the model writes the JSON. `TurnJsonReader` follows the partial object and
+  decodes the top-level `action` and `message` strings across chunk boundaries (escapes, `\uXXXX`
+  and surrogate pairs included; a backslash that starts no valid escape stands for itself, as in
+  the repair before parsing); `MessageStream` shows nothing until `action` is known and is one that
+  speaks (never `silent`), then the message with `repairLatexEscapes` applied, leading whitespace
+  and a role label dropped, holding back the few characters the repair may still change (a tab,
+  return or newline until 15 characters follow it, a trailing `$` or `\`). The deltas go out under
+  a fresh id; the step names it (`QuantStep.messageId`, optional) and `advanceRound` hands it back
+  in `effects.say.messageId`, so the message `applyStep` inserts takes it; a canned reply or an
+  after-round message takes it through `NewMessage.id`. The posted text is authoritative (it went
+  through `stripJsonDebris`, `cleanSay` and `normaliseTurn`) and replaces the streamed text under
+  the same id. When nothing will be posted under the id (an aborted call, a silent turn, a key
+  failure, a step refused because the round moved on, a pad that ended), `message.discarded`
+  drops it from every client; a failed, refused or invalid call, or a step refused on its content,
+  posts its canned reply under the id instead, and a forced close that failed its canned line.
+  Nudges, closes for time and stalls are not streamed (a candidate message often discards them),
+  nor is text that will not be the model's (an empty forced close gets its canned line whole). The
+  request is the same with or without streaming (`onText` is local), and a provider that does not
+  stream structured output works without deltas. The web shows a streaming message with any
+  formula not yet closed held back (`settledMath`, `components/math-guard.ts`), so `$\frac{5}{`
+  never flashes as source or a KaTeX error, and speaks only posted messages.
 - **Prompt** (`quant/prompts.ts`): `system[0]` is `QUANT_CORE` (the same for every quant pad),
   `system[1]` the current question in full (prompt, answer or reference and key points,
   explanation, numbered hints, follow-ups), both cache breakpoints; then this question's
@@ -542,7 +565,7 @@ a fresh start for stalls and the unanswered count, as after a step of its own.
   so the round's clock never depends on the model; the opening likewise starts the round. A
   candidate message aborts an in-flight clock turn or opening, and its reply does what the clock
   required (a forced close on a reply is `kind: 'chat'`). A refused step (`stale`, …) posts
-  nothing. A clock action that failed or was refused is retried after 30 s, not on every pass. A
+  nothing (what it streamed is discarded). A clock action that failed or was refused is retried after 30 s, not on every pass. A
   restart greets only while the round is pending and nothing was said, and nudges only while the
   server's `nudgedAt` is null.
 - **Voice**: the model may stay silent on a spoken message that is plainly mid-thought, and before
@@ -563,7 +586,11 @@ a fresh start for stalls and the unanswered count, as after a step of its own.
   table of time, budget, hints (authored used of available, and own), follow-up, how it ended and
   score per question, and returns a `ReportAssessment` over `QUANT_REPORT_DIMENSIONS` (structuring,
   correctness, communication, speed, independence), each with quoted or cited evidence.
-- `scripts/simulate.ts --quant` plays a scripted 20-minute round against a live model.
+- `scripts/simulate.ts --quant` plays a scripted 20-minute round against a live model, and
+  reports latencies, including the time to a streamed message's first character against the
+  whole call (live, Opus 5.5: p50 2.6 s against 3.9 s, p90 4.8 s against 5.7 s; the `reason`
+  field and adaptive thinking come before `message`), and whether any streamed text changed when
+  it was posted.
 
 ## 8. Quizzes
 
@@ -686,8 +713,9 @@ joining by the link, as on any practice pad) see exactly what the owner sees.
   `nudgedAt`, `closedAt`, and its messages' `created_at`) is the database's clock, read in the
   transaction after the lock (`clock_timestamp()` rounded up to the millisecond, `Ctx.dbNow`):
   the clock Postgres stamps every other message and `pads.started_at` with, so the round's
-  messages sort among the candidate's whatever the API host's clock says. After the commit the room gets `message.created` for
-  each message, then `round.updated`. A step decided on an older version (`stale`), or refused by
+  messages sort among the candidate's whatever the API host's clock says. The interviewer's message
+  takes the id its text was streamed under when the step names one (`messageId`). After the
+  commit the room gets `message.created` for each message, then `round.updated`. A step decided on an older version (`stale`), or refused by
   the transition (`QuantRefusal`), posts nothing; once the pad has ended only `end` and `verdict`
   are accepted. The interviewer's message counts against the owner's daily AI messages; a posted
   question counts against neither that nor the per-pad cap.
