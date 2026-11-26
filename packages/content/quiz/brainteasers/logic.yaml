@@ -299,12 +299,13 @@
     - Each non-counter switches the light on exactly once, the first time they find it off
     - Only the counter switches it off, adding one to a count each time; he declares at 99
     - Explains why a count of 99 means everyone has visited (each signal comes from a distinct prisoner)
-    - Explains that it ends with probability 1 because everyone is chosen infinitely often (and notes it takes on the order of 10,000 days)
+    - Explains that it ends with probability 1 because everyone is chosen infinitely often
   hints:
     - One bit of state is shared. Who should be allowed to reset it?
     - Try giving one prisoner a special role.
     - Make sure no prisoner can be counted twice.
   followUps:
+    - Roughly how long does your strategy take, on average?
     - What if nobody knows whether the switch starts off or on?
     - Can you speed it up, for example by using the first part of the time differently?
     - What if the warden is adversarial rather than random, but must bring everyone in eventually, infinitely often?

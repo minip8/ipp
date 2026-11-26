@@ -215,11 +215,11 @@
   tags: [kelly-criterion, drawdown, brownian-motion]
   prompt: |
     In the continuous-time model of betting, you keep a constant fraction $f$ of your wealth in a
-    risky opportunity with expected excess return $\mu$ and volatility $\sigma$ per unit time, so that
-    the log of your wealth is a Brownian motion with drift $f\mu - \tfrac12 f^2\sigma^2$ and variance
-    $f^2\sigma^2$ per unit time. The Kelly fraction is $f^* = \mu/\sigma^2$. If you bet **half Kelly**,
-    $f = f^*/2$, forever, what is the probability that your wealth ever falls to half of its starting
-    value?
+    risky opportunity with expected excess return $\mu > 0$ and volatility $\sigma$ per unit time, and
+    the rest earns nothing (take the risk-free rate to be zero), so that the log of your wealth is a
+    Brownian motion with drift $f\mu - \tfrac12 f^2\sigma^2$ and variance $f^2\sigma^2$ per unit time.
+    The Kelly fraction is $f^* = \mu/\sigma^2$. If you bet **half Kelly**, $f = f^*/2$, forever, what
+    is the probability that your wealth ever falls to half of its starting value?
   answer: 1/8
   hints:
     - For a Brownian motion with drift $m > 0$ and variance $v$ per unit time, the probability of ever falling a distance $a$ below the start is $e^{-2ma/v}$.

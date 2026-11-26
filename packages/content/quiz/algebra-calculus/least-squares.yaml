@@ -197,33 +197,3 @@
     fit is nearly exact. For streaming data, update a QR factorisation row by row with Givens
     rotations.
   source: { name: "Normal equations versus QR (e.g. Trefethen and Bau, Numerical Linear Algebra; Quantt, Linear Algebra for Quant Interviews)", url: "https://www.quantt.co.uk/resources/linear-algebra-quant-interview" }
-
-- id: lac-ls-006
-  topic: algebra-calculus
-  subtopic: Projections and least squares
-  type: single
-  difficulty: medium
-  tags: [regression-slopes, correlation, cauchy-schwarz]
-  prompt: |
-    On the same data set you regress $y$ on $x$ by least squares with an intercept and get slope $a$;
-    you then regress $x$ on $y$, also with an intercept, and get slope $c$. Which pair $(a, c)$ is
-    possible?
-  choices:
-    - { id: a, text: '$(2,\ 0.6)$' }
-    - { id: b, text: '$(2,\ 0.4)$' }
-    - { id: c, text: '$(-1,\ 0.5)$' }
-    - { id: d, text: '$(0.5,\ 3)$' }
-  answer: b
-  explanation: |
-    The two slopes are
-
-    $$a = \frac{\operatorname{Cov}(x, y)}{\operatorname{Var}(x)}, \qquad c = \frac{\operatorname{Cov}(x, y)}{\operatorname{Var}(y)}, \qquad ac = \frac{\operatorname{Cov}(x, y)^2}{\operatorname{Var}(x)\operatorname{Var}(y)} = r^2,$$
-
-    so $a$ and $c$ have the same sign and $0 \le ac \le 1$ (Cauchy–Schwarz).
-
-    - b gives $ac = 0.8$, a correlation of about $0.89$: possible.
-    - a gives $ac = 1.2 > 1$ and d gives $ac = 1.5$: both would need $|r| > 1$. They come from expecting
-      the second regression to invert the first ($c = 1/a$), which happens only for a perfect fit;
-      otherwise both regressions shrink towards the mean.
-    - c has slopes of opposite signs, impossible since both share the sign of the covariance.
-  source: { name: "Quant, FM and Data Science Interview Compilation (LSU)", url: "https://www.math.lsu.edu/~smolinsk/Quant_Interview_Prep.pdf" }

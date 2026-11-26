@@ -145,9 +145,9 @@
     quoted is about 2.5 to 3 billion.)
   keyPoints:
     - Decomposes the quantity into heart rate times lifetime times minutes per year
-    - Gives sensible ranges for each factor (roughly 60 to 90 beats per minute, 60 to 90 years)
-    - Reaches a central estimate around 3 billion
-    - Gives an interval of roughly 1.5 to 5 billion, explaining how the factor ranges combine
+    - Gives sensible ranges for each factor (for example 60 to 90 beats per minute and 60 to 90 years)
+    - Reaches a central estimate of a few billion (about 2 to 3.5 billion; the exact figure matters less than the method)
+    - Gives an interval that is neither overconfident nor uninformative, reaching up to about a factor of two either side of the centre (such as 1.5 to 5 billion), and explains how the factor ranges combine
     - Thinks in ratios (an interval that is a multiplicative factor either side), not a fixed plus or minus
   hints:
     - What two quantities multiply to give the answer?
