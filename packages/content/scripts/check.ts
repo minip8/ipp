@@ -1,6 +1,7 @@
 /**
  * Validates content and checks reference solutions without the judge:
  *   - every problem and quiz file parses against the contracts
+ *   - quiz/roadmap.yaml is a sound graph and places every quiz subtopic on exactly one node
  *   - solution.py (+ harness.py) reproduces tests.json (run in a subprocess with a tiny runner);
  *     skipped for a problem without solution.py (one that does not offer Python)
  *   - solution.cpp, with harness.cpp appended as the API appends it, passes `g++ -fsyntax-only`
@@ -20,8 +21,10 @@ import {
   listProblemSlugs,
   loadProblem,
   loadQuizQuestions,
+  loadQuizRoadmap,
   loadQuizTopics,
   resultsEqual,
+  roadmapGaps,
   untaxonomizedTags,
 } from '../src';
 
@@ -111,6 +114,16 @@ if (!only.length) {
       `quiz: ${questions.length} questions in ${topics.length} topics`,
       Object.fromEntries(perTopic),
     );
+    try {
+      const roadmap = loadQuizRoadmap();
+      const gaps = roadmapGaps(roadmap, questions);
+      for (const g of gaps) bad(`roadmap: ${g}`);
+      const nodes = Object.values(roadmap).reduce((n, ns) => n + ns.length, 0);
+      if (!gaps.length)
+        console.log(`roadmap: ${nodes} nodes in ${Object.keys(roadmap).length} topics`);
+    } catch (e) {
+      bad(`roadmap: ${(e as Error).message}`);
+    }
   } catch (e) {
     bad(`quiz: ${(e as Error).message}`);
   }

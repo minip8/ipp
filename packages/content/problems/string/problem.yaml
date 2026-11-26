@@ -1,0 +1,144 @@
+slug: string
+title: Implement string
+difficulty: medium
+category: data-structure
+languages: [cpp]
+tags: [design, string, memory-management, move-semantics]
+signature:
+  className: StringHarness
+  kind: design
+  ctorParams: []
+  methods:
+    - name: create
+      params:
+        - { name: slot, type: int }
+        - { name: text, type: string }
+      returns: void
+    - name: createEmpty
+      params:
+        - { name: slot, type: int }
+      returns: void
+    - name: createFill
+      params:
+        - { name: slot, type: int }
+        - { name: count, type: int }
+        - { name: ch, type: char }
+      returns: void
+    - name: pushBack
+      params:
+        - { name: slot, type: int }
+        - { name: ch, type: char }
+      returns: void
+    - name: pushNul
+      params:
+        - { name: slot, type: int }
+      returns: void
+    - name: append
+      params:
+        - { name: slot, type: int }
+        - { name: text, type: string }
+      returns: void
+    - name: appendString
+      params:
+        - { name: from, type: int }
+        - { name: to, type: int }
+      returns: void
+    - name: appendSuffix
+      params:
+        - { name: slot, type: int }
+        - { name: pos, type: int }
+      returns: void
+    - name: plusEquals
+      params:
+        - { name: from, type: int }
+        - { name: to, type: int }
+      returns: void
+    - name: reserve
+      params:
+        - { name: slot, type: int }
+        - { name: n, type: int }
+      returns: void
+    - name: clear
+      params:
+        - { name: slot, type: int }
+      returns: void
+    - name: size
+      params:
+        - { name: slot, type: int }
+      returns: int
+    - name: capacity
+      params:
+        - { name: slot, type: int }
+      returns: int
+    - name: str
+      params:
+        - { name: slot, type: int }
+      returns: string
+    - name: charAt
+      params:
+        - { name: slot, type: int }
+        - { name: index, type: int }
+      returns: string
+    - name: setChar
+      params:
+        - { name: slot, type: int }
+        - { name: index, type: int }
+        - { name: ch, type: char }
+      returns: void
+    - name: copyConstruct
+      params:
+        - { name: from, type: int }
+        - { name: to, type: int }
+      returns: void
+    - name: copyAssign
+      params:
+        - { name: from, type: int }
+        - { name: to, type: int }
+      returns: void
+    - name: moveConstruct
+      params:
+        - { name: from, type: int }
+        - { name: to, type: int }
+      returns: void
+    - name: moveAssign
+      params:
+        - { name: from, type: int }
+        - { name: to, type: int }
+      returns: void
+    - name: destroy
+      params:
+        - { name: slot, type: int }
+      returns: void
+    - name: destroyAll
+      params: []
+      returns: void
+    - name: compare
+      params:
+        - { name: a, type: int }
+        - { name: b, type: int }
+      returns: int
+    - name: substr
+      params:
+        - { name: slot, type: int }
+        - { name: pos, type: int }
+        - { name: count, type: int }
+      returns: string
+    - name: find
+      params:
+        - { name: slot, type: int }
+        - { name: needle, type: int }
+        - { name: pos, type: int }
+      returns: int
+    - name: allocations
+      params: []
+      returns: int
+    - name: heapBlocks
+      params: []
+      returns: int
+    - name: errors
+      params: []
+      returns: { list: string }
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic C++ systems interview question (implement std::string with a heap buffer)
+  url: https://en.cppreference.com/w/cpp/string/basic_string

@@ -1,0 +1,117 @@
+slug: function
+title: Implement function
+difficulty: hard
+category: data-structure
+languages: [cpp]
+tags: [design, memory-management, move-semantics]
+signature:
+  className: FunctionHarness
+  kind: design
+  ctorParams: []
+  methods:
+    - name: makeEmpty
+      params:
+        - { name: slot, type: int }
+      returns: void
+    - name: makeAcc
+      params:
+        - { name: slot, type: int }
+        - { name: start, type: int }
+      returns: void
+    - name: makeAccCopy
+      params:
+        - { name: slot, type: int }
+        - { name: start, type: int }
+      returns: void
+    - name: makeLambda
+      params:
+        - { name: slot, type: int }
+        - { name: k, type: int }
+      returns: void
+    - name: makeFunction
+      params:
+        - { name: slot, type: int }
+      returns: void
+    - name: copyConstruct
+      params:
+        - { name: from, type: int }
+        - { name: to, type: int }
+      returns: void
+    - name: copyAssign
+      params:
+        - { name: from, type: int }
+        - { name: to, type: int }
+      returns: void
+    - name: moveConstruct
+      params:
+        - { name: from, type: int }
+        - { name: to, type: int }
+      returns: void
+    - name: moveAssign
+      params:
+        - { name: from, type: int }
+        - { name: to, type: int }
+      returns: void
+    - name: assignAcc
+      params:
+        - { name: slot, type: int }
+        - { name: start, type: int }
+      returns: void
+    - name: assignAccCopy
+      params:
+        - { name: slot, type: int }
+        - { name: start, type: int }
+      returns: void
+    - name: assignNull
+      params:
+        - { name: slot, type: int }
+      returns: void
+    - name: swap
+      params:
+        - { name: a, type: int }
+        - { name: b, type: int }
+      returns: void
+    - name: call
+      params:
+        - { name: slot, type: int }
+        - { name: x, type: int }
+      returns: int
+    - name: isEmpty
+      params:
+        - { name: slot, type: int }
+      returns: bool
+    - name: destroy
+      params:
+        - { name: slot, type: int }
+      returns: void
+    - name: destroyAll
+      params: []
+      returns: void
+    - name: voidCall
+      params:
+        - { name: x, type: int }
+        - { name: empty, type: bool }
+      returns: int
+    - name: argCopies
+      params:
+        - { name: x, type: int }
+      returns: int
+    - name: alive
+      params: []
+      returns: int
+    - name: copies
+      params: []
+      returns: int
+    - name: moves
+      params: []
+      returns: int
+    - name: heapBlocks
+      params: []
+      returns: int
+    - name: errors
+      params: []
+      returns: { list: string }
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic C++ systems interview question (implement std::function with type erasure)
+  url: https://en.cppreference.com/w/cpp/utility/functional/function

@@ -27,6 +27,7 @@ import {
   latestAnswers,
 } from '../quiz/answers';
 import { CORRECT_THRESHOLD, publicQuestion } from '../quiz/grade';
+import { loadRoadmapTopics, nodeFilter, roadmapTopics, subtopicCounts } from '../quiz/roadmap';
 import { quizBankRoutes } from './quiz-bank';
 
 type AttemptRow = typeof quizAttempts.$inferSelect;
@@ -141,6 +142,16 @@ export function quizRoutes(ctx: Ctx) {
     return c.json(out);
   });
 
+  /** Every topic in study order, with its roadmap and the caller's progress on each node. */
+  r.get('/quiz/roadmap', async (c) => {
+    const user = requireAccount(c);
+    const [topics, counts] = await Promise.all([
+      loadRoadmapTopics(db),
+      subtopicCounts(db, user.id),
+    ]);
+    return c.json(roadmapTopics(topics, counts));
+  });
+
   r.post('/quiz/attempts', async (c) => {
     const user = requireAccount(c);
     const body = await parseBody(c, CreateAttemptRequest);
@@ -150,12 +161,15 @@ export function quizRoutes(ctx: Ctx) {
       .from(quizTopics)
       .where(inArray(quizTopics.slug, topics));
     if (known.length !== topics.length) throw badRequest('Unknown topic', 'unknown_topic');
+    const scope = body.nodes
+      ? await nodeFilter(db, topics, body.nodes)
+      : inArray(quizQuestions.topic, topics);
     const pool = await db
       .select({ id: quizQuestions.id })
       .from(quizQuestions)
       .where(
         and(
-          inArray(quizQuestions.topic, topics),
+          scope,
           eq(quizQuestions.active, true),
           // Practice and exam are graded automatically; open questions belong to a discussion.
           body.mode === 'discussion'

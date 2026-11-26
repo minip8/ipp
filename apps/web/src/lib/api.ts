@@ -28,6 +28,7 @@ import {
   QuizBank,
   QuizBankQuestion,
   type QuizResponse,
+  QuizRoadmapTopic,
   QuizTopicStats,
   Report,
   Run,
@@ -196,6 +197,7 @@ export const api = {
   wsTicket: (padId: string) =>
     request('/ws-ticket', WsTicketResponse, { method: 'POST', body: { padId } }),
   quizTopics: () => request('/quiz/topics', z.array(QuizTopicStats)),
+  quizRoadmap: () => request('/quiz/roadmap', z.array(QuizRoadmapTopic)),
   createAttempt: (body: CreateAttemptRequest) =>
     request('/quiz/attempts', QuizAttempt, { method: 'POST', body }),
   attempts: () => request('/quiz/attempts', z.array(QuizAttemptSummary)),

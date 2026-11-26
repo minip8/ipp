@@ -1,0 +1,92 @@
+slug: optional
+title: Implement optional
+difficulty: medium
+category: data-structure
+languages: [cpp]
+tags: [design, memory-management, move-semantics]
+signature:
+  className: OptionalHarness
+  kind: design
+  ctorParams: []
+  methods:
+    - name: makeEmpty
+      params:
+        - { name: slot, type: int }
+      returns: void
+    - name: makeCopy
+      params:
+        - { name: slot, type: int }
+        - { name: value, type: int }
+      returns: void
+    - name: makeMove
+      params:
+        - { name: slot, type: int }
+        - { name: value, type: int }
+      returns: void
+    - name: emplace
+      params:
+        - { name: slot, type: int }
+        - { name: value, type: int }
+      returns: int
+    - name: emplaceThrows
+      params:
+        - { name: slot, type: int }
+        - { name: value, type: int }
+      returns: bool
+    - name: reset
+      params:
+        - { name: slot, type: int }
+      returns: void
+    - name: hasValue
+      params:
+        - { name: slot, type: int }
+      returns: bool
+    - name: value
+      params:
+        - { name: slot, type: int }
+      returns: int
+    - name: valueOr
+      params:
+        - { name: slot, type: int }
+        - { name: fallback, type: int }
+      returns: int
+    - name: copyConstruct
+      params:
+        - { name: from, type: int }
+        - { name: to, type: int }
+      returns: void
+    - name: copyAssign
+      params:
+        - { name: from, type: int }
+        - { name: to, type: int }
+      returns: void
+    - name: moveConstruct
+      params:
+        - { name: from, type: int }
+        - { name: to, type: int }
+      returns: void
+    - name: moveAssign
+      params:
+        - { name: from, type: int }
+        - { name: to, type: int }
+      returns: void
+    - name: destroy
+      params:
+        - { name: slot, type: int }
+      returns: void
+    - name: destroyAll
+      params: []
+      returns: void
+    - name: alive
+      params: []
+      returns: int
+    - name: ops
+      params: []
+      returns: { list: string }
+    - name: errors
+      params: []
+      returns: { list: string }
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic C++ systems interview question (implement std::optional with in-place storage)
+  url: https://en.cppreference.com/w/cpp/utility/optional
