@@ -78,6 +78,7 @@ Better Auth owns `user`, `session`, `account`, `verification` (text ids). App ta
 | `quiz_attempts` | id, user_id, mode, topics, question_ids, transcript jsonb (discussion turns per question), status, score, started_at, finished_at |
 | `quiz_answers` | attempt_id, question_id, response jsonb, score, correct, feedback, graded_by, answered_at |
 | `quiz_standalone_answers` | user_id, question_id (pk together), same grading columns — question-bank answers outside attempts, latest per question |
+| `quant_round_answers` | id, user_id (the pad's owner), pad_id (set null when the pad is deleted; unique with question_id), question_id, same grading columns (always `ai`), answered_at (when the question closed) — the judged questions of an ended quant round (§8.2) |
 | `drill_runs` | id, user_id, duration_sec, level, categories text[], full_mix, by_category jsonb, correct, wrong, skipped, score, elapsed_ms, finished_at — one finished mental math drill run (§8.1) |
 | `ai_usage` | user_id, day, messages, input_tokens, output_tokens — spend guard |
 
@@ -581,8 +582,9 @@ overview of the subtopics (a card each, with progress); a subtopic (`?subtopic=`
 questions, and an open question (`?question=`) sits beside its subtopic's list, where Next walks
 on through the filtered bank from one subtopic into the next. Answering again
 replaces the previous standalone answer. Status, stats and selection all use the latest
-*countable* answer per question across standalone answers, practice and discussion answers and finished
-exams (a running exam never shows up).
+*countable* answer per question across standalone answers, practice and discussion answers, finished
+exams (a running exam never shows up) and the judged questions of the user's ended quant rounds
+(§8.2), in one query (`latestAnswers` in `apps/api/src/quiz/answers.ts`).
 
 The roadmap (the Quizzes page's Roadmap view, `?view=roadmap&roadmap=<topic>&node=<id>`) draws each
 topic as a layered graph of study areas. `quiz/roadmap.yaml` maps each topic to its nodes
@@ -662,6 +664,18 @@ joining by the link, as on any practice pad) see exactly what the owner sees.
   the bank: per question its status (`answered`, `timed_out`, `unfinished`, `not_reached`),
   solution, key points, explanation, verdict, time and budget, and hints as counts. The text of
   hints and follow-ups never leaves the server, not even there.
+- **In the quiz**: once the pad has ended, each question with a verdict is one of the owner's quiz
+  answers (`quant_round_answers`; collaborators get none), as a discussion records one: AI-graded,
+  score and feedback from the verdict, the response a short answer holding everything the owner
+  said while the question was open (the last 4,000 characters; a numeric question's too, as what
+  was said is not a number), answered when it closed. It is
+  written in the transaction that finishes the round (or, when the round had already finished,
+  the one the pad's end runs) and by every later `verdict` step, once per pad and question (a
+  second end or assessment neither duplicates nor overwrites it), and it stays when the pad is
+  deleted. Nothing is written while the pad is active, so a verdict never shows in the question
+  bank, the stats or the roadmap mid-round (it would also name the bank question); unjudged and
+  unposed questions record nothing. It takes part in the latest countable answer per question
+  (§8) by its time like any other answer, so the round assembler's "weak first" sees it too.
 - **What the interviewer sees** (`InterviewerHost.loadQuantContext`): the current question in full
   (scope `all`, for the assessment: every posed one), a code-built summary of the closed ones, the
   transcript from the latest posed question's message on, and the scratchpad cut at 8,000

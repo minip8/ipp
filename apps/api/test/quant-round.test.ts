@@ -13,6 +13,7 @@ import {
   interviewerNotes,
   messages,
   pads,
+  quantRoundAnswers,
   quantRounds,
   quizQuestions,
   quizStandaloneAnswers,
@@ -172,6 +173,7 @@ afterAll(async () => {
   const db = h?.api.ctx.db;
   if (db) {
     const ids = ALL_FIXTURES.map((q) => q.id);
+    await db.delete(quantRoundAnswers).where(inArray(quantRoundAnswers.questionId, ids));
     await db.delete(quizStandaloneAnswers).where(inArray(quizStandaloneAnswers.questionId, ids));
     await db.delete(quizQuestions).where(inArray(quizQuestions.id, ids));
     await db.delete(quizTopics).where(
@@ -1156,6 +1158,197 @@ describe('ending a quant pad', () => {
       { score: 0.8, summary: 'VERDICT-SUMMARY-0' },
       { score: 0.25, summary: 'LATE-VERDICT-1' },
       null,
+    ]);
+    s.close();
+  });
+});
+
+// ---------------------------------------------------------------- the round in the quiz
+
+describe('a round’s answers in the quiz', () => {
+  it('counts each judged question as the owner’s AI-graded answer once the pad has ended, once', async () => {
+    const owner = await account('Counted');
+    const pad = await createRound(owner, { path: 'trader', durationMin: 30 });
+    const collab = await account('Onlooker', false);
+    expect((await collab.post('/api/pads/join', { shareToken: pad.shareToken })).status).toBe(200);
+    const id = pad.id;
+    const ids = (await roundRow(id)).state.questions.map((q) => q.questionId);
+    expect(ids).toHaveLength(4);
+    const [q0, q1, q2, q3] = ids as [string, string, string, string];
+    const topicOf = (qid: string) => ELIGIBLE.find((q) => q.id === qid)?.topic ?? '';
+    const bankItem = async (c: Client, qid: string) =>
+      (await c.get(`/api/quiz/topics/${topicOf(qid)}/questions`)).json.items.find(
+        (i: { question: { id: string } }) => i.question.id === qid,
+      );
+    const answered = async (c: Client) =>
+      Object.fromEntries(
+        ((await c.get('/api/quiz/topics')).json as { slug: string; answered: number }[]).map(
+          (t) => [t.slug, t.answered],
+        ),
+      );
+    const before = await answered(owner);
+    // An old bank answer to the second question: the round's, given later, wins over it.
+    await db()
+      .insert(quizStandaloneAnswers)
+      .values({
+        userId: owner.userId,
+        questionId: q1,
+        response: { type: 'short', text: 'long ago' },
+        score: 0,
+        correct: false,
+        feedback: null,
+        gradedBy: 'self',
+        needsSelfGrade: false,
+        answeredAt: new Date(Date.now() - 3600_000),
+      });
+
+    const s = await openEvents(owner, id);
+    const theirs = await openEvents(collab, id);
+    await s.waitFor('round.updated', (e) => e.round.version === 1);
+    s.send({ type: 'chat.send', text: 'I think it is 42' });
+    await s.waitFor('round.updated', (e) => e.round.version === 2);
+    theirs.send({ type: 'chat.send', text: 'COLLABORATOR-WORDS' });
+    await s.waitFor('round.updated', (e) => e.round.version === 3);
+    s.send({ type: 'chat.send', text: 'answer: 42' });
+    await s.waitFor('round.updated', (e) => e.round.version === 4);
+    s.send({ type: 'chat.send', text: 'skip this one' });
+    await s.waitFor('round.updated', (e) => e.round.version === 5);
+    expect((await roundRow(id)).state.questions.map((q) => q.closedBy)).toEqual([
+      'interviewer',
+      'interviewer',
+      null,
+      null,
+    ]);
+
+    // Mid-round the verdict is nowhere in the quiz: not in the bank, the stats or the table.
+    expect(
+      await db().select().from(quantRoundAnswers).where(eq(quantRoundAnswers.padId, id)),
+    ).toEqual([]);
+    for (const c of [owner, collab]) {
+      const one = await c.get(`/api/quiz/questions/${q0}`);
+      expect(one.json).toMatchObject({ status: 'unanswered', response: null, feedback: null });
+      expect((await bankItem(c, q0)).status).toBe('unanswered');
+    }
+    expect(await answered(owner)).toEqual({
+      ...before,
+      [topicOf(q1)]: (before[topicOf(q1)] ?? 0) + 1,
+    });
+
+    // Ended without a key: no assessment, so only the verdict given live is recorded, at once.
+    expect((await owner.del('/api/ai-key')).status).toBe(200);
+    expect((await owner.post(`/api/pads/${id}/end`)).status).toBe(200);
+    await s.waitFor('round.updated', (e) => e.round.phase === 'finished');
+    const rows = () =>
+      db()
+        .select()
+        .from(quantRoundAnswers)
+        .where(eq(quantRoundAnswers.userId, owner.userId))
+        .orderBy(asc(quantRoundAnswers.answeredAt));
+    const state = (await roundRow(id)).state;
+    expect(await rows()).toEqual([
+      {
+        id: expect.any(String),
+        userId: owner.userId,
+        padId: id,
+        questionId: q0,
+        // What the owner said while it was open; a collaborator's words are not their answer.
+        response: { type: 'short', text: 'I think it is 42\n\nanswer: 42' },
+        score: 0.8,
+        correct: true,
+        feedback: 'VERDICT-SUMMARY-0',
+        gradedBy: 'ai',
+        needsSelfGrade: false,
+        answeredAt: new Date(state.questions[0]?.closedAt ?? ''),
+      },
+    ]);
+    const one = await owner.get(`/api/quiz/questions/${q0}`);
+    expect(one.json).toMatchObject({
+      status: 'correct',
+      score: 0.8,
+      response: { type: 'short', text: 'I think it is 42\n\nanswer: 42' },
+      feedback: { gradedBy: 'ai', feedback: 'VERDICT-SUMMARY-0', score: 0.8 },
+    });
+    // Only the owner's: the collaborator's bank knows nothing of it.
+    expect((await collab.get(`/api/quiz/questions/${q0}`)).json.status).toBe('unanswered');
+    // Ending again finds nothing new to write.
+    await finishRound(h.api.ctx, id);
+    expect(await rows()).toHaveLength(1);
+
+    // The assessment judges the two closed without a verdict (the one skipped, the one open at
+    // the end); each is recorded as it is judged, and the question never posed is not.
+    await owner.saveKey();
+    expect((await owner.post(`/api/pads/${id}/report/assessment`)).status).toBe(200);
+    await until(async () => (await owner.get(`/api/pads/${id}/report`)).json?.status === 'ready');
+    const recorded = await rows();
+    expect(recorded.map((r) => [r.questionId, r.score, r.feedback])).toEqual([
+      [q0, 0.8, 'VERDICT-SUMMARY-0'],
+      [q1, 0.25, 'LATE-VERDICT-1'],
+      [q2, 0.25, 'LATE-VERDICT-2'],
+    ]);
+    expect(recorded.map((r) => r.response)).toEqual([
+      { type: 'short', text: 'I think it is 42\n\nanswer: 42' },
+      { type: 'short', text: 'skip this one' },
+      { type: 'short', text: '' },
+    ]);
+    expect(recorded.some((r) => r.questionId === q3)).toBe(false);
+    // Later than the old bank answer, so it is the latest.
+    expect(await bankItem(owner, q1)).toMatchObject({ status: 'partial', score: 0.25 });
+
+    // A second assessment changes nothing.
+    expect((await owner.post(`/api/pads/${id}/report/assessment`)).status).toBe(200);
+    await until(async () => (await owner.get(`/api/pads/${id}/report`)).json?.status === 'ready');
+    expect(await rows()).toEqual(recorded);
+
+    // A later bank answer wins in turn.
+    const later = await owner.post(`/api/quiz/questions/${q0}/answers`, {
+      response:
+        ELIGIBLE.find((q) => q.id === q0)?.type === 'numeric'
+          ? { type: 'numeric', value: '1' }
+          : { type: 'short', text: 'not sure', selfGrade: 0 },
+    });
+    expect(later.status).toBe(200);
+    const after = await owner.get(`/api/quiz/questions/${q0}`);
+    expect(after.json.feedback.feedback).not.toBe('VERDICT-SUMMARY-0');
+
+    // Deleting the pad keeps the answers, as for any quiz answer.
+    expect((await owner.del(`/api/pads/${id}`)).status).toBe(200);
+    const kept = await rows();
+    expect(kept.map((r) => [r.questionId, r.padId])).toEqual([
+      [q0, null],
+      [q1, null],
+      [q2, null],
+    ]);
+    expect(await bankItem(owner, q2)).toMatchObject({ status: 'partial', score: 0.25 });
+    s.close();
+    theirs.close();
+  });
+
+  it('records the answers of a round that finished before its pad ended', async () => {
+    const owner = await account('Finisher');
+    const pad = await createRound(owner, { path: 'researcher', durationMin: 20 });
+    const s = await openEvents(owner, pad.id);
+    await s.waitFor('round.updated', (e) => e.round.version === 1);
+    for (const [i, text] of ['answer one', 'answer two', 'answer three'].entries()) {
+      s.send({ type: 'chat.send', text });
+      await s.waitFor('round.updated', (e) => e.round.version === i + 2);
+    }
+    expect((await roundRow(pad.id)).state.current).toBe(3);
+    expect(
+      await db().select().from(quantRoundAnswers).where(eq(quantRoundAnswers.padId, pad.id)),
+    ).toEqual([]);
+    expect((await owner.del('/api/ai-key')).status).toBe(200);
+    expect((await owner.post(`/api/pads/${pad.id}/end`)).status).toBe(200);
+    // Ending changed nothing in the finished round, but its three answers now count.
+    expect((await roundRow(pad.id)).version).toBe(4);
+    const rows = await db()
+      .select()
+      .from(quantRoundAnswers)
+      .where(eq(quantRoundAnswers.padId, pad.id))
+      .orderBy(asc(quantRoundAnswers.answeredAt));
+    expect(rows.map((r) => [r.feedback, (r.response as { text: string }).text])).toEqual([
+      ['VERDICT-SUMMARY-0', 'answer one'],
+      ['VERDICT-SUMMARY-1', 'answer two'],
+      ['VERDICT-SUMMARY-2', 'answer three'],
     ]);
     s.close();
   });

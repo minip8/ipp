@@ -1,11 +1,14 @@
 /**
  * Grading and answer history shared by attempts and the question bank.
  *
- * A user's answers live in two tables: `quiz_answers` (inside an attempt) and
- * `quiz_standalone_answers` (the question bank, latest answer per question). Stats, the
- * "focus weak" selection and per-question status all read the latest *countable* answer per
- * question across both: standalone answers, practice-attempt answers, and exam answers once the
- * exam is finished (an exam still running must not reveal correctness).
+ * A user's answers live in three tables: `quiz_answers` (inside an attempt),
+ * `quiz_standalone_answers` (the question bank, latest answer per question) and
+ * `quant_round_answers` (questions judged in the user's own quant rounds, written once the pad
+ * has ended). Stats, the "focus weak" selection and per-question status all read the latest
+ * *countable* answer per question across the three: standalone answers, practice-attempt answers,
+ * exam answers once the exam is finished (an exam still running must not reveal correctness),
+ * and round answers (which exist only once their pad has ended, so they never reveal a verdict
+ * mid-round).
  */
 import type {
   AnswerFeedback,
@@ -13,7 +16,13 @@ import type {
   QuizQuestionStatus,
   QuizResponse,
 } from '@ipp/contracts';
-import { type Db, quizAnswers, quizAttempts, quizStandaloneAnswers } from '@ipp/db';
+import {
+  type Db,
+  quantRoundAnswers,
+  quizAnswers,
+  quizAttempts,
+  quizStandaloneAnswers,
+} from '@ipp/db';
 import { and, type Column, desc, eq, inArray, sql } from '@ipp/db/orm';
 import type { Ctx } from '../context';
 import { badRequest } from '../http/errors';
@@ -124,7 +133,8 @@ export function applySelfGrade(
 }
 
 /**
- * The latest countable answer per question for one user, across attempts and the question bank.
+ * The latest countable answer per question for one user, across attempts, the question bank and
+ * quant rounds.
  * `graded` leaves out short answers still waiting for a self-grade (what stats count).
  */
 export function latestAnswers(
@@ -175,7 +185,27 @@ export function latestAnswers(
         only(s.questionId),
       ),
     );
-  const all = fromAttempts.unionAll(standalone).as('countable_answers');
+  const r = quantRoundAnswers;
+  const fromRounds = db
+    .select({
+      questionId: r.questionId,
+      response: r.response,
+      score: r.score,
+      correct: r.correct,
+      feedback: r.feedback,
+      gradedBy: r.gradedBy,
+      needsSelfGrade: r.needsSelfGrade,
+      answeredAt: r.answeredAt,
+    })
+    .from(r)
+    .where(
+      and(
+        eq(r.userId, userId),
+        opts.graded ? eq(r.needsSelfGrade, false) : undefined,
+        only(r.questionId),
+      ),
+    );
+  const all = fromAttempts.unionAll(standalone).unionAll(fromRounds).as('countable_answers');
   return db
     .selectDistinctOn([all.questionId], {
       questionId: all.questionId,

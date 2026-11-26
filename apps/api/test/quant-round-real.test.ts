@@ -16,7 +16,14 @@ import {
   type ServerEvent,
   YDOC,
 } from '@ipp/contracts';
-import { messages, quantRounds, quizQuestions, quizStandaloneAnswers, quizTopics } from '@ipp/db';
+import {
+  messages,
+  quantRoundAnswers,
+  quantRounds,
+  quizQuestions,
+  quizStandaloneAnswers,
+  quizTopics,
+} from '@ipp/db';
 import { asc, eq, inArray } from '@ipp/db/orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { WebSocket } from 'ws';
@@ -139,6 +146,7 @@ afterAll(async () => {
   const db = h?.api.ctx.db;
   if (db) {
     const ids = FIXTURES.map((q) => q.id);
+    await db.delete(quantRoundAnswers).where(inArray(quantRoundAnswers.questionId, ids));
     await db.delete(quizStandaloneAnswers).where(inArray(quizStandaloneAnswers.questionId, ids));
     await db.delete(quizQuestions).where(inArray(quizQuestions.id, ids));
     await db.delete(quizTopics).where(
@@ -1095,6 +1103,32 @@ describe('a quant round with the real interviewer', () => {
       ...QUANT_REPORT_DIMENSIONS,
     ]);
     expect(JSON.stringify(report)).not.toContain('[HINT-');
+    // Both judged questions are now the candidate's quiz answers: the live verdict, and the one
+    // the assessment gave, each with what was said while the question was open.
+    const answers = await db()
+      .select()
+      .from(quantRoundAnswers)
+      .where(eq(quantRoundAnswers.padId, id))
+      .orderBy(asc(quantRoundAnswers.answeredAt));
+    expect(answers.map((x) => [x.questionId, x.score, x.feedback, x.response])).toEqual([
+      [
+        state.questions[0]?.questionId,
+        0.8,
+        '[VERDICT-0] Right.',
+        { type: 'short', text: 'The answer is two.' },
+      ],
+      [
+        state.questions[1]?.questionId,
+        0.35,
+        '[LATE-1] On track, unfinished.',
+        {
+          type: 'short',
+          text: 'For this one I would set up a recursion on the first toss.\n\nSo the recursion gives E = 1 + E/2.',
+        },
+      ],
+    ]);
+    const bank = await a.get(`/api/quiz/questions/${state.questions[1]?.questionId}`);
+    expect(bank.json).toMatchObject({ status: 'partial', score: 0.35 });
 
     // One verdict call, for the open question only, with its conversation and not question 3.
     const verdicts = m.of('verdict');

@@ -6,6 +6,10 @@
  * the pad gets `message.created` for each, then `round.updated`. A refused or stale step changes
  * nothing and posts nothing.
  *
+ * Once the pad has ended, every question with a verdict is also one of the owner's quiz answers
+ * (`quant_round_answers`), written in the transaction that finishes the round and by any later
+ * `verdict` step, so the quiz's stats, roadmap and question bank count it.
+ *
  * The state is server-only: what leaves this module for the browser is `publicRound` (and, once
  * the pad has ended, the report's `QuantReport`).
  */
@@ -32,16 +36,19 @@ import {
   interviewerNotes,
   messages,
   pads,
+  quantRoundAnswers,
   quantRounds,
   quizQuestions,
   timelineEvents,
 } from '@ipp/db';
-import { and, eq, inArray, sql } from '@ipp/db/orm';
+import { and, asc, eq, inArray, sql } from '@ipp/db/orm';
 import type { Ctx } from '../context';
 import { isForeignKeyViolation } from '../pg';
+import { CORRECT_THRESHOLD } from '../quiz/grade';
 import { messageView } from '../views';
 
 export type QuantRoundRow = typeof quantRounds.$inferSelect;
+type Tx = Parameters<Parameters<Ctx['db']['transaction']>[0]>[0];
 
 export async function loadRound(ctx: Ctx, padId: string): Promise<QuantRoundRow | null> {
   const [row] = await ctx.db.select().from(quantRounds).where(eq(quantRounds.padId, padId));
@@ -108,7 +115,13 @@ async function tryStep(ctx: Ctx, padId: string, step: QuantRoundStep): Promise<S
       roundEndsAt,
       newId: randomUUID,
     });
-    if (!next.ok) return next;
+    if (!next.ok) {
+      // The round finished before the pad ended (its last question closed, or its clock ran
+      // out): ending the pad changes nothing in it, but its answers count from now on.
+      if (step.type === 'end' && next.reason === 'ended' && pad.status !== 'active')
+        await recordAnswers(tx, padId, pad.ownerId, row.state);
+      return next;
+    }
 
     const [written] = await tx
       .update(quantRounds)
@@ -169,6 +182,9 @@ async function tryStep(ctx: Ctx, padId: string, step: QuantRoundStep): Promise<S
       });
     }
     if (note) await tx.insert(interviewerNotes).values({ padId, note: note.slice(0, 4000) });
+    // Only once the pad has ended (the `end` step, or a verdict the assessment gives later): a
+    // verdict in the question bank mid-round would give it away, and name the bank question.
+    if (pad.status !== 'active') await recordAnswers(tx, padId, pad.ownerId, next.state);
 
     return {
       ok: true,
@@ -182,6 +198,79 @@ async function tryStep(ctx: Ctx, padId: string, step: QuantRoundStep): Promise<S
       view: publicRound(next.state, next.version),
     } as const;
   });
+}
+
+/** The most of what was said that a short answer holds (`QuizResponse`); the end is kept. */
+const RESPONSE_MAX = 4000;
+
+/**
+ * Every question of an ended pad's round that has a verdict, as an AI-graded short answer of the
+ * pad's owner (as a discussion records one): score and feedback from the verdict, the text
+ * everything the owner said while the question was open, answered when it closed. Written once
+ * per pad and question; a question already recorded is left alone, so ending again or a second
+ * assessment neither duplicates nor overwrites it. Unjudged and unposed questions record nothing.
+ */
+async function recordAnswers(
+  tx: Tx,
+  padId: string,
+  ownerId: string,
+  state: QuantRoundState,
+): Promise<void> {
+  const judged = state.questions.flatMap((q) =>
+    q.verdict && q.posedAt && q.closedAt
+      ? [{ ...q, verdict: q.verdict, from: Date.parse(q.posedAt), to: Date.parse(q.closedAt) }]
+      : [],
+  );
+  if (judged.length === 0) return;
+  // A question gone from the bank (never removed by the seed, but a foreign key all the same)
+  // must not keep the round from finishing.
+  const known = new Set(
+    (
+      await tx
+        .select({ id: quizQuestions.id })
+        .from(quizQuestions)
+        .where(
+          inArray(
+            quizQuestions.id,
+            judged.map((q) => q.questionId),
+          ),
+        )
+    ).map((r) => r.id),
+  );
+  const said = await tx
+    .select({ text: messages.text, at: messages.createdAt })
+    .from(messages)
+    .where(
+      and(eq(messages.padId, padId), eq(messages.role, 'candidate'), eq(messages.userId, ownerId)),
+    )
+    .orderBy(asc(messages.createdAt));
+  const values = judged
+    .filter((q) => known.has(q.questionId))
+    .map((q) => {
+      const all = said
+        .filter((m) => m.at.getTime() >= q.from && m.at.getTime() <= q.to)
+        .map((m) => m.text)
+        .join('\n\n');
+      const text = all.length > RESPONSE_MAX ? `…${all.slice(-(RESPONSE_MAX - 1))}` : all;
+      const score = Math.max(0, Math.min(1, q.verdict.score));
+      return {
+        userId: ownerId,
+        padId,
+        questionId: q.questionId,
+        response: { type: 'short' as const, text },
+        score,
+        correct: score >= CORRECT_THRESHOLD,
+        feedback: q.verdict.summary,
+        gradedBy: 'ai' as const,
+        needsSelfGrade: false,
+        answeredAt: new Date(q.to),
+      };
+    });
+  if (values.length === 0) return;
+  await tx
+    .insert(quantRoundAnswers)
+    .values(values)
+    .onConflictDoNothing({ target: [quantRoundAnswers.padId, quantRoundAnswers.questionId] });
 }
 
 /**
