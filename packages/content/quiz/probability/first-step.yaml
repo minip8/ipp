@@ -1,0 +1,264 @@
+# First-step analysis and Markov chains: condition on the first move, solve the equations, waiting times for patterns.
+- id: prob-first-step-001
+  topic: probability
+  subtopic: First-step analysis and Markov chains
+  type: numeric
+  difficulty: easy
+  tags: [first-step-analysis, expectation, recursion]
+  prompt: |
+    You are lost in a cave with three tunnels. One leads outside after 3 hours of walking. The other
+    two bring you back to the starting point, one after 1 hour and the other after 2 hours. Each time
+    you are at the starting point you pick one of the three tunnels uniformly at random, with no
+    memory of earlier choices. What is the expected time until you get out?
+  answer: 6
+  unit: hours
+  explanation: |
+    Condition on the first choice. Let $E$ be the expected time from the start. Each tunnel is chosen
+    with probability $1/3$, and after a returning tunnel you are back where you began:
+
+    $$E = \tfrac13 \cdot 3 + \tfrac13 (1 + E) + \tfrac13 (2 + E) \quad\Longrightarrow\quad \tfrac13 E = 2 \quad\Longrightarrow\quad E = 6.$$
+
+    Another view: the number of attempts is geometric with mean 3, so you make on average 2 wasted
+    trips, averaging 1.5 hours each, plus the final 3 hours: $2 \times 1.5 + 3 = 6$.
+
+    The common wrong answer is 2, the average of the three tunnel lengths, which forgets that you
+    may need several attempts.
+  source: { name: "Quant job interview problem collection (Kent State)", url: "https://www.math.kent.edu/~oana/math60070/InterviewProblems.pdf" }
+
+- id: prob-first-step-002
+  topic: probability
+  subtopic: First-step analysis and Markov chains
+  type: numeric
+  difficulty: medium
+  tags: [coins, patterns, markov-chain]
+  prompt: |
+    A fair coin is tossed until the sequence **HTH** appears in three consecutive tosses. What is the
+    expected number of tosses?
+  answer: 10
+  unit: tosses
+  hints:
+    - Track how much of HTH you have matched so far, as states 0, H, HT and done.
+    - From the state HT, a tail sends you back to the start, but a head after HT completes the pattern. What does a tail after H do?
+    - Write one equation per state for the expected remaining tosses.
+  followUps:
+    - What is the expected number of tosses until HHT? Why is it different?
+    - What is the expected number of tosses until HHH?
+  explanation: |
+    Let $e_0, e_H, e_{HT}$ be the expected remaining tosses from "nothing useful", "last toss H" and
+    "last two tosses HT":
+
+    $$e_0 = 1 + \tfrac12 e_H + \tfrac12 e_0, \qquad e_H = 1 + \tfrac12 e_H + \tfrac12 e_{HT}, \qquad e_{HT} = 1 + \tfrac12 \cdot 0 + \tfrac12 e_0.$$
+
+    (After H a head keeps you at H; after HT a tail leaves TT, which is useless.) Solving gives
+    $e_0 = 10$.
+
+    The common wrong answer is 8, which is the right answer for HHT or THH. HTH overlaps itself (its
+    last H can start a new HTH), and a failure from HT throws you back further than a failure in
+    HHT does.
+  source: { name: "Classic pattern-waiting problem (e.g. Zhou, ch. 5)" }
+
+- id: prob-first-step-003
+  topic: probability
+  subtopic: First-step analysis and Markov chains
+  type: single
+  difficulty: medium
+  tags: [coins, patterns, waiting-time]
+  prompt: |
+    A fair coin is tossed repeatedly. Compare the expected number of tosses until the first **HH**
+    (two heads in a row) with the expected number until the first **HT** (a head followed by a tail).
+  choices:
+    - { id: a, text: "HH takes longer on average" }
+    - { id: b, text: "HT takes longer on average" }
+    - { id: c, text: "They are equal, since each pattern has probability 1/4" }
+  answer: a
+  explanation: |
+    The expected waits are 6 for HH and 4 for HT.
+
+    For HT: wait for the first H (2 tosses on average), then wait for the first T (2 more). Once you
+    have an H you never lose progress, since further heads still leave you "at H".
+
+    For HH: from "last toss H", a tail sends you back to the start. With $e_0$ and $e_H$ the expected
+    remaining tosses, $e_0 = 1 + \tfrac12 e_H + \tfrac12 e_0$ and $e_H = 1 + \tfrac12 e_0$, giving
+    $e_0 = 6$.
+
+    Choice c is the natural mistake: both patterns appear with frequency $1/4$ in the long run, so the
+    average spacing between occurrences is 4 for both, but HH occurrences come in clumps (HHH contains
+    two overlapping HHs), so the wait for the *first* one is longer.
+  source: { name: "Classic pattern-waiting problem (e.g. Zhou, ch. 5)" }
+
+- id: prob-first-step-004
+  topic: probability
+  subtopic: First-step analysis and Markov chains
+  type: numeric
+  difficulty: medium
+  tags: [deuce, first-step-analysis, win-by-two]
+  prompt: |
+    A table-tennis game is tied at 10-10, and from here the first player to lead by two points wins.
+    You win each point independently with probability $0.4$. What is the probability that you win the
+    game?
+  answer: 4/13
+  answerText: |-
+    $4/13 \approx 0.308$
+  hints:
+    - Look at the next two points. What can happen?
+    - Splitting the next two points puts you back where you started.
+  followUps:
+    - What is the expected number of further points played?
+    - If you win each point with probability $p$, how does your chance of winning the game compare with $p$? Why does this matter for match formats?
+  explanation: |
+    Play the points in pairs. In each pair you win both with probability $0.4^2 = 0.16$ (you win), lose
+    both with probability $0.6^2 = 0.36$ (you lose), or split them with probability $0.48$ and are back
+    at a tie. Pairs are independent, so the game is decided by the first pair that is not a split:
+
+    $$P(\text{win}) = \frac{0.16}{0.16 + 0.36} = \frac{4}{13} \approx 0.308.$$
+
+    In general $\frac{p^2}{p^2 + q^2}$, which amplifies the better player's edge. The common wrong
+    answers are $0.4$ (ignoring the win-by-two rule) and $0.16$ (forgetting that a split restarts the
+    deuce).
+  source: { name: "Widely reported interview question (Glassdoor)" }
+
+- id: prob-first-step-005
+  topic: probability
+  subtopic: First-step analysis and Markov chains
+  type: numeric
+  difficulty: medium
+  tags: [random-walk, cube, hitting-time]
+  prompt: |
+    A spider sits at one corner of a cube and a fly at the diagonally opposite corner. The fly does
+    not move. Each minute the spider walks along one of the three edges at its corner, chosen
+    uniformly at random. What is the expected number of moves until the spider reaches the fly?
+  answer: 10
+  unit: moves
+  hints:
+    - Group the corners by their distance (in edges) from the fly.
+    - From distance 1, distance 2 and distance 3, where can a single move take the spider?
+  followUps:
+    - What is the expected number of moves for the spider to return to its starting corner?
+    - What changes if the spider never walks straight back along the edge it just used?
+  explanation: |
+    By symmetry only the distance from the fly matters: 3 (start), 2, 1 or 0. From 3 every move goes
+    to 2. From 2, two of the three edges lead to 1 and one back to 3. From 1, one edge reaches the fly
+    and two lead to 2. With $e_d$ the expected moves from distance $d$:
+
+    $$e_3 = 1 + e_2, \qquad e_2 = 1 + \tfrac23 e_1 + \tfrac13 e_3, \qquad e_1 = 1 + \tfrac23 e_2.$$
+
+    Substituting: $e_2 = 1 + \tfrac23(1 + \tfrac23 e_2) + \tfrac13(1 + e_2)$, so $e_2 = 9$ and
+    $e_3 = 10$.
+
+    The common wrong answer is 3 (the shortest path), or 8 from guessing "one visit per corner".
+    Collapsing the eight corners into four distance classes is the key step.
+  source: { name: "Quant job interview problem collection (Kent State)", url: "https://www.math.kent.edu/~oana/math60070/InterviewProblems.pdf" }
+
+- id: prob-first-step-006
+  topic: probability
+  subtopic: First-step analysis and Markov chains
+  type: numeric
+  difficulty: hard
+  tags: [markov-chain, tetrahedron, recurrence]
+  prompt: |
+    A bug starts at vertex $A$ of a tetrahedron. Each minute it moves along one of the three edges at
+    its current vertex, chosen uniformly at random. What is the probability that it is back at $A$
+    after exactly 7 moves?
+  answer: 182/729
+  answerText: |-
+    $182/729 \approx 0.250$
+  hints:
+    - Let $p_n$ be the probability of being at $A$ after $n$ moves. How does $p_{n+1}$ depend on $p_n$?
+    - From $A$ you always leave; from any other vertex you move to $A$ with probability $1/3$.
+    - Solve the recurrence by looking at $p_n - \tfrac14$.
+  followUps:
+    - What is the limit as the number of moves grows, and why?
+    - On a square (a 4-cycle) instead, what is the probability of being back after 7 moves?
+  explanation: |
+    If the bug is at $A$ it must leave; if it is elsewhere (probability $1 - p_n$) it moves to $A$ with
+    probability $1/3$. So
+
+    $$p_{n+1} = \tfrac13 (1 - p_n), \qquad p_0 = 1.$$
+
+    The fixed point is $\tfrac14$, and $p_{n+1} - \tfrac14 = -\tfrac13\left(p_n - \tfrac14\right)$, so
+    $p_n = \tfrac14 + \tfrac34\left(-\tfrac13\right)^n$. For $n = 7$:
+
+    $$p_7 = \frac14 - \frac34 \cdot \frac{1}{2187} = \frac{729 - 1}{2916} = \frac{182}{729}.$$
+
+    A one-state recurrence works because, by symmetry, the three other vertices are interchangeable.
+    The common wrong answer is $\tfrac14$, the long-run limit, which is close but not exact for an odd
+    number of moves (the walk is slightly less likely to be home after an odd number of steps).
+  source: { name: "Quant job interview problem collection (Kent State)", url: "https://www.math.kent.edu/~oana/math60070/InterviewProblems.pdf" }
+
+- id: prob-first-step-007
+  topic: probability
+  subtopic: First-step analysis and Markov chains
+  type: numeric
+  difficulty: hard
+  tags: [penney-game, patterns, coins]
+  prompt: |
+    A fair coin is tossed until either **HHH** or **THH** appears as three consecutive tosses. What is
+    the probability that THH appears first?
+  answer: 7/8
+  hints:
+    - In what situation can HHH come first?
+    - Suppose a T appears anywhere before the first HHH. What must happen before HHH can be completed?
+  followUps:
+    - Given any pattern of three tosses your opponent picks, how would you choose yours to beat it?
+    - What is the probability that HTH appears before HHT?
+  explanation: |
+    HHH can only win if the first three tosses are HHH, probability $\frac18$. Otherwise a T appears
+    before any HHH, and from then on the first run of three heads must be preceded by that T or a
+    later one, so the sequence THH is completed before HHH can be. Hence
+
+    $$P(\text{THH first}) = 1 - \frac18 = \frac78.$$
+
+    This is Penney's game: although both patterns are equally frequent in the long run, races between
+    patterns are decided by how one can "steal" the other's progress. The common wrong answer is
+    $\tfrac12$, from thinking that equally likely patterns win equally often.
+  source: { name: "Penney's game (Penney, 1969)" }
+
+- id: prob-first-step-008
+  topic: probability
+  subtopic: First-step analysis and Markov chains
+  type: short
+  difficulty: hard
+  tags: [patterns, martingale, overlap]
+  prompt: |
+    The expected number of fair coin tosses until HHT first appears is 8, but until HTH it is 10, and
+    until HHH it is 14. Explain where these numbers come from with a general method, not three
+    separate systems of equations.
+  reference: |
+    Use the "fair casino" martingale. Before each toss a new gambler arrives with \$1 and bets it on
+    the first letter of the pattern at fair odds; if he wins (\$2) he bets everything on the second
+    letter, and so on, leaving when he loses or when the pattern is complete. Every bet is fair, so the
+    casino's expected net take at the stopping time $T$ is 0 (optional stopping applies: $T$ has finite
+    mean and the bets are bounded).
+
+    The casino has collected $T$ dollars (one per gambler). When the pattern first appears, the
+    gamblers still holding money are those whose run so far matches a prefix of the pattern that is
+    also a suffix of what was just tossed. A gambler who joined $j$ tosses before the end holds
+    $2^j$ if the pattern's last $j$ letters equal its first $j$ letters. So
+
+    $$E[T] = \sum_{j \,:\, \text{prefix}_j = \text{suffix}_j} 2^j.$$
+
+    - HHT: only $j = 3$ matches: $8$.
+    - HTH: $j = 1$ (H) and $j = 3$: $2 + 8 = 10$.
+    - HHH: $j = 1, 2, 3$: $2 + 4 + 8 = 14$.
+
+    Self-overlap makes a pattern slower to appear for the first time, even though every pattern of
+    length 3 has the same long-run frequency.
+  keyPoints:
+    - Sets up a fair betting scheme (one gambler per toss, doubling on each letter) whose net value is a martingale
+    - Uses optional stopping, so expected money paid in (T) equals expected payout at the end
+    - The payout comes from the gamblers whose partial match is still alive, one for each prefix that equals a suffix
+    - Gets the formula as the sum of 2^j over self-overlaps and reproduces 8, 10 and 14
+    - Explains that self-overlap lengthens the first waiting time though long-run frequencies are equal
+  hints:
+    - Imagine a new gambler arriving before every toss and betting on the pattern, letting winnings ride.
+    - Every bet is fair. What does that say about the total paid in and the total paid out?
+    - Which gamblers still have money at the moment the pattern is completed?
+  followUps:
+    - What is the expected number of rolls of a fair die until two sixes in a row?
+    - How does the formula change for a biased coin?
+  explanation: |
+    Many candidates can grind out one case with state equations, which is fine, but the question asks
+    for the structure. The casino argument (Li's martingale, popularised as the ABRACADABRA problem)
+    gives every case at once and explains why overlap matters. A good answer can also say why optional
+    stopping is justified here.
+  source: { name: "Li (1980), the ABRACADABRA martingale (e.g. Williams, Probability with Martingales)" }

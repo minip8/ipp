@@ -883,3 +883,238 @@ def _():
         if cov is not None:
             assert sum(sum(row) for row in cov) / n**2 == formula
     assert abs(math.sqrt(0.3) - 0.55) < 0.01
+
+
+# ---------------------------------------------------------------- symmetry and order statistics
+
+
+@check("prob-symmetry-001")
+def _():
+    return simulate(lambda r: sorted(r.random() for _ in range(4))[1])
+
+
+@check("prob-symmetry-002")
+def _():
+    n = 100
+
+    @lru_cache(maxsize=None)
+    def ok(i: int) -> Fraction:
+        """P(last passenger gets their seat) when passenger i must choose among seat 1 and seats i+1..n."""
+        free = 1 + (n - i)
+        total = Fraction(1, free)  # picks seat 1: everyone after is seated correctly
+        for j in range(i + 1, n):  # picks seat j: passenger j becomes the chooser
+            total += Fraction(1, free) * ok(j)
+        return total  # picking seat n contributes 0
+
+    # passenger 1 chooses among all n seats, the same situation as ok(1)
+    return ok(1)
+
+
+@check("prob-symmetry-003")
+def _():
+    @lru_cache(maxsize=None)
+    def p(aces: int, kings: int, others: int) -> Fraction:
+        """P(all remaining aces come out before any king), drawing one card at a time."""
+        if aces == 0:
+            return Fraction(1)
+        total = aces + kings + others
+        out = Fraction(aces, total) * p(aces - 1, kings, others)
+        if others:
+            out += Fraction(others, total) * p(aces, kings, others - 1)
+        return out  # drawing a king first fails
+
+    return p(4, 4, 44)
+
+
+@check("prob-symmetry-004")
+def _():
+    # count orderings: first k-1 cards non-aces, card k one of the other three aces, card k+1 the ace of spades
+    good = 0
+    for k in range(1, 50):
+        good += math.perm(48, k - 1) * 3 * math.factorial(52 - k - 1)
+    return Fraction(good, math.factorial(52))
+
+
+@check("prob-symmetry-005")
+def _():
+    def trial(r):
+        xs = [r.random() for _ in range(3)]
+        return max(xs) - min(xs) <= 1 / 3
+
+    return simulate(trial, n=300_000)
+
+
+@check("prob-symmetry-006")
+def _():
+    outcomes = list(dice(2))
+    e_min = Fraction(sum(min(o) for o in outcomes), 36)
+    e_diff = Fraction(sum(abs(o[0] - o[1]) for o in outcomes), 36)
+    assert e_min == Fraction(91, 36) and e_diff == Fraction(70, 36)
+    return "a" if e_min > e_diff else ("b" if e_diff > e_min else "c")
+
+
+@check("prob-symmetry-007")
+def _():
+    half = Fraction(1, 2)
+    alice = {k: binom_pmf(11, k, half) for k in range(12)}
+    bob = {k: binom_pmf(10, k, half) for k in range(11)}
+    assert sum(pa * pb for a, pa in alice.items() for b, pb in bob.items() if a > b) == half
+
+
+@check("prob-symmetry-008")
+def _():
+    n = 7
+    total = Fraction(0)
+    perms = list(itertools.permutations(range(n)))
+    for p in perms:
+        best = -1
+        for x in p:
+            if x > best:
+                total += 1
+                best = x
+    assert total / len(perms) == sum(Fraction(1, k) for k in range(1, n + 1))
+    h1000 = sum(1 / k for k in range(1, 1001))
+    assert abs(h1000 - 7.485) < 0.01
+
+
+# ---------------------------------------------------------------- first-step analysis and Markov chains
+
+
+def pattern_states(patterns: list[str]) -> list[str]:
+    """Every string shorter than the longest pattern that does not contain a pattern: the chain's states."""
+    k = max(map(len, patterns))
+    states = []
+    for n in range(k):
+        for s in itertools.product("HT", repeat=n):
+            states.append("".join(s))
+    return states
+
+
+def step(state: str, toss: str, patterns: list[str]) -> str:
+    """Append a toss; return the finished pattern, or the state to carry (the last k-1 tosses)."""
+    s = state + toss
+    for p in patterns:
+        if s.endswith(p):
+            return "!" + p
+    k = max(map(len, patterns))
+    return s[-(k - 1):] if k > 1 else ""
+
+
+def expected_wait(pattern: str) -> Fraction:
+    states = pattern_states([pattern])
+    idx = {s: i for i, s in enumerate(states)}
+    a = [[Fraction(0)] * len(states) for _ in states]
+    b = [Fraction(1)] * len(states)
+    for s, i in idx.items():
+        a[i][i] += 1
+        for t in "HT":
+            nxt = step(s, t, [pattern])
+            if not nxt.startswith("!"):
+                a[i][idx[nxt]] -= Fraction(1, 2)
+    return solve(a, b)[idx[""]]
+
+
+def race(first: str, second: str) -> Fraction:
+    """P(`first` appears before `second`) for fair tosses."""
+    pats = [first, second]
+    states = pattern_states(pats)
+    idx = {s: i for i, s in enumerate(states)}
+    a = [[Fraction(0)] * len(states) for _ in states]
+    b = [Fraction(0)] * len(states)
+    for s, i in idx.items():
+        a[i][i] += 1
+        for t in "HT":
+            nxt = step(s, t, pats)
+            if nxt == "!" + first:
+                b[i] += Fraction(1, 2)
+            elif not nxt.startswith("!"):
+                a[i][idx[nxt]] -= Fraction(1, 2)
+    return solve(a, b)[idx[""]]
+
+
+@check("prob-first-step-001")
+def _():
+    def trial(r):
+        t = 0
+        while True:
+            c = r.randrange(3)
+            if c == 0:
+                return t + 3
+            t += c  # 1 or 2 hours, back at the start
+
+    return simulate(trial, n=400_000)
+
+
+@check("prob-first-step-002")
+def _():
+    return expected_wait("HTH")
+
+
+@check("prob-first-step-003")
+def _():
+    hh, ht = expected_wait("HH"), expected_wait("HT")
+    assert (hh, ht) == (6, 4)
+    return "a" if hh > ht else ("b" if ht > hh else "c")
+
+
+@check("prob-first-step-004")
+def _():
+    # states: your lead -1, 0, +1 (absorbing at -2, +2)
+    p, q = Fraction(2, 5), Fraction(3, 5)
+    leads = [-1, 0, 1]
+    idx = {d: i for i, d in enumerate(leads)}
+    a = [[Fraction(0)] * 3 for _ in leads]
+    b = [Fraction(0)] * 3
+    for d in leads:
+        i = idx[d]
+        a[i][i] += 1
+        for move, w in ((1, p), (-1, q)):
+            nd = d + move
+            if nd == 2:
+                b[i] += w
+            elif nd != -2:
+                a[i][idx[nd]] -= w
+    return solve(a, b)[idx[0]]
+
+
+@check("prob-first-step-005")
+def _():
+    corners = list(itertools.product((0, 1), repeat=3))
+    idx = {c: i for i, c in enumerate(corners)}
+    target = (1, 1, 1)
+    a = [[Fraction(0)] * 8 for _ in corners]
+    b = [Fraction(0)] * 8
+    for c in corners:
+        i = idx[c]
+        a[i][i] = Fraction(1)
+        if c == target:
+            continue
+        b[i] = Fraction(1)
+        for axis in range(3):
+            nb = list(c)
+            nb[axis] ^= 1
+            a[i][idx[tuple(nb)]] -= Fraction(1, 3)
+    return solve(a, b)[idx[(0, 0, 0)]]
+
+
+@check("prob-first-step-006")
+def _():
+    dist = [Fraction(1), Fraction(0), Fraction(0), Fraction(0)]
+    for _ in range(7):
+        dist = [sum(dist[j] * Fraction(1, 3) for j in range(4) if j != i) for i in range(4)]
+    return dist[0]
+
+
+@check("prob-first-step-007")
+def _():
+    return race("THH", "HHH")
+
+
+@check("prob-first-step-008")
+def _():
+    def overlap_formula(p):
+        return sum(2**j for j in range(1, len(p) + 1) if p[:j] == p[-j:])
+
+    for p in ("HHT", "HTH", "HHH", "THH", "HTHH", "HHTT"):
+        assert expected_wait(p) == overlap_formula(p), p
+    assert (expected_wait("HHT"), expected_wait("HTH"), expected_wait("HHH")) == (8, 10, 14)
