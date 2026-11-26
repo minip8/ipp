@@ -117,6 +117,7 @@ export async function changeLanguage(
   return row;
 }
 
+/** A report's figures. A quant pad has no runs, so its run figures are null (`Report.stats`). */
 export async function computeStats(ctx: Ctx, pad: PadRow): Promise<Report['stats']> {
   const [runAgg] = await ctx.db
     .select({
@@ -140,11 +141,12 @@ export async function computeStats(ctx: Ctx, pad: PadRow): Promise<Report['stats
     .from(messages)
     .where(eq(messages.padId, pad.id));
   const end = pad.endedAt ?? new Date();
+  const quant = pad.format === 'quant';
   return {
     durationSec: Math.max(0, Math.round((end.getTime() - pad.startedAt.getTime()) / 1000)),
-    runs: runAgg?.runs ?? 0,
-    submissions: runAgg?.submissions ?? 0,
-    accepted: Boolean(runAgg?.accepted),
+    runs: quant ? null : (runAgg?.runs ?? 0),
+    submissions: quant ? null : (runAgg?.submissions ?? 0),
+    accepted: quant ? null : Boolean(runAgg?.accepted),
     candidateMessages: msgAgg?.candidate ?? 0,
     interviewerMessages: msgAgg?.interviewer ?? 0,
   };

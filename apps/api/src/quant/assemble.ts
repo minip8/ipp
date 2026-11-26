@@ -27,7 +27,7 @@ import {
   type QuizQuestion,
   quantQuestionCount,
 } from '@ipp/contracts';
-import { pads, quantRounds, quizQuestions } from '@ipp/db';
+import { pads, quantRounds, quizQuestions, quizTopics } from '@ipp/db';
 import { and, desc, eq, inArray, sql } from '@ipp/db/orm';
 import type { Ctx } from '../context';
 import { conflict } from '../http/errors';
@@ -226,13 +226,18 @@ export async function recentlyPosed(ctx: Ctx, userId: string): Promise<Set<strin
   return ids;
 }
 
-/** What the round snapshots of a bank question when it is assembled. */
-export function pickOf(q: QuizQuestion): QuantPick {
+/**
+ * What the round snapshots of a bank question when it is assembled. The topic's title goes with
+ * it so the pad and the report need no topic lookup (`topicTitle`, the slug when the topic has
+ * no row).
+ */
+export function pickOf(q: QuizQuestion, topicTitle: string = q.topic): QuantPick {
   if (q.type !== 'short' && q.type !== 'numeric')
     throw new Error(`${q.id} is not a quant question`);
   return {
     questionId: q.id,
     topic: q.topic,
+    topicTitle,
     difficulty: q.difficulty,
     prompt: q.prompt,
     unit: q.type === 'numeric' ? (q.unit ?? null) : null,
@@ -249,9 +254,13 @@ export async function assembleForUser(
   rand: Rand = Math.random,
 ): Promise<QuantPick[]> {
   const n = quantQuestionCount(durationMin);
-  const [pool, recent] = await Promise.all([
+  const [pool, recent, titles] = await Promise.all([
     eligibleQuestions(ctx, path),
     recentlyPosed(ctx, userId),
+    ctx.db
+      .select({ slug: quizTopics.slug, title: quizTopics.title })
+      .from(quizTopics)
+      .where(inArray(quizTopics.slug, [...QUANT_PATH_INFO[path].topics])),
   ]);
   const seen =
     pool.length >= n
@@ -270,5 +279,6 @@ export async function assembleForUser(
       'quant_unavailable',
       `There are not enough questions for a ${durationMin}-minute ${QUANT_PATH_INFO[path].label.toLowerCase()} round yet`,
     );
-  return chosen.map((q) => pickOf(q.data));
+  const title = new Map(titles.map((t) => [t.slug, t.title]));
+  return chosen.map((q) => pickOf(q.data, title.get(q.data.topic)));
 }

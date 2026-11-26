@@ -94,6 +94,22 @@ export const QUANT_MESSAGES = {
   refused: "Let's keep our focus on the question. Where are you with it right now?",
 } as const;
 
+/**
+ * What a close says when the model did not word it: the round's end, the last question, or
+ * moving on. Also what the API says when it closes an unattended question for time (its sweeper).
+ */
+export function cannedCloseLine(
+  by: 'interviewer' | 'timeout' | 'round_time',
+  clock: QuantClock | null,
+  total: number,
+  now: number,
+): string {
+  if (by === 'round_time') return QUANT_MESSAGES.roundTime;
+  const last = closingEndsRound(clock, total, now);
+  if (by === 'timeout') return last ? QUANT_MESSAGES.timeoutLast : QUANT_MESSAGES.timeout;
+  return last ? QUANT_MESSAGES.wrapUp : QUANT_MESSAGES.moveOn;
+}
+
 /** The round as this pad's runtime last saw it (refreshed by every context load and step). */
 export interface QuantMirror {
   version: number;
@@ -193,6 +209,19 @@ export function createQuantRuntime<R extends QuantPad>(core: QuantCore<R>) {
       total: ctx.round.total,
       attempted: m?.attempted ?? null,
     };
+    // The round moved on without this runtime (the API closed the question for time while
+    // nobody was connected): the question on the screen is a fresh start, as after a step.
+    const c = ctx.round.clock;
+    if (m && c && c.index !== (m.clock?.index ?? null)) freshQuestion(rt, c.posedAt);
+  }
+
+  /** A new question is on the screen (posed at `at`): stalls and the unanswered count start over. */
+  function freshQuestion(rt: R, at: number): void {
+    const s = rt.policy;
+    s.lastInterviewerMsgAt = Math.max(s.lastInterviewerMsgAt ?? 0, at);
+    s.unanswered = 0;
+    s.stallLevel = 0;
+    s.pending = s.pending.filter((p) => p.kind !== 'stall');
   }
 
   /** First work for a quant pad: rebuild the policy's view from the round and the transcript. */
@@ -364,13 +393,8 @@ export function createQuantRuntime<R extends QuantPad>(core: QuantCore<R>) {
     const said = 'say' in step && step.say !== null && step.say.trim() !== '';
     if (said) policy.onInterviewerMessage(s, t, step.type === 'turn' && step.kind === 'proactive');
     if (step.type === 'start') s.greeted = true;
-    if (res.clock && res.clock.index !== before) {
-      // A new question is on the screen: a fresh start for stalls and the unanswered count.
-      s.lastInterviewerMsgAt = t;
-      s.unanswered = 0;
-      s.stallLevel = 0;
-      s.pending = s.pending.filter((p) => p.kind !== 'stall');
-    }
+    // A new question is on the screen: a fresh start for stalls and the unanswered count.
+    if (res.clock && res.clock.index !== before) freshQuestion(rt, t);
     if (res.phase === 'finished') s.wrappedUp = true;
     core.trace(rt.padId, {
       type: 'quant',
@@ -414,12 +438,8 @@ export function createQuantRuntime<R extends QuantPad>(core: QuantCore<R>) {
     };
   }
 
-  function cannedClose(ctx: QuantContext, by: 'interviewer' | 'timeout' | 'round_time'): string {
-    if (by === 'round_time') return QUANT_MESSAGES.roundTime;
-    const last = closingEndsRound(ctx.round.clock, ctx.round.total, core.now());
-    if (by === 'timeout') return last ? QUANT_MESSAGES.timeoutLast : QUANT_MESSAGES.timeout;
-    return last ? QUANT_MESSAGES.wrapUp : QUANT_MESSAGES.moveOn;
-  }
+  const cannedClose = (ctx: QuantContext, by: 'interviewer' | 'timeout' | 'round_time') =>
+    cannedCloseLine(by, ctx.round.clock, ctx.round.total, core.now());
 
   async function saveCanned(rt: R, text: string): Promise<void> {
     try {
@@ -783,7 +803,14 @@ export function createQuantRuntime<R extends QuantPad>(core: QuantCore<R>) {
     if (!(await core.budgetOk(rt, 'proactive'))) return;
     const ctx = await load(rt);
     const entry = ctx?.questions[0];
-    if (ctx?.round.phase !== 'asking' || !entry || rt.replyQueue.length > 0) {
+    if (
+      ctx?.round.phase !== 'asking' ||
+      !entry ||
+      rt.replyQueue.length > 0 ||
+      // The question changed since the stall was noticed (closed for time while nobody was
+      // connected): the candidate has not been stuck on this one.
+      (ctx.round.clock?.posedAt ?? 0) > m.createdAt
+    ) {
       core.trace(rt.padId, { type: 'quant', trigger: 'stall', outcome: 'dropped' });
       return;
     }

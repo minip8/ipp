@@ -283,6 +283,7 @@ describe('quant_rounds', () => {
       {
         questionId: 'q-num',
         topic: 'cpp',
+        topicTitle: 'C++',
         difficulty: 'easy',
         prompt: 'p',
         unit: null,

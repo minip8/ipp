@@ -300,9 +300,13 @@ export const Report = z.object({
   generatedAt: IsoDate.nullable(),
   stats: z.object({
     durationSec: z.int(),
-    runs: z.int(),
-    submissions: z.int(),
-    accepted: z.boolean(),
+    /**
+     * null for a quant pad, which has no code and no runs (its figures come from `quant`).
+     * Reports stored before this carry 0 / 0 / false there; the API reads them as null.
+     */
+    runs: z.int().nullable(),
+    submissions: z.int().nullable(),
+    accepted: z.boolean().nullable(),
     candidateMessages: z.int(),
     interviewerMessages: z.int(),
   }),
@@ -365,6 +369,8 @@ export const PadSummary = Pad.pick({
   accepted: z.boolean(),
   /** The viewer's role: deleting an owned pad deletes it; a collaborator only leaves it. */
   role: PadRole,
+  /** A quant pad's path ("Quant · Trader" on the dashboard); null for a coding pad. */
+  quantPath: QuantPath.nullable().default(null),
 });
 export type PadSummary = z.infer<typeof PadSummary>;
 

@@ -5,7 +5,7 @@
  * that plays a round is mock-quant-round.ts.
  */
 import type { QuantPath, QuantPick, QuizDifficulty } from '@ipp/contracts';
-import { iso, uuid } from './fixtures';
+import { iso, QUIZ_TOPICS, uuid } from './fixtures';
 
 /** A question in the bank, as the API reads it when the round is assembled and reported. */
 export type BankQuestion = QuantPick & {
@@ -33,6 +33,8 @@ const q = (
 ): BankQuestion => ({
   questionId,
   topic,
+  // Snapshotted when the round is assembled, as the API does.
+  topicTitle: QUIZ_TOPICS.find((t) => t.slug === topic)?.title ?? topic,
   subtopic,
   difficulty,
   type,

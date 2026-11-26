@@ -5,7 +5,6 @@
  * chat message never leaves it behind.
  */
 import type { QuantQuestionView, QuantRoundView } from '@ipp/contracts';
-import { useQuery } from '@tanstack/react-query';
 import {
   ChevronRightIcon,
   ClockIcon,
@@ -17,31 +16,21 @@ import {
 import Link from 'next/link';
 import { DifficultyBadge } from '@/components/domain';
 import { MathMarkdown } from '@/components/math-markdown';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { usePad } from '@/features/pad/session';
 import { useNow } from '@/features/pad/top-bar';
-import { api } from '@/lib/api';
-import { formatClock, humanize, plural } from '@/lib/format';
-import { qk } from '@/lib/queries';
+import { formatClock, plural } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import {
+  closedLabel,
   currentQuestion,
   earlierQuestions,
   minutesPerQuestion,
   questionClock,
   roundHeading,
 } from './logic';
-
-/** A topic's title from the quiz bank, or its slug made readable while that loads. */
-function useTopicTitle() {
-  const topics = useQuery({
-    queryKey: qk.quizTopics,
-    queryFn: api.quizTopics,
-    staleTime: Number.POSITIVE_INFINITY,
-  });
-  return (slug: string) => topics.data?.find((t) => t.slug === slug)?.title ?? humanize(slug);
-}
 
 /** The current question's clock: time left of its budget, then a quiet "over". */
 export function QuestionTimer({ q, className }: { q: QuantQuestionView; className?: string }) {
@@ -103,7 +92,6 @@ function ClockBar({ q }: { q: QuantQuestionView }) {
 }
 
 function Current({ q }: { q: QuantQuestionView }) {
-  const topic = useTopicTitle();
   return (
     <article
       className="space-y-4 px-5 py-5 max-lg:px-4"
@@ -115,7 +103,7 @@ function Current({ q }: { q: QuantQuestionView }) {
       </h2>
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="text-xs font-medium text-fg-muted" data-testid="question-topic">
-          {topic(q.topic)}
+          {q.topicTitle}
         </span>
         <DifficultyBadge difficulty={q.difficulty} />
       </div>
@@ -200,7 +188,6 @@ function Finished({ onEnd, ending }: { onEnd: () => void; ending: boolean }) {
 }
 
 function Earlier({ questions }: { questions: QuantQuestionView[] }) {
-  const topic = useTopicTitle();
   if (questions.length === 0) return null;
   return (
     <section
@@ -214,23 +201,35 @@ function Earlier({ questions }: { questions: QuantQuestionView[] }) {
         Earlier questions
       </h2>
       <ul className="space-y-1" data-testid="earlier-questions">
-        {[...questions].reverse().map((q) => (
-          <li key={q.index}>
-            <details className="group rounded-md border border-border bg-surface open:bg-surface-2/50">
-              <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-sm select-none max-lg:py-2.5 [&::-webkit-details-marker]:hidden">
-                <ChevronRightIcon
-                  className="size-3.5 shrink-0 text-fg-subtle transition-transform group-open:rotate-90"
-                  aria-hidden
-                />
-                <span className="font-medium">Question {q.index + 1}</span>
-                <span className="min-w-0 truncate text-fg-muted">· {topic(q.topic)}</span>
-              </summary>
-              <MathMarkdown className="px-3 pt-0.5 pb-3 text-[13.5px] text-fg-muted">
-                {q.prompt}
-              </MathMarkdown>
-            </details>
-          </li>
-        ))}
+        {[...questions].reverse().map((q) => {
+          const closed = closedLabel(q);
+          return (
+            <li key={q.index}>
+              <details className="group rounded-md border border-border bg-surface open:bg-surface-2/50">
+                <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-sm select-none max-lg:py-2.5 [&::-webkit-details-marker]:hidden">
+                  <ChevronRightIcon
+                    className="size-3.5 shrink-0 text-fg-subtle transition-transform group-open:rotate-90"
+                    aria-hidden
+                  />
+                  <span className="font-medium">Question {q.index + 1}</span>
+                  <span className="min-w-0 truncate text-fg-muted">· {q.topicTitle}</span>
+                  {closed && (
+                    <Badge
+                      tone="warn"
+                      className="ml-auto shrink-0"
+                      data-testid="question-closed-by"
+                    >
+                      {closed}
+                    </Badge>
+                  )}
+                </summary>
+                <MathMarkdown className="px-3 pt-0.5 pb-3 text-[13.5px] text-fg-muted">
+                  {q.prompt}
+                </MathMarkdown>
+              </details>
+            </li>
+          );
+        })}
       </ul>
     </section>
   );

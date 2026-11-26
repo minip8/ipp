@@ -1,6 +1,7 @@
 /**
  * Visual review of the live quant round: the setup card on the Quant page, the quant pad (the
- * first question, mid-round after a hint, the round finished) and the quant report. Run with
+ * first question, mid-round after a hint, the round finished), the dashboard listing quant pads
+ * and the quant report. Run with
  * SCREENS=1 playwright test screens-quant (`ONLY=quant-pad` and `SCREEN_WIDTHS=1440` narrow it).
  */
 import { expect, type Page, test } from '@playwright/test';
@@ -99,6 +100,9 @@ for (const width of WIDTHS) {
       await b.quant.nudge(QUANT_PAD_ID);
       await expect(page.getByTestId('question-timer').first()).toHaveAttribute('data-over', 'true');
       if (!phone) await shoot(page, 'quant-pad-over');
+      // Closed for time: the earlier question says so.
+      await b.quant.timeout(QUANT_PAD_ID);
+      await expect(page.getByTestId('round-heading')).toHaveText('Question 3 of 4');
 
       await b.quant.finish(QUANT_PAD_ID);
       await expect(page.getByTestId('round-heading')).toHaveText('Round finished');
@@ -111,6 +115,19 @@ for (const width of WIDTHS) {
         await page.keyboard.press('Escape');
       }
       console.log('console errors:', JSON.stringify(errors, null, 1));
+    });
+
+    test('dashboard', async ({ page }) => {
+      test.skip(!want('quant-dashboard'));
+      await setup(page, (b) => b.quant.listOnDashboard());
+      await page.goto('/dashboard');
+      await page.getByRole('region', { name: 'In progress' }).waitFor();
+      await page.waitForTimeout(300);
+      await shoot(page, 'quant-dashboard');
+      await page.goto('/dashboard?view=history');
+      await page.getByRole('region', { name: 'Finished interviews' }).waitFor();
+      await page.waitForTimeout(300);
+      await shoot(page, 'quant-dashboard-history');
     });
 
     test('report', async ({ page }) => {

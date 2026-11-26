@@ -5,6 +5,7 @@ import {
   type QuantRoundState,
   type QuantStep,
   QuizQuestion,
+  Report,
   type ServerEvent,
   YDOC,
 } from '@ipp/contracts';
@@ -13,18 +14,23 @@ import {
   interviewerNotes,
   messages,
   pads,
+  quantRoundAnswers,
   quantRounds,
   quizQuestions,
   quizStandaloneAnswers,
   quizTopics,
+  reports,
   timelineEvents,
 } from '@ipp/db';
-import { and, asc, eq, inArray, like } from '@ipp/db/orm';
+import { and, asc, eq, inArray, like, sql } from '@ipp/db/orm';
+import { QUANT_MESSAGES } from '@ipp/interviewer';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { WebSocket } from 'ws';
 import * as Y from 'yjs';
+import { loadConfig } from '../src/config';
 import { QUANT_SCRATCH_CHARS, quantTrigger } from '../src/interviewer/host';
 import { finishRound } from '../src/quant/round';
+import { startQuantSweeper, sweepQuantRounds } from '../src/quant/sweeper';
 import {
   Client,
   EventSocket,
@@ -42,6 +48,7 @@ const QUANT_TOPICS = [
   { slug: 'probability', title: 'Probability', description: 'quant round tests', track: 'quant' },
   { slug: 'brainteasers', title: 'Brainteasers', description: 'quant round tests', track: 'quant' },
 ] as const;
+const topicTitle = (slug: string | undefined) => QUANT_TOPICS.find((t) => t.slug === slug)?.title;
 
 /**
  * Every server-only text carries a marker, so a leak is a substring search. A prompt's own
@@ -129,9 +136,9 @@ const ALWAYS_SECRET = [
   '"questionId"',
   '"verdict"',
   '"hintRungs"',
-  '"closedBy"',
+  // `closedBy` and `posedMessageId` are on the view: how a question closed happened in front of
+  // everyone, and the posing message is in the transcript anyway.
   '"subtopic"',
-  '"posedMessageId"',
   '"nudgedAt"',
   '"hintsAvailable"',
   '"followUpAsked"',
@@ -172,6 +179,7 @@ afterAll(async () => {
   const db = h?.api.ctx.db;
   if (db) {
     const ids = ALL_FIXTURES.map((q) => q.id);
+    await db.delete(quantRoundAnswers).where(inArray(quantRoundAnswers.questionId, ids));
     await db.delete(quizStandaloneAnswers).where(inArray(quizStandaloneAnswers.questionId, ids));
     await db.delete(quizQuestions).where(inArray(quizQuestions.id, ids));
     await db.delete(quizTopics).where(
@@ -345,6 +353,7 @@ describe('creating a quant round', () => {
       kind: 'practice',
       problemSlug: null,
       problemTitle: null,
+      quantPath: 'trader',
     });
     await expectNoLeak(pad.id, [res.text, detail.text, list.text]);
 
@@ -585,15 +594,20 @@ describe('a round, step by step', () => {
         {
           index: 0,
           topic: q0?.topic,
+          // Snapshotted from the topic's row when the round was assembled.
+          topicTitle: topicTitle(q0?.topic),
           difficulty: 'easy',
           prompt: q0?.prompt,
           unit: q0?.unit,
           posedAt: q0?.posedAt,
           budgetSec: q0?.budgetSec,
           closedAt: null,
+          closedBy: null,
           hintsGiven: 0,
+          posedMessageId: posedMsg?.message.id,
         },
       ]);
+      expect(q0?.topicTitle).toBe(topicTitle(q0?.topic));
       await leakCheck();
 
       // A hint (asked by the owner), then the follow-up (asked by the collaborator).
@@ -622,7 +636,9 @@ describe('a round, step by step', () => {
       const view4 = (await os.waitFor('round.updated', (e) => e.round.version === 4)).round;
       expect(view4.questions).toHaveLength(2);
       expect(view4.questions[0]?.closedAt).toEqual(expect.any(String));
+      expect(view4.questions[0]?.closedBy).toBe('interviewer');
       expect(view4.questions[1]?.closedAt).toBeNull();
+      expect(view4.questions[1]?.closedBy).toBeNull();
       await leakCheck();
 
       // The interviewer, asking question 1, sees question 1 in full and nothing of the others.
@@ -954,11 +970,11 @@ describe('a round, step by step', () => {
         phase: 'asking',
         clock: { index: 1 },
       });
-      expect((await stepEvents(s, mark, 2)).map(label)).toEqual([
-        'interviewer:feedback',
-        'interviewer:question',
-        'round:2',
-      ]);
+      const step2 = await stepEvents(s, mark, 2);
+      expect(step2.map(label)).toEqual(['interviewer:feedback', 'interviewer:question', 'round:2']);
+      // The pad says the question timed out without waiting for the report.
+      const view2 = step2.at(-1);
+      expect(view2?.type === 'round.updated' && view2.round.questions[0]?.closedBy).toBe('timeout');
       expect((await roundRow(id)).state.questions[0]).toMatchObject({
         closedBy: 'timeout',
         verdict: null,
@@ -1003,6 +1019,274 @@ describe('a round, step by step', () => {
       await expectNoLeak(id, [...s.raw, detail.text]);
       s.close();
     });
+  });
+});
+
+// ---------------------------------------------------------------- one clock
+
+/** Shifts the API process's clock (`Date`) by `ms`; the database's stays as it is. */
+function skewApiClock(ms: number): () => void {
+  const RealDate = globalThis.Date;
+  globalThis.Date = new Proxy(RealDate, {
+    construct(target, args, newTarget) {
+      return Reflect.construct(target, args.length === 0 ? [RealDate.now() + ms] : args, newTarget);
+    },
+    apply() {
+      return new RealDate(RealDate.now() + ms).toString();
+    },
+    get(target, prop, receiver) {
+      if (prop === 'now') return () => RealDate.now() + ms;
+      return Reflect.get(target, prop, receiver);
+    },
+  }) as DateConstructor;
+  return () => {
+    globalThis.Date = RealDate;
+  };
+}
+
+describe('the round’s clock', () => {
+  for (const skewMin of [-3, 3]) {
+    it(`stamps the round on the database’s clock with the API’s ${skewMin} min off`, async () => {
+      const owner = await account(`Skew${skewMin < 0 ? 'Behind' : 'Ahead'}`);
+      const pad = await createRound(owner, { path: 'trader', durationMin: 20 });
+      const id = pad.id;
+      await manual(async () => {
+        const s = await openEvents(owner, id);
+        await s.waitFor('round.updated');
+        expect(
+          await fake.deps.applyQuantStep?.(id, { type: 'start', version: 0, say: 'Hi.' }),
+        ).toMatchObject({ ok: true });
+        const restore = skewApiClock(skewMin * 60_000);
+        try {
+          // The candidate answers (stamped by Postgres); the interviewer closes the question and
+          // the next is posted; the candidate goes on under it.
+          s.send({ type: 'chat.send', text: 'answer: seven' });
+          await s.waitFor('round.updated', (e) => e.round.version === 2);
+          s.send({ type: 'chat.send', text: 'on to the next' });
+          await s.waitFor('round.updated', (e) => e.round.version === 3);
+          // A close for time decided on the skewed clock is still judged on the database's.
+          expect(
+            await fake.deps.applyQuantStep?.(id, {
+              type: 'close',
+              version: 3,
+              index: 1,
+              kind: 'proactive',
+              say: 'Time.',
+              by: 'timeout',
+              verdict: null,
+            }),
+          ).toEqual({ ok: false, reason: 'too_early' });
+        } finally {
+          restore();
+        }
+        const rows = await db()
+          .select({ text: messages.text, role: messages.role, intent: messages.intent })
+          .from(messages)
+          .where(eq(messages.padId, id))
+          .orderBy(asc(messages.createdAt));
+        const state = (await roundRow(id)).state;
+        expect(rows.map((m) => (m.role === 'candidate' ? m.text : m.intent))).toEqual([
+          'greeting',
+          'question',
+          'answer: seven',
+          'feedback',
+          'question',
+          'on to the next',
+          'answer',
+        ]);
+        expect(rows[4]?.text).toBe(state.questions[1]?.prompt);
+        // posedAt is the database's time, not the API's.
+        const [{ now } = { now: '' }] = await db().execute<{ now: string }>(
+          sql`select to_json(now())#>>'{}' as now`,
+        );
+        const posed = Date.parse(state.questions[1]?.posedAt ?? '');
+        expect(Math.abs(posed - Date.parse(now))).toBeLessThan(10_000);
+        s.close();
+      });
+    });
+  }
+});
+
+// ---------------------------------------------------------------- nobody there
+
+describe('a round nobody is on', () => {
+  /** Started, with nobody connected; the pad's question `index` is overdue by `sec`. */
+  async function unattended(name: string, durationMin = 20) {
+    const owner = await account(name);
+    const pad = await createRound(owner, { path: 'trader', durationMin });
+    await manual(async () => {
+      const s = await openEvents(owner, pad.id);
+      await s.waitFor('round.updated');
+      await fake.deps.applyQuantStep?.(pad.id, { type: 'start', version: 0, say: 'Hi.' });
+      s.close();
+      await until(() => h.api.ctx.rooms.count(pad.id) === 0);
+    });
+    return { owner, pad, id: pad.id };
+  }
+  /** Moves question `index` back so that its budget and grace ran out `sec` ago. */
+  const overdue = (padId: string, index: number, sec = 1) =>
+    setState(padId, (st) => {
+      const q = st.questions[index];
+      if (!q?.posedAt || !q.budgetSec) throw new Error('not posed');
+      const grace = Math.min(90, Math.floor(q.budgetSec / 4));
+      q.posedAt = new Date(Date.now() - (q.budgetSec + grace + sec) * 1000).toISOString();
+    });
+  /** Connected as the API sees it; every other pad counts as attended, so the sweep is ours. */
+  const onlyThese =
+    (...ids: string[]) =>
+    (padId: string) =>
+      !ids.includes(padId) ||
+      h.api.ctx.rooms.count(padId) > 0 ||
+      h.api.ctx.collab.connectionCount(padId) > 0;
+
+  it('closes an overdue question with the canned line and no verdict, and nothing early', async () => {
+    const { id } = await unattended('Alone');
+    const keys = fake.keysUsed.length;
+    const steps = fake.quantSteps.length;
+    expect(await sweepQuantRounds(h.api.ctx, onlyThese(id))).toBe(0);
+    // Inside the grace: still nothing (and never a nudge: nobody would hear it).
+    await setState(id, (st) => {
+      const q = st.questions[0];
+      if (q?.posedAt && q.budgetSec)
+        q.posedAt = new Date(Date.now() - (q.budgetSec + 10) * 1000).toISOString();
+    });
+    expect(await sweepQuantRounds(h.api.ctx, onlyThese(id))).toBe(0);
+    expect((await roundRow(id)).version).toBe(1);
+
+    await overdue(id, 0);
+    expect(await sweepQuantRounds(h.api.ctx, onlyThese(id))).toBe(1);
+    let row = await roundRow(id);
+    expect(row.version).toBe(2);
+    expect(row.state.questions[0]).toMatchObject({
+      closedBy: 'timeout',
+      verdict: null,
+      nudgedAt: null,
+    });
+    expect(row.state.current).toBe(1);
+    const said = await db()
+      .select({ intent: messages.intent, text: messages.text, kind: messages.kind })
+      .from(messages)
+      .where(eq(messages.padId, id))
+      .orderBy(asc(messages.createdAt));
+    expect(said.slice(-2)).toEqual([
+      { intent: 'feedback', text: QUANT_MESSAGES.timeout, kind: 'proactive' },
+      { intent: 'question', text: row.state.questions[1]?.prompt, kind: 'proactive' },
+    ]);
+    // The next question has a fresh budget: the next sweep leaves it.
+    expect(await sweepQuantRounds(h.api.ctx, onlyThese(id))).toBe(0);
+
+    // Question by question: the second runs out too, then the round's clock, with the third open.
+    await overdue(id, 1);
+    expect(await sweepQuantRounds(h.api.ctx, onlyThese(id))).toBe(1);
+    await db()
+      .update(pads)
+      .set({ startedAt: new Date(Date.now() - 21 * 60_000) })
+      .where(eq(pads.id, id));
+    expect(await sweepQuantRounds(h.api.ctx, onlyThese(id))).toBe(1);
+    row = await roundRow(id);
+    expect(row.state.questions.map((q) => q.closedBy)).toEqual([
+      'timeout',
+      'timeout',
+      'round_time',
+    ]);
+    expect(row.state.questions.every((q) => q.verdict === null)).toBe(true);
+    expect(row.state.current).toBe(3);
+    const last = await db()
+      .select({ text: messages.text })
+      .from(messages)
+      .where(eq(messages.padId, id))
+      .orderBy(asc(messages.createdAt));
+    expect(last.at(-1)?.text).toBe(QUANT_MESSAGES.roundTime);
+    // Finished: nothing more to do. The pad stays open until its owner ends it.
+    expect(await sweepQuantRounds(h.api.ctx, onlyThese(id))).toBe(0);
+    expect((await db().select().from(pads).where(eq(pads.id, id)))[0]?.status).toBe('active');
+    // No model, no interviewer: nobody's key was used.
+    expect(fake.keysUsed.length).toBe(keys);
+    expect(fake.quantSteps.length).toBe(steps);
+  });
+
+  it('says the last question’s line when closing it ends the round', async () => {
+    const { id } = await unattended('LastOne');
+    await overdue(id, 0);
+    await sweepQuantRounds(h.api.ctx, onlyThese(id));
+    await overdue(id, 1);
+    await sweepQuantRounds(h.api.ctx, onlyThese(id));
+    await overdue(id, 2);
+    expect(await sweepQuantRounds(h.api.ctx, onlyThese(id))).toBe(1);
+    const row = await roundRow(id);
+    expect(row.state.questions.map((q) => q.closedBy)).toEqual(['timeout', 'timeout', 'timeout']);
+    const said = await db()
+      .select({ text: messages.text })
+      .from(messages)
+      .where(eq(messages.padId, id))
+      .orderBy(asc(messages.createdAt));
+    expect(said.at(-1)?.text).toBe(QUANT_MESSAGES.timeoutLast);
+  });
+
+  it('leaves a pad someone is on to its interviewer, an ended pad, and a round not started', async () => {
+    const owner = await account('Present');
+    const pad = await createRound(owner, { path: 'trader', durationMin: 20 });
+    const s = await manual(async () => {
+      const s = await openEvents(owner, pad.id);
+      await s.waitFor('round.updated');
+      await fake.deps.applyQuantStep?.(pad.id, { type: 'start', version: 0, say: 'Hi.' });
+      return s;
+    });
+    await overdue(pad.id, 0);
+    expect(await sweepQuantRounds(h.api.ctx, onlyThese(pad.id))).toBe(0);
+    s.close();
+    await until(() => h.api.ctx.rooms.count(pad.id) === 0);
+    expect(await sweepQuantRounds(h.api.ctx, onlyThese(pad.id))).toBe(1);
+
+    const ended = await unattended('Gone');
+    await overdue(ended.id, 0);
+    expect((await ended.owner.post(`/api/pads/${ended.id}/end`)).status).toBe(200);
+    const pending = await account('NeverStarted');
+    const notStarted = await createRound(pending, { path: 'trader', durationMin: 20 });
+    await db()
+      .update(pads)
+      .set({ startedAt: new Date(Date.now() - 21 * 60_000) })
+      .where(eq(pads.id, notStarted.id));
+    const before = [(await roundRow(ended.id)).version, (await roundRow(notStarted.id)).version];
+    expect(await sweepQuantRounds(h.api.ctx, onlyThese(ended.id, notStarted.id))).toBe(0);
+    expect([(await roundRow(ended.id)).version, (await roundRow(notStarted.id)).version]).toEqual(
+      before,
+    );
+  });
+
+  it('runs on its interval once started, and stops', async () => {
+    const { id } = await unattended('Timer');
+    await overdue(id, 0);
+    const sweeper = startQuantSweeper(h.api.ctx, onlyThese(id), 20);
+    try {
+      await until(async () => (await roundRow(id)).version === 2, 5_000);
+    } finally {
+      await sweeper.stop();
+    }
+    await overdue(id, 1);
+    await sleep(100);
+    expect((await roundRow(id)).version).toBe(2);
+  });
+
+  it('is started with the server when configured, and stopped with it', async () => {
+    const { id } = await unattended('Server');
+    await overdue(id, 0);
+    const timing = { ...h.api.ctx.config.timing, quantSweepMs: 20 };
+    const other = await startApi({ config: { timing } });
+    let stopped = false;
+    try {
+      await until(async () => (await roundRow(id)).version === 2, 5_000);
+    } finally {
+      await other.stop();
+      stopped = true;
+    }
+    expect(stopped).toBe(true);
+    await overdue(id, 1);
+    await sleep(100);
+    expect((await roundRow(id)).version).toBe(2);
+    // The default runs every 15 s; the tests turn it off and sweep themselves.
+    expect(loadConfig({ env: 'test' }).timing.quantSweepMs).toBe(15_000);
+    expect(h.api.ctx.config.timing.quantSweepMs).toBe(0);
   });
 });
 
@@ -1058,6 +1342,8 @@ describe('ending a quant pad', () => {
     expect(report.status).toBe(200);
     expect(report.json.assessment).toBeNull();
     expect(report.json.assessmentUnavailable).toBe('no_key');
+    // No runs on a quant pad: no run figures either.
+    expect(report.json.stats).toMatchObject({ runs: null, submissions: null, accepted: null });
     const bank = new Map(ALL_FIXTURES.map((q) => [q.id, QuizQuestion.parse(q)]));
     const review = (index: number) => {
       const q = state.questions[index];
@@ -1067,6 +1353,7 @@ describe('ending a quant pad', () => {
         index,
         questionId: q.questionId,
         topic: q.topic,
+        topicTitle: topicTitle(q.topic),
         subtopic: b.subtopic,
         difficulty: q.difficulty,
         type: b.type,
@@ -1113,6 +1400,29 @@ describe('ending a quant pad', () => {
     expect(theirs.status).toBe(200);
     expect(theirs.json.quant).toEqual(report.json.quant);
 
+    // A round and a report stored before titles were snapshotted and run figures were dropped:
+    // the titles fall back to the slugs, and the stored 0 / 0 / false read as null.
+    await setState(id, (st) => {
+      for (const q of st.questions) delete q.topicTitle;
+    });
+    await db()
+      .update(reports)
+      .set({ stats: { ...report.json.stats, runs: 0, submissions: 0, accepted: false } })
+      .where(eq(reports.padId, id));
+    const old = await owner.get(`/api/pads/${id}/report`);
+    expect(Report.parse(old.json).stats).toMatchObject({
+      runs: null,
+      submissions: null,
+      accepted: null,
+    });
+    expect(old.json.quant.questions.map((q: { topicTitle: string }) => q.topicTitle)).toEqual(
+      state.questions.map((q) => q.topic),
+    );
+    const oldDetail = await owner.get(`/api/pads/${id}`);
+    expect(oldDetail.json.round.questions.map((q: { topicTitle: string }) => q.topicTitle)).toEqual(
+      state.questions.filter((q) => q.posedAt !== null).map((q) => q.topic),
+    );
+
     // With a key again the owner asks for the assessment: it judges the two closed questions.
     await owner.saveKey();
     const again = await owner.post(`/api/pads/${id}/report/assessment`);
@@ -1156,6 +1466,197 @@ describe('ending a quant pad', () => {
       { score: 0.8, summary: 'VERDICT-SUMMARY-0' },
       { score: 0.25, summary: 'LATE-VERDICT-1' },
       null,
+    ]);
+    s.close();
+  });
+});
+
+// ---------------------------------------------------------------- the round in the quiz
+
+describe('a round’s answers in the quiz', () => {
+  it('counts each judged question as the owner’s AI-graded answer once the pad has ended, once', async () => {
+    const owner = await account('Counted');
+    const pad = await createRound(owner, { path: 'trader', durationMin: 30 });
+    const collab = await account('Onlooker', false);
+    expect((await collab.post('/api/pads/join', { shareToken: pad.shareToken })).status).toBe(200);
+    const id = pad.id;
+    const ids = (await roundRow(id)).state.questions.map((q) => q.questionId);
+    expect(ids).toHaveLength(4);
+    const [q0, q1, q2, q3] = ids as [string, string, string, string];
+    const topicOf = (qid: string) => ELIGIBLE.find((q) => q.id === qid)?.topic ?? '';
+    const bankItem = async (c: Client, qid: string) =>
+      (await c.get(`/api/quiz/topics/${topicOf(qid)}/questions`)).json.items.find(
+        (i: { question: { id: string } }) => i.question.id === qid,
+      );
+    const answered = async (c: Client) =>
+      Object.fromEntries(
+        ((await c.get('/api/quiz/topics')).json as { slug: string; answered: number }[]).map(
+          (t) => [t.slug, t.answered],
+        ),
+      );
+    const before = await answered(owner);
+    // An old bank answer to the second question: the round's, given later, wins over it.
+    await db()
+      .insert(quizStandaloneAnswers)
+      .values({
+        userId: owner.userId,
+        questionId: q1,
+        response: { type: 'short', text: 'long ago' },
+        score: 0,
+        correct: false,
+        feedback: null,
+        gradedBy: 'self',
+        needsSelfGrade: false,
+        answeredAt: new Date(Date.now() - 3600_000),
+      });
+
+    const s = await openEvents(owner, id);
+    const theirs = await openEvents(collab, id);
+    await s.waitFor('round.updated', (e) => e.round.version === 1);
+    s.send({ type: 'chat.send', text: 'I think it is 42' });
+    await s.waitFor('round.updated', (e) => e.round.version === 2);
+    theirs.send({ type: 'chat.send', text: 'COLLABORATOR-WORDS' });
+    await s.waitFor('round.updated', (e) => e.round.version === 3);
+    s.send({ type: 'chat.send', text: 'answer: 42' });
+    await s.waitFor('round.updated', (e) => e.round.version === 4);
+    s.send({ type: 'chat.send', text: 'skip this one' });
+    await s.waitFor('round.updated', (e) => e.round.version === 5);
+    expect((await roundRow(id)).state.questions.map((q) => q.closedBy)).toEqual([
+      'interviewer',
+      'interviewer',
+      null,
+      null,
+    ]);
+
+    // Mid-round the verdict is nowhere in the quiz: not in the bank, the stats or the table.
+    expect(
+      await db().select().from(quantRoundAnswers).where(eq(quantRoundAnswers.padId, id)),
+    ).toEqual([]);
+    for (const c of [owner, collab]) {
+      const one = await c.get(`/api/quiz/questions/${q0}`);
+      expect(one.json).toMatchObject({ status: 'unanswered', response: null, feedback: null });
+      expect((await bankItem(c, q0)).status).toBe('unanswered');
+    }
+    expect(await answered(owner)).toEqual({
+      ...before,
+      [topicOf(q1)]: (before[topicOf(q1)] ?? 0) + 1,
+    });
+
+    // Ended without a key: no assessment, so only the verdict given live is recorded, at once.
+    expect((await owner.del('/api/ai-key')).status).toBe(200);
+    expect((await owner.post(`/api/pads/${id}/end`)).status).toBe(200);
+    await s.waitFor('round.updated', (e) => e.round.phase === 'finished');
+    const rows = () =>
+      db()
+        .select()
+        .from(quantRoundAnswers)
+        .where(eq(quantRoundAnswers.userId, owner.userId))
+        .orderBy(asc(quantRoundAnswers.answeredAt));
+    const state = (await roundRow(id)).state;
+    expect(await rows()).toEqual([
+      {
+        id: expect.any(String),
+        userId: owner.userId,
+        padId: id,
+        questionId: q0,
+        // What the owner said while it was open; a collaborator's words are not their answer.
+        response: { type: 'short', text: 'I think it is 42\n\nanswer: 42' },
+        score: 0.8,
+        correct: true,
+        feedback: 'VERDICT-SUMMARY-0',
+        gradedBy: 'ai',
+        needsSelfGrade: false,
+        answeredAt: new Date(state.questions[0]?.closedAt ?? ''),
+      },
+    ]);
+    const one = await owner.get(`/api/quiz/questions/${q0}`);
+    expect(one.json).toMatchObject({
+      status: 'correct',
+      score: 0.8,
+      response: { type: 'short', text: 'I think it is 42\n\nanswer: 42' },
+      feedback: { gradedBy: 'ai', feedback: 'VERDICT-SUMMARY-0', score: 0.8 },
+    });
+    // Only the owner's: the collaborator's bank knows nothing of it.
+    expect((await collab.get(`/api/quiz/questions/${q0}`)).json.status).toBe('unanswered');
+    // Ending again finds nothing new to write.
+    await finishRound(h.api.ctx, id);
+    expect(await rows()).toHaveLength(1);
+
+    // The assessment judges the two closed without a verdict (the one skipped, the one open at
+    // the end); each is recorded as it is judged, and the question never posed is not.
+    await owner.saveKey();
+    expect((await owner.post(`/api/pads/${id}/report/assessment`)).status).toBe(200);
+    await until(async () => (await owner.get(`/api/pads/${id}/report`)).json?.status === 'ready');
+    const recorded = await rows();
+    expect(recorded.map((r) => [r.questionId, r.score, r.feedback])).toEqual([
+      [q0, 0.8, 'VERDICT-SUMMARY-0'],
+      [q1, 0.25, 'LATE-VERDICT-1'],
+      [q2, 0.25, 'LATE-VERDICT-2'],
+    ]);
+    expect(recorded.map((r) => r.response)).toEqual([
+      { type: 'short', text: 'I think it is 42\n\nanswer: 42' },
+      { type: 'short', text: 'skip this one' },
+      { type: 'short', text: '' },
+    ]);
+    expect(recorded.some((r) => r.questionId === q3)).toBe(false);
+    // Later than the old bank answer, so it is the latest.
+    expect(await bankItem(owner, q1)).toMatchObject({ status: 'partial', score: 0.25 });
+
+    // A second assessment changes nothing.
+    expect((await owner.post(`/api/pads/${id}/report/assessment`)).status).toBe(200);
+    await until(async () => (await owner.get(`/api/pads/${id}/report`)).json?.status === 'ready');
+    expect(await rows()).toEqual(recorded);
+
+    // A later bank answer wins in turn.
+    const later = await owner.post(`/api/quiz/questions/${q0}/answers`, {
+      response:
+        ELIGIBLE.find((q) => q.id === q0)?.type === 'numeric'
+          ? { type: 'numeric', value: '1' }
+          : { type: 'short', text: 'not sure', selfGrade: 0 },
+    });
+    expect(later.status).toBe(200);
+    const after = await owner.get(`/api/quiz/questions/${q0}`);
+    expect(after.json.feedback.feedback).not.toBe('VERDICT-SUMMARY-0');
+
+    // Deleting the pad keeps the answers, as for any quiz answer.
+    expect((await owner.del(`/api/pads/${id}`)).status).toBe(200);
+    const kept = await rows();
+    expect(kept.map((r) => [r.questionId, r.padId])).toEqual([
+      [q0, null],
+      [q1, null],
+      [q2, null],
+    ]);
+    expect(await bankItem(owner, q2)).toMatchObject({ status: 'partial', score: 0.25 });
+    s.close();
+    theirs.close();
+  });
+
+  it('records the answers of a round that finished before its pad ended', async () => {
+    const owner = await account('Finisher');
+    const pad = await createRound(owner, { path: 'researcher', durationMin: 20 });
+    const s = await openEvents(owner, pad.id);
+    await s.waitFor('round.updated', (e) => e.round.version === 1);
+    for (const [i, text] of ['answer one', 'answer two', 'answer three'].entries()) {
+      s.send({ type: 'chat.send', text });
+      await s.waitFor('round.updated', (e) => e.round.version === i + 2);
+    }
+    expect((await roundRow(pad.id)).state.current).toBe(3);
+    expect(
+      await db().select().from(quantRoundAnswers).where(eq(quantRoundAnswers.padId, pad.id)),
+    ).toEqual([]);
+    expect((await owner.del('/api/ai-key')).status).toBe(200);
+    expect((await owner.post(`/api/pads/${pad.id}/end`)).status).toBe(200);
+    // Ending changed nothing in the finished round, but its three answers now count.
+    expect((await roundRow(pad.id)).version).toBe(4);
+    const rows = await db()
+      .select()
+      .from(quantRoundAnswers)
+      .where(eq(quantRoundAnswers.padId, pad.id))
+      .orderBy(asc(quantRoundAnswers.answeredAt));
+    expect(rows.map((r) => [r.feedback, (r.response as { text: string }).text])).toEqual([
+      ['VERDICT-SUMMARY-0', 'answer one'],
+      ['VERDICT-SUMMARY-1', 'answer two'],
+      ['VERDICT-SUMMARY-2', 'answer three'],
     ]);
     s.close();
   });

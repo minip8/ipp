@@ -1,11 +1,12 @@
 import type { QuantQuestionReview, QuantReport } from '@ipp/contracts';
 import { describe, expect, it } from 'vitest';
-import { hintsLabel, roundFigures, scoreView, timeLabel } from './quant-logic';
+import { answeredDetail, hintsLabel, roundFigures, scoreView, timeLabel } from './quant-logic';
 
 const review = (over: Partial<QuantQuestionReview>): QuantQuestionReview => ({
   index: 0,
   questionId: 'q',
   topic: 'probability',
+  topicTitle: 'Probability',
   subtopic: 's',
   difficulty: 'easy',
   type: 'numeric',
@@ -39,12 +40,17 @@ describe('a quant report', () => {
       total: 4,
       posed: 3,
       answered: 1,
+      timedOut: 1,
       judged: 2,
       hintsGiven: 3,
       hintsAvailable: 7,
     });
     expect(f.meanScore).toBeCloseTo(0.6);
     expect(roundFigures({ path: 'trader', questions: [] }).meanScore).toBeNull();
+    expect(answeredDetail(f)).toBe('3 asked · 1 timed out · 1 not reached');
+    expect(answeredDetail(roundFigures({ path: 'trader', questions: [review({})] }))).toBe(
+      '1 asked',
+    );
   });
 
   it('shows scores as percentages with a tone', () => {

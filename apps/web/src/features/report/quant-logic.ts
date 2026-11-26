@@ -21,10 +21,16 @@ export const STATUS_TONE: Record<QuantQuestionStatus, 'accent' | 'warn' | 'neutr
   not_reached: 'outline',
 };
 
+/**
+ * The round's figures for the report's stats strip, in place of the runs and submissions a
+ * coding pad has (`Report.stats` has none for a quant pad). Derived from `Report.quant`.
+ */
 export type RoundFigures = {
   total: number;
+  /** Asked: every question posed. */
   posed: number;
   answered: number;
+  timedOut: number;
   /** Mean verdict score (0..1) over the questions that have one; null when none does. */
   meanScore: number | null;
   judged: number;
@@ -40,11 +46,20 @@ export function roundFigures(report: QuantReport): RoundFigures {
     total: qs.length,
     posed: posed.length,
     answered: qs.filter((q) => q.status === 'answered').length,
+    timedOut: qs.filter((q) => q.status === 'timed_out').length,
     meanScore: scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null,
     judged: scores.length,
     hintsGiven: qs.reduce((n, q) => n + q.hintsGiven, 0),
     hintsAvailable: posed.reduce((n, q) => n + q.hintsAvailable, 0),
   };
+}
+
+/** Under "Answered": "3 asked · 1 timed out · 1 not reached", leaving out what is zero. */
+export function answeredDetail(f: RoundFigures): string {
+  const parts = [`${f.posed} asked`];
+  if (f.timedOut) parts.push(`${f.timedOut} timed out`);
+  if (f.posed < f.total) parts.push(`${f.total - f.posed} not reached`);
+  return parts.join(' · ');
 }
 
 /** A 0..1 score as a percentage, toned the way the scorecard tones its meters. */

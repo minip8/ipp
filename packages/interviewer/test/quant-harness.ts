@@ -242,6 +242,7 @@ export function quantHarness(opts: QuantHarnessOptions = {}) {
       bank.map((q) => ({
         questionId: q.id,
         topic: q.topic,
+        topicTitle: q.topic,
         difficulty: q.difficulty,
         prompt: q.prompt,
         unit: q.type === 'numeric' ? (q.unit ?? null) : null,

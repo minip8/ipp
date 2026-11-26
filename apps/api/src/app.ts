@@ -16,6 +16,8 @@ import type { Ctx } from './context';
 import { createHttpApp, originAllowed } from './http/app';
 import { type InterviewerFactory, InterviewerHost } from './interviewer/host';
 import { defaultModelLister, type KeyVerifier, type ModelLister } from './interviewer/wiring';
+import { readDbClock } from './pg';
+import { startQuantSweeper } from './quant/sweeper';
 import { RateLimiter } from './ratelimit';
 import { Collab } from './realtime/collab';
 import { EventsGateway } from './realtime/events';
@@ -68,6 +70,7 @@ export async function createApi(opts: ApiOptions): Promise<Api> {
     ),
     verifyAiKey: opts.verifyAiKey,
     listAiModels: opts.listAiModels ?? defaultModelLister(config),
+    dbNow: readDbClock,
   } as Ctx;
   ctx.collab = new Collab(ctx);
   ctx.runs = new RunService(ctx);
@@ -78,15 +81,27 @@ export async function createApi(opts: ApiOptions): Promise<Api> {
   await ctx.runs.start();
 
   // Periodic tick for active pads that have someone connected.
-  const tick = setInterval(() => {
+  const livePads = () => {
     const padIds = new Set(ctx.rooms.pads());
     for (const name of ctx.collab.hocuspocus.documents.keys()) {
       const id = name.startsWith('pad:') ? name.slice(4) : null;
       if (id && ctx.collab.connectionCount(id) > 0) padIds.add(id);
     }
-    for (const id of padIds) ctx.ai.trigger(id, { type: 'tick' });
+    return padIds;
+  };
+  const tick = setInterval(() => {
+    for (const id of livePads()) ctx.ai.trigger(id, { type: 'tick' });
   }, config.timing.tickMs);
   tick.unref();
+  // A quant round's clock where nobody is connected (so no tick reaches its interviewer).
+  const sweeper =
+    config.timing.quantSweepMs > 0
+      ? startQuantSweeper(
+          ctx,
+          (padId) => ctx.rooms.count(padId) > 0 || ctx.collab.connectionCount(padId) > 0,
+          config.timing.quantSweepMs,
+        )
+      : null;
 
   let server: Server | null = null;
   const sockets = new Set<import('node:net').Socket>();
@@ -137,6 +152,7 @@ export async function createApi(opts: ApiOptions): Promise<Api> {
     },
     async stop() {
       clearInterval(tick);
+      await sweeper?.stop();
       const closed = server
         ? new Promise<void>((r) => server?.close(() => r()))
         : Promise.resolve();

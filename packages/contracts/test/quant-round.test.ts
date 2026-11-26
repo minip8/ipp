@@ -43,6 +43,7 @@ const picks = (n: number, hints = 2): QuantPick[] =>
   Array.from({ length: n }, (_, i) => ({
     questionId: `secret-qid-${i}`,
     topic: i % 2 ? 'probability' : 'brainteasers',
+    topicTitle: i % 2 ? 'Probability' : 'Brainteasers',
     difficulty: i === 0 ? 'easy' : i === 1 ? 'medium' : 'hard',
     prompt: `PROMPT-${i}: what is $\\frac{1}{${i + 2}}$?`,
     unit: i % 2 ? 'dollars' : null,
@@ -160,6 +161,10 @@ describe('contracts: old payloads still parse', () => {
       role: 'owner',
     };
     expect(PadSummary.parse(summary).format).toBe('coding');
+    expect(PadSummary.parse(summary).quantPath).toBeNull();
+    expect(
+      PadSummary.parse({ ...summary, format: 'quant', quantPath: 'researcher' }).quantPath,
+    ).toBe('researcher');
     const detail = PadDetail.parse({
       pad,
       role: 'owner',
@@ -190,6 +195,16 @@ describe('contracts: old payloads still parse', () => {
       assessmentUnavailable: 'failed',
     });
     expect(report.quant).toBeNull();
+    // A quant pad's report has no run figures; one stored before that still parses (above).
+    const quantStats = Report.shape.stats.parse({
+      durationSec: 1,
+      runs: null,
+      submissions: null,
+      accepted: null,
+      candidateMessages: 0,
+      interviewerMessages: 0,
+    });
+    expect(quantStats.runs).toBeNull();
     const assessment = (dims: readonly string[]) => ({
       recommendation: 'hire',
       summary: 's',
@@ -243,7 +258,7 @@ describe('contracts: old payloads still parse', () => {
     r.apply(start(0), 0);
     const q = r.state.questions[0];
     const parsed = QuantQuestionView.parse({ ...q, index: 0, hintsGiven: 0 });
-    for (const k of ['questionId', 'verdict', 'hintRungs', 'nudgedAt', 'closedBy', 'subtopic']) {
+    for (const k of ['questionId', 'verdict', 'hintRungs', 'nudgedAt', 'subtopic']) {
       expect(parsed).not.toHaveProperty(k);
     }
   });
@@ -396,16 +411,22 @@ describe('advanceRound: refusals', () => {
   it('closing for time needs the time to be up; a verdict must be in 0..1', () => {
     const r = round();
     r.apply(start(0), 0);
-    expect(r.refuse(close(r.v, 0, 'timeout'), 434)).toBe('too_early');
-    expect(r.refuse(close(r.v, 0, 'round_time'), 1799)).toBe('too_early');
+    // Up to QUANT_CLOCK_SKEW_MS (5 s) early is allowed: the asker's clock may be ahead.
+    expect(r.refuse(close(r.v, 0, 'timeout'), 429)).toBe('too_early');
+    expect(r.refuse(close(r.v, 0, 'round_time'), 1794)).toBe('too_early');
     expect(r.refuse(close(r.v, 0, 'interviewer', { score: 1.5, summary: 's' }), 10)).toBe(
       'invalid',
     );
     expect(r.refuse(close(r.v, 0, 'interviewer', { score: Number.NaN, summary: 's' }), 10)).toBe(
       'invalid',
     );
-    r.apply(close(r.v, 0, 'timeout', null), 435);
+    r.apply(close(r.v, 0, 'timeout', null), 430);
     expect(r.state.questions[0]?.closedBy).toBe('timeout');
+    expect(r.state.questions[0]?.closedAt).toBe(at(430).toISOString());
+    const late = round(20);
+    late.apply(start(0), 0);
+    late.apply(close(late.v, 0, 'round_time', null), 1195);
+    expect(late.state.questions[0]?.closedBy).toBe('round_time');
   });
 
   it('a verdict only for a closed question without one', () => {
@@ -687,27 +708,56 @@ describe('publicRound', () => {
       {
         index: 0,
         topic: 'brainteasers',
+        topicTitle: 'Brainteasers',
         difficulty: 'easy',
         prompt: r.state.questions[0]?.prompt,
         unit: null,
         posedAt: at(0).toISOString(),
         budgetSec: 435,
         closedAt: at(20).toISOString(),
+        closedBy: 'interviewer',
         hintsGiven: 1,
+        posedMessageId: r.state.questions[0]?.posedMessageId,
       },
       {
         index: 1,
         topic: 'probability',
+        topicTitle: 'Probability',
         difficulty: 'medium',
         prompt: r.state.questions[1]?.prompt,
         unit: 'dollars',
         posedAt: at(20).toISOString(),
         budgetSec: r.state.questions[1]?.budgetSec,
         closedAt: null,
+        closedBy: null,
         hintsGiven: 0,
+        posedMessageId: r.state.questions[1]?.posedMessageId,
       },
     ]);
+    // Each question carries the id of the message that posed it, so the chat numbers by identity.
+    expect(view.questions.map((q) => q.posedMessageId)).toEqual([
+      '00000000-0000-4000-8000-000000000001',
+      '00000000-0000-4000-8000-000000000002',
+    ]);
     expect(QuantRoundView.parse(view)).toEqual(view);
+  });
+
+  it('a question closed for time says so', () => {
+    const r = round();
+    r.apply(start(0), 0);
+    const budget = r.state.questions[0]?.budgetSec ?? 0;
+    r.apply(close(r.v, 0, 'timeout'), budget + 1);
+    expect(publicRound(r.state, r.v).questions[0]?.closedBy).toBe('timeout');
+  });
+
+  it('a round stored before topic titles were snapshotted shows the slug', () => {
+    const r = round();
+    r.apply(start(0), 0);
+    // `quant_rounds.state` is read as typed JSON without parsing: an old row has no `topicTitle`.
+    const old = JSON.parse(JSON.stringify(r.state)) as QuantRoundState;
+    for (const q of old.questions) delete q.topicTitle;
+    expect(QuantRoundStateSchema.safeParse(old).success).toBe(true);
+    expect(publicRound(old, r.v).questions[0]?.topicTitle).toBe('brainteasers');
   });
 
   it('never leaks an id, a verdict or an unposed prompt, for any reachable state', () => {
@@ -762,7 +812,7 @@ describe('publicRound', () => {
         const json = JSON.stringify(view);
         expect(json).not.toContain('secret-qid');
         expect(json).not.toContain('VERDICT-SECRET');
-        expect(json).not.toMatch(/"(verdict|questionId|hintRungs|nudgedAt|closedBy|score)"/);
+        expect(json).not.toMatch(/"(verdict|questionId|hintRungs|nudgedAt|subtopic|score)"/);
         r.state.questions.forEach((q, qi) => {
           if (q.posedAt === null) expect(json).not.toContain(`PROMPT-${qi}:`);
           else expect(json).toContain(`PROMPT-${qi}:`);

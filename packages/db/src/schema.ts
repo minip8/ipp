@@ -40,6 +40,7 @@ import {
   serial,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
 
@@ -447,6 +448,41 @@ export const quizStandaloneAnswers = pgTable(
   (t) => [
     primaryKey({ columns: [t.userId, t.questionId] }),
     index('quiz_standalone_answers_question_idx').on(t.questionId),
+  ],
+);
+
+/**
+ * A quant round's judged questions as quiz answers of the pad's owner (ARCHITECTURE §8.2):
+ * written when the pad has ended, in the transaction that finishes its round, and by any
+ * `verdict` step after that; once per pad and question. Same grading columns as `quiz_answers`
+ * (always AI-graded). The pad may be deleted later; the answer stays, like any quiz answer.
+ */
+export const quantRoundAnswers = pgTable(
+  'quant_round_answers',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    /** null once the pad was deleted. */
+    padId: uuid('pad_id').references(() => pads.id, { onDelete: 'set null' }),
+    questionId: text('question_id')
+      .notNull()
+      .references(() => quizQuestions.id),
+    /** What the owner said while the question was open, as a short answer. */
+    response: jsonb('response').$type<QuizResponse>().notNull(),
+    score: real('score').notNull(),
+    correct: boolean('correct').notNull(),
+    feedback: text('feedback'),
+    gradedBy: text('graded_by').$type<'auto' | 'ai' | 'self'>().notNull(),
+    needsSelfGrade: boolean('needs_self_grade').notNull().default(false),
+    /** When the question was closed. */
+    answeredAt: tsz('answered_at').notNull(),
+  },
+  (t) => [
+    uniqueIndex('quant_round_answers_pad_question_idx').on(t.padId, t.questionId),
+    index('quant_round_answers_user_idx').on(t.userId, t.questionId),
+    index('quant_round_answers_question_idx').on(t.questionId),
   ],
 );
 
