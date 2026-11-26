@@ -605,6 +605,7 @@ describe('a round, step by step', () => {
           closedBy: null,
           hintsGiven: 0,
           posedMessageId: posedMsg?.message.id,
+          game: null,
         },
       ]);
       expect(q0?.topicTitle).toBe(topicTitle(q0?.topic));
@@ -1363,6 +1364,7 @@ describe('ending a quant pad', () => {
         keyPoints: b.type === 'short' ? b.keyPoints : [],
         explanation: b.explanation,
         hintsAvailable: 2,
+        game: null,
       };
     };
     expect(report.json.quant.path).toBe('trader');

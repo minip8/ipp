@@ -14,10 +14,37 @@
  *   pending ──start──▶ asking(0) ──turn──▶ asking(0) ──close──▶ asking(1) … ──close──▶ finished
  *      └───────────────────────── end (the pad ended) ─────────────────────────────▶ finished
  *   finished: only `verdict` (the assessment judging a question closed without one)
+ *
+ * A slot may hold a market-making game instead of a bank question (`QuantRoundQuestion.game`,
+ * quant-game.ts, ARCHITECTURE §8.3). While it is the current question the candidate posts quotes
+ * (`quote`, raised by the API) and the interviewer's `turn` may trade against the live quote
+ * and/or reveal the next component (`QuantGameMove`); every way the question closes (`close`,
+ * `end`) settles the game. Its hidden values stay in the state; the view carries `gameView`.
+ *
+ *   asking(i, game) ──quote──▶ live quote ──turn + trade──▶ no quote ──quote──▶ … ──close──▶ settled
+ *                       └──turn + reveal (withdraws the quote)──┘
  */
 import { z } from 'zod';
 import { Id, IsoDate, Slug } from './common';
 import type { MessageIntent } from './pad';
+import {
+  createGameState,
+  drawGame,
+  formatQuote,
+  gameReview,
+  gameView,
+  postQuote,
+  type QuantGame,
+  type QuantGameEntry,
+  type QuantGameRefusal,
+  QuantGameReview,
+  QuantGameState,
+  type QuantGameTrade,
+  QuantGameView,
+  revealNext,
+  settleGame,
+  tradeQuote,
+} from './quant-game';
 import { QuantPath, QuizDifficulty } from './quiz';
 
 // ---------------------------------------------------------------- length and clock
@@ -128,6 +155,11 @@ export const QuantQuestionView = z.object({
    * up here, not by counting messages (which breaks once a transcript is paged or capped).
    */
   posedMessageId: Id.nullable(),
+  /**
+   * A game's public view (`gameView`: no hidden value, no fair value); null for a bank question
+   * (and absent from servers before games, hence the default).
+   */
+  game: QuantGameView.nullable().default(null),
 });
 export type QuantQuestionView = z.infer<typeof QuantQuestionView>;
 
@@ -191,6 +223,12 @@ export const QuantRoundQuestion = z.object({
   closedBy: QuantClosedBy.nullable(),
   /** null until judged; a question closed for time or by the pad's end may be judged later. */
   verdict: QuantVerdict.nullable(),
+  /**
+   * A market-making game in this slot (`questionId` is then the game's id, `prompt` its prompt).
+   * Absent for a bank question, and in every round stored before games existed: readers treat
+   * absent and null alike (`q.game ?? null`).
+   */
+  game: QuantGameState.nullable().optional(),
 });
 export type QuantRoundQuestion = z.infer<typeof QuantRoundQuestion>;
 
@@ -204,11 +242,31 @@ export const QuantRoundState = z.object({
 });
 export type QuantRoundState = z.infer<typeof QuantRoundState>;
 
-/** What the round's assembly picks for one slot (`createQuantRound`). */
+/**
+ * What the round's assembly picks for one slot (`createQuantRound`). A game slot carries the
+ * drawn game (`quantGamePick`).
+ */
 export type QuantPick = Pick<
   QuantRoundQuestion,
   'questionId' | 'topic' | 'difficulty' | 'prompt' | 'unit' | 'hintsAvailable'
-> & { topicTitle: string };
+> & { topicTitle: string; game?: QuantGameState };
+
+/**
+ * The slot of a game: its hidden values drawn now from `rand` (the assembler's seeded PRNG), its
+ * mechanics and title snapshotted. `hintsAvailable` counts the game's authored hints.
+ */
+export function quantGamePick(game: QuantGame, topicTitle: string, rand: () => number): QuantPick {
+  return {
+    questionId: game.id,
+    topic: game.topic,
+    topicTitle,
+    difficulty: game.difficulty,
+    prompt: game.prompt,
+    unit: null,
+    hintsAvailable: game.hints.length,
+    game: createGameState(game, drawGame(game, rand)),
+  };
+}
 
 /** A pending round over the assembled questions, in the order they will be asked. */
 export const createQuantRound = (
@@ -236,6 +294,8 @@ export const createQuantRound = (
     closedAt: null,
     closedBy: null,
     verdict: null,
+    // A bank question's slot stays exactly as before games existed.
+    ...(p.game ? { game: p.game } : {}),
   })),
 });
 
@@ -264,6 +324,7 @@ export function publicRound(state: QuantRoundState, version: number): QuantRound
       closedBy: q.closedBy,
       hintsGiven: q.hintRungs.length,
       posedMessageId: q.posedMessageId,
+      game: q.game ? gameView(q.game) : null,
     });
   });
   return {
@@ -313,15 +374,20 @@ export const QuantQuestionReview = z.object({
   topic: Slug,
   /** As in `QuantQuestionView`: the slug for a round stored before titles were snapshotted. */
   topicTitle: z.string(),
+  /** A game has none: empty. */
   subtopic: z.string(),
   difficulty: QuizDifficulty,
-  type: z.enum(['short', 'numeric']),
+  type: z.enum(['short', 'numeric', 'game']),
   prompt: z.string(),
   unit: z.string().nullable(),
-  /** short: the reference answer; numeric: `answerText`, else the answer itself. */
+  /**
+   * short: the reference answer; numeric: `answerText`, else the answer itself; game: its figures
+   * before anything was shown (`gameSolution`, plain text).
+   */
   solution: z.string(),
-  /** short questions; empty for numeric. */
+  /** short questions; empty for numeric and game. */
   keyPoints: z.array(z.string()),
+  /** The authored explanation (a game's from its content; empty when the content is gone). */
   explanation: z.string(),
   status: QuantQuestionStatus,
   verdict: QuantVerdict.nullable(),
@@ -329,8 +395,18 @@ export const QuantQuestionReview = z.object({
   hintsAvailable: z.int().min(0),
   timeSec: z.int().nullable(),
   budgetSec: z.int().nullable(),
+  /**
+   * A posed game's analysis (`quantGameReview`); null for a bank question and a game never
+   * posed (and absent from reports built before games, hence the default).
+   */
+  game: QuantGameReview.nullable().default(null),
 });
 export type QuantQuestionReview = z.infer<typeof QuantQuestionReview>;
+
+/** `QuantQuestionReview.game` for a round question: its game's review once posed, else null. */
+export const quantGameReview = (
+  q: Pick<QuantRoundQuestion, 'posedAt' | 'game'>,
+): QuantGameReview | null => (q.game && q.posedAt !== null ? gameReview(q.game) : null);
 
 export const QuantReport = z.object({
   path: QuantPath,
@@ -378,7 +454,9 @@ export function quantClock(state: QuantRoundState, roundEndsAt: Date | number): 
  *  start    the round begins: the first question is revealed (only while pending)
  *  turn     the conversation goes on with the current question: `stay`, a `hint` (with the rung
  *           given: the next authored one, or 0 for its own words) or the one `follow_up`;
- *           `nudge` marks the message that says the budget is up (once per question)
+ *           `nudge` marks the message that says the budget is up (once per question). On a game
+ *           it may also make a `game` move: a trade against the live quote, a reveal, or both
+ *           (the trade first); the whole step is refused when any part of it is.
  *  close    the current question is done; the next is revealed, or the round finishes when none
  *           is left, the round's clock has run out, or too little of it is left for another
  *           (`QUANT_BUDGET_MIN_SEC`). `timeout` needs the question's budget to be up and
@@ -398,6 +476,8 @@ export type QuantStep =
       hintRung?: number;
       nudge?: boolean;
       note?: string;
+      /** A game only (`not_game` otherwise). */
+      game?: QuantGameMove;
     }
   | {
       type: 'close';
@@ -418,15 +498,43 @@ export type QuantStep =
  */
 export type QuantEndStep = { type: 'end' };
 
-export type QuantRoundStep = QuantStep | QuantEndStep;
+/**
+ * The interviewer's move in a game, inside a `turn` (in this order when both are given):
+ *  trade   trade against the candidate's live quote (`QuantGameTrade`: the INTERVIEWER's side,
+ *          `buy` lifting the offer or `sell` hitting the bid, and a whole quantity up to the
+ *          quote's size); the quote is consumed
+ *  reveal  show the next component in the game's reveal order; the live quote is withdrawn
+ * A move with neither is no move.
+ */
+export interface QuantGameMove {
+  trade?: QuantGameTrade;
+  reveal?: boolean;
+}
+
+/**
+ * The candidate posted a market on question `index` (`PostQuantQuoteRequest`). Raised by the API
+ * only, so it is not a `QuantStep`, and like `end` it is valid on any version (the caller's
+ * compare-and-swap guards the write). Valid only while `index` is the current question and a
+ * game: it replaces the live quote, and its effects post `formatQuote(quote)` as the candidate's
+ * message.
+ */
+export type QuantQuoteStep = {
+  type: 'quote';
+  index: number;
+  bid: number;
+  ask: number;
+  size: number;
+};
+
+export type QuantRoundStep = QuantStep | QuantEndStep | QuantQuoteStep;
 
 /**
  * Why a step was refused. Nothing changes and no message is posted.
  *
  *  stale           decided on an older version of the round
  *  ended           the round has finished (only `verdict` is accepted then)
- *  wrong_phase     `start` when not pending; `turn` / `close` while pending
- *  wrong_index     not the current question (`turn`, `close`) or no such question (`verdict`)
+ *  wrong_phase     `start` when not pending; `turn` / `close` / `quote` while pending
+ *  wrong_index     not the current question (`turn`, `close`, `quote`) or no such question (`verdict`)
  *  hint_rung       a missing, skipped, repeated or non-existent authored rung
  *  follow_up_used  the question's one follow-up was already asked
  *  nudged          the question was already nudged
@@ -434,7 +542,11 @@ export type QuantRoundStep = QuantStep | QuantEndStep;
  *                  (by more than `QUANT_CLOCK_SKEW_MS`)
  *  not_closed      `verdict` for a question that is open or was never posed
  *  has_verdict     `verdict` for a question that already has one
- *  invalid         a verdict outside 0..1, or a rung that is not a whole number
+ *  invalid         a verdict outside 0..1, a rung that is not a whole number, or a trade's side
+ *                  that is neither `buy` nor `sell`
+ *  not_game        a `quote`, or a `turn` with a game move, on a question that is not a game
+ *  …               and the game's own (`QuantGameRefusal`): `bad_quote`, `quote_limit`,
+ *                  `no_quote`, `bad_quantity`, `nothing_to_reveal`, `game_settled`
  */
 export type QuantRefusal =
   | 'stale'
@@ -447,7 +559,9 @@ export type QuantRefusal =
   | 'too_early'
   | 'not_closed'
   | 'has_verdict'
-  | 'invalid';
+  | 'invalid'
+  | 'not_game'
+  | QuantGameRefusal;
 
 /** What `applyQuantStep` tells the interviewer. On success, the round's new version and clock. */
 export type QuantStepResult =
@@ -467,6 +581,17 @@ export interface QuantEffects {
   note: string | null;
   /** The round finished with this step. */
   finished: boolean;
+  /**
+   * A `quote` step: post `text` (`formatQuote`) as the poster's chat message (role candidate,
+   * kind chat, no intent), before the game's timeline event for it.
+   */
+  quote: { index: number; text: string } | null;
+  /**
+   * What the step did to question `index`'s game, in order (a quote; a trade then a reveal; the
+   * settlement when the question closed): record each as a `game` timeline event
+   * `{ type: 'game', index, entry }`, after `say` and before the next question's `reveal`.
+   */
+  game: { index: number; entries: QuantGameEntry[] } | null;
 }
 
 export type QuantAdvance =
@@ -508,7 +633,8 @@ const refuse = (reason: QuantRefusal): QuantAdvance => ({ ok: false, reason });
  *
  * A reveal (by `start` or `close`) poses the next question with `posedAt = now` and its budget
  * from `quantBudgetSec`; when less than `QUANT_BUDGET_MIN_SEC` of the round is left, or no
- * question is left, the round finishes instead.
+ * question is left, the round finishes instead. Closing a question that holds a game settles it
+ * (`settleGame`) first.
  */
 export function advanceRound(
   state: QuantRoundState,
@@ -517,12 +643,29 @@ export function advanceRound(
 ): QuantAdvance {
   const phase = quantPhase(state);
   if (phase === 'finished' && step.type !== 'verdict') return refuse('ended');
-  if (step.type !== 'end' && step.version !== env.version) return refuse('stale');
+  if (step.type !== 'end' && step.type !== 'quote' && step.version !== env.version)
+    return refuse('stale');
 
   const nowIso = env.now.toISOString();
   const questions = state.questions.map((q) => ({ ...q, hintRungs: [...q.hintRungs] }));
   const next: QuantRoundState = { ...state, questions };
-  const effects: QuantEffects = { say: null, reveal: null, note: null, finished: false };
+  const effects: QuantEffects = {
+    say: null,
+    reveal: null,
+    note: null,
+    finished: false,
+    quote: null,
+    game: null,
+  };
+  // The game transitions return new states (the copy above shares `game` with the input).
+  const entries: QuantGameEntry[] = [];
+  const settle = (q: QuantRoundQuestion | undefined) => {
+    if (!q?.game || q.game.settlement) return;
+    const out = settleGame(q.game, env.now);
+    if (!out.ok) return;
+    q.game = out.state;
+    entries.push(out.entry);
+  };
 
   /** Poses question `index`, or finishes the round when it cannot. */
   const reveal = (index: number) => {
@@ -554,6 +697,7 @@ export function advanceRound(
       if (open) {
         open.closedAt = nowIso;
         open.closedBy = 'ended';
+        settle(open);
       }
       next.current = questions.length;
       effects.finished = true;
@@ -588,6 +732,40 @@ export function advanceRound(
         if (q.nudgedAt !== null) return refuse('nudged');
         q.nudgedAt = nowIso;
       }
+      const move = step.game;
+      if (move && (move.trade || move.reveal)) {
+        if (!q.game) return refuse('not_game');
+        let game = q.game;
+        if (move.trade) {
+          const out = tradeQuote(game, move.trade, env.now);
+          if (!out.ok) return refuse(out.reason);
+          game = out.state;
+          entries.push(out.entry);
+        }
+        if (move.reveal) {
+          const out = revealNext(game, env.now);
+          if (!out.ok) return refuse(out.reason);
+          game = out.state;
+          entries.push(out.entry);
+        }
+        q.game = game;
+      }
+      break;
+    }
+
+    case 'quote': {
+      if (phase !== 'asking') return refuse('wrong_phase');
+      if (step.index !== state.current) return refuse('wrong_index');
+      const q = questions[state.current];
+      if (!q) return refuse('wrong_index');
+      if (!q.game) return refuse('not_game');
+      const quote = { bid: step.bid, ask: step.ask, size: step.size };
+      const out = postQuote(q.game, quote, env.now);
+      if (!out.ok) return refuse(out.reason);
+      q.game = out.state;
+      entries.push(out.entry);
+      // The normalised quote (snapped to the tick), as the log has it.
+      effects.quote = { index: state.current, text: formatQuote(out.state.quote ?? quote) };
       break;
     }
 
@@ -608,6 +786,7 @@ export function advanceRound(
       q.closedAt = nowIso;
       q.closedBy = step.by;
       q.verdict = step.verdict && { score: step.verdict.score, summary: step.verdict.summary };
+      settle(q);
       if (step.by === 'round_time') {
         next.current = questions.length;
         effects.finished = true;
@@ -628,7 +807,9 @@ export function advanceRound(
     }
   }
 
-  if (step.type !== 'end' && step.type !== 'verdict') {
+  // Every game entry of a step is about the question that was current when it was taken.
+  if (entries.length > 0) effects.game = { index: state.current, entries };
+  if (step.type !== 'end' && step.type !== 'verdict' && step.type !== 'quote') {
     if (step.say !== null && step.say.trim() !== '') {
       effects.say = {
         text: step.say,

@@ -100,7 +100,7 @@ const InterviewExtras = {
  * A number as `parseNumeric` reads it: `1/3`, `0.25`, `42`, `12.5%`. YAML numbers are accepted and
  * kept as text, so an exact fraction never goes through a float.
  */
-const NumericLiteral = z
+export const NumericLiteral = z
   .union([
     z.string(),
     // An unquoted YAML integer beyond 2^53 has already lost digits by the time it gets here.

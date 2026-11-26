@@ -28,6 +28,7 @@ const question = (index: number, over: Partial<QuantQuestionView> = {}): QuantQu
   closedBy: null,
   hintsGiven: 0,
   posedMessageId: null,
+  game: null,
   ...over,
 });
 const round = (over: Partial<QuantRoundView> = {}): QuantRoundView => ({

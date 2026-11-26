@@ -411,6 +411,7 @@ describe('quant rounds', () => {
       closedBy: null,
       hintsGiven: 0,
       posedMessageId: null,
+      game: null,
     })),
   });
   const quant: PadDetail = {

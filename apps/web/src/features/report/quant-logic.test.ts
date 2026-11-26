@@ -21,6 +21,7 @@ const review = (over: Partial<QuantQuestionReview>): QuantQuestionReview => ({
   hintsAvailable: 2,
   timeSec: 60,
   budgetSec: 420,
+  game: null,
   ...over,
 });
 

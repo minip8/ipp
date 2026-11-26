@@ -17,8 +17,11 @@
 import { randomUUID } from 'node:crypto';
 import {
   advanceRound,
+  gameSolution,
+  gameStats,
   type Message,
   publicRound,
+  type QuantGame,
   type QuantQuestionReview,
   type QuantReport,
   type QuantRoundState,
@@ -27,6 +30,7 @@ import {
   type QuantStepResult,
   type QuizQuestion,
   quantClock,
+  quantGameReview,
   quantPhase,
   quantQuestionStatus,
   quantRoundEndsAt,
@@ -317,11 +321,39 @@ export async function quantReport(ctx: Ctx, padId: string): Promise<QuantReport 
   );
 }
 
+/**
+ * `games` holds the content of the round's games by id (§8.3); a game's review is built from its
+ * state alone, its explanation from the content (empty without it).
+ */
 export function buildQuantReport(
   state: QuantRoundState,
   bank: ReadonlyMap<string, QuizQuestion>,
+  games: ReadonlyMap<string, QuantGame> = new Map(),
 ): QuantReport {
   const questions = state.questions.map((q, index): QuantQuestionReview => {
+    if (q.game) {
+      return {
+        index,
+        questionId: q.questionId,
+        topic: q.topic,
+        topicTitle: q.topicTitle ?? q.topic,
+        subtopic: '',
+        difficulty: q.difficulty,
+        type: 'game',
+        prompt: q.prompt,
+        unit: null,
+        solution: gameSolution(gameStats(q.game.spec)),
+        keyPoints: [],
+        explanation: games.get(q.questionId)?.explanation ?? '',
+        status: quantQuestionStatus(q),
+        verdict: q.verdict ? { score: q.verdict.score, summary: q.verdict.summary } : null,
+        hintsGiven: q.hintRungs.length,
+        hintsAvailable: q.hintsAvailable,
+        timeSec: quantTimeSec(q),
+        budgetSec: q.budgetSec,
+        game: quantGameReview(q),
+      };
+    }
     const b = bank.get(q.questionId);
     const short = b?.type === 'short' ? b : null;
     const numeric = b?.type === 'numeric' ? b : null;
@@ -345,6 +377,7 @@ export function buildQuantReport(
       hintsAvailable: q.hintsAvailable,
       timeSec: quantTimeSec(q),
       budgetSec: q.budgetSec,
+      game: null,
     };
   });
   return { path: state.path, questions };
