@@ -88,10 +88,10 @@
     **Size is bounded.** $|a - b|$ is never larger than the larger of $a$ and $b$, so no number ever
     exceeds 10. That rules out 55 (the sum, which is what you would get if the move were $a + b$).
 
-    **The odd values up to 10 are all reachable.** For example, pair up $(10, 9), (8, 7), (6, 5),
-    (4, 3)$ to get four 1s, leaving $1, 1, 1, 1, 1, 2$; combining $2$ and $1$ gives $1$, and then the
-    five 1s reduce to a single 1 (two 1s give 0, and $|1 - 0| = 1$). An exhaustive search confirms
-    that the reachable final values are exactly 1, 3, 5, 7 and 9.
+    **The odd values up to 10 are all reachable.** For example, pair up 10 with 9, 8 with 7, 6 with
+    5 and 4 with 3 to get four 1s, leaving 1, 1, 1, 1, 1, 2. Combining the 2 with a 1 gives 1, and
+    then the five 1s reduce to a single 1 (two 1s give 0, and $|1 - 0| = 1$). An exhaustive search
+    confirms that the reachable final values are exactly 1, 3, 5, 7 and 9.
 
     The mistakes this catches: choosing 0 (assuming everything can cancel), and 55 (confusing the
     move with addition, which preserves the sum itself rather than only its parity).
