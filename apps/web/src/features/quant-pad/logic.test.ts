@@ -6,6 +6,7 @@ import {
   currentQuestion,
   earlierQuestions,
   gameMoves,
+  isHosted,
   lastSettledGame,
   minutesPerQuestion,
   NO_QUANT_UNREAD,
@@ -174,5 +175,30 @@ describe('a round with a game', () => {
       ],
     });
     expect(lastSettledGame(later)).toBeNull();
+  });
+});
+
+describe('a quant room’s round (hosted)', () => {
+  const hosted = (over: Partial<QuantRoundView> = {}) =>
+    round({ mode: 'hosted', path: null, total: null, ...over });
+
+  it('has no "of N" and no "round finished"', () => {
+    expect(isHosted(hosted())).toBe(true);
+    expect(isHosted(round())).toBe(false);
+    const asking = hosted({
+      phase: 'asking',
+      questions: [
+        question(0, { closedAt: at(60), budgetSec: null }),
+        question(1, { budgetSec: null }),
+      ],
+    });
+    expect(roundHeading(asking)).toBe('Question 2');
+    expect(roundHeading(hosted({ phase: 'pending', questions: [] }))).toBe('No question yet');
+    const between = hosted({
+      phase: 'finished',
+      questions: [question(0, { closedAt: at(60), budgetSec: null })],
+    });
+    expect(roundHeading(between)).toBe('1 question asked');
+    expect(roundProgress(between)).toEqual({ posed: 1, closed: 1, hints: 0, total: 1 });
   });
 });

@@ -34,14 +34,23 @@ export function closedLabel(q: Pick<QuantQuestionView, 'closedBy'>): string | nu
   }
 }
 
-/** "Question 2 of 4" for the current question; otherwise what the round is doing. */
+/** Whether a person (a quant room's host) runs the round: no total, no clock, no AI. */
+export const isHosted = (round: Pick<QuantRoundView, 'mode' | 'total'>) =>
+  round.mode === 'hosted' || round.total === null;
+
+/**
+ * "Question 2 of 4" for the current question; otherwise what the round is doing. A quant room's
+ * round has no total: "Question 3", and between questions how many were asked.
+ */
 export function roundHeading(round: QuantRoundView): string {
   const q = currentQuestion(round);
-  // A quant room's round (total null) has no "of N".
-  if (q)
-    return round.total === null
-      ? `Question ${q.index + 1}`
-      : `Question ${q.index + 1} of ${round.total}`;
+  if (isHosted(round)) {
+    if (q) return `Question ${q.index + 1}`;
+    return round.questions.length
+      ? `${plural(round.questions.length, 'question')} asked`
+      : 'No question yet';
+  }
+  if (q) return `Question ${q.index + 1} of ${round.total}`;
   if (round.phase === 'finished') return 'Round finished';
   return plural(round.total ?? round.questions.length, 'question');
 }
@@ -58,10 +67,10 @@ export type QuestionClock = {
   label: string;
 };
 
+/** A question's clock; only an AI round's questions have one (a quant room's budget is null). */
 export function questionClock(q: QuantQuestionView, now: number): QuestionClock {
   const end = q.closedAt ? Date.parse(q.closedAt) : now;
   const elapsedSec = Math.max(0, Math.floor((end - Date.parse(q.posedAt)) / 1000));
-  // A quant room's questions have no budget (null).
   const budgetSec = q.budgetSec ?? 0;
   const leftSec = budgetSec - elapsedSec;
   const over = leftSec < 0;
@@ -74,7 +83,10 @@ export function questionClock(q: QuantQuestionView, now: number): QuestionClock 
   };
 }
 
-/** What the round has done so far, for the end dialog. */
+/**
+ * What the round has done so far, for the end dialog. `total` is the round's questions (an AI
+ * round's) or, in a quant room, the ones asked so far: there is no total there.
+ */
 export function roundProgress(round: QuantRoundView): {
   posed: number;
   closed: number;

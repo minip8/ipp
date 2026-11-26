@@ -4,6 +4,11 @@
  * the question on one side, the conversation in the middle, the scratchpad (and the whiteboard)
  * on the other. Loaded with `next/dynamic` from the pad page, so its math (KaTeX) never loads
  * with a coding pad, and Monaco never loads here.
+ *
+ * A quant room (§8.4) is the same frame with people instead of the AI: the chat is the room's,
+ * and the host gets their desk (the open question's answer, hints and verdict, the queue, the
+ * bank) in place of the question panel, plus their notes and the AI second opinion beside the
+ * chat. The candidate sees the question panel, without a clock.
  */
 import { HelpCircleIcon, type LucideIcon, MessagesSquareIcon, NotebookPenIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -20,6 +25,12 @@ import { usePad } from '@/features/pad/session';
 import { useShortcuts } from '@/features/pad/shortcuts';
 import { TopBar } from '@/features/pad/top-bar';
 import { PortalSlot, useIsDesktop, useKeyboardBox, usePortalNode } from '@/features/pad/use-layout';
+import { HostDesk } from '@/features/quant-room/host-desk';
+import { HostRoomProvider } from '@/features/quant-room/host-room';
+import { QuantSecondOpinionPanel } from '@/features/quant-room/second-opinion';
+import { InviteBanner } from '@/features/room/invite-banner';
+import { RoomChat } from '@/features/room/room-chat';
+import { RoomSidePanel } from '@/features/room/side-panel';
 import { cn } from '@/lib/utils';
 import {
   clearQuantUnread,
@@ -45,16 +56,31 @@ const PANE_LABEL: Record<QuantPane, string> = {
   scratch: 'Scratchpad',
   chat: 'Chat',
 };
+/** A quant room's host: their desk in the question pane, their notes beside the chat. */
+const HOST_PANE_LABEL: Record<QuantPane, string> = {
+  question: 'Desk',
+  scratch: 'Scratchpad',
+  chat: 'Chat & notes',
+};
+
+/** What a quant room's chat says before anyone writes. */
+const ROOM_CHAT_EMPTY = {
+  host: 'Everyone in the room sees what is written here, and the questions you ask. Your desk, notes and the AI second opinion stay with you.',
+  candidate:
+    'Say hello, ask your interviewer anything, and think out loud here. Everyone in the room sees what you write.',
+};
 
 /** The phone layout's bottom bar, as the coding pad's: one tab per pane. */
 function PaneTabs({
   pane,
   onPane,
   unread,
+  labels = PANE_LABEL,
 }: {
   pane: QuantPane;
   onPane: (p: QuantPane) => void;
   unread: QuantUnread;
+  labels?: Record<QuantPane, string>;
 }) {
   return (
     <div
@@ -107,7 +133,7 @@ function PaneTabs({
                 </span>
               )}
             </span>
-            <span className="max-w-full truncate px-1">{PANE_LABEL[p]}</span>
+            <span className="max-w-full truncate px-1">{labels[p]}</span>
             {dot && <span className="sr-only">(new question)</span>}
             {count > 0 && <span className="sr-only">({count} new)</span>}
           </button>
@@ -119,7 +145,7 @@ function PaneTabs({
 
 export function QuantWorkspace() {
   const pad = usePad();
-  const { state, readOnly, telemetry, endPad } = pad;
+  const { state, readOnly, telemetry, endPad, isRoom, isHost } = pad;
   const router = useRouter();
   const chatRef = useRef<ChatHandle>(null);
   const [dialog, setDialog] = useState<null | 'end' | 'share'>(null);
@@ -130,7 +156,8 @@ export function QuantWorkspace() {
   const desktop = useIsDesktop();
   const compact = !desktop;
   const keyboard = useKeyboardBox(compact);
-  const [pane, setPaneState] = useState<QuantPane>('chat');
+  // The host of a room opens on their desk; everyone else on the chat.
+  const [pane, setPaneState] = useState<QuantPane>(isHost ? 'question' : 'chat');
   const paneRef = useRef(pane);
   paneRef.current = pane;
   const [unread, setUnread] = useState<QuantUnread>(NO_QUANT_UNREAD);
@@ -159,8 +186,10 @@ export function QuantWorkspace() {
     setUnread((u) => noteQuantActivity(u, paneRef.current, { messages, newQuestion }));
   }, [state.messages, state.me, posed, moves, compact]);
 
+  // The host's desk is wider than the candidate's question panel: a layout of its own.
+  const layoutId = isHost ? 'ipp-quant-host' : 'ipp-quant-main';
   const mainLayout = useDefaultLayout({
-    id: 'ipp-quant-main',
+    id: layoutId,
     storage,
     panelIds: ['question', 'chat', 'scratch'],
   });
@@ -173,9 +202,10 @@ export function QuantWorkspace() {
     toggleMic: () => chatRef.current?.toggleMic(),
   });
 
-  // Blur telemetry, as on a coding pad: how long the candidate was away from the tab.
+  // Blur telemetry, as on a coding pad: how long the candidate was away from the tab (in a room,
+  // the candidate's, never the host looking something up).
   useEffect(() => {
-    if (readOnly) return;
+    if (readOnly || isHost) return;
     let since: number | null = null;
     const blur = () => {
       since = Date.now();
@@ -192,7 +222,7 @@ export function QuantWorkspace() {
       window.removeEventListener('blur', blur);
       window.removeEventListener('focus', focus);
     };
-  }, [readOnly, telemetry]);
+  }, [readOnly, isHost, telemetry]);
 
   const toReport = () => router.push(`/pads/${state.pad.id}/report`);
   const endNow = async () => {
@@ -202,9 +232,29 @@ export function QuantWorkspace() {
     if (ok) toReport();
   };
 
-  const questionContent = <QuestionPanel onEnd={() => void endNow()} ending={ending} />;
+  const questionContent = isHost ? (
+    <HostDesk compact={compact} />
+  ) : (
+    <QuestionPanel onEnd={() => void endNow()} ending={ending} />
+  );
   const scratchContent = <Scratchpad />;
-  const chatContent = (
+  const chatContent = isRoom ? (
+    isHost ? (
+      <RoomSidePanel
+        ref={chatRef}
+        review={<QuantSecondOpinionPanel />}
+        Text={MathMarkdown}
+        empty={ROOM_CHAT_EMPTY}
+      />
+    ) : (
+      <div className="flex h-full flex-col">
+        {compact && <QuestionStrip onOpen={() => setPane('question')} />}
+        <div className="min-h-0 flex-1">
+          <RoomChat ref={chatRef} Text={MathMarkdown} empty={ROOM_CHAT_EMPTY} />
+        </div>
+      </div>
+    )
+  ) : (
     <div className="flex h-full flex-col">
       {compact && <QuestionStrip onOpen={() => setPane('question')} />}
       <div className="min-h-0 flex-1">
@@ -228,7 +278,7 @@ export function QuantWorkspace() {
     chat: chatNode,
   };
 
-  return (
+  const workspace = (
     <div
       className={cn(
         'flex h-dvh flex-col overflow-hidden bg-bg',
@@ -241,20 +291,25 @@ export function QuantWorkspace() {
     >
       <TopBar onEnd={() => setDialog('end')} onShare={() => setDialog('share')} compact={compact} />
       <EndedBanner />
+      <InviteBanner />
 
       {desktop ? (
         <Group
           orientation="horizontal"
-          id="ipp-quant-main"
+          id={layoutId}
           className="min-h-0 flex-1"
           defaultLayout={mainLayout.defaultLayout}
           onLayoutChanged={mainLayout.onLayoutChanged}
         >
-          <Panel id="question" defaultSize="29%" minSize="260px">
+          <Panel
+            id="question"
+            defaultSize={isHost ? '35%' : '29%'}
+            minSize={isHost ? '340px' : '260px'}
+          >
             <PortalSlot node={questionNode} className="h-full" />
           </Panel>
           <ResizeHandle />
-          <Panel id="chat" minSize="340px" defaultSize="41%">
+          <Panel id="chat" minSize="320px" defaultSize={isHost ? '35%' : '41%'}>
             <PortalSlot node={chatNode} className="h-full" />
           </Panel>
           <ResizeHandle />
@@ -278,7 +333,14 @@ export function QuantWorkspace() {
           ))}
         </div>
       )}
-      {compact && !keyboard && <PaneTabs pane={pane} onPane={setPane} unread={unread} />}
+      {compact && !keyboard && (
+        <PaneTabs
+          pane={pane}
+          onPane={setPane}
+          unread={unread}
+          labels={isHost ? HOST_PANE_LABEL : PANE_LABEL}
+        />
+      )}
 
       {questionNode && createPortal(questionContent, questionNode, 'question')}
       {scratchNode && createPortal(scratchContent, scratchNode, 'scratch')}
@@ -297,4 +359,6 @@ export function QuantWorkspace() {
       />
     </div>
   );
+  // The host's view of the round, shared by the desk, the bank and the second opinion.
+  return isHost ? <HostRoomProvider>{workspace}</HostRoomProvider> : workspace;
 }
