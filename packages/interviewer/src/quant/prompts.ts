@@ -20,8 +20,9 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { type Message, QUANT_PATH_INFO } from '@ipp/contracts';
 import { clock, duration, historyStart, LIMITS, neutralise, truncate } from '../prompts';
-import type { QuantContext, QuantQuestion } from '../types';
+import type { QuantContext, QuantGameSlotEntry, QuantQuestion } from '../types';
 import { closingEndsRound } from './clock';
+import { entryHints, entryTopic, isGameEntry } from './entry';
 
 type MessageParam = Anthropic.Beta.BetaMessageParam;
 type TextBlock = Anthropic.Beta.BetaTextBlockParam;
@@ -112,12 +113,33 @@ function numericAnswer(q: Extract<QuantQuestion, { type: 'numeric' }>): string {
   return lines.join(' ');
 }
 
+/**
+ * A market-making game (ARCHITECTURE §8.3) until the interviewer can trade and reveal: a
+ * conversation about the prompt with the hint ladder. Deliberately without the books, the
+ * counterparty notes and the explanation, which hold the fair value and the hidden values.
+ */
+export function gameBlock(entry: QuantGameSlotEntry, total: number, heading: string): string {
+  const g = entry.game;
+  return [
+    `# ${heading}: question ${entry.index + 1} of ${total} (${topicName(g.topic)}, ${g.difficulty}): a market-making game, "${g.title.trim()}"`,
+    `## Prompt (on the candidate's screen, word for word)`,
+    g.prompt.trim(),
+    '## How to run it',
+    "The platform keeps this game's books: the hidden values, the candidate's quotes, any trades and the settlement. In this version you cannot trade or show a hidden value. Never say that you buy, sell, lift or hit, and never state a value you could not know from the prompt. Treat the candidate's quotes as a conversation: ask how they chose the mid and the width, what would make them move the market, and how they would quote against someone who knows more. Never state or confirm a fair value, a hidden value or their P&L while the question is open.",
+    '## Hint ladder (private; gentlest first, given in order)',
+    g.hints.length
+      ? numberedList(g.hints)
+      : 'None authored. If they are stuck, give small hints of your own (hint_rung 0) that point at the next step without taking it.',
+  ].join('\n\n');
+}
+
 /** Everything about one question, private material included, as the model sees it. */
 export function questionBlock(
   entry: QuantContext['questions'][number],
   total: number,
   heading = 'The question in front of the candidate',
 ): string {
+  if (isGameEntry(entry)) return gameBlock(entry, total, heading);
   const q = entry.question;
   const hints = q.hints ?? [];
   const followUps = q.followUps ?? [];
@@ -309,7 +331,7 @@ export function booksText(ctx: QuantContext, now: number): string[] {
   const c = ctx.round.clock;
   if (ctx.round.phase !== 'asking' || !entry || !c) return [];
   const startedAt = Date.parse(ctx.pad.startedAt);
-  const hints = entry.question.hints ?? [];
+  const hints = entryHints(entry);
   const authored = entry.hintRungs.filter((r) => r > 0).length;
   const own = entry.hintRungs.length - authored;
   const left = c.posedAt + c.budgetMs - now;
@@ -325,7 +347,7 @@ export function booksText(ctx: QuantContext, now: number): string[] {
   lines.push(
     !entry.followUpAsked
       ? 'Follow-up: not asked yet.'
-      : DIALOGUE_TOPICS.has(entry.question.topic)
+      : DIALOGUE_TOPICS.has(entryTopic(entry))
         ? 'Follow-up: already asked. This is a market-making or betting question: keep the dialogue going with "stay" turns (the later authored follow-ups are your next moves) while its time allows, and close once they have shown how they handle fair value, width and new information.'
         : 'Follow-up: already asked. There is no second follow-up on this question: after their reply, close it.',
   );

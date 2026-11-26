@@ -1,8 +1,17 @@
 import { HocuspocusProvider, HocuspocusProviderWebsocket } from '@hocuspocus/provider';
 import {
+  gameBooks,
+  gameReview,
+  gameSolution,
+  gameStats,
+  gameView,
   LANGUAGES,
   type Pad,
+  Playback,
+  QuantGame,
+  type QuantGameMove,
   type QuantRoundState,
+  QuantRoundView,
   type QuantStep,
   QuizQuestion,
   Report,
@@ -14,6 +23,7 @@ import {
   interviewerNotes,
   messages,
   pads,
+  quantGames,
   quantRoundAnswers,
   quantRounds,
   quizQuestions,
@@ -646,8 +656,11 @@ describe('a round, step by step', () => {
       const ctx1 = await fake.quantContext(id);
       state = (await roundRow(id)).state;
       expect(ctx1?.questions.map((q) => q.index)).toEqual([1]);
-      expect(ctx1?.questions[0]?.question.id).toBe(state.questions[1]?.questionId);
-      expect(ctx1?.questions[0]?.question.hints?.length).toBe(2);
+      const entry1 = ctx1?.questions[0];
+      if (entry1?.kind === 'game') throw new Error('a bank question, not a game');
+      expect(entry1?.kind).toBe('question');
+      expect(entry1?.question.id).toBe(state.questions[1]?.questionId);
+      expect(entry1?.question.hints?.length).toBe(2);
       expect(ctx1?.transcript[0]).toMatchObject({
         id: state.questions[1]?.posedMessageId,
         intent: 'question',
@@ -1806,5 +1819,684 @@ describe('what a quant pad does not have', () => {
     expect((await c.post(`/api/pads/${pad.id}/end`)).status).toBe(200);
     await until(async () => (await c.get(`/api/pads/${pad.id}/report`)).json?.status === 'ready');
     expect((await c.get(`/api/pads/${pad.id}/report`)).json.quant).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------- market-making games (§8.3)
+
+describe('market-making games', () => {
+  const MM_TOPIC = {
+    slug: 'betting-market-making',
+    title: 'Betting & market making',
+    description: 'quant round tests',
+    track: 'quant',
+  } as const;
+  // Hidden values no visible number can be mistaken for: five digits and three decimals, so no
+  // id, time, price or count contains one, nor any figure derived from them.
+  const FACES_A = [12345.678, 23456.789];
+  const FACES_B = [34567.891, 45678.912];
+  const VALUES = [23456.789, 34567.891];
+  const TRUE_VALUE = 58024.68;
+  const mmGame = (id: string, k: number) =>
+    QuantGame.parse({
+      id,
+      topic: MM_TOPIC.slug,
+      title: `Two hidden numbers ${k}`,
+      difficulty: 'medium',
+      prompt: `Make me a market on the sum of two hidden numbers. [P90${k}X]`,
+      components: [
+        { label: 'First', faces: FACES_A },
+        { label: 'Second', faces: FACES_B },
+      ],
+      payoff: 'sum',
+      reveal: [0],
+      tick: 0.5,
+      maxSize: 5,
+      counterparty: `COUNTERPARTY-SECRET-${k}: trade on the books.`,
+      hints: [`GAMEHINT-${k}-1`, `GAMEHINT-${k}-2`],
+      explanation: `GAMEEXPLAIN-${k}`,
+      expect: { fair: '58024.635', sd: 7856.71, min: '46913.569', max: '69135.701' },
+    });
+  // Both medium: a 20-minute round's second slot takes either, at random.
+  const GAMES = [mmGame('mm-qround-a', 1), mmGame('mm-qround-b', 2)];
+  const gameOf = (id: string | undefined) => GAMES.find((g) => g.id === id);
+
+  beforeAll(async () => {
+    await db().insert(quizTopics).values(MM_TOPIC).onConflictDoNothing();
+    await db()
+      .insert(quantGames)
+      .values(GAMES.map((g) => ({ id: g.id, topic: g.topic, difficulty: g.difficulty, data: g })))
+      .onConflictDoNothing();
+    fake.quantReplies = false;
+  });
+  afterAll(async () => {
+    fake.quantReplies = true;
+    // Later test files create trader rounds: without games, as before.
+    await db()
+      .delete(quantGames)
+      .where(
+        inArray(
+          quantGames.id,
+          GAMES.map((g) => g.id),
+        ),
+      );
+    await db().delete(quizTopics).where(eq(quizTopics.slug, MM_TOPIC.slug));
+  });
+
+  /**
+   * What must not reach a browser while the pad is active, for every game of the round: the
+   * books' figures (the public fair value, the sd, the marks), and until it settles its hidden
+   * values, the true value and the edges of the live quote; the content's private text, and the
+   * prompt of a game not posed yet.
+   */
+  function gameSecrets(state: QuantRoundState): string[] {
+    const out = [
+      'COUNTERPARTY-',
+      'GAMEHINT-',
+      'GAMEEXPLAIN-',
+      '"values"',
+      '"counterparty"',
+      '"spec"',
+      '"books"',
+      '"fair"',
+      '"markToFair"',
+    ];
+    for (const q of state.questions) {
+      const g = q.game;
+      if (!g) continue;
+      if (q.posedAt === null) out.push(promptMark(q.prompt));
+      const b = gameBooks(g);
+      const nums = [b.fair, b.sd, b.markToFair];
+      if (!g.settlement) {
+        nums.push(b.value, b.markToValue);
+        for (const c of b.components) if (!c.shown) nums.push(c.value);
+        if (b.quote)
+          nums.push(
+            b.quote.hitBid.vsFair,
+            b.quote.hitBid.vsValue,
+            b.quote.liftOffer.vsFair,
+            b.quote.liftOffer.vsValue,
+          );
+      }
+      for (const x of nums) {
+        // Whole numbers are too common to search for; every figure here has decimals.
+        const s = String(Math.abs(x));
+        if (s.includes('.') && s.length >= 6) out.push(s.slice(0, 7));
+      }
+    }
+    return out;
+  }
+
+  async function expectNoGameLeak(padId: string, texts: string[]) {
+    await expectNoLeak(padId, texts);
+    const forbidden = gameSecrets((await roundRow(padId)).state);
+    for (const text of texts)
+      for (const f of forbidden)
+        expect(text.includes(f), `${f} leaked in ${text.slice(0, 300)}`).toBe(false);
+  }
+
+  const quote = (c: Client, padId: string, body: Record<string, unknown>) =>
+    c.post(`/api/pads/${padId}/round/quote`, body);
+
+  /** An interviewer turn on the current question, on the round as it is now. */
+  async function turn(padId: string, game: QuantGameMove, say = 'Noted.') {
+    const row = await roundRow(padId);
+    return fake.deps.applyQuantStep?.(padId, {
+      type: 'turn',
+      version: row.version,
+      index: row.state.current,
+      kind: 'chat',
+      say,
+      action: 'stay',
+      game,
+    });
+  }
+
+  async function closeCurrent(padId: string, verdict: { score: number; summary: string } | null) {
+    const row = await roundRow(padId);
+    return fake.deps.applyQuantStep?.(padId, {
+      type: 'close',
+      version: row.version,
+      index: row.state.current,
+      kind: 'chat',
+      say: 'Thanks, let us move on.',
+      by: 'interviewer',
+      verdict,
+    });
+  }
+
+  /** A 20-minute trader round whose game (slot 1) holds `VALUES`; started when `start`. */
+  async function gameRound(owner: Client, start = true) {
+    const pad = await createRound(owner, { path: 'trader', durationMin: 20 });
+    await setState(pad.id, (st) => {
+      const g = st.questions[1]?.game;
+      if (!g) throw new Error('no game in the second slot');
+      g.values = [...VALUES];
+    });
+    if (start) {
+      expect(
+        await fake.deps.applyQuantStep?.(pad.id, { type: 'start', version: 0, say: 'Hi.' }),
+      ).toMatchObject({ ok: true, version: 1 });
+    }
+    return pad;
+  }
+
+  /** …and with its bank question closed, so the game is the current question. */
+  async function atTheGame(owner: Client) {
+    const pad = await gameRound(owner);
+    expect(await closeCurrent(pad.id, { score: 0.9, summary: 'VERDICT-SUMMARY-Q0' })).toMatchObject(
+      { ok: true, version: 2, clock: { index: 1 } },
+    );
+    return pad;
+  }
+
+  async function gameEvents(padId: string) {
+    const rows = await db()
+      .select()
+      .from(timelineEvents)
+      .where(eq(timelineEvents.padId, padId))
+      .orderBy(asc(timelineEvents.at));
+    return rows.flatMap((r) =>
+      r.event.type === 'game'
+        ? [`game:${r.event.index}:${r.event.entry.kind}`]
+        : r.event.type === 'question'
+          ? [`question:${r.event.index}`]
+          : [],
+    );
+  }
+
+  const padMessages = (padId: string) =>
+    db().select().from(messages).where(eq(messages.padId, padId)).orderBy(asc(messages.createdAt));
+
+  it('puts one game in a trader round’s second slot; none in a researcher round unless asked', async () => {
+    const c = await account('Assembler');
+    for (const durationMin of [20, 30, 45]) {
+      const pad = await createRound(c, { path: 'trader', durationMin });
+      const { state } = await roundRow(pad.id);
+      expect(state.questions.flatMap((q, i) => (q.game ? [i] : []))).toEqual([1]);
+      const q = state.questions[1];
+      const g = gameOf(q?.questionId);
+      expect(g, q?.questionId).toBeDefined();
+      expect(q).toMatchObject({
+        topic: MM_TOPIC.slug,
+        topicTitle: MM_TOPIC.title,
+        difficulty: 'medium',
+        prompt: g?.prompt,
+        unit: null,
+        hintsAvailable: 2,
+        posedAt: null,
+      });
+      expect(q?.game).toMatchObject({
+        title: g?.title,
+        revealed: 0,
+        quote: null,
+        events: [],
+        position: 0,
+        cash: 0,
+        settlement: null,
+      });
+      expect(q?.game?.values[0] !== undefined && FACES_A.includes(q.game.values[0])).toBe(true);
+      expect(q?.game?.values[1] !== undefined && FACES_B.includes(q.game.values[1])).toBe(true);
+      // Nothing of the content's private text is snapshotted into the round.
+      expect(JSON.stringify(state)).not.toMatch(/COUNTERPARTY|GAMEHINT|GAMEEXPLAIN/);
+      // The other slots are bank questions, rising.
+      const bankSlots = state.questions.filter((x) => !x.game).map((x) => x.difficulty);
+      expect(bankSlots[0]).toBe('easy');
+      expect(bankSlots.at(-1)).toBe('hard');
+      expect(state.questions).toHaveLength(Math.round(durationMin / 7.5));
+    }
+    const none = async (body: Record<string, unknown>) => {
+      const pad = await createRound(c, body);
+      return (await roundRow(pad.id)).state.questions.some((q) => q.game);
+    };
+    expect(await none({ path: 'researcher', durationMin: 20 })).toBe(false);
+    expect(await none({ path: 'trader', durationMin: 20, includeGame: false })).toBe(false);
+    const asked = await createRound(c, { path: 'researcher', durationMin: 20, includeGame: true });
+    expect(
+      (await roundRow(asked.id)).state.questions.flatMap((q, i) => (q.game ? [i] : [])),
+    ).toEqual([1]);
+    expect((await c.post('/api/pads/quant', { path: 'trader', includeGame: 'yes' })).status).toBe(
+      400,
+    );
+  });
+
+  it('plays a game through the API; nothing hidden reaches a browser until the pad ends', async () => {
+    const owner = await account('MarketMaker');
+    const collab = await account('Partner', false);
+    const pad = await gameRound(owner, false);
+    expect((await collab.post('/api/pads/join', { shareToken: pad.shareToken })).status).toBe(200);
+    const id = pad.id;
+
+    await manual(async () => {
+      const os = await openEvents(owner, id);
+      const cs = await openEvents(collab, id);
+      const sockets = [os, cs];
+      await Promise.all(sockets.map((s) => s.waitFor('round.updated')));
+      const responses: string[] = [];
+      const leakCheck = async () =>
+        expectNoGameLeak(id, [
+          ...os.raw,
+          ...cs.raw,
+          ...responses,
+          ...(await httpTexts(owner, id)),
+          ...(await httpTexts(collab, id)),
+        ]);
+      const marks = () => sockets.map((s) => s.events.length);
+      const expectStep = async (m: number[], version: number, labels: string[]) => {
+        for (const [i, s] of sockets.entries())
+          expect((await stepEvents(s, m[i] ?? 0, version)).map(label)).toEqual(labels);
+      };
+      const gameNow = async () => {
+        const g = (await roundRow(id)).state.questions[1]?.game;
+        if (!g) throw new Error('no game');
+        return g;
+      };
+
+      // The bank question first; the game is in no form in what anyone sees.
+      await fake.deps.applyQuantStep?.(id, { type: 'start', version: 0, say: 'Hi.' });
+      await leakCheck();
+      let m = marks();
+      expect(await closeCurrent(id, { score: 0.9, summary: 'VERDICT-SUMMARY-Q0' })).toMatchObject({
+        ok: true,
+        version: 2,
+      });
+      await expectStep(m, 2, ['interviewer:feedback', 'interviewer:question', 'round:2']);
+      let row = await roundRow(id);
+      const gameId = row.state.questions[1]?.questionId;
+      const content = gameOf(gameId);
+      if (!content) throw new Error('fixture');
+      const view2 = (await os.waitFor('round.updated', (e) => e.round.version === 2)).round;
+      expect(view2.questions[1]?.game).toEqual(gameView(await gameNow()));
+      expect(view2.questions[1]?.game).toMatchObject({
+        components: [
+          { label: 'First', value: null },
+          { label: 'Second', value: null },
+        ],
+        quote: null,
+        log: [],
+        quotesLeft: 100,
+      });
+      await leakCheck();
+
+      // The interviewer is told everything, privately.
+      const ctx = await fake.quantContext(id);
+      const entry = ctx?.questions[0];
+      if (entry?.kind !== 'game') throw new Error('the game’s entry');
+      expect(entry).toEqual({
+        kind: 'game',
+        index: 1,
+        game: {
+          id: gameId,
+          topic: MM_TOPIC.slug,
+          title: content.title,
+          difficulty: 'medium',
+          prompt: content.prompt,
+          counterparty: content.counterparty,
+          hints: content.hints,
+          explanation: content.explanation,
+          mechanics: (await gameNow()).spec,
+        },
+        books: gameBooks(await gameNow()),
+        hintRungs: [],
+        followUpAsked: false,
+      });
+      expect(entry.books).toMatchObject({ value: TRUE_VALUE, fair: 58024.635 });
+
+      // The collaborator makes a market: their chat message, then the round; the response is
+      // the round as everyone now sees it.
+      m = marks();
+      let res = await quote(collab, id, { index: 1, bid: 50000, ask: 60000, size: 2 });
+      expect(res.status).toBe(200);
+      responses.push(res.text);
+      const after1 = QuantRoundView.parse(res.json);
+      expect(after1.version).toBe(3);
+      await expectStep(m, 3, ['candidate:chat', 'round:3']);
+      expect((await os.waitFor('round.updated', (e) => e.round.version === 3)).round).toEqual(
+        after1,
+      );
+      expect(after1.questions[1]?.game?.quote).toMatchObject({ bid: 50000, ask: 60000, size: 2 });
+      expect(after1.questions[1]?.game?.quotesLeft).toBe(99);
+      const said = (await padMessages(id)).at(-1);
+      expect(said).toMatchObject({
+        role: 'candidate',
+        kind: 'chat',
+        intent: null,
+        via: 'text',
+        userId: collab.userId,
+        text: '50000 bid, 60000 offered, 2 lots',
+      });
+      // …handed to the interviewer as a typed message is.
+      await until(() =>
+        fake
+          .of('candidate_message', id)
+          .some(
+            (t) =>
+              t.trigger.type === 'candidate_message' &&
+              t.trigger.text === '50000 bid, 60000 offered, 2 lots' &&
+              t.trigger.userId === collab.userId &&
+              t.trigger.via === 'text',
+          ),
+      );
+      await leakCheck();
+
+      // The interviewer lifts the offer for one and shows the first number.
+      m = marks();
+      expect(
+        await turn(
+          id,
+          { trade: { interviewerSide: 'buy', quantity: 1 }, reveal: true },
+          'I buy one.',
+        ),
+      ).toMatchObject({ ok: true, version: 4 });
+      await expectStep(m, 4, ['interviewer:answer', 'round:4']);
+      let g = await gameNow();
+      expect(g).toMatchObject({ position: -1, cash: 60000, revealed: 1, quote: null });
+      const view4 = (await os.waitFor('round.updated', (e) => e.round.version === 4)).round;
+      expect(view4.questions[1]?.game?.components).toEqual([
+        { label: 'First', value: VALUES[0] },
+        { label: 'Second', value: null },
+      ]);
+      await leakCheck();
+
+      // The owner quotes again around the new information; the interviewer lifts it.
+      res = await quote(owner, id, { index: 1, bid: 63000, ask: 64500, size: 1 });
+      expect(res.status).toBe(200);
+      responses.push(res.text);
+      expect(QuantRoundView.parse(res.json).version).toBe(5);
+      expect((await padMessages(id)).at(-1)).toMatchObject({
+        userId: owner.userId,
+        text: '63000 bid, 64500 offered, 1 lot',
+      });
+      await leakCheck();
+      expect(await turn(id, { trade: { interviewerSide: 'buy', quantity: 1 } })).toMatchObject({
+        ok: true,
+        version: 6,
+      });
+      g = await gameNow();
+      expect(g).toMatchObject({ position: -2, cash: 124500, quote: null });
+      await leakCheck();
+
+      // The close settles the game at the true value, and the next question follows.
+      m = marks();
+      expect(await closeCurrent(id, { score: 0.7, summary: 'VERDICT-SUMMARY-GAME' })).toMatchObject(
+        { ok: true, version: 7, clock: { index: 2 } },
+      );
+      await expectStep(m, 7, ['interviewer:feedback', 'interviewer:question', 'round:7']);
+      g = await gameNow();
+      const pnl = 124500 - 2 * TRUE_VALUE;
+      expect(g.settlement).toMatchObject({ value: TRUE_VALUE });
+      expect(g.settlement?.pnl).toBeCloseTo(pnl, 6);
+      const view7 = (await os.waitFor('round.updated', (e) => e.round.version === 7)).round;
+      expect(view7.questions[1]?.game?.components.map((c) => c.value)).toEqual(VALUES);
+      expect(view7.questions[1]?.game?.settlement).toEqual(g.settlement);
+      await leakCheck();
+
+      // Every game entry is on the timeline, in order, between the questions' own events.
+      expect(await gameEvents(id)).toEqual([
+        'question:0',
+        'question:1',
+        'game:1:quote',
+        'game:1:trade',
+        'game:1:reveal',
+        'game:1:quote',
+        'game:1:trade',
+        'game:1:settle',
+        'question:2',
+      ]);
+      const playback = Playback.parse((await owner.get(`/api/pads/${id}/playback`)).json);
+      expect(
+        playback.events.flatMap((e) => (e.event.type === 'game' ? [e.event.entry] : [])),
+      ).toEqual(gameView(g).log);
+
+      // Ending the pad: the report reviews the game, with its explanation and nothing else.
+      expect((await owner.post(`/api/pads/${id}/end`)).status).toBe(200);
+      await until(
+        async () => (await owner.get(`/api/pads/${id}/report`)).json?.status !== 'pending',
+      );
+      const report = await owner.get(`/api/pads/${id}/report`);
+      expect(report.status).toBe(200);
+      row = await roundRow(id);
+      const game = row.state.questions[1]?.game;
+      if (!game) throw new Error('no game');
+      expect(Report.parse(report.json).quant?.questions[1]).toEqual({
+        index: 1,
+        questionId: gameId,
+        topic: MM_TOPIC.slug,
+        topicTitle: MM_TOPIC.title,
+        subtopic: '',
+        difficulty: 'medium',
+        type: 'game',
+        prompt: content.prompt,
+        unit: null,
+        solution: gameSolution(gameStats(game.spec)),
+        keyPoints: [],
+        explanation: content.explanation,
+        status: 'answered',
+        verdict: { score: 0.7, summary: 'VERDICT-SUMMARY-GAME' },
+        hintsGiven: 0,
+        hintsAvailable: 2,
+        timeSec: expect.any(Number),
+        budgetSec: expect.any(Number),
+        game: gameReview(game),
+      });
+      expect(report.text).not.toMatch(/COUNTERPARTY|GAMEHINT/);
+      // The verdict on the game is no quiz answer; the bank questions' are (the third's from
+      // the assessment, which judged it once the pad ended).
+      const recorded = await db()
+        .select({ questionId: quantRoundAnswers.questionId })
+        .from(quantRoundAnswers)
+        .where(eq(quantRoundAnswers.padId, id));
+      expect(row.state.questions.map((q) => q.verdict !== null)).toEqual([true, true, true]);
+      expect(recorded.map((r) => r.questionId).sort()).toEqual(
+        [row.state.questions[0]?.questionId, row.state.questions[2]?.questionId].sort(),
+      );
+      for (const s of sockets) s.close();
+    });
+  });
+
+  it('refuses a quote the round would not take, posting nothing', async () => {
+    const owner = await account('Refused');
+    const pad = await gameRound(owner, false);
+    const id = pad.id;
+    const stranger = await account('Stranger', false);
+    const expectRefused = async (
+      c: Client,
+      body: Record<string, unknown>,
+      status: number,
+      code: string,
+    ) => {
+      const before = [(await roundRow(id)).version, (await padMessages(id)).length];
+      const res = await quote(c, id, body);
+      expect(res.status, `${code}: ${res.text}`).toBe(status);
+      expect(res.json.error.code).toBe(code);
+      expect(res.json.error.message).toEqual(expect.any(String));
+      await expectNoGameLeak(id, [res.text]);
+      expect([(await roundRow(id)).version, (await padMessages(id)).length]).toEqual(before);
+    };
+    const ok = { index: 1, bid: 50000, ask: 60000, size: 1 };
+
+    // Bodies the schema refuses.
+    await expectRefused(owner, { ...ok, size: 1.5 }, 400, 'validation_error');
+    await expectRefused(owner, { ...ok, bid: '50000' }, 400, 'validation_error');
+    await expectRefused(owner, { bid: 1, ask: 2, size: 1 }, 400, 'validation_error');
+    await expectRefused(owner, { ...ok, index: -1 }, 400, 'validation_error');
+    // Not a member; not a quant pad.
+    expect((await quote(stranger, id, ok)).status).toBe(404);
+    const coding = (await owner.post('/api/pads', { problemSlug: 'two-sum', language: 'python' }))
+      .json;
+    const wrong = await quote(owner, coding.id, ok);
+    expect(wrong.status).toBe(409);
+    expect(wrong.json.error.code).toBe('wrong_format');
+    // Before the round starts; on a bank question; on a question that is not the current one.
+    await expectRefused(owner, ok, 409, 'wrong_phase');
+    await fake.deps.applyQuantStep?.(id, { type: 'start', version: 0, say: 'Hi.' });
+    await expectRefused(owner, { ...ok, index: 0 }, 409, 'not_game');
+    await expectRefused(owner, ok, 409, 'wrong_index');
+    await closeCurrent(id, null);
+    await expectRefused(owner, { ...ok, index: 0 }, 409, 'wrong_index');
+    // Markets the engine refuses: crossed, off the tick, too big, empty.
+    await expectRefused(owner, { ...ok, bid: 60000, ask: 60000 }, 409, 'bad_quote');
+    await expectRefused(owner, { ...ok, bid: 50000.25 }, 409, 'bad_quote');
+    await expectRefused(owner, { ...ok, size: 6 }, 409, 'bad_quote');
+    await expectRefused(owner, { ...ok, size: 0 }, 409, 'bad_quote');
+    await expectRefused(owner, { ...ok, bid: 2_000_000, ask: 2_000_001 }, 409, 'bad_quote');
+    // A good one goes through.
+    expect((await quote(owner, id, ok)).status).toBe(200);
+    // The game's quotes are capped by the engine.
+    await setState(id, (st) => {
+      const g = st.questions[1]?.game;
+      if (!g) throw new Error('no game');
+      const at = new Date().toISOString();
+      g.events = Array.from({ length: 100 }, () => ({ kind: 'quote', at, ...ok }));
+    });
+    await expectRefused(owner, ok, 409, 'quote_limit');
+    // The chat allowance: a quote is a chat message.
+    const l = h.api.ctx.config.limits.chat.userBurst;
+    for (let i = 0; i < l.limit; i++)
+      await h.api.ctx.limiter.hit([{ key: `chat:u:${stranger.userId}:burst`, ...l }]);
+    expect((await stranger.post('/api/pads/join', { shareToken: pad.shareToken })).status).toBe(
+      200,
+    );
+    const limited = await quote(stranger, id, ok);
+    expect(limited.status).toBe(429);
+    expect(limited.json.error.retryAfter).toBeGreaterThan(0);
+    // The round finished (the pad still open), and the pad ended.
+    await closeCurrent(id, null);
+    await closeCurrent(id, null);
+    expect((await roundRow(id)).state.current).toBe(3);
+    await expectRefused(owner, { ...ok, index: 2 }, 409, 'ended');
+    expect((await owner.post(`/api/pads/${id}/end`)).status).toBe(200);
+    await expectRefused(owner, ok, 409, 'ended');
+  });
+
+  it('a quote racing the interviewer’s step: the quote is decided again, the step goes stale', async () => {
+    const owner = await account('Racer');
+    const pad = await atTheGame(owner);
+    const id = pad.id;
+    let bid = 50000;
+    for (let i = 0; i < 8; i++) {
+      const row = await roundRow(id);
+      bid += 1;
+      const [res, step] = await Promise.all([
+        quote(owner, id, { index: 1, bid, ask: bid + 10000, size: 1 }),
+        fake.deps.applyQuantStep?.(id, {
+          type: 'turn',
+          version: row.version,
+          index: 1,
+          kind: 'chat',
+          say: `Race ${i}.`,
+          action: 'stay',
+        }),
+      ]);
+      expect(res.status, res.text).toBe(200);
+      const after = await roundRow(id);
+      // Either order: the quote always lands; the step lands only when it went first.
+      expect(after.version).toBe(row.version + (step?.ok ? 2 : 1));
+      if (!step?.ok) expect(step).toEqual({ ok: false, reason: 'stale' });
+      expect(after.state.questions[1]?.game?.quote).toMatchObject({ bid, size: 1 });
+    }
+    // Two quotes at once both land, one after the other.
+    const before = (await roundRow(id)).version;
+    const both = await Promise.all([
+      quote(owner, id, { index: 1, bid: 40000, ask: 41000, size: 1 }),
+      quote(owner, id, { index: 1, bid: 42000, ask: 43000, size: 1 }),
+    ]);
+    expect(both.map((r) => r.status)).toEqual([200, 200]);
+    const row = await roundRow(id);
+    expect(row.version).toBe(before + 2);
+    const quotes = row.state.questions[1]?.game?.events.filter((e) => e.kind === 'quote') ?? [];
+    expect(quotes).toHaveLength(10);
+    const texts = (await padMessages(id)).filter((msg) => msg.role === 'candidate');
+    expect(texts).toHaveLength(10);
+    expect((await gameEvents(id)).filter((e) => e === 'game:1:quote')).toHaveLength(10);
+  });
+
+  it('the sweeper closes an unattended game for time and settles it', async () => {
+    const owner = await account('Unattended');
+    const pad = await atTheGame(owner);
+    const id = pad.id;
+    expect((await quote(owner, id, { index: 1, bid: 50000, ask: 60000, size: 3 })).status).toBe(
+      200,
+    );
+    expect(await turn(id, { trade: { interviewerSide: 'sell', quantity: 3 } })).toMatchObject({
+      ok: true,
+    });
+    await setState(id, (st) => {
+      const q = st.questions[1];
+      if (!q?.posedAt || !q.budgetSec) throw new Error('not posed');
+      const grace = Math.min(90, Math.floor(q.budgetSec / 4));
+      q.posedAt = new Date(Date.now() - (q.budgetSec + grace + 1) * 1000).toISOString();
+    });
+    expect(h.api.ctx.rooms.count(id)).toBe(0);
+    const closed = await sweepQuantRounds(h.api.ctx, (padId) => padId !== id);
+    expect(closed).toBe(1);
+    const { state } = await roundRow(id);
+    const q = state.questions[1];
+    expect(q).toMatchObject({ closedBy: 'timeout', verdict: null });
+    // Hit the bid for 3: long 3 at 50000, settled at the true value.
+    expect(q?.game).toMatchObject({ position: 3, cash: -150000 });
+    expect(q?.game?.settlement?.value).toBe(TRUE_VALUE);
+    expect(q?.game?.settlement?.pnl).toBeCloseTo(3 * TRUE_VALUE - 150000, 6);
+    expect(state.current).toBe(2);
+    expect(await gameEvents(id)).toEqual([
+      'question:0',
+      'question:1',
+      'game:1:quote',
+      'game:1:trade',
+      'game:1:settle',
+      'question:2',
+    ]);
+  });
+
+  it('ending the pad mid-game settles it; the report shows it unfinished', async () => {
+    const owner = await account('EndsEarly');
+    const pad = await atTheGame(owner);
+    const id = pad.id;
+    expect((await quote(owner, id, { index: 1, bid: 50000, ask: 60000, size: 1 })).status).toBe(
+      200,
+    );
+    expect((await owner.post(`/api/pads/${id}/end`)).status).toBe(200);
+    const { state } = await roundRow(id);
+    const g = state.questions[1]?.game;
+    expect(state.questions[1]?.closedBy).toBe('ended');
+    // Flat with a live quote: nothing traded, nothing won or lost; the quote withdrawn.
+    expect(g?.settlement).toMatchObject({ value: TRUE_VALUE, pnl: 0 });
+    expect(g?.quote).toBeNull();
+    expect((await gameEvents(id)).slice(-2)).toEqual(['game:1:quote', 'game:1:settle']);
+    await until(async () => (await owner.get(`/api/pads/${id}/report`)).json?.status !== 'pending');
+    const report = Report.parse((await owner.get(`/api/pads/${id}/report`)).json);
+    expect(report.quant?.questions[1]).toMatchObject({
+      type: 'game',
+      status: 'unfinished',
+      game: { value: TRUE_VALUE, pnl: 0, finalPosition: 0 },
+    });
+    // The assessment's late verdict on the game is no quiz answer either, and nothing throws.
+    await until(async () =>
+      (await roundRow(id)).state.questions.every((q) => q.posedAt === null || q.verdict),
+    );
+    const recorded = await db()
+      .select({ questionId: quantRoundAnswers.questionId })
+      .from(quantRoundAnswers)
+      .where(eq(quantRoundAnswers.padId, id));
+    expect(recorded.map((r) => r.questionId)).toEqual([state.questions[0]?.questionId]);
+  });
+
+  it('does not pose a game the owner played in a recent round while the other is left', async () => {
+    const owner = await account('Regular');
+    const first = await atTheGame(owner); // posed: counts as recent
+    const played = (await roundRow(first.id)).state.questions[1]?.questionId;
+    const other = GAMES.map((g) => g.id).find((g) => g !== played);
+    for (let i = 0; i < 3; i++) {
+      // Rounds whose game was never posed do not count.
+      const next = await createRound(owner, { path: 'trader', durationMin: 20 });
+      expect((await roundRow(next.id)).state.questions[1]?.questionId).toBe(other);
+    }
+    // Once both were played, one of them again.
+    const second = await atTheGame(owner);
+    expect((await roundRow(second.id)).state.questions[1]?.questionId).toBe(other);
+    const third = await createRound(owner, { path: 'trader', durationMin: 20 });
+    expect(GAMES.map((g) => g.id)).toContain(
+      (await roundRow(third.id)).state.questions[1]?.questionId,
+    );
   });
 });

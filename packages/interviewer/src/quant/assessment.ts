@@ -16,6 +16,7 @@ import {
 import { z } from 'zod';
 import { clock, duration, neutralise, truncate } from '../prompts';
 import type { QuantContext } from '../types';
+import { entryDifficulty, entryHints, entryPrompt, entryTopic, entryType } from './entry';
 import { repairLatexEscapes } from './latex';
 import { QUANT_CORE, QUANT_LIMITS, questionBlock, scratchBlock, topicName } from './prompts';
 
@@ -72,7 +73,7 @@ export function questionMessages(transcript: Message[], questions: Entry[]): Map
     return map;
   }
   for (const m of posted) {
-    const hit = posed.find((p) => p.question.prompt.trim() === m.text.trim());
+    const hit = posed.find((p) => entryPrompt(p).trim() === m.text.trim());
     if (hit) map.set(m.id, hit.index);
   }
   if (map.size === 0) {
@@ -173,13 +174,13 @@ export function roundTable(ctx: QuantContext, verdicts: ReadonlyMap<number, Quan
   const posed = [...ctx.questions].sort((a, b) => a.index - b.index);
   const rows = posed.map((e) => {
     const c = ctx.round.closed.find((x) => x.index === e.index);
-    const hints = e.question.hints ?? [];
+    const hints = entryHints(e);
     const authored = e.hintRungs.filter((r) => r > 0).length;
     const own = e.hintRungs.length - authored;
     const v = verdicts.get(e.index) ?? c?.verdict ?? null;
     return [
       `Q${e.index + 1}`,
-      `${topicName(e.question.topic)}, ${e.question.difficulty}, ${e.question.type}`,
+      `${topicName(entryTopic(e))}, ${entryDifficulty(e)}, ${entryType(e)}`,
       c ? duration(c.timeSec * 1000) : 'open',
       c?.budgetSec ? duration(c.budgetSec * 1000) : 'unknown',
       `${authored} of ${hints.length} authored${own ? ` + ${own} own` : ''}`,
@@ -211,7 +212,7 @@ export function verdictRequest(
   const segment = segmentOf(ctx.transcript, posts, entry.index);
   const { messages, open, events } = history(segment, startedAt, new Map());
   const books = [
-    `This question: ${closed ? `open for ${duration(closed.timeSec * 1000)}` : 'time unknown'}${closed?.budgetSec ? ` of a ${duration(closed.budgetSec * 1000)} budget` : ''}; ${entry.hintRungs.filter((r) => r > 0).length} of ${(entry.question.hints ?? []).length} authored hints given${entry.hintRungs.some((r) => r === 0) ? `, plus ${entry.hintRungs.filter((r) => r === 0).length} of your own` : ''}; follow-up ${entry.followUpAsked ? 'asked' : 'not asked'}.`,
+    `This question: ${closed ? `open for ${duration(closed.timeSec * 1000)}` : 'time unknown'}${closed?.budgetSec ? ` of a ${duration(closed.budgetSec * 1000)} budget` : ''}; ${entry.hintRungs.filter((r) => r > 0).length} of ${entryHints(entry).length} authored hints given${entry.hintRungs.some((r) => r === 0) ? `, plus ${entry.hintRungs.filter((r) => r === 0).length} of your own` : ''}; follow-up ${entry.followUpAsked ? 'asked' : 'not asked'}.`,
     'The scratchpad is as the candidate left it at the end of the round, so it may hold working for other questions too.',
     ctx.privateNotes.length
       ? `Your private notes:\n${ctx.privateNotes.map((n) => `- ${truncate(n, 600)}`).join('\n')}`
@@ -255,7 +256,7 @@ export function quantAssessmentRequest(
     const e = posed.find((p) => p.index === index);
     markers.set(
       id,
-      `The platform posted Q${index + 1} of ${ctx.round.total}${e ? ` (${topicName(e.question.topic)}, ${e.question.difficulty})` : ''}.`,
+      `The platform posted Q${index + 1} of ${ctx.round.total}${e ? ` (${topicName(entryTopic(e))}, ${entryDifficulty(e)})` : ''}.`,
     );
   }
   const { messages, open, events } = history(ctx.transcript, startedAt, markers);
