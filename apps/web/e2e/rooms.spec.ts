@@ -50,7 +50,7 @@ test.describe('hosting', () => {
     const backend = await setup(page);
     await page.goto('/dashboard');
     await page.getByRole('radio', { name: 'Interview someone' }).click();
-    await expect(page).toHaveURL(/\/dashboard\?mode=host$/);
+    await expect(page).toHaveURL(/\/software\/interviews\?mode=host$/);
     await expect(page.getByRole('heading', { name: 'Host an interview' })).toBeVisible();
     // No AI interviewer to configure: the host is the interviewer.
     await expect(page.getByText('You are the interviewer')).toBeVisible();
@@ -78,7 +78,7 @@ test.describe('hosting', () => {
 
   test('or with a blank editor, where code only runs as a program', async ({ page }) => {
     const backend = await setup(page);
-    await page.goto('/new?mode=host');
+    await page.goto('/software/interviews?mode=host');
     await page.getByRole('button', { name: 'Start with a blank editor' }).click();
     await expect(page.getByTestId('selected-problem')).toHaveText('Blank editor');
     await page.getByRole('button', { name: 'Create room' }).click();
@@ -96,9 +96,9 @@ test.describe('hosting', () => {
 
   test('switching back to practice restores the AI interviewer setup', async ({ page }) => {
     await setup(page);
-    await page.goto('/new?mode=host');
+    await page.goto('/software/interviews?mode=host');
     await page.getByRole('radio', { name: 'Practise with the AI' }).click();
-    await expect(page).toHaveURL(/\/dashboard$/);
+    await expect(page).toHaveURL(/\/software\/interviews$/);
     await expect(page.getByRole('heading', { name: 'New interview' })).toBeVisible();
     await expect(page.getByLabel('AI interviewer')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Start interview' })).toBeVisible();

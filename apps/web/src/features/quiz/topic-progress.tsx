@@ -1,4 +1,4 @@
-/** A topic's progress as the Quizzes hub and the Quant page show it: a line of text and a bar. */
+/** A topic's progress as Practice and the study path show it: a line of text and a bar. */
 import type { QuizTopicStats } from '@ipp/contracts';
 import { formatPercent, plural } from '@/lib/format';
 import { cn } from '@/lib/utils';

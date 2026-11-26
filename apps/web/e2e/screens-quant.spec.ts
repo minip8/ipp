@@ -1,5 +1,5 @@
 /**
- * Visual review of the live quant round: the setup card on the Quant page, the quant pad (the
+ * Visual review of the live quant round: the setup card on Quant Interviews, the quant pad (the
  * first question, mid-round after a hint, the round finished), a market-making game (fresh, with
  * problems in the form, traded, live, settled) and its review in the report, the dashboard
  * listing quant pads and the quant report. Run with
@@ -42,7 +42,7 @@ for (const width of WIDTHS) {
     test('setup card', async ({ page }) => {
       test.skip(!want('quant-setup'));
       await setup(page);
-      await page.goto('/quant');
+      await page.goto('/quant/interviews');
       await page.getByTestId('round-setup').waitFor();
       await page.waitForTimeout(300);
       await shoot(page, 'quant-setup', { fullPage: true });
@@ -50,7 +50,7 @@ for (const width of WIDTHS) {
       await setup(noKey, (b) => {
         b.aiKey = aiKeyStatus('missing');
       });
-      await noKey.goto('/quant?path=researcher');
+      await noKey.goto('/quant/interviews?path=researcher');
       await noKey.getByTestId('round-key-prompt').waitFor();
       await noKey.waitForTimeout(300);
       await shoot(noKey, 'quant-setup-nokey');
@@ -127,11 +127,11 @@ for (const width of WIDTHS) {
     test('dashboard', async ({ page }) => {
       test.skip(!want('quant-dashboard'));
       await setup(page, (b) => b.quant.listOnDashboard());
-      await page.goto('/dashboard');
+      await page.goto('/software/interviews');
       await page.getByRole('region', { name: 'In progress' }).waitFor();
       await page.waitForTimeout(300);
       await shoot(page, 'quant-dashboard');
-      await page.goto('/dashboard?view=history');
+      await page.goto('/software/interviews?view=history');
       await page.getByRole('region', { name: 'Finished interviews' }).waitFor();
       await page.waitForTimeout(300);
       await shoot(page, 'quant-dashboard-history');

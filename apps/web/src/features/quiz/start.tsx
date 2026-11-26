@@ -1,6 +1,6 @@
 'use client';
 /**
- * Starting a quiz attempt, shared by the Quizzes hub, the roadmap and the Quant page: the request,
+ * Starting a quiz attempt, shared by Practice, the topic maps and the study path: the request,
  * then straight into the attempt. A discussion needs the user's own AI key, so the places that
  * offer one also share how a missing or rejected key is asked for.
  */

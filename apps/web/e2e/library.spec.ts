@@ -15,7 +15,7 @@ async function chooseOption(page: Page, combobox: string, option: string) {
 test.describe('problem library', () => {
   test('nothing is selected by default and Start waits for a problem', async ({ page }) => {
     await setup(page);
-    await page.goto('/new');
+    await page.goto('/software/interviews');
     await expect(page.locator('#interview-setup')).toContainText('No problem selected');
     await expect(page.getByRole('button', { name: 'Start interview' })).toBeDisabled();
     await expect(page.getByText('Choose a problem to start.')).toBeVisible();
@@ -26,7 +26,7 @@ test.describe('problem library', () => {
 
   test('categories organise the library', async ({ page }) => {
     await setup(page);
-    await page.goto('/new');
+    await page.goto('/software/interviews');
     await expect(rows(page)).toHaveCount(15);
     await page.getByRole('tab', { name: /^Implementation/ }).click();
     await expect(page.getByText('Practical code with no trick to spot')).toBeVisible();
@@ -43,7 +43,7 @@ test.describe('problem library', () => {
     page,
   }) => {
     await setup(page);
-    await page.goto('/new');
+    await page.goto('/software/interviews');
     const lru = page.getByRole('button', { name: /^LRU Cache/ });
     await expect(lru).not.toContainText('Linked list');
     const search = page.getByRole('searchbox', { name: 'Search problems' });
@@ -64,7 +64,7 @@ test.describe('problem library', () => {
 
   test('a topic group shows all its problems; a subtopic narrows it', async ({ page }) => {
     await setup(page);
-    await page.goto('/new');
+    await page.goto('/software/interviews');
     await expect(page.getByRole('combobox', { name: 'Subtopic' })).toHaveCount(0);
     await chooseOption(page, 'Topic', 'Graphs');
     expect(await titles(page)).toEqual(['Course Schedule', 'Number of Islands', 'Word Ladder']);
@@ -88,7 +88,7 @@ test.describe('problem library', () => {
     page,
   }) => {
     const backend = await setup(page);
-    await page.goto('/new');
+    await page.goto('/software/interviews');
     // In Python the C++-only Unique Pointer is never picked, which leaves two candidates.
     await page.getByRole('radio', { name: 'Python' }).click();
     await page.getByRole('tab', { name: /^Data structures/ }).click();
@@ -113,7 +113,7 @@ test.describe('problem library', () => {
     page,
   }) => {
     const backend = await setup(page);
-    await page.goto('/new');
+    await page.goto('/software/interviews');
     await page.getByRole('radio', { name: 'Python' }).click();
     const row = page.getByRole('button', { name: /^Unique Pointer/ });
     await expect(row.getByTestId('language-restriction')).toHaveText('C++ only');
@@ -153,7 +153,7 @@ test.describe('problem library', () => {
     page,
   }) => {
     await setup(page);
-    await page.goto('/new');
+    await page.goto('/software/interviews');
     const row = (name: RegExp) =>
       page.getByRole('region', { name: 'Problem library' }).getByRole('button', { name });
     const mark = (name: RegExp) => row(name).getByTestId('problem-status');
@@ -212,7 +212,7 @@ test.describe('problem library', () => {
     await setup(page, (b) => {
       b.problemProgress = [];
     });
-    await page.goto('/new');
+    await page.goto('/software/interviews');
     await expect(page.getByTestId('problem-status').first()).toBeVisible();
     await expect(
       page.locator('[data-testid="problem-status"]:not([data-status="new"])'),
@@ -260,7 +260,7 @@ test.describe('interview setup panel', () => {
     await setup(page);
     // Chosen by the URL: at this height the library rows start near the fold, and clicking one
     // would make Playwright scroll the page, which is what this test rules out.
-    await page.goto('/dashboard?problem=two-sum');
+    await page.goto('/software/interviews?problem=two-sum');
     const start = page.getByRole('button', { name: 'Start interview' });
     await expect(start).toBeEnabled();
     await expect(start).toBeInViewport({ ratio: 1 });

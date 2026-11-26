@@ -1,25 +1,13 @@
 /**
  * Groundwork for quant questions in the quiz UI: numeric answers (in the bank and in a practice
- * attempt), LaTeX on quiz surfaces and nowhere else, and topics grouped by track, which shows
- * only once there is more than one track.
+ * attempt), and LaTeX on quiz surfaces and nowhere else. Topics by track: practice.spec.ts.
  */
 import { expect, type Page, test } from '@playwright/test';
-import { ACTIVE_PAD_ID, QUIZ_TOPICS_FUNDAMENTALS, QUIZ_TOPICS_QUANT } from './fixtures';
+import { ACTIVE_PAD_ID } from './fixtures';
 import { QUANT_FOLLOW_UP, QUANT_TOPIC } from './fixtures-quiz-quant';
-import { QUIZ_ROADMAP_FUNDAMENTALS } from './fixtures-quiz-roadmap';
 import { setup } from './helpers';
 
 const BANK = `/quiz/topics/${QUANT_TOPIC}`;
-
-/** The quant topics' card names start with their titles, in study order. */
-const QUANT_TITLES = [
-  /^Probability/,
-  /^Brainteasers/,
-  /^Betting & market making/,
-  /^Options & finance/,
-  /^Statistics/,
-  /^Linear algebra & calculus/,
-];
 
 const answersSent = (b: { requests: { path: string; body: unknown }[] }) =>
   b.requests.filter((r) => r.path.endsWith('/answers')).map((r) => r.body);
@@ -111,7 +99,7 @@ test.describe('numeric answers', () => {
 
   test('in a practice attempt, through to the results', async ({ page }) => {
     const backend = await setup(page);
-    await page.goto('/quiz');
+    await page.goto('/quant/practice');
     await page.getByRole('button', { name: /^Probability/ }).click();
     await page.getByRole('button', { name: 'Start quiz' }).click();
     await expect(page).toHaveURL(/\/quiz\/[0-9a-f-]{36}$/);
@@ -215,7 +203,7 @@ test.describe('math', () => {
 
   test('is typeset in a discussion: the prompt, the follow-up and the grade', async ({ page }) => {
     await setup(page);
-    await page.goto('/quiz');
+    await page.goto('/quant/practice');
     await page.getByRole('button', { name: /^Probability/ }).click();
     await page.getByRole('radio', { name: 'Discussion' }).click();
     await page.getByRole('button', { name: 'Start discussion' }).click();
@@ -299,85 +287,5 @@ test.describe('math', () => {
     await expect(page.getByText('That costs $5 and $10, so $x$ stays text here.')).toBeVisible();
     await expect(page.locator('.katex')).toHaveCount(0);
     expect(await katexLoaded()).toEqual({ css: false, js: false });
-  });
-});
-
-test.describe('tracks', () => {
-  test('the Quizzes page heads its topics by track', async ({ page }) => {
-    await setup(page);
-    await page.goto('/quiz');
-    const tracks = page.getByTestId('topic-track');
-    await expect(tracks).toHaveCount(2);
-    await expect(tracks.nth(0).getByRole('heading')).toHaveText('Fundamentals');
-    await expect(tracks.nth(1).getByRole('heading')).toHaveText('Quant');
-    await expect(tracks.nth(1)).toContainText('Probability, statistics, markets and puzzles');
-    // The server's order within a track.
-    await expect(tracks.nth(0).getByRole('button', { name: /questions answered$/ })).toHaveText([
-      /^C\+\+/,
-      /^Python/,
-      /^Computer architecture/,
-      /^Operating systems/,
-      /^Networking/,
-      /^Concurrency/,
-    ]);
-    await expect(tracks.nth(1).getByRole('button')).toHaveText(QUANT_TITLES);
-    // Topics of both tracks go into one quiz.
-    await tracks
-      .nth(1)
-      .getByRole('button', { name: /^Probability/ })
-      .click();
-    await page.getByRole('button', { name: /^Networking/ }).click();
-    await expect(page.getByTestId('setup-summary')).toContainText('Networking, Probability');
-  });
-
-  test('the roadmap and the bank pick topics by track', async ({ page }) => {
-    await setup(page);
-    await page.goto('/quiz?view=roadmap');
-    const tracks = page.getByTestId('roadmap-track');
-    await expect(tracks).toHaveCount(2);
-    await expect(tracks.nth(0)).toContainText('Fundamentals');
-    await expect(tracks.nth(1)).toContainText('Quant');
-    await tracks
-      .nth(1)
-      .getByRole('radio', { name: /^Probability/ })
-      .click();
-    await expect(page).toHaveURL(/roadmap=probability$/);
-    await expect(page.getByRole('group', { name: 'Probability study areas' })).toBeVisible();
-
-    await page.goto(BANK);
-    await page.getByRole('combobox', { name: 'Topic' }).click();
-    const list = page.getByRole('listbox');
-    await expect(list.getByRole('group')).toHaveCount(2);
-    await expect(list.getByRole('group').nth(1)).toContainText('Quant');
-    await expect(list.getByRole('group').nth(1).getByRole('option')).toHaveText(
-      QUIZ_TOPICS_QUANT.map((t) => t.title),
-    );
-  });
-
-  test('with one track (today), nothing is headed', async ({ page }) => {
-    await setup(page, (b) => {
-      b.quizTopics = QUIZ_TOPICS_FUNDAMENTALS;
-      b.quizRoadmap = QUIZ_ROADMAP_FUNDAMENTALS;
-    });
-    await page.goto('/quiz');
-    await expect(page.getByRole('button', { name: /^C\+\+/ })).toBeVisible();
-    await expect(
-      page.getByText('Short drills on the fundamentals interviewers like'),
-    ).toBeVisible();
-    await expect(page.getByTestId('topic-track')).toHaveCount(0);
-    await expect(page.getByRole('heading', { name: 'Fundamentals' })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: /questions answered$/ })).toHaveCount(6);
-
-    await page.getByRole('tab', { name: 'Roadmap' }).click();
-    await expect(
-      page.getByRole('radiogroup', { name: 'Roadmap topic' }).getByRole('radio'),
-    ).toHaveCount(6);
-    await expect(page.getByTestId('roadmap-track')).toHaveCount(0);
-    await expect(page.getByText('Fundamentals', { exact: true })).toHaveCount(0);
-
-    await page.goto('/quiz/topics/operating-systems');
-    await page.getByRole('combobox', { name: 'Topic' }).click();
-    await expect(page.getByRole('listbox').getByRole('option')).toHaveCount(6);
-    await expect(page.getByRole('listbox').getByRole('group')).toHaveCount(0);
   });
 });

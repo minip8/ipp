@@ -3,8 +3,7 @@
  *   SCREENS=1 playwright test screens-roadmap      (ONLY=roadmap-cpp,... narrows it)
  */
 import { expect, type Page, test } from '@playwright/test';
-import { QUIZ_TOPICS_FUNDAMENTALS } from './fixtures';
-import { QUIZ_ROADMAP_FRESH, QUIZ_ROADMAP_FUNDAMENTALS } from './fixtures-quiz-roadmap';
+import { QUIZ_ROADMAP_FRESH } from './fixtures-quiz-roadmap';
 import { shoot as rawShoot, setup } from './helpers';
 
 test.skip(!process.env.SCREENS, 'set SCREENS=1 to capture screenshots');
@@ -37,32 +36,20 @@ for (const width of WIDTHS) {
       test(name, async ({ page }) => {
         test.skip(!want(name));
         await setup(page);
-        await page.goto(`/quiz?view=roadmap&roadmap=${topic}`);
+        const track = topic === 'probability' ? 'quant' : 'software';
+        await page.goto(`/${track}/roadmap?view=maps&roadmap=${topic}`);
         await expect(page.getByTestId('roadmap-node').first()).toBeVisible();
         await page.waitForTimeout(300);
         await shoot(page, name);
       });
     }
 
-    // Before any quant content: one track, no headings (compare with roadmap-cpp of old).
-    test('roadmap-fundamentals', async ({ page }) => {
-      test.skip(!want('roadmap-fundamentals'));
-      await setup(page, (b) => {
-        b.quizRoadmap = QUIZ_ROADMAP_FUNDAMENTALS;
-        b.quizTopics = QUIZ_TOPICS_FUNDAMENTALS;
-      });
-      await page.goto('/quiz?view=roadmap&roadmap=cpp');
-      await expect(page.getByTestId('roadmap-node').first()).toBeVisible();
-      await page.waitForTimeout(300);
-      await shoot(page, 'roadmap-fundamentals');
-    });
-
     test('roadmap-fresh', async ({ page }) => {
       test.skip(!want('roadmap-fresh'));
       await setup(page, (b) => {
         b.quizRoadmap = QUIZ_ROADMAP_FRESH;
       });
-      await page.goto('/quiz?view=roadmap&roadmap=cpp');
+      await page.goto('/software/roadmap?view=maps&roadmap=cpp');
       await expect(page.getByTestId('roadmap-node').first()).toBeVisible();
       await page.waitForTimeout(300);
       await shoot(page, 'roadmap-fresh');
@@ -71,7 +58,7 @@ for (const width of WIDTHS) {
     test('roadmap-selected', async ({ page }) => {
       test.skip(!want('roadmap-selected'));
       await setup(page);
-      await page.goto('/quiz?view=roadmap&roadmap=cpp');
+      await page.goto('/software/roadmap?view=maps&roadmap=cpp');
       await page.locator('[data-node="cpp-move-semantics"]').click();
       await expect(page.getByTestId('roadmap-details')).toBeVisible();
       await page.waitForTimeout(400);
@@ -82,7 +69,7 @@ for (const width of WIDTHS) {
       test.skip(!want('roadmap-related'));
       await setup(page);
       // An area with links to another topic's areas.
-      await page.goto('/quiz?view=roadmap&roadmap=cpp&node=cpp-concurrency');
+      await page.goto('/software/roadmap?view=maps&roadmap=cpp&node=cpp-concurrency');
       await expect(page.getByTestId('roadmap-details')).toBeVisible();
       await page.waitForTimeout(400);
       await shoot(page, 'roadmap-related');
@@ -94,7 +81,7 @@ for (const width of WIDTHS) {
       await page.route('**/api/quiz/roadmap', () => {
         /* never answers */
       });
-      await page.goto('/quiz?view=roadmap');
+      await page.goto('/software/roadmap?view=maps');
       await expect(page.getByRole('status', { name: 'Loading roadmap' })).toBeVisible();
       await shoot(page, 'roadmap-loading');
     });

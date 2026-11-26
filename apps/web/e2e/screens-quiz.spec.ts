@@ -29,7 +29,7 @@ for (const width of WIDTHS) {
 
     test('hub', async ({ page }) => {
       await setup(page);
-      await page.goto('/quiz');
+      await page.goto('/software/practice');
       await page.getByRole('button', { name: /^C\+\+/ }).click();
       await page.getByRole('button', { name: /^Networking/ }).click();
       await page.waitForTimeout(300);
@@ -41,7 +41,7 @@ for (const width of WIDTHS) {
       await setup(page, (b) => {
         b.quizTopics = QUIZ_TOPICS_FUNDAMENTALS;
       });
-      await page.goto('/quiz');
+      await page.goto('/software/practice');
       await page.getByRole('button', { name: /^C\+\+/ }).click();
       await page.getByRole('button', { name: /^Networking/ }).click();
       await page.waitForTimeout(300);
@@ -89,7 +89,7 @@ for (const width of WIDTHS) {
       await shoot(page, 'quant-single-math', { fullPage: true });
 
       // A practice attempt to its results.
-      await page.goto('/quiz');
+      await page.goto('/software/practice');
       await page.getByRole('button', { name: /^Probability/ }).click();
       await page.getByRole('button', { name: 'Start quiz' }).click();
       const primary = page.getByTestId('quiz-primary');
@@ -121,7 +121,7 @@ for (const width of WIDTHS) {
       await shoot(page, 'quant-results', { fullPage: true });
 
       // A discussion: math in the interviewer's turns.
-      await page.goto('/quiz');
+      await page.goto('/software/practice');
       await page.getByRole('radio', { name: 'Discussion' }).click();
       await page.getByRole('button', { name: 'Start discussion' }).click();
       await page
@@ -134,7 +134,7 @@ for (const width of WIDTHS) {
 
     test('hub history', async ({ page }) => {
       await setup(page);
-      await page.goto('/quiz?view=history');
+      await page.goto('/software/practice?view=history');
       await page.getByRole('region', { name: 'Past quizzes' }).getByRole('link').first().waitFor();
       await page.waitForTimeout(300);
       await shoot(page, 'quiz-history', { fullPage: true });
@@ -142,7 +142,7 @@ for (const width of WIDTHS) {
 
     test('discussion', async ({ page }) => {
       await setup(page);
-      await page.goto('/quiz');
+      await page.goto('/software/practice');
       await page.getByRole('button', { name: /^Networking/ }).click();
       await page.getByRole('radio', { name: 'Discussion' }).click();
       await page.waitForTimeout(300);

@@ -1,8 +1,9 @@
 /**
- * The Quant page (/quant): the guided way into the quant track. Two paths kept in `?path=`, each
- * an ordered sequence of topics with their progress, a "next up" marker by the roadmap's idea of
- * complete, and ways into practice, the bank and the roadmap; plus a discussion of the path's open
- * questions, which needs the user's AI key.
+ * The Roadmap tab's study path (the default view of /{track}/roadmap): a track's topics as an
+ * ordered sequence with their progress, a "next up" marker by the roadmap's idea of complete, and
+ * ways into practice, the bank and the topic maps; plus a discussion of the path's open questions,
+ * which needs the user's AI key. Quant has two curated paths kept in `?path=`, Software one of all
+ * its topics.
  */
 import { expect, type Page, test } from '@playwright/test';
 import { aiKeyStatus, QUIZ_TOPICS, QUIZ_TOPICS_FUNDAMENTALS } from './fixtures';
@@ -10,9 +11,10 @@ import { setup } from './helpers';
 
 const KEY = 'sk-ant-api03-e2eQUANTkey-0123456789abcdefghijklmnop-Zk7Q';
 
-const steps = (page: Page) => page.getByTestId('quant-step');
+const steps = (page: Page) => page.getByTestId('path-step');
 /** Each step's heading reads "Step n: Title". */
 const headings = (page: Page) => steps(page).getByRole('heading');
+const picker = (page: Page) => page.getByRole('radiogroup', { name: 'Path' });
 
 const TRADER = [
   'Step 1: Probability',
@@ -32,62 +34,91 @@ const attemptRequests = (b: { requests: { method: string; path: string; body: un
     .filter((r) => r.method === 'POST' && r.path === '/api/quiz/attempts')
     .map((r) => r.body);
 
-test('Quant sits between Interviews and Quizzes in the header, and is marked when open', async ({
-  page,
-}) => {
+test('the Roadmap tab opens on the study path, titled per track', async ({ page }) => {
   await setup(page);
-  await page.goto('/dashboard');
+  await page.goto('/quant/roadmap');
+  await expect(page.getByRole('heading', { level: 1, name: 'Roadmap' })).toBeVisible();
+  await expect(page).toHaveTitle(/^Quant roadmap · interview\+\+/);
+  const views = page.getByRole('tablist', { name: 'Roadmap' }).getByRole('tab');
+  await expect(views).toHaveText(['Study path', 'Topic maps']);
+  await expect(views.first()).toHaveAttribute('aria-selected', 'true');
   const nav = page.getByRole('navigation', { name: 'Main' });
-  await expect(nav.getByRole('link')).toHaveText(['Interviews', 'Quant', 'Quizzes']);
-  await expect(nav.getByRole('link', { name: 'Quant' })).not.toHaveAttribute('aria-current');
-  await nav.getByRole('link', { name: 'Quant' }).click();
-  await expect(page).toHaveURL(/\/quant$/);
-  await expect(page.getByRole('heading', { level: 1, name: 'Quant' })).toBeVisible();
-  await expect(page).toHaveTitle(/^Quant · interview\+\+/);
-  await expect(nav.getByRole('link', { name: 'Quant' })).toHaveAttribute('aria-current', 'page');
-  await expect(nav.getByRole('link', { name: 'Quizzes' })).not.toHaveAttribute('aria-current');
-  await expect(nav.getByRole('link', { name: 'Interviews' })).not.toHaveAttribute('aria-current');
+  await expect(nav.getByRole('link', { name: 'Roadmap' })).toHaveAttribute('aria-current', 'page');
+  await page.goto('/software/roadmap');
+  await expect(page).toHaveTitle(/^Roadmap · interview\+\+/);
 });
 
-test('two paths, kept in the URL', async ({ page }) => {
+test('Quant: two paths, kept in the URL', async ({ page }) => {
   await setup(page);
-  await page.goto('/quant');
-  const tabs = page.getByRole('tablist', { name: 'Path' });
-  await expect(tabs.getByRole('tab')).toHaveText(['Trader', 'Researcher']);
-  await expect(tabs.getByRole('tab', { name: 'Trader' })).toHaveAttribute('aria-selected', 'true');
+  await page.goto('/quant/roadmap');
+  await expect(picker(page).getByRole('radio')).toHaveText(['Trader', 'Researcher']);
+  await expect(picker(page).getByRole('radio', { name: 'Trader' })).toHaveAttribute(
+    'aria-checked',
+    'true',
+  );
   await expect(page.getByText('what trading interviews lean on')).toBeVisible();
   await expect(headings(page)).toHaveText(TRADER);
 
-  await tabs.getByRole('tab', { name: 'Researcher' }).click();
-  await expect(page).toHaveURL(/\/quant\?path=researcher$/);
+  await picker(page).getByRole('radio', { name: 'Researcher' }).click();
+  await expect(page).toHaveURL(/\/quant\/roadmap\?path=researcher$/);
   await expect(page.getByText('the maths research interviews build on')).toBeVisible();
   await expect(headings(page)).toHaveText(RESEARCHER);
 
   // A link keeps the path, and Back returns to the one before.
   await page.reload();
-  await expect(tabs.getByRole('tab', { name: 'Researcher' })).toHaveAttribute(
-    'aria-selected',
+  await expect(picker(page).getByRole('radio', { name: 'Researcher' })).toHaveAttribute(
+    'aria-checked',
     'true',
   );
   await expect(headings(page)).toHaveText(RESEARCHER);
   await page.goBack();
-  await expect(page).toHaveURL(/\/quant$/);
+  await expect(page).toHaveURL(/\/quant\/roadmap$/);
   await expect(headings(page)).toHaveText(TRADER);
 
   // The default path leaves the parameter out, and a path that is not one falls back to it.
-  await page.goto('/quant?path=researcher');
-  await tabs.getByRole('tab', { name: 'Trader' }).click();
-  await expect(page).toHaveURL(/\/quant$/);
-  await page.goto('/quant?path=quant-dev');
+  await page.goto('/quant/roadmap?path=researcher');
+  await picker(page).getByRole('radio', { name: 'Trader' }).click();
+  await expect(page).toHaveURL(/\/quant\/roadmap$/);
+  await page.goto('/quant/roadmap?path=quant-dev');
   await expect(headings(page)).toHaveText(TRADER);
+});
+
+test('Software: one path of all its topics in study order, no picker', async ({ page }) => {
+  await setup(page);
+  await page.goto('/software/roadmap');
+  await expect(headings(page)).toHaveText([
+    'Step 1: C++',
+    'Step 2: Python',
+    'Step 3: Computer architecture',
+    'Step 4: Operating systems',
+    'Step 5: Networking',
+    'Step 6: Concurrency',
+  ]);
+  await expect(picker(page)).toHaveCount(0);
+  await expect(page.getByTestId('path-description')).toContainText('The languages first');
+  // C++ is under way, so next up; no drill in this track.
+  await expect(steps(page).nth(0).getByText('Next up', { exact: true })).toBeVisible();
+  await expect(page.getByTestId('drill-card')).toHaveCount(0);
+  await expect(
+    page.getByText(/^5 open questions from C\+\+, Python, Computer architecture/),
+  ).toBeVisible();
+});
+
+test('Python, shared into Quant, is on neither curated path', async ({ page }) => {
+  await setup(page);
+  await page.goto('/quant/roadmap');
+  await expect(headings(page)).toHaveText(TRADER);
+  await page.goto('/quant/roadmap?path=researcher');
+  await expect(headings(page)).toHaveText(RESEARCHER);
+  await expect(page.getByTestId('drill-card')).toBeVisible();
 });
 
 test('each path is a sequence with progress and one topic next up', async ({ page }) => {
   await setup(page);
-  await page.goto('/quant');
+  await page.goto('/quant/roadmap');
   const s = steps(page);
   await expect(s).toHaveCount(4);
-  // As on the Quizzes page, with the accuracy once something is answered.
+  // As on Practice, with the accuracy once something is answered.
   await expect(s.nth(0)).toContainText('84 of 84 questions answered · 82% accuracy');
   await expect(s.nth(1)).toContainText('23 of 66 questions answered · 61% accuracy');
   await expect(s.nth(3)).toContainText('0 of 88 questions answered');
@@ -99,7 +130,7 @@ test('each path is a sequence with progress and one topic next up', async ({ pag
   await expect(s.nth(1).getByText('Next up', { exact: true })).toBeVisible();
 
   // Statistics is fully answered but under 70%: not complete, so next up on this path.
-  await page.getByRole('tab', { name: 'Researcher' }).click();
+  await picker(page).getByRole('radio', { name: 'Researcher' }).click();
   await expect(s.nth(1)).toContainText('81 of 81 questions answered · 64% accuracy');
   await expect(s.nth(1)).toContainText('get to 70% accuracy to complete it');
   await expect(s.nth(1).getByText('Next up', { exact: true })).toBeVisible();
@@ -111,7 +142,7 @@ test('a topic the server does not have is skipped', async ({ page }) => {
   await setup(page, (b) => {
     b.quizTopics = QUIZ_TOPICS.filter((t) => t.slug !== 'brainteasers');
   });
-  await page.goto('/quant');
+  await page.goto('/quant/roadmap');
   await expect(headings(page)).toHaveText([
     'Step 1: Probability',
     'Step 2: Betting & market making',
@@ -122,33 +153,33 @@ test('a topic the server does not have is skipped', async ({ page }) => {
   await expect(page.getByText(/open questions from Probability, Betting/)).toBeVisible();
 });
 
-test('with no quant topics, it says so', async ({ page }) => {
+test('with none of a path’s topics, it says so', async ({ page }) => {
   await setup(page, (b) => {
     b.quizTopics = QUIZ_TOPICS_FUNDAMENTALS;
   });
-  await page.goto('/quant');
-  await expect(page.getByText('No quant topics yet')).toBeVisible();
+  await page.goto('/quant/roadmap');
+  await expect(page.getByText('No topics on this path yet')).toBeVisible();
   await expect(steps(page)).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Start discussion' })).toHaveCount(0);
-  await page.getByRole('tab', { name: 'Researcher' }).click();
-  await expect(page.getByText('No quant topics yet')).toBeVisible();
+  await picker(page).getByRole('radio', { name: 'Researcher' }).click();
+  await expect(page.getByText('No topics on this path yet')).toBeVisible();
 });
 
 test.describe('actions', () => {
   test('Practise starts a practice round on that topic', async ({ page }) => {
     const backend = await setup(page);
-    await page.goto('/quant');
+    await page.goto('/quant/roadmap');
     await page.getByRole('button', { name: 'Practise Brainteasers' }).click();
     await expect(page).toHaveURL(/\/quiz\/[0-9a-f-]{36}$/);
     expect(attemptRequests(backend)).toEqual([
       { topics: ['brainteasers'], mode: 'practice', count: 10, focusWeak: true },
     ]);
-    await expect(page.getByText('Practice', { exact: true })).toBeVisible();
+    await expect(page.getByText('Practice', { exact: true }).first()).toBeVisible();
   });
 
   test('Browse questions opens the topic bank', async ({ page }) => {
     await setup(page);
-    await page.goto('/quant');
+    await page.goto('/quant/roadmap');
     const browse = page.getByRole('link', { name: 'Browse Options & finance questions' });
     await expect(browse).toHaveAttribute('href', '/quiz/topics/options');
     await page.getByRole('link', { name: 'Browse Probability questions' }).click();
@@ -156,27 +187,41 @@ test.describe('actions', () => {
     await expect(page.getByTestId('bank-subtopics')).toBeVisible();
   });
 
-  test('Roadmap opens the topic roadmap', async ({ page }) => {
+  test('Roadmap opens the topic maps on that topic, in the same track', async ({ page }) => {
     await setup(page);
-    await page.goto('/quant?path=researcher');
+    await page.goto('/quant/roadmap?path=researcher');
     await expect(page.getByRole('link', { name: 'Statistics roadmap' })).toHaveAttribute(
       'href',
-      '/quiz?view=roadmap&roadmap=statistics',
+      '/quant/roadmap?view=maps&roadmap=statistics',
     );
     await page.getByRole('link', { name: 'Probability roadmap' }).click();
-    await expect(page).toHaveURL(/\/quiz\?view=roadmap&roadmap=probability$/);
+    await expect(page).toHaveURL(/\/quant\/roadmap\?view=maps&roadmap=probability$/);
+    await expect(page.getByRole('tab', { name: 'Topic maps' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
     await expect(page.getByRole('group', { name: 'Probability study areas' })).toBeVisible();
+    // Back returns to the path.
+    await page.goBack();
+    await expect(page).toHaveURL(/\/quant\/roadmap\?path=researcher$/);
+    await expect(headings(page)).toHaveText(RESEARCHER);
+
+    await page.goto('/software/roadmap');
+    await expect(page.getByRole('link', { name: 'Python roadmap' })).toHaveAttribute(
+      'href',
+      '/software/roadmap?view=maps&roadmap=python',
+    );
   });
 
   test('a discussion draws on the path’s open questions', async ({ page }) => {
     const backend = await setup(page);
-    await page.goto('/quant?path=researcher');
+    await page.goto('/quant/roadmap?path=researcher');
     await expect(
       page.getByText(
         '5 open questions from Probability, Statistics, Linear algebra & calculus and Options & finance.',
       ),
     ).toBeVisible();
-    await expect(page.getByTestId('quant-key-prompt')).toHaveCount(0);
+    await expect(page.getByTestId('path-key-prompt')).toHaveCount(0);
     await page.getByRole('button', { name: 'Start discussion' }).click();
     await expect(page).toHaveURL(/\/quiz\/[0-9a-f-]{36}$/);
     expect(attemptRequests(backend)).toEqual([
@@ -194,8 +239,8 @@ test.describe('actions', () => {
     const backend = await setup(page, (b) => {
       b.aiKey = aiKeyStatus('missing');
     });
-    await page.goto('/quant');
-    const prompt = page.getByTestId('quant-key-prompt');
+    await page.goto('/quant/roadmap');
+    const prompt = page.getByTestId('path-key-prompt');
     await expect(prompt).toContainText('A discussion runs on your own AI API key');
     await expect(page.getByRole('button', { name: 'Start discussion' })).toBeDisabled();
     // Practice needs no key.
@@ -216,8 +261,8 @@ test.describe('actions', () => {
     await setup(page, (b) => {
       b.aiKey = aiKeyStatus('rejected');
     });
-    await page.goto('/quant');
-    await expect(page.getByTestId('quant-key-prompt')).toContainText('Your API key was rejected');
+    await page.goto('/software/roadmap');
+    await expect(page.getByTestId('path-key-prompt')).toContainText('Your API key was rejected');
     await expect(page.getByRole('button', { name: 'Start discussion' })).toBeDisabled();
   });
 });
@@ -225,39 +270,13 @@ test.describe('actions', () => {
 test.describe('on a phone', () => {
   test.use({ viewport: { width: 360, height: 780 }, hasTouch: true });
 
-  test('the header keeps logo, three links, theme and account on one line at 360px', async ({
-    page,
-  }) => {
+  test('a step’s three actions share one row, and nothing scrolls sideways', async ({ page }) => {
     await setup(page);
-    await page.goto('/quant');
-    await expect(page.getByRole('heading', { level: 1, name: 'Quant' })).toBeVisible();
-    const nav = page.getByRole('navigation', { name: 'Main' });
-    const links = nav.getByRole('link');
-    await expect(links).toHaveText(['Interviews', 'Quant', 'Quizzes']);
-    const theme = await page.getByRole('button', { name: 'Change theme' }).boundingBox();
-    const menu = await page.getByRole('button', { name: 'Account menu' }).boundingBox();
-    const logo = await page
-      .getByRole('banner')
-      .getByRole('link', { name: 'interview++' })
-      .boundingBox();
-    if (!theme || !menu || !logo) throw new Error('header not laid out');
-    const mid = (b: { y: number; height: number }) => b.y + b.height / 2;
-    let right = logo.x + logo.width;
-    for (const link of await links.all()) {
-      const box = await link.boundingBox();
-      if (!box) throw new Error('no link box');
-      // In order, not overlapping, on the same line as the account menu.
-      expect(box.x).toBeGreaterThanOrEqual(right);
-      expect(Math.abs(mid(box) - mid(menu))).toBeLessThan(4);
-      right = box.x + box.width;
-    }
-    expect(right).toBeLessThanOrEqual(theme.x);
-    expect(menu.x + menu.width).toBeLessThanOrEqual(360);
+    await page.goto('/quant/roadmap');
+    await expect(steps(page).first()).toBeVisible();
     await expect
       .poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth))
       .toBeLessThanOrEqual(0);
-
-    // A step's three actions share one row.
     const actions = steps(page)
       .first()
       .getByRole('button')

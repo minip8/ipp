@@ -40,40 +40,46 @@ test('sign-in: fields bring up the right keyboards and fit', async ({ page }) =>
   await expectNoHorizontalOverflow(page);
 });
 
-test('app header: logo, the three nav links, theme and account menu on one line', async ({
+test('app header: logo, the track menu, the three tabs and the account menu on one line', async ({
   page,
 }) => {
   await setup(page);
-  await page.goto('/dashboard');
+  await page.goto('/software/interviews');
   await expect(page.getByRole('heading', { level: 1, name: 'Interviews' })).toBeVisible();
   const nav = page.getByRole('navigation', { name: 'Main' });
-  const quizzes = nav.getByRole('link', { name: 'Quizzes' });
-  await expect(nav.getByRole('link')).toHaveText(['Interviews', 'Quant', 'Quizzes']);
+  const practice = nav.getByRole('link', { name: 'Practice' });
+  const roadmap = nav.getByRole('link', { name: 'Roadmap' });
+  await expect(nav.getByRole('link')).toHaveText(['Interviews', 'Practice', 'Roadmap']);
+  const track = page.getByRole('button', { name: 'Track: Software' });
   const menu = page.getByRole('button', { name: 'Account menu' });
-  await expect(quizzes).toBeVisible();
+  await expect(roadmap).toBeVisible();
   await expect(menu).toBeVisible();
-  // Nothing in the header overlaps or wraps: the last link ends before the theme button starts.
-  const linkBox = await quizzes.boundingBox();
-  const themeBox = await page.getByRole('button', { name: 'Change theme' }).boundingBox();
+  // The theme is in the account menu on a phone.
+  await expect(page.getByRole('button', { name: 'Change theme' })).toBeHidden();
+  // Nothing in the header overlaps or wraps: track menu, tabs, then the account menu.
+  const trackBox = await track.boundingBox();
+  const firstBox = await nav.getByRole('link').first().boundingBox();
+  const lastBox = await roadmap.boundingBox();
   const menuBox = await menu.boundingBox();
-  expect(linkBox && themeBox && linkBox.x + linkBox.width <= themeBox.x).toBe(true);
-  expect(
-    linkBox &&
-      menuBox &&
-      Math.abs(linkBox.y + linkBox.height / 2 - (menuBox.y + menuBox.height / 2)) < 4,
-  ).toBe(true);
+  if (!trackBox || !firstBox || !lastBox || !menuBox) throw new Error('header not laid out');
+  expect(trackBox.x + trackBox.width).toBeLessThanOrEqual(firstBox.x);
+  expect(lastBox.x + lastBox.width).toBeLessThanOrEqual(menuBox.x);
+  const mid = (b: { y: number; height: number }) => b.y + b.height / 2;
+  expect(Math.abs(mid(lastBox) - mid(menuBox))).toBeLessThan(4);
+  expect(Math.abs(mid(trackBox) - mid(menuBox))).toBeLessThan(4);
   await expectNoHorizontalOverflow(page);
 
-  await quizzes.tap();
-  await expect(page).toHaveURL(/\/quiz$/);
-  await expect(page.getByRole('heading', { level: 1, name: 'Quizzes' })).toBeVisible();
-  await expect(quizzes).toHaveAttribute('aria-current', 'page');
+  await practice.tap();
+  await expect(page).toHaveURL(/\/software\/practice$/);
+  await expect(page.getByRole('heading', { level: 1, name: 'Practice' })).toBeVisible();
+  await expect(practice).toHaveAttribute('aria-current', 'page');
   await expectNoHorizontalOverflow(page);
 
-  // The account menu opens by touch and stays inside the viewport.
+  // The account menu opens by touch and stays inside the viewport, the theme with it.
   await menu.tap();
   const panel = page.getByRole('menu');
   await expect(panel.getByRole('menuitem', { name: /AI key/ })).toBeVisible();
+  await expect(panel.getByRole('menuitemradio', { name: 'Dark' })).toBeVisible();
   const box = await panel.boundingBox();
   expect(box && box.x >= 0 && box.x + box.width <= 390).toBe(true);
 });

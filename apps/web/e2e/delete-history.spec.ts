@@ -3,7 +3,7 @@ import { expect, type Page, test } from '@playwright/test';
 import { iso, makeAttempt, QUIZ_ATTEMPT_ID, uuid } from './fixtures';
 import { setup } from './helpers';
 
-const HISTORY = '/quiz?view=history';
+const HISTORY = '/software/practice?view=history';
 const pastQuizzes = (page: Page) =>
   page.getByRole('region', { name: 'Past quizzes' }).getByRole('listitem');
 const deletes = (b: { requests: { method: string; path: string }[] }) =>
@@ -97,7 +97,7 @@ test.describe('quiz history', () => {
     await expect(dialog).toContainText('you will not be able to resume it');
     await expect(dialog).toContainText('No answers yet.');
     await dialog.getByRole('button', { name: 'Delete practice quiz' }).click();
-    await expect(page).toHaveURL(/\/quiz\?view=history$/);
+    await expect(page).toHaveURL(/\/software\/practice\?view=history$/);
     await expect(page.getByText('Practice quiz deleted')).toBeVisible();
     expect(deletes(backend)).toEqual([`/api/quiz/attempts/${QUIZ_ATTEMPT_ID}`]);
     // Its page is gone too.
@@ -124,7 +124,7 @@ test.describe('quiz history', () => {
     await expect(page.getByTestId('quiz-score')).toBeVisible();
     await page.getByRole('button', { name: 'Delete exam' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Delete exam' }).click();
-    await expect(page).toHaveURL(/\/quiz\?view=history$/);
+    await expect(page).toHaveURL(/\/software\/practice\?view=history$/);
     expect(deletes(backend)).toEqual([`/api/quiz/attempts/${id}`]);
   });
 });
@@ -134,7 +134,7 @@ test.describe('drill history', () => {
     page,
   }) => {
     const backend = await setup(page);
-    await page.goto('/quant/drill');
+    await page.goto('/quant/practice/drill');
     const runs = page.getByTestId('drill-runs').getByRole('listitem');
     await expect(runs).toHaveCount(4);
     const bests = page.getByTestId('drill-bests');
@@ -172,7 +172,7 @@ test.describe('drill history', () => {
 
   test('clears every run and best', async ({ page }) => {
     const backend = await setup(page);
-    await page.goto('/quant/drill');
+    await page.goto('/quant/practice/drill');
     await page
       .getByRole('region', { name: 'Your runs' })
       .getByRole('button', { name: 'Clear' })

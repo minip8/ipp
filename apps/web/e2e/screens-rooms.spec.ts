@@ -35,10 +35,10 @@ for (const width of WIDTHS) {
         b.pads.set(ROOM_PAD_ID, makeRoomDetail({ as: 'candidate' }));
         b.tokens.set(ROOM_TOKEN, ROOM_PAD_ID);
       });
-      await page.goto('/new?mode=host');
+      await page.goto('/software/interviews?mode=host');
       await page.getByRole('button', { name: /^LRU Cache/ }).click();
       await shoot(page, 'room-new', { fullPage: true });
-      await page.goto('/dashboard');
+      await page.goto('/software/interviews');
       await page.getByRole('region', { name: 'In progress' }).waitFor();
       await shoot(page, 'room-dashboard');
     });
