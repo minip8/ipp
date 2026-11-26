@@ -1,7 +1,13 @@
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { groupTags, PROBLEM_CATEGORIES, TOPIC_GROUPS } from '@ipp/contracts';
+import {
+  groupTags,
+  PROBLEM_CATEGORIES,
+  QUANT_PATH_INFO,
+  QUANT_PATHS,
+  TOPIC_GROUPS,
+} from '@ipp/contracts';
 import { afterAll, describe, expect, it } from 'vitest';
 import {
   CONTENT_ROOT,
@@ -135,5 +141,16 @@ describe('quant answer checks', () => {
       questions.filter((q) => q.type === 'numeric' && !checked.has(q.id)).map((q) => q.id),
     ).toEqual([]);
     expect([...checked].filter((id) => !ids.has(id))).toEqual([]);
+  });
+});
+
+describe('quant paths', () => {
+  it('every topic on a path of the Quant page is a quant topic, and every quant topic is on a path', () => {
+    const quant = loadQuizTopics()
+      .filter((t) => t.track === 'quant')
+      .map((t) => t.slug);
+    const onPaths = new Set(QUANT_PATHS.flatMap((p) => QUANT_PATH_INFO[p].topics));
+    expect([...onPaths].filter((t) => !quant.includes(t))).toEqual([]);
+    expect(quant.filter((t) => !onPaths.has(t))).toEqual([]);
   });
 });
