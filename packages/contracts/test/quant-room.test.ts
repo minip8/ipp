@@ -451,7 +451,8 @@ describe('a hosted round', () => {
     );
     for (const reason of ['already_posed', 'not_open', 'wrong_index', 'ended', 'invalid'])
       expect(refusals).toContain(reason);
-  });
+    // 3,600 steps: seconds on a slow CI runner, where the default 5 s once ran out.
+  }, 30_000);
 });
 
 // ---------------------------------------------------------------- what is posed

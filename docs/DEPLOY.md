@@ -131,9 +131,14 @@ infra/deploy/gcp.sh push
 #              sudo install target/release/judge /opt/ipp/judge && sudo systemctl restart ipp-judge; gcp.sh lockdown
 ```
 
-Both `deploy` and `push` unpack over `/opt/ipp-src` without removing anything (`.env.prod` lives
-there), so a file deleted from the repository stays on the host. If a build fails on a file that
-no longer exists in the repository, delete it on the host.
+Both `deploy` and `push` unpack over `/opt/ipp-src` (`.env.prod` lives there, so the directory is
+never replaced). `deploy` first removes from the host every file the commit's history once had and
+the commit no longer has (`removed_paths` in `gcp.sh`: a deleted page would otherwise stay a
+route, and one importing something since removed fails the build); it prints each one, never
+touches an env file or anything the repository never tracked, and from a shallow clone removes
+only what that clone's history shows (the workflow fetches the whole history for this). `push`
+removes nothing, so on the judge host a file deleted from the repository stays until deleted
+there.
 
 ## Deploying from GitHub
 
