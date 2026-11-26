@@ -258,6 +258,8 @@ test.describe('the host and a guest candidate in one room', () => {
 
     // The guest joins with a name and lands in the quant room, waiting.
     await c.goto(`/join/${QROOM_TOKEN}`);
+    // The invite names what they will work in: no code editor in a quant room.
+    await expect(c.getByText(/share a scratchpad, a whiteboard and a chat/)).toBeVisible();
     await c.getByLabel('Your name').fill('Casey Jones');
     await c.getByRole('button', { name: 'Join the interview' }).click();
     await expect(c).toHaveURL(new RegExp(`/pads/${QROOM_PAD_ID}$`));

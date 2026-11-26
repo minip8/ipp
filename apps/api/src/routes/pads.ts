@@ -461,6 +461,7 @@ export function padRoutes(ctx: Ctx) {
     if (!row) throw notFound('Invite');
     const info: InviteInfo = {
       kind: row.pad.kind,
+      format: row.pad.format,
       title: row.pad.title,
       hostName: row.hostName,
       status: row.pad.status,

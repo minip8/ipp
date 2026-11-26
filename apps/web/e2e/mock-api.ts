@@ -448,6 +448,7 @@ export class MockBackend {
       if (!pad) return this.status(404, 'not_found', 'Invite not found');
       const info: InviteInfo = {
         kind: pad.pad.kind,
+        format: pad.pad.format,
         title: pad.pad.title,
         hostName: pad.members.find((x) => x.role === 'owner')?.name ?? 'Someone',
         status: pad.pad.status,

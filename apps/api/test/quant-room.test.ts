@@ -470,7 +470,10 @@ describe('a quant room, end to end with a guest', () => {
       '[R1X]',
     ]);
     expect(parsed.interviewerKey).toBe('missing');
-    expectNoSecrets('invite', (await cand.get(`/api/pads/invite/${pad.shareToken}`)).text);
+    const invite = await cand.get(`/api/pads/invite/${pad.shareToken}`);
+    expectNoSecrets('invite', invite.text);
+    // The invite says what the candidate will work in, so the join page does not promise an editor.
+    expect(invite.json.format).toBe('quant');
     for (const path of ['/host', '/report', '/playback', '/host/round/bank'])
       expect((await cand.get(`/api/pads/${id}${path}`)).status).toBe(403);
     for (const [method, path, body] of [

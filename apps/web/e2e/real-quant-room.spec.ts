@@ -283,9 +283,7 @@ test('a quant room: host, a guest and an account candidate, through the real sta
   await expect(
     g.getByRole('heading', { name: 'Hana Host invited you to an interview' }),
   ).toBeVisible();
-  // Known: InviteInfo has no format, so a quant room's invite promises a code editor.
-  const editor = g.getByText(/share a code editor/);
-  if (await editor.count()) note(`a quant room's invite says: "${await editor.textContent()}"`);
+  await expect(g.getByText(/share a scratchpad, a whiteboard and a chat/)).toBeVisible();
   await shot(g, 'invite');
   await g.getByLabel('Your name').fill('Casey Guest');
   await g.getByRole('button', { name: 'Join the interview' }).click();

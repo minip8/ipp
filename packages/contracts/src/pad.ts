@@ -166,6 +166,11 @@ export type PadMember = z.infer<typeof PadMember>;
 /** GET /api/pads/invite/:token, readable without a session: enough to greet whoever was invited. */
 export const InviteInfo = z.object({
   kind: PadKind,
+  /**
+   * What the invited person will work in: a code editor, or a quant room's scratchpad and
+   * whiteboard. Absent from servers before quant rooms, hence the default.
+   */
+  format: PadFormat.default('coding'),
   title: z.string(),
   hostName: z.string(),
   status: z.enum(['active', 'ended']),
