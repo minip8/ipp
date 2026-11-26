@@ -338,3 +338,232 @@ def _():
     # any distribution with disjoint A, B of these probabilities: P(A and B) = 0 != 0.12
     pa, pb = Fraction(3, 10), Fraction(4, 10)
     return "a" if pa * pb == 0 else "b"
+
+
+# ---------------------------------------------------------------- expectation and linearity
+
+
+@check("prob-expectation-001")
+def _():
+    outcomes = list(dice(2))
+    return Fraction(sum(max(o) for o in outcomes), len(outcomes))
+
+
+@check("prob-expectation-002")
+def _():
+    # exact distribution of the number of fixed points of a random permutation of 100,
+    # via derangement numbers: P(k fixed) = C(n, k) D(n - k) / n!
+    n = 100
+    der = [1, 0]
+    for m in range(2, n + 1):
+        der.append((m - 1) * (der[m - 1] + der[m - 2]))
+    total = sum(math.comb(n, k) * der[n - k] for k in range(n + 1))
+    assert total == math.factorial(n)
+    mean = Fraction(sum(k * math.comb(n, k) * der[n - k] for k in range(n + 1)), total)
+    return mean
+
+
+@check("prob-expectation-003")
+def _():
+    # first-step equations E[s] = 1 + (s/6) E[s] + ((6-s)/6) E[s+1], E[6] = 0, solved as a system
+    n = 7
+    a = [[Fraction(0)] * n for _ in range(n)]
+    b = [Fraction(0)] * n
+    for s in range(n):
+        a[s][s] = Fraction(1)
+        if s == 6:
+            continue
+        a[s][s] -= Fraction(s, 6)
+        a[s][s + 1] -= Fraction(6 - s, 6)
+        b[s] = Fraction(1)
+    return solve(a, b)[0]
+
+
+@check("prob-expectation-004")
+def _():
+    @lru_cache(maxsize=None)
+    def changes(r: int, b: int, last: str) -> Fraction:
+        """Expected colour changes still to come, with r red and b black left after a `last` card."""
+        if r + b == 0:
+            return Fraction(0)
+        out = Fraction(0)
+        if r:
+            out += Fraction(r, r + b) * ((last == "B") + changes(r - 1, b, "R"))
+        if b:
+            out += Fraction(b, r + b) * ((last == "R") + changes(r, b - 1, "B"))
+        return out
+
+    return Fraction(26, 52) * changes(25, 26, "R") + Fraction(26, 52) * changes(26, 25, "B")
+
+
+@check("prob-expectation-005")
+def _():
+    # P(first ace at position k) by drawing non-aces one at a time
+    mean = Fraction(0)
+    no_ace_yet = Fraction(1)
+    for k in range(1, 50):
+        left = 52 - (k - 1)
+        mean += k * no_ace_yet * Fraction(4, left)
+        no_ace_yet *= Fraction(left - 4, left)
+    assert no_ace_yet == 0
+    return mean
+
+
+@check("prob-expectation-006")
+def _():
+    total = Fraction(0)
+    for k in range(1, 400):
+        total += Fraction(min(2**k, 2**20), 2**k)
+    return float(total)
+
+
+@check("prob-expectation-007")
+def _():
+    pairs = math.comb(30, 2)
+    assert Fraction(pairs, 365) == Fraction(435, 365)
+    distinct = math.prod(Fraction(365 - i, 365) for i in range(30))
+    assert abs(float(1 - distinct) - 0.706) < 0.001
+
+
+@check("prob-expectation-008")
+def _():
+    def trial(rng):
+        s, n = 0.0, 0
+        while s <= 1:
+            s += rng.random()
+            n += 1
+        return n
+
+    sim = simulate(trial)
+    assert abs(sim.mean - math.e) < 4 * sim.stderr, sim
+
+
+@check("prob-expectation-009")
+def _():
+    import random
+
+    rng = random.Random(7)
+    statements = {
+        "a": lambda E: E(lambda x, y: x + y) == E(lambda x, y: x) + E(lambda x, y: y),
+        "b": lambda E: E(lambda x, y: x * y) == E(lambda x, y: x) * E(lambda x, y: y),
+        "c": lambda E: E(lambda x, y: Fraction(1, x)) == 1 / E(lambda x, y: x),
+        "d": lambda E: E(lambda x, y: max(x, y)) >= max(E(lambda x, y: x), E(lambda x, y: y)),
+        "e": lambda E: E(lambda x, y: x * x) >= E(lambda x, y: x) ** 2,
+        "f": lambda E: E(lambda x, y: x - y) <= 0 or E(lambda x, y: Fraction(x > y)) > Fraction(1, 2),
+    }
+    violated = set()
+    for _ in range(3000):
+        support = [(rng.randint(1, 6), rng.randint(1, 6)) for _ in range(rng.randint(1, 4))]
+        weights = [rng.randint(1, 5) for _ in support]
+        tot = sum(weights)
+
+        def E(f, support=support, weights=weights, tot=tot):
+            return sum(Fraction(w, tot) * f(x, y) for (x, y), w in zip(support, weights))
+
+        for k, st in statements.items():
+            if not st(E):
+                violated.add(k)
+    return set(statements) - violated
+
+
+# ---------------------------------------------------------------- discrete distributions
+
+
+@check("prob-discrete-001")
+def _():
+    return prob(lambda o: o.count("H") == 5, itertools.product("HT", repeat=10))
+
+
+@check("prob-discrete-002")
+def _():
+    # Poisson process as a fine binomial limit: n slots, each with probability 2/n of a call
+    exact = 1 - sum(math.exp(-2) * 2**k / math.factorial(k) for k in range(2))
+    n = 2_000_000
+    p = 2 / n
+    binom = 1 - (1 - p) ** n - n * p * (1 - p) ** (n - 1)
+    assert abs(binom - exact) < 1e-5
+    return exact
+
+
+@check("prob-discrete-003")
+def _():
+    exact = Fraction(math.comb(100, 50), 2**100)
+    options = {"a": 0.5, "b": 0.25, "c": 0.08, "d": 0.01}
+    return min(options, key=lambda k: abs(options[k] - float(exact)))
+
+
+@check("prob-discrete-004")
+def _():
+    hits = Fraction(0)
+    for o in itertools.product((0, 1), repeat=5):
+        w = math.prod(Fraction(1, 3) if t else Fraction(2, 3) for t in o)
+        if sum(o) % 2 == 0:
+            hits += w
+    return hits
+
+
+@check("prob-discrete-005")
+def _():
+    @lru_cache(maxsize=None)
+    def win(a: int, b: int) -> Fraction:
+        """P(A takes the series) when A needs a more wins and B needs b more."""
+        if a == 0:
+            return Fraction(1)
+        if b == 0:
+            return Fraction(0)
+        return Fraction(3, 5) * win(a - 1, b) + Fraction(2, 5) * win(a, b - 1)
+
+    return win(4, 4)
+
+
+@check("prob-discrete-006")
+def _():
+    return Fraction(sum(math.comb(400, k) for k in range(220, 401)), 2**400)
+
+
+@check("prob-discrete-007")
+def _():
+    def trial(rng):
+        while True:  # rejection: rerun histories in which a 5 came before the first 6
+            n = 0
+            while True:
+                n += 1
+                r = rng.randint(1, 6)
+                if r == 6:
+                    return n
+                if r == 5:
+                    break
+
+    return simulate(trial, n=300_000)
+
+
+@check("prob-discrete-008")
+def _():
+    def pois(lam, k):
+        return math.exp(-lam) * lam**k / math.factorial(k)
+
+    for b in range(8):
+        for n in range(8):
+            joint = pois(10, b + n) * math.comb(b + n, b) * 0.3**b * 0.7**n
+            assert math.isclose(joint, pois(3, b) * pois(7, n), rel_tol=1e-12)
+
+
+@check("prob-discrete-009")
+def _():
+    for p in (Fraction(1, 10), Fraction(1, 2), Fraction(5, 7)):
+        ht, th = p * (1 - p), (1 - p) * p
+        assert ht == th
+        accept = ht + th
+        assert 2 / accept == 1 / (p * (1 - p))  # two tosses per geometric attempt
+    assert abs(1 / (0.1 * 0.9) - 11.1) < 0.02
+
+    def trial(rng):
+        tosses = 0
+        while True:
+            a, b = rng.random() < 0.1, rng.random() < 0.1
+            tosses += 2
+            if a != b:
+                return tosses
+
+    sim = simulate(trial, n=50_000)
+    assert abs(sim.mean - 1 / 0.09) < 4 * sim.stderr
