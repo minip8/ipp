@@ -18,7 +18,7 @@
     This is a bull call spread: it pays $\min\big(\max(S_T - 100, 0), 10\big)$, so its payoff is
     capped at \$10 and its profit runs from $-4$ to $+6$.
 
-    The common wrong answers are \$7, the payoff without the premium, and \$11, from adding the
+    The common wrong answers are \$7, the payoff without the premiums, and \$9, from adding the
     premium received to the payoff but forgetting the premium paid.
   source: { name: "Standard option strategy (e.g. Hull, Options, Futures, and Other Derivatives)" }
 

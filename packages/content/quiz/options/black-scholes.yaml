@@ -57,8 +57,9 @@
     The exact Black-Scholes implied volatility is about 15.04%; the rule of thumb is accurate to a few
     tenths of a percent for short-dated options.
 
-    The usual mistakes are using 0.4 for the straddle (giving 30%), which prices only the call, and
-    forgetting the square root of time (giving 7.5%).
+    The usual mistakes are using 0.4 for the straddle (giving 30%), which prices only the call,
+    using $T$ instead of $\sqrt{T}$ (also 30%), and leaving out the time to expiry altogether, as if
+    the option had a year to run (giving 7.5%).
   source: { name: "Widely asked trading interview question (e.g. techinterview.org options guide)", url: "https://www.techinterview.org/post/3233477254/options-greeks-quant-trading-interview/" }
 
 - id: opt-black-scholes-003
@@ -228,8 +229,8 @@
 
     By Jensen's inequality the price must exceed the square of the forward price, $100$: a convex payoff
     is worth more than the payoff of the average. The common wrong answers are 100 (squaring the
-    forward), $100\,e^{0.125}$ (using $E[e^{\sigma W}]$ instead of $E[e^{2\sigma W}]$), and
-    $100\,e^{0.5}$ (forgetting the $-\tfrac12\sigma^2 T$ in the exponent).
+    forward) and $100\,e^{0.5} \approx 164.87$ (forgetting the $-\tfrac12\sigma^2 T$ in the exponent
+    of $S_T$).
   source: { name: "Standard risk-neutral pricing exercise (power contract under Black-Scholes)" }
 
 - id: opt-black-scholes-008

@@ -34,8 +34,7 @@
   prompt: |
     A stock trades at \$100.90 and will pay a dividend of exactly \$2 per share in six months. A
     zero-coupon bond paying \$1 in six months costs \$0.95 today, and one paying \$1 in a year costs
-    \$0.90. What is the no-arbitrage forward price for delivery of one share in one year (just after
-    the dividend has been paid)?
+    \$0.90. What is the no-arbitrage forward price for delivery of one share in one year?
   answer: 110
   unit: dollars
   hints:
@@ -116,8 +115,8 @@
     futures more attractive than a long forward with the same price, so in equilibrium the futures
     price is bid above the forward price. With negative correlation the order reverses.
 
-    Choice c is right when interest rates are deterministic: then the daily settlement can be replicated by a known schedule of positions
-    and the two prices coincide. Choice b gets the sign backwards. Choice d is a distraction: how the
+    Choice c is right when interest rates are deterministic: then the daily settlement can be
+    replicated by a known schedule of positions and the two prices coincide. Choice b gets the sign backwards. Choice d is a distraction: how the
     contract is finally settled does not matter; the daily cash flows do.
 
     For short-dated contracts the difference is small, which is why the two prices are often treated as

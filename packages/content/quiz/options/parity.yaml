@@ -66,7 +66,7 @@
   difficulty: medium
   tags: [put-call-parity, dividends]
   prompt: |
-    A stock trades at \$100 and will pay a dividend of exactly \$3 per share before the options below
+    A stock trades at \$100 and will pay a dividend of exactly \$3 per share before the options
     expire. A European call struck at \$100 trades at \$5. Interest rates are zero. What is the
     no-arbitrage price of the European put with the same strike and expiry?
   answer: 8
@@ -98,7 +98,8 @@
   difficulty: medium
   tags: [box-spread, interest-rates, put-call-parity]
   prompt: |
-    European options on a stock, all expiring in exactly one year, are combined as follows: long the 90
+    European options on a stock, each on one share and all expiring in exactly one year, are combined
+    as follows: long the 90
     call, short the 100 call, long the 100 put and short the 90 put. The package costs \$9.50. What
     one-year interest rate, compounded annually, does this price imply? Give it as a decimal or a
     percentage.
@@ -180,8 +181,8 @@
   difficulty: easy
   tags: [put-call-parity, at-the-money, interest-rates]
   prompt: |
-    A stock that pays no dividends trades at \$100. The interest rate is 5% a year and positive. Which
-    is worth more: a one-year European call struck at \$100, or a one-year European put struck at
+    A stock that pays no dividends trades at \$100. The interest rate is 5% a year, continuously
+    compounded. Which is worth more: a one-year European call struck at \$100, or a one-year European put struck at
     \$100?
   choices:
     - { id: a, text: "The call" }
