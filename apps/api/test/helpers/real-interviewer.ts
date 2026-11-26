@@ -201,9 +201,13 @@ export interface RecordedCall<S = unknown> {
   done: boolean;
 }
 
-/** A quant turn as the model writes it (`QuantTurnSchema`). */
+/** A quant turn as the model writes it (`QuantTurnSchema`, its keys in the schema's order). */
 export function turn(o: {
   action: 'silent' | 'stay' | 'hint' | 'follow_up' | 'close';
+  /** A market-making game's move (§8.3): the interviewer's side, the quantity, a reveal. */
+  trade?: 'none' | 'buy' | 'sell';
+  quantity?: number;
+  reveal?: boolean;
   message?: string;
   hint_rung?: number;
   score?: number;
@@ -213,6 +217,9 @@ export function turn(o: {
   return JSON.stringify({
     reason: `scripted ${o.action}`,
     action: o.action,
+    trade: o.trade ?? 'none',
+    quantity: o.quantity ?? 0,
+    reveal: o.reveal ?? false,
     hint_rung: o.hint_rung ?? 0,
     message: o.message ?? '',
     score: o.score ?? 0,

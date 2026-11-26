@@ -4,19 +4,35 @@
  * the server's (`advanceRound`); this is where the interviewer makes sure it only ever asks for a
  * step the server will accept, whatever the model wrote.
  */
-import type { QuantVerdict } from '@ipp/contracts';
+import type { QuantGameMove, QuantGameState, QuantVerdict } from '@ipp/contracts';
 import { z } from 'zod';
+import { normaliseGameMove } from './game';
 import { parseModelJson, repairLatexEscapes } from './latex';
 
 /**
- * The same schema serves every live call (replies, the opening, nudges, stalls, closes for time),
- * so the request settings never change within a round and the cached prefix stays warm. Every
- * field is required: strict structured output makes them so anyway.
+ * The same schema serves every live call (replies, the opening, nudges, stalls, closes for time)
+ * of every round, with a game or without, so the request settings never change within a round
+ * and the cached prefix stays warm. Every field is required: strict structured output makes them
+ * so anyway.
+ *
+ * Field order is the order the model writes them in (structured output keeps the schema's): the
+ * reason and the action, then the game move (`trade`, `quantity`, `reveal`), so the move is
+ * decided before the message that follows it is written, and the stream can check the move
+ * against the books before showing a word of the message (`MessageStream`).
  */
 export const QuantTurnSchema = z.object({
   /** One short sentence for the logs. */
   reason: z.string(),
   action: z.enum(['silent', 'stay', 'hint', 'follow_up', 'close']),
+  /**
+   * A market-making game only (else `none`): the INTERVIEWER's trade against the live quote,
+   * `buy` lifting the candidate's offer, `sell` hitting their bid.
+   */
+  trade: z.enum(['none', 'buy', 'sell']),
+  /** With a trade: whole contracts, 1 to the quote's size. Else 0. */
+  quantity: z.number().int(),
+  /** A game only: show the next hidden component (after the trade, if there is one). */
+  reveal: z.boolean(),
   /** `hint`: the authored rung given (1-based), or 0 for a hint in its own words. Else 0. */
   hint_rung: z.number().int(),
   /** What the interviewer says. Empty only with `silent`. */
@@ -29,6 +45,16 @@ export const QuantTurnSchema = z.object({
   note: z.string(),
 });
 export type QuantTurn = z.infer<typeof QuantTurnSchema>;
+
+/**
+ * How a turn is read: as the schema, except that a turn without the move fields is a turn with no
+ * move (a provider that does not enforce the schema, or a turn written before games).
+ */
+const QuantTurnRead = QuantTurnSchema.extend({
+  trade: z.enum(['none', 'buy', 'sell']).catch('none').default('none'),
+  quantity: z.number().catch(0).default(0),
+  reveal: z.boolean().catch(false).default(false),
+});
 
 /** A verdict on its own (the assessment judging a question closed without one). */
 export const QuantVerdictSchema = z.object({ score: z.number(), summary: z.string() });
@@ -48,7 +74,7 @@ export function stripJsonDebris(text: string): string {
 
 /** The turn in the model's text, or null when it is not valid JSON of the right shape. */
 export function parseTurn(text: string): QuantTurn | null {
-  const parsed = QuantTurnSchema.safeParse(parseModelJson(text));
+  const parsed = QuantTurnRead.safeParse(parseModelJson(text));
   if (!parsed.success) return null;
   const t = parsed.data;
   return {
@@ -67,6 +93,11 @@ export interface TurnBooks {
   /** The question's authored hints. */
   hintsAvailable: number;
   followUpAsked: boolean;
+  /**
+   * The question's game as the round held it when the turn was decided
+   * (`QuantGameSlotEntry.state`); null for a bank question, on which any move is ignored.
+   */
+  game?: QuantGameState | null;
 }
 
 export interface NormaliseOptions {
@@ -84,14 +115,21 @@ export interface NormaliseOptions {
   fallback: string | null;
 }
 
+/**
+ * A move a turn makes. `say` is the model's words only; on a game the platform's facts of the move
+ * (`moveFacts`) are put before them when the step is built. `game` is the move the books allow
+ * (absent: none); `adjusted` says what of the model's move was changed or dropped, for the logs.
+ */
 export type QuantMove =
-  | { type: 'silent' }
+  | { type: 'silent'; adjusted?: string[] }
   | {
       type: 'turn';
       action: 'stay' | 'hint' | 'follow_up';
       /** `hint` only: the rung the books will record. */
       hintRung?: number;
       say: string;
+      game?: QuantGameMove;
+      adjusted?: string[];
     }
   | {
       type: 'close';
@@ -99,6 +137,9 @@ export type QuantMove =
       /** "" when the model wrote none: the caller supplies a closing line. */
       say: string;
       verdict: QuantVerdict | null;
+      /** A last trade on the game, made before it settles. */
+      game?: QuantGameMove;
+      adjusted?: string[];
     }
   /** Nothing usable for a turn that must answer: the caller treats it as a failed call. */
   | { type: 'invalid'; why: string };
@@ -146,7 +187,13 @@ export function hintRungFor(requested: number, books: TurnBooks): number {
  * 4. `hint` records the rung from `hintRungFor` (clamped to the next unused authored rung, never
  *    skipping one; 0 for its own words).
  * 5. `follow_up` when the question's one follow-up was already asked is a plain `stay`.
- * 6. A turn with nothing to say (`silent`, or any other action with an empty message):
+ * 6. The game move (`turnGameMove`): ignored on a bank question; on a game kept inside the
+ *    books (`normaliseGameMove`): no trade without a live quote, the quantity clamped to the
+ *    quote's size, no reveal with nothing left or on a close. A turn that says nothing makes no
+ *    move. On a game `follow_up` is a plain `stay` (a game has no follow-up: the trading is the
+ *    dialogue).
+ * 7. A turn with nothing to say (`silent`, or any other action with an empty message and no
+ *    move; a move needs no words, the platform's facts line says it):
  *    - a reply to a spoken message is silent (they are thinking aloud);
  *    - a reply to a typed message is invalid: it must be answered (the caller sends the canned
  *      reply), except that `silent` with a message is posted as a `stay`;
@@ -157,24 +204,57 @@ export function hintRungFor(requested: number, books: TurnBooks): number {
 export function normaliseTurn(out: QuantTurn, books: TurnBooks, opts: NormaliseOptions): QuantMove {
   const say = sayOf(out.message);
   const verdict = verdictOf(out.score, out.summary);
+  const closing = opts.forced !== null || out.action === 'close';
+  const { move, adjusted } = turnGameMove(out, books.game ?? null, closing);
+  const extra = adjusted.length ? { adjusted } : {};
+  const game = move.trade || move.reveal ? { game: move } : {};
 
-  if (opts.forced) return { type: 'close', by: opts.forced, say, verdict };
-  if (out.action === 'close') return { type: 'close', by: 'interviewer', say, verdict };
+  if (opts.forced) return { type: 'close', by: opts.forced, say, verdict, ...game, ...extra };
+  if (out.action === 'close')
+    return { type: 'close', by: 'interviewer', say, verdict, ...game, ...extra };
 
   const nothing = (): QuantMove => {
-    if (opts.via === 'voice') return { type: 'silent' };
+    const notes = [...adjusted, ...(game.game ? ['move dropped: the turn says nothing'] : [])];
+    const why = notes.length ? { adjusted: notes } : {};
+    if (opts.via === 'voice') return { type: 'silent', ...why };
     if (opts.via === 'text') {
-      if (out.action === 'silent' && say) return { type: 'turn', action: 'stay', say };
+      if (out.action === 'silent' && say) return { type: 'turn', action: 'stay', say, ...why };
       return { type: 'invalid', why: 'a typed message needs a reply' };
     }
-    if (opts.fallback) return { type: 'turn', action: 'stay', say: say || opts.fallback };
-    return { type: 'silent' };
+    if (opts.fallback) return { type: 'turn', action: 'stay', say: say || opts.fallback, ...why };
+    return { type: 'silent', ...why };
   };
 
-  if (out.action === 'silent' || !say) return nothing();
+  if (out.action === 'silent' || (!say && !game.game)) return nothing();
+  // A move without words on a turn that must speak (the nudge) still says what it must.
+  const spoken = say || opts.fallback || '';
   if (out.action === 'hint')
-    return { type: 'turn', action: 'hint', hintRung: hintRungFor(out.hint_rung, books), say };
-  if (out.action === 'follow_up' && !books.followUpAsked)
-    return { type: 'turn', action: 'follow_up', say };
-  return { type: 'turn', action: 'stay', say };
+    return {
+      type: 'turn',
+      action: 'hint',
+      hintRung: hintRungFor(out.hint_rung, books),
+      say: spoken,
+      ...game,
+      ...extra,
+    };
+  if (out.action === 'follow_up' && !books.followUpAsked && !books.game)
+    return { type: 'turn', action: 'follow_up', say: spoken, ...game, ...extra };
+  return { type: 'turn', action: 'stay', say: spoken, ...game, ...extra };
+}
+
+/**
+ * The game move of a turn's fields: none on a bank question (noted when the model made one), and
+ * on a game what `normaliseGameMove` allows. Shared by `normaliseTurn` and the stream's gate, so
+ * what is streamed is decided on exactly the move that is posted.
+ */
+export function turnGameMove(
+  out: Pick<QuantTurn, 'trade' | 'quantity' | 'reveal'>,
+  game: QuantGameState | null,
+  closing: boolean,
+): { move: QuantGameMove; adjusted: string[] } {
+  if (!game) {
+    const made = out.trade !== 'none' || out.reveal;
+    return { move: {}, adjusted: made ? ['move ignored: not a game'] : [] };
+  }
+  return normaliseGameMove(game, out, closing);
 }

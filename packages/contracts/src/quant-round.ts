@@ -19,7 +19,8 @@
  * quant-game.ts, ARCHITECTURE §8.3). While it is the current question the candidate posts quotes
  * (`quote`, raised by the API) and the interviewer's `turn` may trade against the live quote
  * and/or reveal the next component (`QuantGameMove`); every way the question closes (`close`,
- * `end`) settles the game. Its hidden values stay in the state; the view carries `gameView`.
+ * `end`) settles the game, and a `close` may carry a last trade made before it settles. Its
+ * hidden values stay in the state; the view carries `gameView`.
  *
  *   asking(i, game) ──quote──▶ live quote ──turn + trade──▶ no quote ──quote──▶ … ──close──▶ settled
  *                       └──turn + reveal (withdraws the quote)──┘
@@ -461,7 +462,9 @@ export function quantClock(state: QuantRoundState, roundEndsAt: Date | number): 
  *  close    the current question is done; the next is revealed, or the round finishes when none
  *           is left, the round's clock has run out, or too little of it is left for another
  *           (`QUANT_BUDGET_MIN_SEC`). `timeout` needs the question's budget to be up and
- *           `round_time` the round's clock.
+ *           `round_time` the round's clock. On a game it may carry a last `game` move (a trade
+ *           against the live quote, as on a turn), made before the game settles, so "I lift you
+ *           for five; that's the game" is one step; the whole step is refused when the move is.
  *  verdict  the judgement of a question closed without one (any phase, the round finished included)
  */
 export type QuantStep =
@@ -490,6 +493,8 @@ export type QuantStep =
       by: 'interviewer' | 'timeout' | 'round_time';
       verdict: QuantVerdict | null;
       note?: string;
+      /** A game only (`not_game` otherwise): a last move, made before the game settles. */
+      game?: QuantGameMove;
       messageId?: string;
     }
   | { type: 'verdict'; version: number; index: number; verdict: QuantVerdict };
@@ -547,7 +552,7 @@ export type QuantRoundStep = QuantStep | QuantEndStep | QuantQuoteStep;
  *  has_verdict     `verdict` for a question that already has one
  *  invalid         a verdict outside 0..1, a rung that is not a whole number, or a trade's side
  *                  that is neither `buy` nor `sell`
- *  not_game        a `quote`, or a `turn` with a game move, on a question that is not a game
+ *  not_game        a `quote`, or a `turn` or `close` with a game move, on a question that is not a game
  *  …               and the game's own (`QuantGameRefusal`): `bad_quote`, `quote_limit`,
  *                  `no_quote`, `bad_quantity`, `nothing_to_reveal`, `game_settled`
  */
@@ -675,6 +680,30 @@ export function advanceRound(
     entries.push(out.entry);
   };
 
+  /**
+   * Plays a game move on `q` (the trade first, then the reveal), or returns why it is refused.
+   * An empty move is no move.
+   */
+  const play = (q: QuantRoundQuestion, move: QuantGameMove | undefined): QuantRefusal | null => {
+    if (!move || (!move.trade && !move.reveal)) return null;
+    if (!q.game) return 'not_game';
+    let game = q.game;
+    if (move.trade) {
+      const out = tradeQuote(game, move.trade, env.now);
+      if (!out.ok) return out.reason;
+      game = out.state;
+      entries.push(out.entry);
+    }
+    if (move.reveal) {
+      const out = revealNext(game, env.now);
+      if (!out.ok) return out.reason;
+      game = out.state;
+      entries.push(out.entry);
+    }
+    q.game = game;
+    return null;
+  };
+
   /** Poses question `index`, or finishes the round when it cannot. */
   const reveal = (index: number) => {
     const q = questions[index];
@@ -740,24 +769,8 @@ export function advanceRound(
         if (q.nudgedAt !== null) return refuse('nudged');
         q.nudgedAt = nowIso;
       }
-      const move = step.game;
-      if (move && (move.trade || move.reveal)) {
-        if (!q.game) return refuse('not_game');
-        let game = q.game;
-        if (move.trade) {
-          const out = tradeQuote(game, move.trade, env.now);
-          if (!out.ok) return refuse(out.reason);
-          game = out.state;
-          entries.push(out.entry);
-        }
-        if (move.reveal) {
-          const out = revealNext(game, env.now);
-          if (!out.ok) return refuse(out.reason);
-          game = out.state;
-          entries.push(out.entry);
-        }
-        q.game = game;
-      }
+      const refused = play(q, step.game);
+      if (refused) return refuse(refused);
       break;
     }
 
@@ -791,6 +804,9 @@ export function advanceRound(
         return refuse('too_early');
       }
       if (step.by === 'round_time' && now < env.roundEndsAt.getTime()) return refuse('too_early');
+      // A last move on the game, before it settles.
+      const refused = play(q, step.game);
+      if (refused) return refuse(refused);
       q.closedAt = nowIso;
       q.closedBy = step.by;
       q.verdict = step.verdict && { score: step.verdict.score, summary: step.verdict.summary };

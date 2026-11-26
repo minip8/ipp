@@ -1081,6 +1081,39 @@ describe('a game in a round', () => {
     expect(quantGameReview(r.state.questions[3] as QuantRoundQuestion)).toBeNull();
   });
 
+  it('a close may carry a last trade, made before the game settles; a refused one refuses the close', () => {
+    const r = gameRound();
+    r.apply(start(0), 0);
+    expect(r.refuse({ ...close(r.v, 0), game: buy() }, 10)).toBe('not_game');
+    // An empty move on a bank question's close is no move.
+    r.apply({ ...close(r.v, 0), game: {} }, 60);
+    expect(r.refuse({ ...close(r.v, 1), game: buy() }, 61)).toBe('no_quote');
+    r.apply(quote(1, 9.5, 11.5, 2), 62);
+    expect(r.refuse({ ...close(r.v, 1), game: buy(3) }, 63)).toBe('bad_quantity');
+    // The refused close changed nothing: the question is open, the quote live.
+    expect(r.state.current).toBe(1);
+    expect(gameOf(r.state, 1)).toMatchObject({ position: 0, quote: { bid: 9.5, ask: 11.5 } });
+    // "I lift you for two; that's the game." The candidate sells 2 at 11.5; the dice are 13.
+    const fx = r.apply({ ...close(r.v, 1), game: buy(2) }, 120);
+    expect(fx.game?.entries).toEqual([
+      { kind: 'trade', at: at(120).toISOString(), candidateSide: 'sell', price: 11.5, quantity: 2 },
+      { kind: 'settle', at: at(120).toISOString(), value: 13, pnl: 23 - 26 },
+    ]);
+    expect(fx.say?.intent).toBe('feedback');
+    expect(fx.reveal?.index).toBe(2);
+    expect(gameOf(r.state, 1)).toMatchObject({ position: -2, cash: 23, settlement: { pnl: -3 } });
+    // A close for time may carry one too (its own checks come first).
+    const t = gameRound();
+    t.apply(start(0), 0);
+    t.apply(close(t.v, 0), 60);
+    t.apply(quote(1, 9.5, 11.5, 1), 61);
+    expect(t.refuse({ ...close(t.v, 1, 'timeout', null), game: sell(1) }, 62)).toBe('too_early');
+    const budget = t.state.questions[1]?.budgetSec ?? 0;
+    const late = t.apply({ ...close(t.v, 1, 'timeout', null), game: sell(1) }, 60 + budget);
+    expect(late.game?.entries.map((e) => e.kind)).toEqual(['trade', 'settle']);
+    expect(gameOf(t.state, 1).settlement?.pnl).toBe(3.5);
+  });
+
   it('every other way the question closes settles it too', () => {
     const settledBy = (finish: (r: ReturnType<typeof gameRound>) => QuantEffects) => {
       const r = gameRound();
