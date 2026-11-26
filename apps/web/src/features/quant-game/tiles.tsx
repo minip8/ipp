@@ -81,7 +81,8 @@ export function ComponentTile({
       </span>
       <span
         className={cn(
-          'max-w-20 truncate text-center',
+          // Two lines, so a long label ("Twenty-sided die") is read whole rather than cut off.
+          'line-clamp-2 max-w-20 text-center leading-tight',
           small ? 'text-[10px] text-fg-subtle' : 'text-2xs text-fg-muted',
           fresh && 'font-medium text-accent-text',
         )}
