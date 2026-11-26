@@ -543,6 +543,12 @@ def _():
     d = sum(p for s, p in atoms.items() if s > 100)
     bound = (C95 - C100) / 5
     assert bound - F(1, 10**5) < d <= bound
+    # the explanation's distribution attains the bound exactly
+    top = 105 + F(27, 10) / F(28, 100)
+    atoms = {F(50): F(44, 100), F(1025, 10): F(28, 100), top: F(28, 100)}
+    for k, c in ((95, C95), (100, C100), (105, C105)):
+        assert sum(p * max(s - k, 0) for s, p in atoms.items()) == c
+    assert sum(p for s, p in atoms.items() if s >= 100) == bound and abs(float(top) - 114.64) < 0.005
     return bound
 
 

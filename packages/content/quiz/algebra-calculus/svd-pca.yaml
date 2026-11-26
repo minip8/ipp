@@ -53,10 +53,13 @@
     and the eigenvalues are their variances.
 
     For stocks, the first component has weights of the same sign on almost every stock, roughly equal
-    in size: it is the market factor, and it typically explains far more variance than any other
-    component (often a quarter or more, and more in a sell-off, when correlations rise). The next
+    in size on the correlation matrix (on the covariance matrix, larger for the more volatile,
+    higher-beta stocks): it is the market factor, and it explains far more variance than any other
+    component. Its share tracks the average correlation between stocks: if every pair had
+    correlation $\rho$, its eigenvalue would be $1 + (N - 1)\rho$ out of a total of $N$, a share of
+    about $\rho$. So it is larger in a sell-off, when correlations rise. The next
     components are long-short: sector or industry spreads (technology against utilities, energy
-    against the rest) and style factors such as size or value, each explaining a few percent. For a
+    against the rest) and style factors such as size or value, each explaining much less. For a
     yield curve the first three are level, slope and curvature.
 
     Uses: a statistical risk model, hedging the market out of a position, reducing dimension, and the
@@ -67,8 +70,8 @@
   keyPoints:
     - PCA finds uncorrelated combinations of the returns (portfolios), ordered by how much of the variance each explains
     - They are the eigenvectors of the covariance or correlation matrix, the eigenvalues being their variances
-    - The first component of stock returns has same-signed, roughly equal weights, the market factor, with the largest share of variance
-    - Later components are long-short, typically sector or style spreads, each explaining a few percent
+    - The first component of stock returns has same-signed weights (roughly equal on the correlation matrix), the market factor, with by far the largest share of variance
+    - Later components are long-short, typically sector or style spreads, each explaining much less
     - Mentions a caveat, such as covariance versus correlation, instability of later components, or noise when stocks outnumber days
   hints:
     - Of all portfolios with unit-length weights, which one has the most volatile return?
@@ -80,8 +83,9 @@
   explanation: |
     The test is translation: a correct definition in terms of eigenvectors is necessary but the
     interviewer wants the portfolio reading and the empirical shape. The reason the first component
-    is same-signed is that stock returns are almost all positively correlated; for a positive
-    covariance matrix the top eigenvector has entries of one sign (Perron–Frobenius). Weak answers
+    is same-signed is that stock returns are almost all positively correlated: when every entry of
+    the covariance matrix is positive, the top eigenvector has entries of one sign
+    (Perron–Frobenius), and stock returns come close to that case. Weak answers
     describe PCA as "finding the most important stocks".
   source: { name: "Interpreting principal components of stock returns (e.g. Quantt, Linear Algebra for Quant Interviews)", url: "https://www.quantt.co.uk/resources/linear-algebra-quant-interview" }
 

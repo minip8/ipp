@@ -79,7 +79,9 @@
       correlation already fix ($\sigma_y/\sigma_x = 0.8/0.6$).
 
     Since $\rho^2 \le 1$, $b_{y|x}\,b_{x|y} \le 1$: both regressions are "flatter" than the other's
-    inverse, which is regression to the mean in both directions.
+    inverse, which is regression to the mean in both directions. The two slopes also share the sign
+    of the covariance, so slopes such as $(2, 0.6)$ (product above 1) or $(-1, 0.5)$ (opposite signs)
+    cannot come from one data set.
   source: { name: "Quant, FM and Data Science Interview Compilation (LSU)", url: "https://www.math.lsu.edu/~smolinsk/Quant_Interview_Prep.pdf" }
 
 - id: stat-regression-004

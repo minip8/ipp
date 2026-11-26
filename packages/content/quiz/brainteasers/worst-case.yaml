@@ -128,8 +128,12 @@
     if at most two horses are known to be faster than it: $B_3$ is behind $B_2$, $B_1$ and $A_1$, and
     $C_2$ is behind $C_1$, $B_1$ and $A_1$, so both are out.
 
-    The counting bound gives 6. Seven is the accepted optimum, but showing that 6 races can never
-    also settle second and third takes a longer case analysis, and the question does not ask for it.
+    The counting bound gives 6, and the question asks for no more. Seven is in fact optimal, and the
+    argument is short: six races can find the fastest horse only if every race has five horses, four
+    of them losing for the first time, so race 6 must be the five horses still unbeaten and every
+    other horse loses exactly once. The fastest of the other twenty lost to someone faster, so one of
+    those five won an earlier race; if it also wins race 6, its runner-up there and its runner-up in
+    the earlier race have each lost only to it and never met, so even second place is unknown.
     The commonly quoted wrong answers are 6 (taking the top three of the race of winners, forgetting
     that a group's runner-up can beat another group's winner) and 8 (racing too many candidates in
     race 7).

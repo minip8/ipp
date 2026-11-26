@@ -853,34 +853,6 @@ def _():
     assert abs(max(vals) / min(vals) / kappa_x**2 - 1) < 1e-6
 
 
-@check("lac-ls-006")
-def _():
-    def slopes(xs, ys):
-        n = len(xs)
-        mx, my = sum(xs) / n, sum(ys) / n
-        sxy = sum((a - mx) * (b - my) for a, b in zip(xs, ys))
-        return sxy / sum((a - mx) ** 2 for a in xs), sxy / sum((b - my) ** 2 for b in ys)
-
-    # choice b is realised by an explicit data set
-    xs = [F(v) for v in (-1, 1, -1, 1)]
-    noise = [F(v) for v in (1, 1, -1, -1)]
-    ys = [2 * a + e for a, e in zip(xs, noise)]
-    assert slopes(xs, ys) == (2, F(2, 5))
-    # every data set has 0 <= ac <= 1 with a, c of the same sign
-    rng = random.Random(36)
-    for _ in range(500):
-        xs = [F(rng.randint(-9, 9)) for _ in range(6)]
-        ys = [F(rng.randint(-9, 9)) for _ in range(6)]
-        if len(set(xs)) < 2 or len(set(ys)) < 2:
-            continue
-        a, c = slopes(xs, ys)
-        assert 0 <= a * c <= 1 and a * c >= 0
-    choices = {"a": (2, F(3, 5)), "b": (2, F(2, 5)), "c": (-1, F(1, 2)), "d": (F(1, 2), 3)}
-    possible = [k for k, (a, c) in choices.items() if 0 <= a * c <= 1 and (a > 0) == (c > 0)]
-    assert possible == ["b"]
-    return "b"
-
-
 # ---------------------------------------------------------------- SVD, PCA and conditioning
 
 
@@ -917,6 +889,11 @@ def _():
     assert all(x > 0 for x in v) or all(x < 0 for x in v)  # the market factor: one sign
     second = sorted(vals)[-2]
     assert vals[top] > 5 * second
+    # equal correlations rho: the top eigenvalue is 1 + (N - 1) rho, a share of about rho
+    rho = 0.3
+    corr = [[1.0 if i == j else rho for j in range(n)] for i in range(n)]
+    cvals, _ = jacobi_eigen(corr)
+    assert abs(max(cvals) - (1 + (n - 1) * rho)) < 1e-9
 
 
 @check("lac-svd-003")

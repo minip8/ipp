@@ -199,8 +199,10 @@
     bound $D \ge (4.80 - 2.70)/5 = 0.42$.
 
     The bound 0.56 is tight: a stock distribution consistent with all three call prices can put no
-    probability between 95 and 100, and then the digital is worth (in the limit) exactly 0.56. The common
-    wrong answers are 0.42 (the lower bound) and 0.49 or 0.5 (a guess at the midpoint).
+    probability in $(95, 100]$ (for example 0.44 at or below 95, 0.28 at 102.5 and 0.28 at about
+    114.64), and then the digital is worth exactly 0.56. Whether the digital pays at exactly 100 does
+    not change either bound, since the 95/100 spread pays 1 there and the 100/105 spread pays 0. The
+    common wrong answers are 0.42 (the lower bound) and 0.49 or 0.5 (a guess at the midpoint).
   source: { name: "Digital options as limits of call spreads (standard static-replication argument)" }
 
 - id: opt-bounds-007

@@ -134,11 +134,11 @@
   reference: |
     Under the null hypothesis that matters, a random walk ($b = 0$, a unit root), the regressor
     $p_{t-1}$ is non-stationary and the usual t-distribution does not apply. The OLS estimate $\hat b$
-    is biased negative in finite samples (with an intercept, by roughly $-5.5/n$), and its t-statistic
+    is biased negative in finite samples (with an intercept, by roughly $-5.4/n$), and its t-statistic
     follows the Dickey-Fuller
     distribution, which is shifted left: the 5% critical value with an intercept is about $-2.86$, not
-    $-1.645$. A t-statistic of $-2.2$ is therefore not significant; random walks produce it quite
-    often (roughly one time in five).
+    $-1.645$. A t-statistic of $-2.2$ is therefore not significant; random walks produce one at least
+    that negative quite often (roughly one time in five).
 
     More caveats: unit-root tests have low power against slow mean reversion in short samples
     (a half-life of months cannot be established from one year of daily data), results are sensitive
@@ -148,7 +148,7 @@
   keyPoints:
     - Under the random-walk null the regressor is non-stationary, so the usual t-distribution is wrong
     - The estimate of b is biased towards negative values even for a random walk
-    - "Uses the Dickey-Fuller critical value (about -2.86 with an intercept), so -2.2 is not significant"
+    - "Knows the t-statistic must be compared with the Dickey-Fuller distribution, whose critical values are further left (5% about -2.9 with an intercept), or proposes finding the critical value by simulating random walks; either way -2.2 is not significant"
     - Unit-root tests have low power against slow mean reversion, especially in short samples
     - Mentions multiple testing, structural breaks or out-of-sample validation
   hints:

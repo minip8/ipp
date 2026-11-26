@@ -134,19 +134,21 @@
     Use "number present = arrival rate times average duration".
 
     **Route 1, passengers.** Airlines carry roughly 4 to 5 billion passenger journeys a year, about
-    12 million a day. If the average flight lasts about 2 hours, at any moment about
-    $12 \times 10^6 \times \frac{2}{24} \approx 1$ million people are flying.
+    12 million a day. If the average passenger spends about 2 hours in the air, at any moment about
+    $12 \times 10^6 \times \frac{2}{24} \approx 1$ million people are flying. (The average should be
+    taken over passengers, not flights: long-haul flights carry more people for longer, which pushes
+    it towards 2.5 or 3 hours and the answer towards 1.5 million.)
 
     **Route 2, flights.** There are on the order of 100,000 commercial flights a day, with perhaps
     120 to 150 passengers on average. That is 12 to 15 million passengers a day, and the same
     duration factor gives about 1 million.
 
-    So the answer is about a million (say 0.5 to 1.5 million), higher during daytime peaks over
+    So the answer is about a million (say 1 to 1.5 million), higher during daytime peaks over
     Europe and North America and lower at other times.
   keyPoints:
     - Uses a flow-times-duration structure (number in the air = passengers per unit time times average flight time)
     - Gives plausible inputs for passengers or flights per day and for the average flight length
-    - Arrives at roughly a million (order of magnitude 10^5 to 10^6+)
+    - Arrives at the order of a million (anything from about half a million to two million follows from sensible inputs; the method matters more than the figure)
     - Cross-checks with a second route or a sanity check, such as flights per day times seats
   hints:
     - If you knew how many people fly per day and how long they stay up, how would you get the number airborne at once?

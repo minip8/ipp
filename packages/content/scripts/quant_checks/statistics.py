@@ -1290,7 +1290,7 @@ def _():
     assert -3.1 < q05 < -2.6, q05
     share = sum(t < -2.2 for t in ts) / len(ts)
     assert 0.12 < share < 0.3, share
-    assert mean(bs) < -0.01  # biased negative, around -5.5/250
+    assert -0.03 < mean(bs) < -0.015  # biased negative, around -5.4/250
     assert sum(t < -1.645 for t in ts) / len(ts) > 0.3
 
 
