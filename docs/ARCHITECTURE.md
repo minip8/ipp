@@ -340,7 +340,12 @@ candidate text.
 
 Spend guard: `ai_usage` per user per day (`AI_DAILY_MESSAGE_LIMIT`, `AI_DAILY_INPUT_TOKEN_LIMIT`,
 `AI_DAILY_OUTPUT_TOKEN_LIMIT`), the per-user chat rate limits, a per-pad cap on interviewer
-messages and hard caps on context size. All model calls run on the user's own key (§7.1), so
+messages (`limits.interviewerMessagesPerPad`, 200, posted questions aside; a quant round's follows
+its length instead when that allows more, `quantInterviewerMessagesPerMinute` 8 a minute, so 200,
+240 and 360 for 20, 30 and 45 minutes: `interviewerMessageCap` in `apps/api/src/interviewer/host.ts`)
+and hard caps on context size. The cap is checked (`checkBudget`) before every model call for a
+pad; once it is reached the interviewer says so once and stops calling the model, and a quant
+round's clock still nudges and closes with its canned lines. All model calls run on the user's own key (§7.1), so
 these limits protect the user's spend and keep the server from being used as a relay.
 
 At the end of a pad the interviewer produces a `ReportAssessment` on the owner's key; the report
@@ -454,7 +459,15 @@ Voice mode is a transport on top of the same chat channel: speech is transcribed
 browser-native (Web Speech API recognition and synthesis, with barge-in), behind a small
 `VoiceTransport` interface in the web app so a server-side pipeline (WebRTC + streaming STT/TTS)
 can replace it without touching the interviewer. In voice mode the interviewer is told to speak in
-short conversational turns.
+short conversational turns. What is spoken is prepared in the web app (`spokenText`,
+`features/pad/questions.ts`) and only from posted messages, never from streamed text: in a quant
+round a posted question is pointed to ("Question 2 is on your screen"), and every other interviewer
+message goes through `speechOf` (`features/pad/voice/math-speech.ts`), a backstop for the prompt's
+"say mathematics in words": `$...$` math is read as words (fractions, binomials, roots, powers,
+subscripts, sums, Greek letters, operators and relations, factorials, percent, `E[X]`, `P(A | B)`,
+`Var`, `Cov`), `\$10` is "10 dollars", Markdown markup is dropped, an unknown command is dropped
+with its arguments read as they are, and a message with none of that is spoken exactly as written.
+The chat shows the original. A coding pad's messages are spoken as written.
 
 ### 7.3 The interviewer in a quant round
 
@@ -534,7 +547,15 @@ a fresh start for stalls and the unanswered count, as after a step of its own.
   server's `nudgedAt` is null.
 - **Voice**: the model may stay silent on a spoken message that is plainly mid-thought, and before
   answering a spoken message the pump waits `voiceSettleMs` (1.5 s, real time, at most four times)
-  for further pieces and answers them together, which keeps a round under the per-pad caps.
+  for further pieces and answers them together. Each piece of speech is stored as a candidate
+  message, which counts against the per-user chat rate limits only; what counts against the
+  per-pad cap is the interviewer's messages (posted questions aside), at most one per answered
+  batch. A spoken round answers several times a minute where a typed one answers once or twice, so
+  a quant round's cap follows its length (§7, 8 a minute: 360 for 45 minutes, against at most
+  about 5 a minute in a talkative spoken round, and 10 a minute for someone talking without pause,
+  as each reply waits for the settle and the model). A round that reaches it gets one notice and
+  no more model calls; its clock still nudges and closes with canned lines and no verdict (and the
+  assessment, which checks the same budget, is skipped).
 - **Assessment** (`generateQuantAssessment`): with scope `all`, each closed question without a
   verdict is judged first (one call each, `QuantVerdictSchema`, medium effort) and written back
   with a `verdict` step; then one high-effort call sees every posed question in full, the

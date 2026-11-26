@@ -426,7 +426,7 @@ test.describe('the quant pad', () => {
       });
     });
     const id = uuid(1301);
-    await openQuantPad(
+    const b = await openQuantPad(
       page,
       (b) => {
         b.quant.seed({
@@ -445,6 +445,16 @@ test.describe('the quant pad', () => {
     const spoken = () =>
       page.evaluate(() => (window as unknown as { __spoken: string[] }).__spoken);
     await expect.poll(spoken).toEqual([LINES.greeting, 'Question 1 is on your screen.']);
+    // The interviewer's own LaTeX and markup are said in words; the chat shows them typeset.
+    await b.quant.hint(id, 'Try $P(A \\mid B) = \\frac{1}{6}$ first; **each** win pays \\$10.');
+    await expect
+      .poll(spoken)
+      .toEqual([
+        LINES.greeting,
+        'Question 1 is on your screen.',
+        'Try the probability of A given B equals 1 over 6 first; each win pays 10 dollars.',
+      ]);
+    await expect(page.getByTestId('proactive-message').last().locator('.katex')).toHaveCount(1);
   });
 
   test('runs and language changes are refused for a quant pad', async ({ page }) => {
