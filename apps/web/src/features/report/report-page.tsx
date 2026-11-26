@@ -1,5 +1,5 @@
 'use client';
-import { QUANT_REPORT_DIMENSIONS } from '@ipp/contracts';
+import { padTrack, QUANT_REPORT_DIMENSIONS, type Track } from '@ipp/contracts';
 import { useQuery } from '@tanstack/react-query';
 import {
   ArrowLeftIcon,
@@ -24,6 +24,8 @@ import { type DeleteTarget, deleteCopy } from '@/features/delete-pad/logic';
 import { PrivateNotes } from '@/features/room/host-tools';
 import { ApiRequestError, api } from '@/lib/api';
 import { qk, useMe } from '@/lib/queries';
+import { interviewsHref } from '@/lib/track';
+import { useTrack } from '@/lib/track-hooks';
 import { Player } from './player';
 import { Assessment, QuantStatsStrip, StatsStrip } from './scorecard';
 
@@ -42,10 +44,11 @@ function formatDate(iso: string) {
   });
 }
 
-function BackLink() {
+/** Back to the Interviews tab of the pad's track. */
+function BackLink({ track }: { track: Track }) {
   return (
     <Link
-      href="/dashboard"
+      href={interviewsHref(track)}
       className="inline-flex items-center gap-1 text-sm text-fg-muted hover:text-fg"
     >
       <ArrowLeftIcon className="size-3.5" aria-hidden /> Interviews
@@ -79,10 +82,13 @@ function SectionSkeleton({ className }: { className: string }) {
 export function ReportPage({ id }: { id: string }) {
   const me = useMe();
   const router = useRouter();
-  // Once deleted, nothing here may refetch (it would 404) while the dashboard loads.
+  const remembered = useTrack();
+  // Once deleted, nothing here may refetch (it would 404) while the Interviews tab loads.
   const [deleted, setDeleted] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const pad = useQuery({ queryKey: qk.pad(id), queryFn: () => api.pad(id), enabled: !deleted });
+  // The way back is the pad's own track's Interviews; without the pad, the current track's.
+  const track = pad.data ? padTrack(pad.data.pad) : remembered;
   // A room's report belongs to its host: a candidate who took part does not get to read it.
   const hostOnly = pad.data?.pad.kind === 'room' && pad.data.role !== 'owner';
   const isRoomHost = pad.data?.pad.kind === 'room' && pad.data.role === 'owner';
@@ -121,7 +127,7 @@ export function ReportPage({ id }: { id: string }) {
         <ReportSkeleton />
       ) : pad.isError ? (
         <>
-          <BackLink />
+          <BackLink track={track} />
           <Card className="mt-4">
             {pad.error instanceof ApiRequestError &&
             (pad.error.isNotFound || pad.error.status === 403) ? (
@@ -130,7 +136,7 @@ export function ReportPage({ id }: { id: string }) {
                 title="This report does not exist or you don't have access"
                 action={
                   <Button asChild size="sm">
-                    <Link href="/dashboard">Back to your interviews</Link>
+                    <Link href={interviewsHref(track)}>Back to your interviews</Link>
                   </Button>
                 }
               >
@@ -143,7 +149,7 @@ export function ReportPage({ id }: { id: string }) {
         </>
       ) : (
         <>
-          <BackLink />
+          <BackLink track={track} />
           <header className="mt-2 flex flex-wrap items-end justify-between gap-4">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2.5">
@@ -299,7 +305,7 @@ export function ReportPage({ id }: { id: string }) {
         onClose={() => setConfirming(false)}
         onDeleted={() => {
           setDeleted(true);
-          router.replace('/dashboard');
+          router.replace(interviewsHref(track));
         }}
       />
     </div>

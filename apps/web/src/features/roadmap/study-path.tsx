@@ -156,9 +156,9 @@ function TopicStep({
             </Link>
           </Button>
           <Button asChild variant="ghost" size="sm" className={ACTION}>
-            <Link href={topicRoadmapHref(track, t.slug)} aria-label={`${t.title} roadmap`}>
+            <Link href={topicRoadmapHref(track, t.slug)} aria-label={`${t.title} topic map`}>
               <MapIcon />
-              Roadmap
+              Topic map
             </Link>
           </Button>
         </div>

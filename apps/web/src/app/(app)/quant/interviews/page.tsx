@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
-import { QuantInterviews } from '@/features/quant/quant-interviews';
+import { InterviewsPage } from '@/features/interviews/interviews-page';
 
 export const metadata: Metadata = { title: 'Quant interviews' };
 
 export default function QuantInterviewsPage() {
-  return <QuantInterviews />;
+  return <InterviewsPage track="quant" />;
 }

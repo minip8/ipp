@@ -6,25 +6,19 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { setup } from './helpers';
 
-/**
- * Where the header logo, the track switch, the page title and the tab bar start, in viewport px.
- * A page without a tab bar (the Quant track's Interviews, for now) has null there.
- */
+/** Where the header logo, the track switch, the page title and the tab bar start, in viewport px. */
 const anchors = (page: Page) =>
   page.evaluate(() => {
-    const x = (sel: string, optional = false) => {
+    const x = (sel: string) => {
       const el = document.querySelector(sel);
-      if (!el) {
-        if (optional) return null;
-        throw new Error(`missing ${sel}`);
-      }
+      if (!el) throw new Error(`missing ${sel}`);
       return Math.round(el.getBoundingClientRect().x * 10) / 10;
     };
     return {
       logo: x('header a'),
       track: x('header [data-testid=track-switch]'),
       title: x('main h1'),
-      tabs: x('main [role=tablist]', true),
+      tabs: x('main [role=tablist]'),
     };
   });
 
@@ -58,8 +52,7 @@ test.describe('with classic scrollbars', () => {
       await page.evaluate(() => window.innerWidth - document.documentElement.clientWidth),
     ).toBeGreaterThan(0);
     const at = await anchors(page);
-    const same = async (what: string, tabs = true) =>
-      expect(await anchors(page), what).toEqual(tabs ? at : { ...at, tabs: null });
+    const same = async (what: string) => expect(await anchors(page), what).toEqual(at);
 
     await page.getByRole('combobox', { name: 'Topic' }).click();
     await expect(page.getByRole('listbox')).toBeVisible();
@@ -94,6 +87,12 @@ test.describe('with classic scrollbars', () => {
     await expect(page.getByRole('heading', { level: 1, name: 'Practice' })).toBeVisible();
     await expect(page.getByRole('tab', { name: /^History/ })).toBeVisible();
     await same('software practice');
+    await page.getByRole('tab', { name: 'Problems' }).click();
+    await expect(page.getByRole('region', { name: 'Problem library' })).toBeVisible();
+    await same('software practice problems');
+    await page.getByRole('button', { name: /^LRU Cache/ }).click();
+    await expect(page.getByTestId('selected-problem')).toHaveText('LRU Cache');
+    await same('software practice problem chosen');
     await page.getByRole('tab', { name: /^History/ }).click();
     await same('software practice history');
 
@@ -116,18 +115,28 @@ test.describe('with classic scrollbars', () => {
     await tabs.getByRole('link', { name: 'Practice' }).click();
     await expect(page.getByTestId('drill-card')).toBeVisible();
     await same('quant practice');
+    await page.getByRole('tab', { name: /^History/ }).click();
+    await same('quant practice history');
 
     await tabs.getByRole('link', { name: 'Interviews' }).click();
     await expect(page.getByTestId('round-setup')).toBeVisible();
-    await same('quant interviews', false);
+    await same('quant interviews');
+    await page.getByRole('radio', { name: 'Interview someone' }).click();
+    await expect(page.getByTestId('quant-room-setup')).toBeVisible();
+    await same('quant interviews hosting');
+    await page.getByRole('tab', { name: /^History/ }).click();
+    await same('quant interviews history');
   });
 });
 
 test.describe('focus rings', () => {
   for (const [path, first, second] of [
     ['/software/interviews', /^New interview/, /^History/],
-    ['/quant/practice', /^Start a quiz/, /^History/],
+    ['/quant/interviews', /^New interview/, /^History/],
+    ['/software/practice', /^Quizzes/, /^History/],
+    ['/quant/practice', /^Quizzes/, /^History/],
     ['/software/roadmap', /^Study path/, /^Topic maps/],
+    ['/quant/roadmap', /^Study path/, /^Topic maps/],
   ] as const) {
     test(`a click on ${path}'s tabs leaves no ring; the keyboard still gets one`, async ({
       page,

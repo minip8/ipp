@@ -13,12 +13,25 @@ import { useCallback, useEffect } from 'react';
 import { api } from './api';
 import { qk, useMe } from './queries';
 import type { Me } from './schemas';
-import { currentTrack } from './track';
+import { currentTrack, trackFromPath } from './track';
 
 export function useTrack(): Track {
   const pathname = usePathname();
   const me = useMe();
   return currentTrack(pathname, me.data?.track);
+}
+
+/**
+ * The track the header shows as chosen: the current one, except null for an account that has
+ * never chosen one and is not on a track page (the first-visit question at the home), where the
+ * header shows no track and no tab as current.
+ */
+export function useChosenTrack(): Track | null {
+  const pathname = usePathname();
+  const me = useMe();
+  const track = useTrack();
+  const undecided = me.data && !me.data.guest && me.data.track === null;
+  return undecided && trackFromPath(pathname) === null ? null : track;
 }
 
 /** Save `track` as the user's remembered one (cache first, then the request). */

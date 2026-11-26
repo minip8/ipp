@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { TAB_LABEL, TABS, tabFromPath, tabHref } from '@/lib/track';
-import { useTrack } from '@/lib/track-hooks';
+import { useChosenTrack, useTrack } from '@/lib/track-hooks';
 import { cn } from '@/lib/utils';
 import { Logo } from './logo';
 import { ThemeToggle } from './theme-toggle';
@@ -12,12 +12,14 @@ import { UserMenu } from './user-menu';
 /**
  * Logo, the track switch, the track's three tabs, theme and account. The tabs are the same in
  * both tracks and lead into the current one (`useTrack`); on a page of no track the one its
- * section belongs to is highlighted (a quiz under Practice, a pad under Interviews).
+ * section belongs to is highlighted (a quiz under Practice, a pad under Interviews). Before an
+ * account has chosen a track, none is shown as chosen and no tab as current.
  */
 export function AppHeader() {
   const pathname = usePathname();
   const track = useTrack();
-  const here = tabFromPath(pathname);
+  // Before the user has chosen a track (the first-visit question), no tab is theirs yet.
+  const here = useChosenTrack() === null ? null : tabFromPath(pathname);
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-bg/90 pt-[env(safe-area-inset-top)] backdrop-blur-sm">
       {/* Phones (below sm): the logo is its mark (the word stays for screen readers), the switch

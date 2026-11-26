@@ -1,12 +1,23 @@
 'use client';
 /**
- * Browsing and searching the question bank for a quant room, by track, topic, subtopic,
+ * Browsing and searching the question bank for a quant room, by site track, topic, subtopic,
  * difficulty, type and text. The same browser serves the room's creation (the public bank,
  * prompts only, before the room exists) and the host mid-interview (the host's bank search, with
  * each question's solution and material, and what is queued or already asked). It only shows a
  * page and reports the filters; what a row can do (queue it, ask it now) is the caller's.
+ *
+ * The track filter (All | Quant | Software) is by site track, so a topic shared into both
+ * (Python) is under both; only the public bank offers it (`trackFilter`), since the host's search
+ * on the server filters by a topic's home.
  */
-import { QuantQuestionType, type QuizDifficulty, type QuizTrack } from '@ipp/contracts';
+import {
+  homeTrack,
+  QuantQuestionType,
+  type QuizDifficulty,
+  TRACK_INFO,
+  type Track,
+  topicInTrack,
+} from '@ipp/contracts';
 import { ChevronLeftIcon, ChevronRightIcon, SearchIcon, XIcon } from 'lucide-react';
 import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { MathMarkdown } from '@/components/math-markdown';
@@ -29,6 +40,7 @@ import { cn } from '@/lib/utils';
 import {
   type BankItem,
   type BankQuery,
+  type BankTopic,
   type BankView,
   composedPrompt,
   filtersActive,
@@ -36,13 +48,24 @@ import {
   pageLabel,
   promptLine,
   STATUS_LABEL,
-  TRACK_LABEL,
   TYPE_LABEL,
+  topicsForTrack,
   withFilter,
 } from './logic';
 import { InlineMd, MaterialPreview, QuestionMeta } from './material';
 
 const ANY = 'any';
+
+/** The bank's order of the tracks: a quant room's own questions first. */
+const TRACK_ORDER: readonly Track[] = ['quant', 'software'];
+
+function TopicItem({ t }: { t: BankTopic }) {
+  return (
+    <SelectItem value={t.slug}>
+      {t.title} <span className="text-fg-subtle tabular">{t.questionCount}</span>
+    </SelectItem>
+  );
+}
 
 function BankRow({
   item,
@@ -119,6 +142,7 @@ export function BankBrowser({
   noMaterial,
   className,
   autoFocus,
+  trackFilter = true,
 }: {
   query: BankQuery;
   onQuery: (q: BankQuery) => void;
@@ -132,6 +156,8 @@ export function BankBrowser({
   noMaterial?: ReactNode;
   className?: string;
   autoFocus?: boolean;
+  /** Offer the site-track filter (the public bank, which filters itself). */
+  trackFilter?: boolean;
 }) {
   const ids = { search: useId() };
   // The text is sent a moment after typing stops, not on every key.
@@ -145,8 +171,9 @@ export function BankBrowser({
   }, [text, onQuery]);
 
   const topics = view?.topics ?? [];
-  const shownTopics = query.track ? topics.filter((t) => t.track === query.track) : topics;
-  const tracks = [...new Set(topics.map((t) => t.track))];
+  const shownTopics = topicsForTrack(topics, query.track);
+  // Quant first, as the bank lists its topics; only tracks that have any.
+  const tracks = TRACK_ORDER.filter((t) => topics.some((x) => topicInTrack(x, t)));
   const set = (patch: Partial<Omit<BankQuery, 'offset'>>) => onQuery(withFilter(query, patch));
   const page = (delta: number) =>
     view && onQuery({ ...query, offset: Math.max(0, query.offset + delta * view.limit) });
@@ -173,8 +200,8 @@ export function BankBrowser({
           />
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {tracks.length > 1 && (
-            <Segmented<QuizTrack | typeof ANY>
+          {trackFilter && tracks.length > 1 && (
+            <Segmented<Track | typeof ANY>
               aria-label="Track"
               size="sm"
               className="max-sm:[&>*]:h-9"
@@ -182,9 +209,7 @@ export function BankBrowser({
               onValueChange={(v) => set({ track: v === ANY ? undefined : v })}
               options={[
                 { value: ANY, label: 'All' },
-                ...(['quant', 'fundamentals'] as const)
-                  .filter((t) => tracks.includes(t))
-                  .map((t) => ({ value: t, label: TRACK_LABEL[t] })),
+                ...tracks.map((t) => ({ value: t, label: TRACK_INFO[t].label })),
               ]}
             />
           )}
@@ -200,20 +225,22 @@ export function BankBrowser({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value={ANY}>All topics</SelectItem>
-              {(['quant', 'fundamentals'] as const).map((track) => {
-                const of = shownTopics.filter((t) => t.track === track);
-                if (of.length === 0) return null;
-                return (
-                  <SelectGroup key={track}>
-                    <SelectLabel>{TRACK_LABEL[track]}</SelectLabel>
-                    {of.map((t) => (
-                      <SelectItem key={t.slug} value={t.slug}>
-                        {t.title} <span className="text-fg-subtle tabular">{t.questionCount}</span>
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                );
-              })}
+              {query.track
+                ? // One track: its topics, one flat list.
+                  shownTopics.map((t) => <TopicItem key={t.slug} t={t} />)
+                : // Every topic, once each, under the track it belongs to.
+                  TRACK_ORDER.map((track) => {
+                    const of = shownTopics.filter((t) => homeTrack(t.track) === track);
+                    if (of.length === 0) return null;
+                    return (
+                      <SelectGroup key={track}>
+                        <SelectLabel>{TRACK_INFO[track].label}</SelectLabel>
+                        {of.map((t) => (
+                          <TopicItem key={t.slug} t={t} />
+                        ))}
+                      </SelectGroup>
+                    );
+                  })}
             </SelectContent>
           </Select>
           {query.topic && (view?.subtopics.length ?? 0) > 0 && (

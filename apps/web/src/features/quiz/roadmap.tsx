@@ -149,7 +149,7 @@ function TopicChip({ t }: { t: QuizRoadmapTopic }) {
       data-topic={t.slug}
       aria-label={`${t.title}: ${sum.complete} of ${plural(sum.total, 'area')} complete, ${formatPercent(answered)} answered`}
       className={cn(
-        'group flex min-w-36 shrink-0 flex-col gap-2 rounded-lg border bg-surface px-3 py-2.5 text-left transition-[border-color,box-shadow,background-color] focus-visible:outline-offset-[-2px] sm:min-w-40 sm:flex-[1_1_auto]',
+        'group flex min-w-36 shrink-0 flex-col gap-2 rounded-lg border bg-surface px-3 py-2.5 text-left transition-[border-color,box-shadow,background-color] focus-visible:outline-offset-[-2px] sm:max-w-64 sm:min-w-40 sm:flex-[1_1_auto]',
         'data-[state=off]:border-border data-[state=off]:hover:border-border-strong data-[state=off]:hover:shadow-pop',
         'data-[state=on]:border-accent data-[state=on]:bg-accent-soft/30 data-[state=on]:ring-1 data-[state=on]:ring-accent',
       )}

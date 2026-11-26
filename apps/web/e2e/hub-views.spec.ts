@@ -73,7 +73,7 @@ test.describe('Practice views', () => {
     await setup(page);
     await page.goto('/software/practice?topic=networking');
     const history = page.getByRole('tab', { name: /^History/ });
-    await expect(page.getByRole('tab', { name: /^Start a quiz/ })).toHaveAttribute(
+    await expect(page.getByRole('tab', { name: /^Quizzes/ })).toHaveAttribute(
       'aria-selected',
       'true',
     );
@@ -92,7 +92,7 @@ test.describe('Practice views', () => {
     );
     await expect(page.getByRole('button', { name: 'Start quiz' })).toBeHidden();
 
-    await page.getByRole('tab', { name: /^Start a quiz/ }).click();
+    await page.getByRole('tab', { name: /^Quizzes/ }).click();
     await expect(page).toHaveURL(/\/software\/practice\?topic=networking$/);
     await expect(page.getByRole('button', { name: /^Networking/ })).toHaveAttribute(
       'aria-pressed',
@@ -147,7 +147,7 @@ test.describe('on a small phone', () => {
       3,
     );
     await noSideScroll(page);
-    await page.getByRole('tab', { name: /^Start a quiz/ }).click();
+    await page.getByRole('tab', { name: /^Quizzes/ }).click();
     await expect(toSetup).toBeVisible();
   });
 });

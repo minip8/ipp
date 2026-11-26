@@ -667,22 +667,24 @@ test.describe('formats kept apart', () => {
     await expect(page.getByTestId('quant-review').locator('.katex').first()).toBeVisible();
   });
 
-  test('the dashboard shows a quant pad as Quant with its path, never as a language', async ({
+  test('Quant’s Interviews shows a quant pad as Quant with its path, never as a language', async ({
     page,
   }) => {
     await setup(page, (b) => b.quant.listOnDashboard());
-    await page.goto('/software/interviews');
+    await page.goto('/quant/interviews');
     const active = page.getByRole('region', { name: 'In progress' });
     const row = active.getByRole('listitem').filter({ hasText: 'Trader quant round' });
     await expect(row.getByTestId('quant-badge')).toHaveText('Quant · Trader');
     await expect(row).not.toContainText('Python');
-    await page.goto('/software/interviews?view=history');
+    await page.goto('/quant/interviews?view=history');
     const table = page.getByRole('table');
     const ended = table.getByRole('row').filter({ hasText: 'Trader quant round' });
     await expect(ended.getByTestId('quant-badge')).toHaveText('Quant · Trader');
     await expect(ended).not.toContainText('Python');
     await expect(ended).toContainText('Scored in the report');
-    // A coding pad keeps its language.
+    // A coding pad is Software's, with its language; no quant round there.
+    await page.goto('/software/interviews?view=history');
     await expect(table.getByRole('row').filter({ hasText: 'LRU Cache' })).toContainText('Python');
+    await expect(table.getByRole('row').filter({ hasText: 'Trader quant round' })).toHaveCount(0);
   });
 });

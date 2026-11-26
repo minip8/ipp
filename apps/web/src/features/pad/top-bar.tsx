@@ -1,4 +1,5 @@
 'use client';
+import { padTrack } from '@ipp/contracts';
 import {
   ClockIcon,
   FileBarChartIcon,
@@ -20,6 +21,7 @@ import { Avatar } from '@/components/user-menu';
 import { hostOf } from '@/features/room/logic';
 import { formatTimeOfDay } from '@/lib/format';
 import { storage } from '@/lib/storage';
+import { interviewsHref } from '@/lib/track';
 import { cn } from '@/lib/utils';
 import { SharePopover } from './dialogs';
 import type { PresenceUser } from './editor/binding';
@@ -195,19 +197,20 @@ type TopBarProps = {
   compact?: boolean;
 };
 
+/** The way back: the Interviews tab of the pad's own track (a quant pad's is Quant's). */
 function Home({ className }: { className?: string }) {
-  const { me } = usePad();
+  const { me, state } = usePad();
   return me.guest ? (
-    // A guest has no dashboard to go back to.
+    // A guest has no Interviews tab to go back to.
     <span className={cn('p-1', className)}>
       <LogoMark />
     </span>
   ) : (
-    <Tooltip label="Back to dashboard">
+    <Tooltip label="Back to interviews">
       <Link
-        href="/dashboard"
+        href={interviewsHref(padTrack(state.pad))}
         className={cn('rounded-md p-1 hover:bg-surface-3', className)}
-        aria-label="interview++ dashboard"
+        aria-label="Back to interviews"
       >
         <LogoMark />
       </Link>

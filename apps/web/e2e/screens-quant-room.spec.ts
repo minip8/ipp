@@ -44,10 +44,10 @@ for (const width of WIDTHS) {
     test('creating one', async ({ page }) => {
       test.skip(!want('new'));
       await setup(page, (b) => b.useRoomBank());
-      await page.goto('/dashboard?mode=host&format=quant');
+      await page.goto('/quant/interviews?mode=host');
       await page.getByTestId('bank-row').first().waitFor();
       await shoot(page, 'qroom-new-empty', { fullPage: true });
-      for (const id of ['rb-prob-dice-eight', 'rb-teaser-ropes', 'rb-cpp-vector-reserve'])
+      for (const id of ['rb-prob-dice-eight', 'rb-teaser-ropes', 'rb-py-default-list'])
         await page.getByRole('button', { name: `Queue ${id}` }).click();
       await page.locator('[data-question="rb-teaser-ropes"] summary').first().click();
       await shoot(page, 'qroom-new-queue', { fullPage: true });

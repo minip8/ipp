@@ -26,8 +26,18 @@ export const DRILL_HREF = '/quant/practice/drill';
 export const ROADMAP_VIEWS = ['path', 'maps'] as const;
 export type RoadmapView = (typeof ROADMAP_VIEWS)[number];
 
-/** The Practice tab's views, in `?view=`. */
-export const PRACTICE_VIEWS = ['start', 'history'] as const;
+/**
+ * The Practice tab's views, in `?view=` (the quizzes are the default and leave it out). Software
+ * also lists the problem library there; a session on one problem starts from its row.
+ */
+export const PRACTICE_VIEWS = {
+  software: ['start', 'problems', 'history'],
+  quant: ['start', 'history'],
+} as const satisfies Record<Track, readonly [string, ...string[]]>;
+export type PracticeView = (typeof PRACTICE_VIEWS)[Track][number];
+
+/** The Interviews tab's views, in `?view=` (starting one is the default). */
+export const INTERVIEW_VIEWS = ['start', 'history'] as const;
 
 const isTrack = (s: string | undefined): s is Track => TRACKS.includes(s as Track);
 
@@ -56,15 +66,30 @@ const withQuery = (path: string, q: URLSearchParams) => {
   return s ? `${path}?${s}` : path;
 };
 
-/** A track's Practice tab, optionally with a topic preselected or on its history. */
+/** A track's Practice tab, optionally with a topic preselected or on another view. */
 export function practiceHref(
   track: Track,
-  opts: { topic?: string; view?: 'history' } = {},
+  opts: { topic?: string; view?: Exclude<PracticeView, 'start'> } = {},
 ): string {
   const q = new URLSearchParams();
   if (opts.topic) q.set('topic', opts.topic);
   if (opts.view) q.set('view', opts.view);
   return withQuery(tabHref(track, 'practice'), q);
+}
+
+/**
+ * A track's Interviews tab: on hosting (`?mode=host`), its history, or (Software) with a problem
+ * chosen in the setup.
+ */
+export function interviewsHref(
+  track: Track,
+  opts: { problem?: string; host?: boolean; view?: 'history' } = {},
+): string {
+  const q = new URLSearchParams();
+  if (opts.host) q.set('mode', 'host');
+  if (opts.problem) q.set('problem', opts.problem);
+  if (opts.view) q.set('view', opts.view);
+  return withQuery(tabHref(track, 'interviews'), q);
 }
 
 /** The Roadmap's search params for the topic maps (`QuizRoadmap` reads them). */
@@ -89,14 +114,18 @@ export const otherTrack = (t: Track): Track => (t === 'software' ? 'quant' : 'so
 
 /**
  * Where the header switch goes from this page: the same tab in the other track, keeping the
- * page's view (Practice's history, Roadmap's topic maps) but nothing about this track's content.
- * From a page of no track: a quiz or bank goes to Practice, anything else to Interviews.
+ * page's view when the other track has it (a history, the topic maps) and Interviews' hosting
+ * mode, but nothing about this track's content. From a page of no track: a quiz or bank goes to
+ * Practice, anything else to Interviews.
  */
 export function switchHref(pathname: string, search: string, to: Track): string {
   const tab = tabFromPath(pathname) ?? 'interviews';
   if (trackFromPath(pathname) === null) return tabHref(to, tab);
-  const view = new URLSearchParams(search).get('view');
+  const from = new URLSearchParams(search);
+  const view = from.get('view');
   const q = new URLSearchParams();
+  if (tab === 'interviews' && from.get('mode') === 'host') q.set('mode', 'host');
+  if (tab === 'interviews' && view === 'history') q.set('view', view);
   if (tab === 'practice' && view === 'history') q.set('view', view);
   if (tab === 'roadmap' && view === 'maps') q.set('view', view);
   return withQuery(tabHref(to, tab), q);
@@ -119,13 +148,17 @@ const CODING_PARAMS = ['problem', 'category', 'difficulty', 'random'];
 
 /**
  * Where the app's old home (`/dashboard`, `/new`) sends someone: their track's Interviews, with
- * the query kept. Null while there is no remembered track and the query does not decide it: the
- * first-visit question is asked then.
+ * the query kept. A coding query means Software and `format=quant` (the old way to a quant room,
+ * `?mode=host&format=quant`) means Quant, whatever was remembered; `format` itself is dropped.
+ * Null while there is no remembered track and the query does not decide it: the first-visit
+ * question is asked then.
  */
 export function homeTarget(search: string, remembered: Track | null): string | null {
   const q = new URLSearchParams(search);
+  const quant = q.get('format') === 'quant';
+  q.delete('format');
   const coding = CODING_PARAMS.some((p) => q.has(p));
-  const track = coding ? 'software' : remembered;
+  const track = quant ? 'quant' : coding ? 'software' : remembered;
   return track ? withQuery(tabHref(track, 'interviews'), q) : null;
 }
 
@@ -169,10 +202,15 @@ export function misplacedTopic(
   return trackForTopic(t, track);
 }
 
-/** The topics of a track, in the order given (the server's study order). */
+/**
+ * The topics of a track: its own (home in it) first, then those shared into it, each in the
+ * order given (the server's study order). Every list of a track's topics goes through this.
+ */
 export function topicsOf<T extends Omit<TrackedTopic, 'slug'>>(
   topics: readonly T[],
   track: Track,
 ): T[] {
-  return topics.filter((t) => topicInTrack(t, track));
+  const own = topics.filter((t) => homeTrack(t.track) === track);
+  const shared = topics.filter((t) => homeTrack(t.track) !== track && topicInTrack(t, track));
+  return [...own, ...shared];
 }

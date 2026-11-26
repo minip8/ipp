@@ -62,6 +62,37 @@ test.describe('the first visit', () => {
     expect(b.track).toBe('quant');
   });
 
+  test('the header behind the question shows no track chosen and no tab current', async ({
+    page,
+  }) => {
+    await setup(page, (b) => {
+      b.track = null;
+    });
+    await page.goto('/dashboard');
+    await expect(page.getByTestId('track-chooser')).toBeVisible();
+    await expect(current(page)).toHaveCount(0);
+    await expect(trackSwitch(page).getByRole('link')).toHaveText(['Software', 'Quant']);
+    await expect(tabs(page).locator('[aria-current]')).toHaveCount(0);
+    // Once chosen, that track and its Interviews are.
+    await page.getByTestId('choose-quant').click();
+    await expect(page).toHaveURL(/\/quant\/interviews$/);
+    await expect(current(page)).toHaveText('Quant');
+    await expect(tabs(page).locator('[aria-current="page"]')).toHaveText('Interviews');
+  });
+
+  test('on a phone, the track menu names no track before one is chosen', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await setup(page, (b) => {
+      b.track = null;
+    });
+    await page.goto('/dashboard');
+    await expect(page.getByTestId('track-chooser')).toBeVisible();
+    await expect(header(page).getByRole('button', { name: 'Track: none chosen' })).toBeVisible();
+    await expect(tabs(page).locator('[aria-current]')).toHaveCount(0);
+    await page.getByTestId('choose-software').click();
+    await expect(header(page).getByRole('button', { name: 'Track: Software' })).toBeVisible();
+  });
+
   test('a link with a problem goes to Software without asking', async ({ page }) => {
     await setup(page, (b) => {
       b.track = null;

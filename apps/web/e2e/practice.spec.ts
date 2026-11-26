@@ -1,7 +1,8 @@
 /**
- * The Practice tab in each track: the track's topics as one flat grid in study order (Python,
- * shared, in both), totals and history of the track only, one remembered setup per track, the
- * drill in Quant, and the question bank's topic picker scoped the same way.
+ * The Practice tab in each track: the track's topics as one flat grid, its own in study order and
+ * then those shared into it (Python, at home in Software, last in Quant), totals and history of
+ * the track only, one remembered setup per track, the drill in Quant, and the question bank's
+ * topic picker and the topic maps' chips in the same order.
  */
 import { expect, type Page, test } from '@playwright/test';
 import { QUIZ_TOPICS_FUNDAMENTALS } from './fixtures';
@@ -16,14 +17,15 @@ const SOFTWARE = [
   'Networking',
   'Concurrency',
 ];
+/** Quant's own topics in study order, then Python, shared into it from Software. */
 const QUANT = [
-  'Python',
   'Probability',
   'Brainteasers',
   'Betting & market making',
   'Options & finance',
   'Statistics',
   'Linear algebra & calculus',
+  'Python',
 ];
 /** A topic card's text starts with its title. */
 const starts = (titles: string[]) => titles.map((t) => new RegExp(`^${t.replace(/\+/g, '\\+')}`));
@@ -33,7 +35,7 @@ const cards = (page: Page) => page.getByTestId('topic-grid').getByRole('button')
 const stat = (page: Page, label: string) =>
   page.locator('dl > div').filter({ hasText: label }).locator('dd');
 
-test('each track lists its own topics, one flat grid in study order, Python in both', async ({
+test('each track lists its own topics first, one flat grid in study order, Python in both', async ({
   page,
 }) => {
   await setup(page);
@@ -45,7 +47,8 @@ test('each track lists its own topics, one flat grid in study order, Python in b
   await expect(page.getByTestId('topic-grid').getByRole('heading')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Fundamentals' })).toHaveCount(0);
   await expect(page.getByRole('tablist', { name: 'Practice' }).getByRole('tab')).toHaveText([
-    'Start a quiz',
+    'Quizzes',
+    'Problems',
     /^History/,
   ]);
   await expect(stat(page, 'Answered')).toHaveText('69');
@@ -55,6 +58,11 @@ test('each track lists its own topics, one flat grid in study order, Python in b
   await expect(page).toHaveTitle(/^Quant practice · interview\+\+/);
   await expect(cards(page)).toHaveText(starts(QUANT));
   await expect(page.getByRole('heading', { name: 'Quant', exact: true })).toHaveCount(0);
+  // No problem library in Quant.
+  await expect(page.getByRole('tablist', { name: 'Practice' }).getByRole('tab')).toHaveText([
+    'Quizzes',
+    /^History/,
+  ]);
   // The track's own totals: Python's 12 count in both.
   await expect(stat(page, 'Answered')).toHaveText('217');
   // The drill sits under the setup.
@@ -177,4 +185,18 @@ test('with no quant content, Quant’s Practice has only the shared topic', asyn
   await expect(cards(page)).toHaveText([/^Python/]);
   await page.goto('/software/practice');
   await expect(cards(page)).toHaveCount(6);
+});
+
+test('the topic maps follow the same order, starting on the track’s own first topic', async ({
+  page,
+}) => {
+  await setup(page);
+  await page.goto('/quant/roadmap?view=maps');
+  const chips = page.getByRole('radiogroup', { name: 'Roadmap topic' }).getByRole('radio');
+  await expect(chips.first()).toHaveText(/^Probability/);
+  await expect(chips.last()).toHaveText(/^Python/);
+  await expect(chips.first()).toHaveAttribute('aria-checked', 'true');
+  await page.goto('/software/roadmap?view=maps');
+  await expect(chips.first()).toHaveText(/^C\+\+/);
+  await expect(chips.nth(1)).toHaveText(/^Python/);
 });
