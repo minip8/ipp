@@ -1,0 +1,210 @@
+# Integrals: the gamma and Gaussian integrals, integration by parts, substitution, volumes, parameter tricks.
+- id: lac-integrals-001
+  topic: algebra-calculus
+  subtopic: Integrals
+  type: numeric
+  difficulty: easy
+  tags: [gamma-function, integration-by-parts, factorial]
+  prompt: |
+    Evaluate $\displaystyle\int_0^\infty x^5 e^{-x}\, dx$.
+  answer: 120
+  explanation: |
+    Let $I_n = \int_0^\infty x^n e^{-x}\,dx$. Integrating by parts, the boundary term
+    $\left[-x^n e^{-x}\right]_0^\infty$ vanishes for $n \ge 1$, so
+
+    $$I_n = n\,I_{n-1}, \qquad I_0 = 1 \quad\Longrightarrow\quad I_n = n!, \qquad I_5 = 120.$$
+
+    This is the gamma function, $\Gamma(n + 1) = n!$, and it is worth recognising on sight. In
+    probability terms, $I_n$ is $E[X^n]$ for an exponential variable with rate 1.
+
+    The common slip is an off-by-one: answering $4! = 24$ by confusing $\int x^n e^{-x}$ with
+    $\Gamma(n) = (n - 1)!$.
+  source: { name: "Standard integral (e.g. Zhou, A Practical Guide to Quantitative Finance Interviews)" }
+
+- id: lac-integrals-002
+  topic: algebra-calculus
+  subtopic: Integrals
+  type: numeric
+  difficulty: easy
+  tags: [integration-by-parts, improper-integral, logarithm]
+  prompt: |
+    Evaluate $\displaystyle\int_0^1 \ln x \, dx$.
+  answer: -1
+  explanation: |
+    Integrate by parts with $u = \ln x$, $dv = dx$: an antiderivative is $x\ln x - x$. The integral is
+    improper at 0, but $x\ln x \to 0$ as $x \to 0^+$, so
+
+    $$\int_0^1 \ln x\, dx = \left[x\ln x - x\right]_0^1 = (0 - 1) - (0 - 0) = -1.$$
+
+    A picture confirms it: the region between the graph of $\ln x$ and the axis on $(0, 1]$ is the region
+    under $e^y$ for $y \le 0$, reflected in the line $y = x$, and $\int_{-\infty}^0 e^y\,dy = 1$.
+
+    Common wrong answers: "it diverges" (the integrand is unbounded near 0, but only logarithmically,
+    which is integrable) and $+1$ (losing the sign: $\ln x < 0$ on $(0, 1)$).
+  source: { name: "Zhou, A Practical Guide to Quantitative Finance Interviews (calculus chapter)" }
+
+- id: lac-integrals-003
+  topic: algebra-calculus
+  subtopic: Integrals
+  type: short
+  difficulty: medium
+  tags: [gaussian-integral, polar-coordinates, normal-density]
+  prompt: |
+    Show that $\displaystyle\int_{-\infty}^{\infty} e^{-x^2}\, dx = \sqrt{\pi}$. Then, without
+    integrating again, find $\displaystyle\int_{-\infty}^{\infty} e^{-x^2/2}\, dx$ and the normalising
+    constant of the standard normal density.
+  reference: |
+    Let $I = \int_{-\infty}^\infty e^{-x^2}\,dx$, which is positive and finite. Then
+
+    $$I^2 = \int_{-\infty}^\infty\!\int_{-\infty}^\infty e^{-(x^2 + y^2)}\, dx\, dy = \int_0^{2\pi}\!\int_0^\infty e^{-r^2}\, r\, dr\, d\theta = 2\pi \cdot \left[-\tfrac12 e^{-r^2}\right]_0^\infty = \pi,$$
+
+    using polar coordinates, where $dx\,dy = r\,dr\,d\theta$. So $I = \sqrt\pi$. Writing $I^2$ as a double
+    integral and changing variables is legitimate because the integrand is positive (Tonelli's
+    theorem). The Jacobian $r$ is what makes the radial integral elementary.
+
+    Substituting $x = u/\sqrt2$ gives $\int e^{-u^2/2}\,du = \sqrt2 \cdot \sqrt\pi = \sqrt{2\pi}$, so the
+    standard normal density is $\frac{1}{\sqrt{2\pi}} e^{-u^2/2}$, and with variance $\sigma^2$ the
+    constant becomes $\frac{1}{\sigma\sqrt{2\pi}}$.
+  keyPoints:
+    - Squares the integral and writes I² as a double integral over the plane
+    - Changes to polar coordinates, including the Jacobian r
+    - Evaluates the radial integral of r·e^(−r²) as 1/2 and concludes I² = π, so I = √π since I > 0
+    - Substitutes to get √(2π) for e^(−x²/2), hence the 1/√(2π) normal constant
+  hints:
+    - What is $I^2$ as a double integral?
+    - Which coordinates suit $e^{-(x^2 + y^2)}$?
+  followUps:
+    - What is $\Gamma(1/2)$, and how does it follow from this result?
+    - Evaluate $\int_{-\infty}^\infty e^{-ax^2 + bx}\, dx$ for $a > 0$. Where does this show up in finance?
+    - Why does looking for an antiderivative not work here?
+  explanation: |
+    The polar-coordinates trick is the expected answer and most candidates know it; the interviewer
+    listens for the Jacobian $r$ and for some justification of squaring the integral. On the
+    follow-ups: $\Gamma(1/2) = \int_0^\infty t^{-1/2}e^{-t}\,dt = \sqrt\pi$ after $t = x^2$; completing the
+    square gives $\sqrt{\pi/a}\, e^{b^2/(4a)}$, the computation behind the lognormal moment
+    $E[e^{\sigma Z}] = e^{\sigma^2/2}$; and $e^{-x^2}$ has no elementary antiderivative (Liouville).
+  source: { name: "Gaussian integral (e.g. Zhou, A Practical Guide to Quantitative Finance Interviews)" }
+
+- id: lac-integrals-004
+  topic: algebra-calculus
+  subtopic: Integrals
+  type: numeric
+  difficulty: medium
+  tags: [gaussian-integral, integration-by-parts, moments]
+  prompt: |
+    Evaluate $\displaystyle\int_0^\infty x^2 e^{-x^2}\, dx$ to three significant figures. You may use
+    $\int_{-\infty}^\infty e^{-x^2}\,dx = \sqrt\pi$.
+  answer: 0.443113
+  answerText: |-
+    $\sqrt{\pi}/4 \approx 0.443$
+  hints:
+    - Integrate by parts with $u = x$ and $dv = x e^{-x^2}\,dx$.
+    - Or read $e^{-x^2}/\sqrt\pi$ as a normal density. What is its variance?
+  followUps:
+    - Generalise to $\int_0^\infty x^{2n} e^{-x^2}\, dx$.
+    - Write the integral as a value of the gamma function.
+  explanation: |
+    By parts, with $u = x$ and $dv = x e^{-x^2}\,dx$ (so $v = -\tfrac12 e^{-x^2}$):
+
+    $$\int_0^\infty x^2 e^{-x^2}\,dx = \left[-\tfrac12 x e^{-x^2}\right]_0^\infty + \tfrac12\int_0^\infty e^{-x^2}\,dx = \tfrac12 \cdot \tfrac{\sqrt\pi}{2} = \tfrac{\sqrt\pi}{4} \approx 0.443.$$
+
+    The probabilistic route is quicker: $e^{-x^2}/\sqrt\pi$ is the normal density with variance
+    $\tfrac12$, so $\int_{-\infty}^\infty x^2 e^{-x^2}\,dx = \sqrt\pi \cdot \tfrac12$, and by symmetry the half-line
+    gets half of that. It is also $\tfrac12\Gamma(3/2)$.
+
+    Common wrong answers: $\sqrt\pi/2 \approx 0.886$ (the whole line, or forgetting the factor $\tfrac12$
+    from the parts) and $\sqrt\pi/8$ (halving twice).
+  source: { name: "Standard Gaussian moment integral" }
+
+- id: lac-integrals-005
+  topic: algebra-calculus
+  subtopic: Integrals
+  type: numeric
+  difficulty: medium
+  tags: [substitution, trigonometric-integral, partial-fractions]
+  prompt: |
+    Evaluate $\displaystyle\int_0^{\pi/6} \sec x\, dx$ to three significant figures.
+  answer: 0.549306
+  answerText: |-
+    $\tfrac12 \ln 3 \approx 0.549$
+  hints:
+    - Write $\sec x = \dfrac{\cos x}{1 - \sin^2 x}$.
+    - Substitute $u = \sin x$ and use partial fractions.
+  followUps:
+    - What is the antiderivative of $\sec x$ in the form $\ln\lvert \cdot \rvert$, and how would you verify it?
+    - What happens to the integral as the upper limit approaches $\pi/2$?
+  explanation: |
+    Multiply top and bottom by $\cos x$ and substitute $u = \sin x$:
+
+    $$\int_0^{\pi/6} \frac{\cos x}{1 - \sin^2 x}\,dx = \int_0^{1/2} \frac{du}{1 - u^2} = \frac12\ln\frac{1 + u}{1 - u}\,\Bigg|_0^{1/2} = \frac12 \ln 3 \approx 0.549.$$
+
+    The textbook antiderivative is $\ln\lvert\sec x + \tan x\rvert$: at $\pi/6$, $\sec + \tan = \tfrac{2}{\sqrt3} + \tfrac{1}{\sqrt3} = \sqrt3$,
+    giving $\ln\sqrt3$, the same number. The substitution route is the one you can rebuild in an interview
+    if you have forgotten the formula.
+
+    A common wrong answer is $\ln(2/\sqrt3) \approx 0.144$, from $\ln\lvert\sec x\rvert$, which is
+    an antiderivative of $\tan x$, not of $\sec x$.
+  source: { name: "Zhou, A Practical Guide to Quantitative Finance Interviews (calculus chapter)" }
+
+- id: lac-integrals-006
+  topic: algebra-calculus
+  subtopic: Integrals
+  type: numeric
+  difficulty: hard
+  tags: [volume, cross-sections, steinmetz-solid]
+  prompt: |
+    Two solid circular cylinders, each of radius 1, have axes that intersect at right angles. What is
+    the volume of the solid common to both?
+  answer: 16/3
+  answerText: |-
+    $16/3 \approx 5.33$
+  hints:
+    - Put the axes along the $x$- and $y$-axes. What does a horizontal slice $z = \text{const}$ of the intersection look like?
+    - Each cylinder cuts the slice to a strip; the intersection of two perpendicular strips is a square.
+  followUps:
+    - What is the volume common to three such cylinders along the three coordinate axes?
+    - How does the answer compare with the inscribed unit sphere, and why is the ratio exactly $4/\pi$?
+  explanation: |
+    Put the axes along $x$ and $y$: the solids are $y^2 + z^2 \le 1$ and $x^2 + z^2 \le 1$. At height $z$
+    the slice of the intersection is the square $|x|, |y| \le \sqrt{1 - z^2}$, of area $4(1 - z^2)$. So
+
+    $$V = \int_{-1}^{1} 4(1 - z^2)\,dz = 4\left(2 - \tfrac23\right) = \frac{16}{3}.$$
+
+    Archimedes' view: the unit sphere sits inside, and its slice at height $z$ is the disc inscribed in
+    that square. Every slice has area ratio $\pi/4$, so $V = \tfrac43\pi \big/ \tfrac\pi4 = \tfrac{16}{3}$.
+
+    Common wrong answers: $\tfrac43\pi \approx 4.19$ (assuming the intersection is the sphere) and
+    attempts with cylindrical coordinates that never finish. Choosing slices perpendicular to both
+    axes is the whole trick. With three cylinders the volume is $8(2 - \sqrt2) \approx 4.69$.
+  source: { name: "Zhou, A Practical Guide to Quantitative Finance Interviews (calculus chapter)" }
+
+- id: lac-integrals-007
+  topic: algebra-calculus
+  subtopic: Integrals
+  type: numeric
+  difficulty: hard
+  tags: [differentiation-under-integral, fubini, parameter-trick]
+  prompt: |
+    Evaluate $\displaystyle\int_0^1 \frac{x - 1}{\ln x}\, dx$ to three significant figures.
+  answer: 0.693147
+  answerText: |-
+    $\ln 2 \approx 0.693$
+  hints:
+    - Write $\dfrac{x - 1}{\ln x}$ as an integral of $x^t$ over $t$ from 0 to 1.
+    - Alternatively, put a parameter in the exponent, $I(a) = \int_0^1 \frac{x^a - 1}{\ln x}\,dx$, and differentiate in $a$.
+  followUps:
+    - Evaluate $\int_0^1 \frac{x^a - x^b}{\ln x}\, dx$ for $a, b > -1$.
+    - Why is swapping the order of integration allowed here?
+  explanation: |
+    The integrand is bounded (it tends to 0 at $x = 0$ and to 1 at $x = 1$), so the integral is finite.
+    Since $\int_0^1 x^t\,dt = \frac{x - 1}{\ln x}$,
+
+    $$\int_0^1 \frac{x - 1}{\ln x}\,dx = \int_0^1\!\int_0^1 x^t\,dt\,dx = \int_0^1\!\int_0^1 x^t\,dx\,dt = \int_0^1 \frac{dt}{t + 1} = \ln 2.$$
+
+    Swapping the order is justified because the integrand $x^t$ is non-negative (Tonelli). The same
+    calculation in "Feynman" form: $I(a) = \int_0^1 \frac{x^a - 1}{\ln x}\,dx$ has $I'(a) = \int_0^1 x^a\,dx = \frac{1}{a+1}$
+    and $I(0) = 0$, so $I(a) = \ln(1 + a)$ and $I(1) = \ln 2$.
+
+    The common mistake is to look for an antiderivative (there is no elementary one) or to declare the
+    integral divergent because $\ln x$ vanishes at $x = 1$; the numerator vanishes there too.
+  source: { name: "Classic integral by differentiating under the integral sign (e.g. Nahin, Inside Interesting Integrals)" }
