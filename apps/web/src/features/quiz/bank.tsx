@@ -282,7 +282,7 @@ export function QuestionBank({ topic }: { topic: string }) {
       qc.setQueryData(qk.quizBankQuestion(questionId), (old: QuizBankQuestion | undefined) =>
         old ? { ...itemWithFeedback(old, feedback, at), response, feedback } : old,
       );
-      // Answers here count toward topic stats (hub, dashboard).
+      // Answers here count toward topic stats (Practice, Roadmap).
       void qc.invalidateQueries({ queryKey: qk.quizTopics });
     },
     [qc, topic],
