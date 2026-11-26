@@ -7,6 +7,11 @@
  * nothing and posts nothing. A step's time (the state's times, its messages' `created_at`) is
  * the database's clock (`Ctx.dbNow`), the one every other message and the pad's start are on.
  *
+ * A slot may hold a market-making game (§8.3): the candidate's quotes arrive as `quote` steps
+ * (`postQuote`), posted as their chat message, and whatever a step did to the game (a quote, a
+ * trade, a reveal, the settlement) is recorded as `game` timeline events in the same
+ * transaction, in order, after the step's messages and before the next question's event.
+ *
  * Once the pad has ended, every question with a verdict is also one of the owner's quiz answers
  * (`quant_round_answers`), written in the transaction that finishes the round and by any later
  * `verdict` step, so the quiz's stats, roadmap and question bank count it.
@@ -23,6 +28,8 @@ import {
   publicRound,
   type QuantGame,
   type QuantQuestionReview,
+  type QuantQuoteStep,
+  type QuantRefusal,
   type QuantReport,
   type QuantRoundState,
   type QuantRoundStep,
@@ -41,6 +48,7 @@ import {
   interviewerNotes,
   messages,
   pads,
+  quantGames,
   quantRoundAnswers,
   quantRounds,
   quizQuestions,
@@ -69,6 +77,11 @@ export async function roundView(ctx: Ctx, padId: string): Promise<QuantRoundView
 /** How many times a step that lost the compare-and-swap to a concurrent write is decided again. */
 const CAS_RETRIES = 3;
 
+/** Who raised a step the API takes for a person: a `quote` is posted as their message. */
+export interface StepActor {
+  userId: string;
+}
+
 /**
  * Applies one step to the pad's round. Interviewer steps (`QuantStep`) name the version they
  * were decided on, so losing a race to another write is `stale`, as for any older version.
@@ -78,10 +91,22 @@ export async function applyStep(
   ctx: Ctx,
   padId: string,
   step: QuantRoundStep,
+  actor?: StepActor,
 ): Promise<QuantStepResult> {
-  let outcome: Awaited<ReturnType<typeof tryStep>>;
+  const outcome = await applyAndBroadcast(ctx, padId, step, actor);
+  return outcome.ok ? outcome.result : outcome;
+}
+
+/** `applyStep`, keeping what the caller of a step it raised itself may answer with. */
+async function applyAndBroadcast(
+  ctx: Ctx,
+  padId: string,
+  step: QuantRoundStep,
+  actor: StepActor | undefined,
+): Promise<StepOutcome> {
+  let outcome: StepOutcome;
   try {
-    outcome = await tryStep(ctx, padId, step);
+    outcome = await tryStep(ctx, padId, step, actor);
   } catch (err) {
     // The pad was deleted while the step was written.
     if (isForeignKeyViolation(err)) return { ok: false, reason: 'ended' };
@@ -91,14 +116,46 @@ export async function applyStep(
   for (const message of outcome.posted)
     ctx.rooms.broadcast(padId, { type: 'message.created', message });
   ctx.rooms.broadcast(padId, { type: 'round.updated', round: outcome.view });
-  return outcome.result;
+  return outcome;
+}
+
+/**
+ * The candidate's market on the current game (`POST /api/pads/:id/round/quote`, §8.3): a `quote`
+ * step, posted as `userId`'s chat message. Like `end` it is not versioned, so losing the
+ * compare-and-swap to a concurrent step only means deciding it again on the newer round.
+ * Returns the round's new view and the message, or the round's refusal.
+ */
+export async function postQuote(
+  ctx: Ctx,
+  padId: string,
+  userId: string,
+  quote: { index: number; bid: number; ask: number; size: number },
+): Promise<
+  { ok: true; view: QuantRoundView; message: Message } | { ok: false; reason: QuantRefusal }
+> {
+  const step: QuantQuoteStep = { type: 'quote', ...quote };
+  for (let i = 0; i < CAS_RETRIES; i++) {
+    const out = await applyAndBroadcast(ctx, padId, step, { userId });
+    if (out.ok) {
+      const message = out.posted.find((m) => m.role === 'candidate');
+      if (!message) throw new Error('a quote posted no message');
+      return { ok: true, view: out.view, message };
+    }
+    if (out.reason !== 'stale') return out;
+  }
+  return { ok: false, reason: 'stale' };
 }
 
 type StepOutcome =
   | { ok: true; result: QuantStepResult & { ok: true }; posted: Message[]; view: QuantRoundView }
   | (QuantStepResult & { ok: false });
 
-async function tryStep(ctx: Ctx, padId: string, step: QuantRoundStep): Promise<StepOutcome> {
+async function tryStep(
+  ctx: Ctx,
+  padId: string,
+  step: QuantRoundStep,
+  actor: StepActor | undefined,
+): Promise<StepOutcome> {
   return ctx.db.transaction(async (tx) => {
     // Shared lock on the pad: `endPad` (which updates it) waits for this step, or this step
     // waits for it and then sees the pad ended.
@@ -138,7 +195,7 @@ async function tryStep(ctx: Ctx, padId: string, step: QuantRoundStep): Promise<S
       .returning({ version: quantRounds.version });
     if (!written) return { ok: false, reason: 'stale' } as const;
 
-    const { say, reveal, note } = next.effects;
+    const { say, reveal, note, quote, game } = next.effects;
     const posted: Message[] = [];
     if (say) {
       const [m] = await tx
@@ -164,6 +221,37 @@ async function tryStep(ctx: Ctx, padId: string, step: QuantRoundStep): Promise<S
           target: [aiUsage.userId, aiUsage.day],
           set: { messages: sql`${aiUsage.messages} + 1` },
         });
+    }
+    if (quote) {
+      // The candidate's market, as they would have typed it: their chat message.
+      if (!actor) throw new Error('a quote step needs the member who posted it');
+      const [m] = await tx
+        .insert(messages)
+        .values({
+          padId,
+          role: 'candidate',
+          kind: 'chat',
+          intent: null,
+          text: quote.text,
+          via: 'text',
+          userId: actor.userId,
+          createdAt: now,
+        })
+        .returning();
+      if (m) posted.push(messageView(m));
+    }
+    if (game && game.entries.length > 0) {
+      // In order, a microsecond apart (the column keeps them, a message's millisecond clock
+      // would not), so playback replays them as they happened: after the messages above at
+      // `now`, before the next question's event at `now` + 1 ms.
+      await tx.insert(timelineEvents).values(
+        game.entries.map((entry, k) => ({
+          padId,
+          // `k` is a small whole number of ours, never input.
+          at: sql`${now.toISOString()}::timestamptz + interval '${sql.raw(String(k + 1))} microseconds'`,
+          event: { type: 'game' as const, index: game.index, entry },
+        })),
+      );
     }
     if (reveal) {
       // After the interviewer's message, whatever the clock's resolution; posted by the server,
@@ -305,20 +393,39 @@ async function bankQuestions(ctx: Ctx, ids: readonly string[]): Promise<Map<stri
 }
 
 /**
- * `Report.quant`, built when the report is read (only after the pad ended) from the state and
- * the bank: answers, key points and explanations, verdicts, and the hints given as counts. The
- * text of hints and follow-ups never leaves the server.
+ * The content of the round's games by id (§8.3), inactive ones included: a game removed from
+ * content since is still the one that was played. SERVER-ONLY (counterparty notes, hints).
+ */
+async function gameContent(ctx: Ctx, ids: readonly string[]): Promise<Map<string, QuantGame>> {
+  if (ids.length === 0) return new Map();
+  const rows = await ctx.db
+    .select({ id: quantGames.id, data: quantGames.data })
+    .from(quantGames)
+    .where(inArray(quantGames.id, [...ids]));
+  return new Map(rows.map((r) => [r.id, r.data]));
+}
+
+/**
+ * `Report.quant`, built when the report is read (only after the pad ended) from the state, the
+ * bank and the games' content: answers, key points and explanations, verdicts, the hints given as
+ * counts, and each game's review. The text of hints and follow-ups, and a game's counterparty
+ * notes, never leave the server.
  */
 export async function quantReport(ctx: Ctx, padId: string): Promise<QuantReport | null> {
   const row = await loadRound(ctx, padId);
   if (!row) return null;
-  return buildQuantReport(
-    row.state,
-    await bankQuestions(
+  const isGame = (q: QuantRoundState['questions'][number]) => (q.game ?? null) !== null;
+  const [bank, games] = await Promise.all([
+    bankQuestions(
       ctx,
-      row.state.questions.map((q) => q.questionId),
+      row.state.questions.filter((q) => !isGame(q)).map((q) => q.questionId),
     ),
-  );
+    gameContent(
+      ctx,
+      row.state.questions.filter(isGame).map((q) => q.questionId),
+    ),
+  ]);
+  return buildQuantReport(row.state, bank, games);
 }
 
 /**
@@ -383,4 +490,4 @@ export function buildQuantReport(
   return { path: state.path, questions };
 }
 
-export { bankQuestions };
+export { bankQuestions, gameContent };
