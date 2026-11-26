@@ -909,8 +909,10 @@ was, and so is its assembly: the same draws from the same generator).
   one was, of the slot's difficulty or else the nearest, at random among equals; its hidden
   values are drawn by the same generator through `quantGamePick`. The bank fills the other slots
   by §8.2's rules, as a round one question shorter whose slots keep their own difficulties (a
-  20-minute round: easy, the game, hard), so a game round needs one bank question fewer. No
-  active game, or none wanted, and the round is assembled exactly as before. The server draws
+  20-minute round: easy, the game, hard), so a game round needs one bank question fewer. Those
+  slots are filled from the path's other topics, so a market-making question is not asked next
+  to a market-making game; the game's own topic comes back only when the others cannot fill
+  them. No active game, or none wanted, and the round is assembled exactly as before. The server draws
   with a cryptographic generator (`secureRand`), so the dice cannot be worked out from the
   questions a round shows; the tests pass a seeded one.
 - **The engine** (`quant-game.ts`, pure). `drawGame(spec, rand)` draws the values from the

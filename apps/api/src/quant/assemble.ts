@@ -26,7 +26,9 @@
  * the owner's last rounds unless no other is left, of the slot's difficulty or else the nearest,
  * at random among equals, its hidden values drawn by the same generator. The other slots are
  * filled by the rules above as a round one question shorter whose slots keep their own
- * difficulties. Without a game the round is exactly what it was before games existed.
+ * difficulties, from the path's other topics (the game is the round's question on its own
+ * topic; that topic's bank questions come back only when the others cannot fill the slots).
+ * Without a game the round is exactly what it was before games existed.
  */
 import {
   QUANT_PATH_INFO,
@@ -257,12 +259,22 @@ export function assembleWithGame<Q extends PoolQuestion>(
   }
   const slots = difficultySlots(bank.n);
   const index = gameSlot(bank.n);
-  const rest = slots.filter((_, i) => i !== index);
-  const questions =
-    rest.length === 0 ? [] : assembleRound({ ...bank, n: rest.length, difficulties: rest });
-  if (!questions) return null;
   const game = chooseGame(games, bank.recent, slots[index] ?? 'medium', bank.rand);
-  if (!game) return { questions, game: null };
+  if (!game) {
+    const questions = assembleRound(bank);
+    return questions && { questions, game: null };
+  }
+  const rest = { ...bank, n: bank.n - 1, difficulties: slots.filter((_, i) => i !== index) };
+  // The game is the round's question on its topic: the bank's slots go to the other topics, so
+  // a market-making question is not asked back to back with a market-making game. Only when
+  // those cannot fill them does the game's own topic come back.
+  const elsewhere = {
+    ...rest,
+    pool: bank.pool.filter((q) => q.topic !== game.topic),
+    topics: bank.topics.filter((t) => t !== game.topic),
+  };
+  const questions = rest.n === 0 ? [] : (assembleRound(elsewhere) ?? assembleRound(rest));
+  if (!questions) return null;
   return {
     questions,
     game: { index, pick: quantGamePick(game, topicTitle(game.topic), bank.rand) },

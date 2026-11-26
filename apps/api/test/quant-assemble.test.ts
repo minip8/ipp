@@ -344,6 +344,28 @@ describe('assembleWithGame', () => {
     }
   });
 
+  it('asks no bank question on the game’s topic while the other topics can fill the round', () => {
+    for (const n of [3, 4, 6])
+      for (const seed of SEEDS) {
+        const r = assembleWithGame(gameInput({ n, seed }));
+        expect(
+          r?.questions.map((q) => q.topic),
+          `n ${n}, seed ${seed}`,
+        ).not.toContain('betting-market-making');
+        expect(r?.game?.pick.topic).toBe('betting-market-making');
+      }
+  });
+
+  it('falls back on the game’s topic when the other topics cannot fill the round', () => {
+    // Only market-making questions in the bank: they fill the slots beside the game.
+    const pool = richPool(4, ['betting-market-making']);
+    for (const seed of SEEDS) {
+      const r = assembleWithGame(gameInput({ n: 3, seed, pool }));
+      expect(r?.questions).toHaveLength(2);
+      expect(r?.game?.pick.questionId).toBe('g-medium');
+    }
+  });
+
   it('puts the game first in a one-question round', () => {
     const r = assembleWithGame(gameInput({ n: 1 }));
     expect(r?.questions).toEqual([]);
