@@ -133,7 +133,7 @@
   topic: algebra-calculus
   subtopic: Eigenvalues and eigenvectors
   type: single
-  difficulty: medium
+  difficulty: hard
   tags: [rank-one-update, sherman-morrison, determinant-lemma]
   prompt: |
     $u$ and $v$ are non-zero vectors in $\mathbb{R}^n$, with $n \ge 2$. When is the matrix $I - uv^\top$

@@ -147,7 +147,8 @@
   difficulty: medium
   tags: [convexity, am-gm, jensen]
   prompt: |
-    $f$ and $g$ are real functions on $\mathbb{R}$. Which statements are true? Select all that apply.
+    $f$ and $g$ are real functions on $\mathbb{R}$. Which statements are **always** true? Select all that
+    apply.
   choices:
     - { id: a, text: 'For positive numbers, the geometric mean never exceeds the arithmetic mean.' }
     - { id: b, text: 'If $f$ and $g$ are convex, then $f + g$ is convex.' }

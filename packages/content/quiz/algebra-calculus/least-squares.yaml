@@ -33,8 +33,8 @@
   tags: [hat-matrix, projection-matrix, leverage]
   prompt: |
     $X$ is a real $n \times p$ matrix with $n > p$ and linearly independent columns, and
-    $H = X(X^\top X)^{-1}X^\top$ is the hat matrix of least squares. Which statements are true? Select all
-    that apply.
+    $H = X(X^\top X)^{-1}X^\top$ is the hat matrix of least squares. Which statements hold for **every**
+    such $X$? Select all that apply.
   choices:
     - { id: a, text: '$H$ is symmetric and $H^2 = H$.' }
     - { id: b, text: 'Every eigenvalue of $H$ is 0 or 1.' }

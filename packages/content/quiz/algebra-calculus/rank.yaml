@@ -54,7 +54,7 @@
   topic: algebra-calculus
   subtopic: Rank and linear systems
   type: numeric
-  difficulty: medium
+  difficulty: hard
   tags: [rank, outer-product, low-rank]
   prompt: |
     $A$ is the $100 \times 100$ matrix with entries $a_{ij} = (i + j)^2$ for $i, j = 1, \dots, 100$.

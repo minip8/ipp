@@ -77,7 +77,7 @@
   difficulty: hard
   tags: [convergence-tests, comparison-test, ratio-test]
   prompt: |
-    Which of these series converge? Select all that apply.
+    Which of these series converge (absolutely or conditionally)? Select all that apply.
   choices:
     - { id: a, text: '$\displaystyle\sum_{n \ge 2} \frac{1}{n \ln n}$' }
     - { id: b, text: '$\displaystyle\sum_{n \ge 1} \frac{(-1)^{n+1}}{n}$' }
