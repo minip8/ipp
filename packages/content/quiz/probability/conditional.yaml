@@ -1,0 +1,368 @@
+# Conditional probability and Bayes: conditioning on what was actually observed, base rates, likelihood ratios.
+- id: prob-conditional-001
+  topic: probability
+  subtopic: Conditional probability and Bayes
+  type: numeric
+  difficulty: easy
+  tags: [coins, conditioning]
+  prompt: |
+    Three fair coins are tossed. Given that at least one of them shows tails, what is the probability
+    that exactly two show heads?
+  answer: 3/7
+  explanation: |
+    Restrict the sample space to the outcomes that satisfy the condition. Of the 8 equally likely
+    outcomes, only HHH has no tails, so 7 remain. Exactly two heads happens in HHT, HTH and THH, all
+    of which contain a tail. So
+
+    $$P(\text{two heads} \mid \text{at least one tail}) = \frac{3/8}{7/8} = \frac37.$$
+
+    The common wrong answer is $3/8$, the unconditional probability: the condition rules out HHH and
+    so raises every remaining outcome's probability from $1/8$ to $1/7$.
+  source: { name: "Jane Street, Probability and Markets guide (idea)", url: "https://www.janestreet.com/probability-markets/" }
+
+- id: prob-conditional-002
+  topic: probability
+  subtopic: Conditional probability and Bayes
+  type: numeric
+  difficulty: easy
+  tags: [cards, bayes, bertrand-box]
+  prompt: |
+    A hat holds three cards: one red on both sides, one blue on both sides, and one red on one side
+    and blue on the other. You draw a card at random and look at one of its sides, chosen at random.
+    It is red. What is the probability that the other side is also red?
+  answer: 2/3
+  explanation: |
+    Count **faces**, not cards. There are six equally likely (card, face) pairs. Three of them show
+    red: the two faces of the red-red card and the red face of the mixed card. In two of those three
+    the hidden side is red, so the answer is $2/3$.
+
+    Equivalently, by Bayes: the red-red card shows red with probability 1, the mixed card with
+    probability $1/2$, so the posterior odds of red-red against mixed are $1 : \tfrac12 = 2 : 1$.
+
+    The common wrong answer is $1/2$: "it is one of the two cards with a red side, equally likely".
+    Seeing red is twice as likely under the red-red card, so it is not equally likely afterwards.
+  source: { name: "Bertrand's box paradox (1889)" }
+
+- id: prob-conditional-003
+  topic: probability
+  subtopic: Conditional probability and Bayes
+  type: numeric
+  difficulty: medium
+  tags: [bayes, base-rate, medical-test]
+  prompt: |
+    A disease affects 1 in 1,000 people. A test detects it in 99% of people who have it, and gives a
+    false positive for 5% of people who do not. A person chosen at random from the population tests
+    positive. What is the probability that they have the disease?
+  answer: 33/1698
+  answerText: |-
+    $33/1698 \approx 0.0194$, just under 2%
+  hints:
+    - Imagine 100,000 people and count how many of each kind test positive.
+    - How many true positives, and how many false positives?
+  followUps:
+    - The person takes a second, independent test and is positive again. What now?
+    - What assumption does "independent" hide in that follow-up, and why might it fail in practice?
+  explanation: |
+    Count in natural frequencies. Out of 100,000 people, 100 are sick and 99 of them test positive.
+    Of the 99,900 healthy people, 5% (4,995) test positive. So
+
+    $$P(\text{sick} \mid +) = \frac{99}{99 + 4995} = \frac{99}{5094} = \frac{33}{1698} \approx 1.9\%.$$
+
+    The false positives swamp the true positives because healthy people outnumber sick ones by
+    999 to 1. In odds form: prior odds $1 : 999$ times likelihood ratio $0.99/0.05 = 19.8$ gives
+    posterior odds about $1 : 50$.
+
+    The common wrong answer is 99% (or 95%), which confuses $P(+ \mid \text{sick})$ with
+    $P(\text{sick} \mid +)$ and ignores the base rate.
+  source: { name: "Classic base-rate problem (e.g. Blitzstein and Hwang, ch. 2)" }
+
+- id: prob-conditional-004
+  topic: probability
+  subtopic: Conditional probability and Bayes
+  type: numeric
+  difficulty: medium
+  tags: [bayes, coins, likelihood-ratio]
+  prompt: |
+    A bag holds 1,000 coins: 999 are fair and one has heads on both sides. You pick a coin at random
+    and, without examining it, toss it 10 times. It lands heads all 10 times. What is the probability
+    that you picked the two-headed coin?
+  answer: 1024/2023
+  answerText: |-
+    $1024/2023 \approx 0.506$
+  hints:
+    - Compare prior odds with how much more likely ten heads are under each hypothesis.
+    - Under a fair coin ten heads has probability $2^{-10} = 1/1024$.
+  followUps:
+    - How many heads in a row would make you 99% sure?
+    - What is the probability that the 11th toss is heads?
+  explanation: |
+    Use Bayes in odds form: posterior odds = prior odds × likelihood ratio.
+
+    - Prior odds of two-headed to fair: $1 : 999$.
+    - Likelihood ratio of ten heads: $1 : 2^{-10} = 1024 : 1$.
+    - Posterior odds: $1024 : 999$, so $P = \dfrac{1024}{1024 + 999} = \dfrac{1024}{2023} \approx 0.506$.
+
+    Ten heads in a row feels overwhelming, but it only barely overturns a 999-to-1 prior; this is
+    the same base-rate effect as in a medical test. The usual wrong answers are close to 1 (ignoring
+    the prior) or $1/1000$ (ignoring the evidence).
+  source: { name: "Classic interview problem (e.g. Zhou, ch. 4)" }
+
+- id: prob-conditional-005
+  topic: probability
+  subtopic: Conditional probability and Bayes
+  type: numeric
+  difficulty: medium
+  tags: [bayes, independent-witnesses]
+  prompt: |
+    Before you call them, you believe there is a 25% chance it is raining in a friend's city. You
+    phone three friends who live there and ask each "Is it raining?". Each friend, independently of
+    the others and of the weather, tells the truth with probability $2/3$ and lies with probability
+    $1/3$. All three say "yes". What is the probability that it is raining?
+  answer: 8/11
+  answerText: |-
+    $8/11 \approx 0.727$
+  hints:
+    - Two hypotheses, rain and no rain. How likely are three yeses under each?
+    - Under rain all three told the truth; under no rain all three lied.
+  followUps:
+    - What if one of the three had said "no"?
+    - Why does the answer depend on the prior, and what would you answer if the interviewer refused to give one?
+  explanation: |
+    Three yeses have probability $(2/3)^3 = 8/27$ if it is raining (all truthful) and
+    $(1/3)^3 = 1/27$ if not (all lying), a likelihood ratio of $8 : 1$. Multiply by the prior odds
+    $1 : 3$:
+
+    $$\text{posterior odds} = \frac{1}{3} \cdot 8 = \frac{8}{3}, \qquad P(\text{rain}) = \frac{8}{8+3} = \frac{8}{11}.$$
+
+    The popular wrong answer is $1 - (1/3)^3 = 26/27$, "the probability that not all three are
+    lying". It ignores the prior: if it almost never rains there, three yeses should not convince
+    you. Without a prior the question has no answer, which is worth saying in an interview.
+  source: { name: "Widely reported interview question (Glassdoor)" }
+
+- id: prob-conditional-006
+  topic: probability
+  subtopic: Conditional probability and Bayes
+  type: numeric
+  difficulty: hard
+  tags: [bayes, beta, rule-of-succession]
+  prompt: |
+    A coin's probability of heads $p$ is unknown; before tossing, $p$ is uniformly distributed on
+    $[0, 1]$. Given $p$, tosses are independent. You toss it 10 times and see 7 heads and 3 tails.
+    What is the probability that the 11th toss is heads?
+  answer: 2/3
+  hints:
+    - The answer is $E[p \mid \text{data}]$. What is the posterior density of $p$, up to a constant?
+    - The posterior is proportional to $p^7 (1-p)^3$.
+    - $\int_0^1 p^a (1-p)^b \, dp = \dfrac{a!\, b!}{(a+b+1)!}$.
+  followUps:
+    - What would a frequentist plug-in estimate say, and why do the two differ?
+    - What is the answer after $k$ heads in $n$ tosses? After 0 heads in 0 tosses?
+  explanation: |
+    With a uniform prior the posterior density is proportional to the likelihood, $p^7(1-p)^3$
+    (a Beta(8, 4) distribution). The predictive probability of heads is the posterior mean:
+
+    $$P(\text{heads}) = \frac{\int_0^1 p^8 (1-p)^3\,dp}{\int_0^1 p^7 (1-p)^3\,dp} = \frac{8!\,3!/12!}{7!\,3!/11!} = \frac{8}{12} = \frac23.$$
+
+    This is Laplace's rule of succession, $\frac{k+1}{n+2}$: the uniform prior acts like one
+    extra head and one extra tail. The common wrong answer is $7/10$, the maximum-likelihood
+    estimate, which ignores the prior. A neat way to see $\frac{k+1}{n+2}$: think of $p$ as a uniform
+    point and each toss as another uniform point, heads when it falls below $p$. Among the $n+2$
+    points (the $p$ point, the $n$ tosses and the next toss) the arrangement is uniformly random.
+  source: { name: "Laplace's rule of succession (e.g. Blitzstein and Hwang, ch. 8)" }
+
+- id: prob-conditional-007
+  topic: probability
+  subtopic: Conditional probability and Bayes
+  type: short
+  difficulty: medium
+  tags: [two-child-problem, conditioning, information]
+  prompt: |
+    Each child is a boy or a girl with probability $1/2$, independently. Consider a family with two
+    children in each of these situations:
+
+    1. You ask the parent "Is at least one of your children a boy?" and the answer is yes.
+    2. You meet one of the two children, chosen at random, and it is a boy.
+
+    In each case, what is the probability that both children are boys, and why do the answers differ?
+  reference: |
+    The equally likely families are BB, BG, GB and GG.
+
+    1. "At least one boy" rules out only GG, leaving BB, BG, GB, so $P(BB) = 1/3$.
+    2. Here the evidence is "a randomly chosen child is a boy". That has probability 1 under BB,
+       $1/2$ under BG and under GB, and 0 under GG. By Bayes,
+       $P(BB) = \dfrac{1/4 \cdot 1}{1/4 \cdot 1 + 1/4 \cdot 1/2 + 1/4 \cdot 1/2} = \dfrac12$.
+       Equivalently, the other child is a fresh independent child.
+
+    The answers differ because conditioning is on the *event that was observed*, and the two
+    procedures produce different events even though both "tell you there is a boy". In case 2 a BB
+    family is twice as likely as a mixed family to produce the observation, which it is not in
+    case 1.
+  keyPoints:
+    - Case 1 gives 1/3, by removing GG from four equally likely families
+    - Case 2 gives 1/2, by weighting each family by the probability of seeing a boy
+    - The difference comes from how the information was obtained, not just its content
+    - Explicitly uses Bayes or likelihoods for the random-child case
+  hints:
+    - List the four equally likely families.
+    - In case 2, how likely is it that you meet a boy, for each kind of family?
+  followUps:
+    - What if the parent says "my older child is a boy"?
+    - If the parent volunteers "I have a boy" without being asked, what extra assumption do you need?
+  explanation: |
+    Most candidates know one of the two answers and defend it for both. The examiner wants the
+    principle: a probability is conditional on the *event* observed, and the event includes the
+    procedure that generated the information. "At least one is a boy" (a yes/no answer about the
+    family) and "this particular child is a boy" (a sample from the family) are different events.
+    Variants that add details such as "born on a Tuesday" change the answer for the same reason,
+    and are ambiguous unless the procedure is stated.
+  source: { name: "Two-child problem (Gardner, 1959)" }
+
+- id: prob-conditional-008
+  topic: probability
+  subtopic: Conditional probability and Bayes
+  type: short
+  difficulty: medium
+  tags: [monty-hall, conditioning, host-behaviour]
+  prompt: |
+    A prize is behind one of three doors, equally likely. You pick door 1. Then door 3 is opened and
+    shows no prize, and you are offered a switch to door 2. What is your probability of winning if
+    you switch:
+
+    (a) when the host knows where the prize is, always opens an unpicked door without the prize, and
+        picks at random between the two unpicked doors when both are empty;
+    (b) when the host does not know, opens one of the two unpicked doors at random, and it happens to
+        be empty?
+  reference: |
+    (a) $2/3$. Your first pick is right with probability $1/3$ and the host's action cannot change
+    that, because he can always open an empty door whatever is behind door 1. So the prize is behind
+    door 2 with probability $2/3$. By Bayes: given prize behind 1, 2, 3 the host opens door 3 with
+    probability $1/2$, 1, 0, so the posterior is proportional to $\tfrac12 : 1 : 0$, giving
+    $1/3$ for door 1 and $2/3$ for door 2.
+
+    (b) $1/2$. Now the host opens door 3 with probability $1/2$ whatever is behind doors 1 and 2, and
+    the observation "door 3 is empty" simply rules out the prize being behind door 3. The likelihoods
+    are $\tfrac12 : \tfrac12 : 0$, so doors 1 and 2 are equally likely. Switching neither helps nor
+    hurts.
+  keyPoints:
+    - Knowing host, switching wins with probability 2/3
+    - Ignorant host who happens to reveal an empty door, switching wins with probability 1/2
+    - The difference is the likelihood of the host's action under each location of the prize
+    - The knowing host's choice is forced when you picked wrong, which is what transfers probability to the other door
+  hints:
+    - For each location of the prize, how likely is the host to open door 3?
+    - In (b), the host could have revealed the prize. What does it tell you that he did not?
+  followUps:
+    - With 100 doors and a knowing host who opens 98 empty doors, what is the chance switching wins?
+    - In (a), if the host always opens the lowest-numbered empty unpicked door, what is your chance of winning by switching after he opens door 3?
+  explanation: |
+    The answer depends entirely on the host's rule, which is why a careful candidate asks for it.
+    Saying "two doors left, so 1/2" is right only for the ignorant host. Saying "2/3, always" misses
+    that it is the host's knowledge, and the fact that his choice is forced when you picked wrong,
+    that makes the opened door informative. Writing likelihoods for "host opens door 3" under each
+    prize location settles every variant.
+  source: { name: "Monty Hall problem (Selvin, 1975; e.g. Zhou, ch. 4)" }
+
+- id: prob-conditional-009
+  topic: probability
+  subtopic: Conditional probability and Bayes
+  type: short
+  difficulty: medium
+  tags: [simpsons-paradox, confounding, aggregation]
+  prompt: |
+    Two treatments were given to 100 patients each, with these results:
+
+    | | Mild cases | Severe cases | All |
+    |---|---|---|---|
+    | Treatment A | 18 / 20 recover | 48 / 80 recover | 66 / 100 |
+    | Treatment B | 68 / 80 recover | 11 / 20 recover | 79 / 100 |
+
+    A has the higher recovery rate among mild cases *and* among severe cases, yet the lower rate
+    overall. How is that possible, and which treatment would you recommend to a new patient?
+  reference: |
+    It is Simpson's paradox. Recovery rates: A is 90% vs B's 85% on mild cases and 60% vs 55% on
+    severe cases, but overall A is 66% and B 79%. The overall rate is a weighted average of the two
+    subgroup rates, and the weights differ: 80% of A's patients were severe, against only 20% of B's.
+    Severe cases recover less often whatever the treatment, so A's overall rate is dragged down by
+    its case mix, not by the treatment.
+
+    Severity was present before treatment and evidently influenced which treatment people got, so it
+    is a confounder, and the fair comparison holds it fixed: recommend A, which is better for a
+    patient of either severity. The aggregated table would be the right one only if the third
+    variable were a *consequence* of the treatment (for example, if B made cases milder); which
+    table to trust is a causal question that the numbers alone cannot answer.
+  keyPoints:
+    - Identifies Simpson's paradox and computes the subgroup and overall rates
+    - Explains the reversal through different case mixes (weights) in the two groups
+    - Recommends A because severity is a pre-treatment confounder
+    - Notes that the right table depends on the causal role of the third variable
+  hints:
+    - What proportion of each treatment's patients were severe cases?
+    - Write each overall rate as a weighted average of the two subgroup rates.
+  followUps:
+    - Can the reversal happen if both treatments have the same mix of mild and severe cases?
+    - Give a situation where you should trust the aggregated table instead.
+  explanation: |
+    Weak answers stop at "it's Simpson's paradox". A good answer shows the weighting (the overall
+    rate is a mixture whose weights differ between treatments) and then makes a decision, which
+    requires saying what the third variable is: a confounder to condition on, as here, or a
+    mediator that should not be conditioned on.
+  source: { name: "Simpson's paradox (e.g. the 1986 kidney-stone study; Blitzstein and Hwang, ch. 2)" }
+
+- id: prob-conditional-010
+  topic: probability
+  subtopic: Conditional probability and Bayes
+  type: multiple
+  difficulty: medium
+  tags: [independence, dice, pairwise-independence]
+  prompt: |
+    Two fair dice are rolled. Which of the following are independent? Select all that apply.
+  choices:
+    - { id: a, text: 'The events "the first die is even" and "the total is 7"' }
+    - { id: b, text: 'The events "the first die is even" and "the total is 8"' }
+    - { id: c, text: 'The events "the first die is even" and "the total is even"' }
+    - { id: d, text: 'The events "the higher of the two dice is 6" and "the lower is 1"' }
+    - { id: e, text: 'The random variables "the total" and "the product"' }
+    - { id: f, text: 'The three events "first die even", "second die even" and "total even", taken together (mutual independence)' }
+  answer: [a, c]
+  explanation: |
+    Test each with $P(A \cap B) = P(A)P(B)$ on the 36 outcomes.
+
+    - **a, independent.** Whatever the first die shows, exactly one value of the second makes 7, so
+      $P(\text{total } 7 \mid \text{first even}) = 1/6 = P(\text{total } 7)$.
+    - **b, dependent.** $P(\text{total } 8) = 5/36$, but given an even first die the second must be
+      $6, 4, 2$ for a first die of $2, 4, 6$: probability $3/18 = 1/6 \ne 5/36$. A total of 8 cannot
+      come from a first die of 1, so the parity of the first die matters.
+    - **c, independent.** Given the first die is even, the total is even exactly when the second die
+      is even, probability $1/2 = P(\text{total even})$.
+    - **d, dependent.** Each has probability $11/36$ but both happen only for $(1,6)$ and $(6,1)$:
+      $2/36 \ne (11/36)^2$.
+    - **e, dependent.** A total of 2 forces a product of 1.
+    - **f, not mutually independent**, although every *pair* of them is independent: the first two
+      determine the third, so $P(\text{all three}) = 1/4 \ne 1/8$.
+
+    The common slips are to assume that events defined from the same die must be dependent (a and c
+    are not) and to treat pairwise independence as enough (f).
+  source: { name: "Jane Street, Probability and Markets guide (idea for e)", url: "https://www.janestreet.com/probability-markets/" }
+
+- id: prob-conditional-011
+  topic: probability
+  subtopic: Conditional probability and Bayes
+  type: single
+  difficulty: easy
+  tags: [independence, mutually-exclusive]
+  prompt: |
+    Events $A$ and $B$ have $P(A) = 0.3$ and $P(B) = 0.4$, and they are mutually exclusive (they
+    cannot both happen). Are they independent?
+  choices:
+    - { id: a, text: "Yes: mutually exclusive events never affect each other" }
+    - { id: b, text: "No: they are dependent" }
+    - { id: c, text: "It cannot be decided without more information" }
+  answer: b
+  explanation: |
+    Independence needs $P(A \cap B) = P(A)P(B) = 0.12$, but mutual exclusivity gives
+    $P(A \cap B) = 0$. So they are dependent, and strongly so: learning that $A$ happened tells you
+    for certain that $B$ did not, which drops its probability from $0.4$ to 0.
+
+    Choice a mixes up "disjoint" (cannot happen together) with "independent" (knowing one tells you
+    nothing about the other); the two are nearly opposites. Choice c misses that the probabilities
+    given are enough. Disjoint events can only be independent when one of them has probability 0.

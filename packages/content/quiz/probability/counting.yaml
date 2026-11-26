@@ -1,0 +1,300 @@
+# Counting and combinatorics: equally likely outcomes, complements, inclusion-exclusion, bijections.
+- id: prob-counting-001
+  topic: probability
+  subtopic: Counting and combinatorics
+  type: single
+  difficulty: easy
+  tags: [dice, complement, de-mere]
+  prompt: |
+    Which is more likely: at least one six in **4** rolls of a fair die, or at least one double six
+    in **24** rolls of a pair of fair dice? All rolls are independent.
+  choices:
+    - { id: a, text: "At least one six in 4 rolls of one die" }
+    - { id: b, text: "At least one double six in 24 rolls of a pair" }
+    - { id: c, text: "They are equally likely" }
+  answer: a
+  explanation: |
+    Count the complement, "no success at all", which is a product of independent misses:
+
+    $$P(\text{a six in 4}) = 1 - \left(\tfrac{5}{6}\right)^4 = \tfrac{671}{1296} \approx 0.518$$
+
+    $$P(\text{a double six in 24}) = 1 - \left(\tfrac{35}{36}\right)^{24} \approx 0.491$$
+
+    So the single-die bet is slightly better than even and the double-six bet slightly worse.
+
+    Choice c is the old gamblers' rule (the Chevalier de Méré's): a double six is 6 times rarer, so
+    6 times as many tries "should" give the same chance, since $4/6 = 24/36$. That would be right for
+    the *expected number* of successes (both are $2/3$), but probability of at least one success is
+    not linear in the number of tries. Choice b comes from trusting that rule and rounding up.
+  source: { name: "Chevalier de Méré's problem (Pascal and Fermat, 1654)" }
+
+- id: prob-counting-002
+  topic: probability
+  subtopic: Counting and combinatorics
+  type: numeric
+  difficulty: easy
+  tags: [birthday-problem, complement]
+  prompt: |
+    Assume birthdays are independent and uniform over 365 days (ignore leap years). What is the
+    smallest number of people for which the probability that at least two share a birthday exceeds
+    $1/2$?
+  answer: 23
+  unit: people
+  explanation: |
+    Work with the complement, all birthdays distinct. With $n$ people,
+
+    $$P(\text{all distinct}) = \frac{365}{365}\cdot\frac{364}{365}\cdots\frac{365-n+1}{365}.$$
+
+    This drops below $1/2$ first at $n = 23$ (it is about $0.524$ at $n = 22$ and $0.493$ at
+    $n = 23$).
+
+    The intuition people miss is that what matters is the number of *pairs*, $\binom{n}{2}$, not the
+    number of people: 23 people make 253 pairs, each matching with probability $1/365$. The common
+    wrong answer, 183 (half of 365), answers a different question: how many *other* people you need
+    before someone shares *your* birthday with probability about a half (that one is 253).
+  source: { name: "Classic birthday problem (e.g. Zhou, ch. 4)" }
+
+- id: prob-counting-003
+  topic: probability
+  subtopic: Counting and combinatorics
+  type: numeric
+  difficulty: medium
+  tags: [cards, poker, combinations]
+  prompt: |
+    Five cards are dealt from a well-shuffled standard 52-card deck. What is the probability that the
+    hand is exactly **one pair**: two cards of one rank and three cards of three other, different
+    ranks (so not two pair, three of a kind, a full house or four of a kind)?
+  answer: 352/833
+  answerText: |-
+    $352/833 \approx 0.423$
+  hints:
+    - Build the hand in stages, choosing ranks first and suits second.
+    - Choose the rank of the pair, then *which three other ranks* appear, as an unordered set.
+    - Each of the three single cards can be any of its 4 suits.
+  followUps:
+    - What is the probability of two pair?
+    - Why is it wrong to count the three kickers as $48 \cdot 44 \cdot 40$?
+  explanation: |
+    Count hands, then divide by $\binom{52}{5} = 2{,}598{,}960$.
+
+    - Rank of the pair: 13 ways; its two suits: $\binom{4}{2} = 6$.
+    - The three other ranks, as a set: $\binom{12}{3} = 220$; a suit for each: $4^3 = 64$.
+
+    $$\frac{13 \cdot 6 \cdot 220 \cdot 64}{\binom{52}{5}} = \frac{1{,}098{,}240}{2{,}598{,}960} = \frac{352}{833} \approx 0.423.$$
+
+    The usual slip is to pick the kickers in order, $48 \cdot 44 \cdot 40$ (a card of a new rank,
+    then another, then another), and forget to divide by $3! = 6$ because the three kickers are
+    unordered in a hand; that gives an answer six times too big, which is more than 1.
+  source: { name: "Standard poker-hand counting" }
+
+- id: prob-counting-004
+  topic: probability
+  subtopic: Counting and combinatorics
+  type: numeric
+  difficulty: medium
+  tags: [derangements, inclusion-exclusion, permutations]
+  prompt: |
+    Five letters are put into five addressed envelopes, one letter per envelope, with all $5!$
+    arrangements equally likely. What is the probability that **no** letter is in its own envelope?
+  answer: 11/30
+  answerText: |-
+    $11/30 \approx 0.367$
+  hints:
+    - Let $A_i$ be the event that letter $i$ is in its own envelope. You want the probability of none of them.
+    - Inclusion-exclusion over how many letters are forced into place.
+    - The probability that a given set of $k$ letters are all in place is $(5-k)!/5!$.
+  followUps:
+    - What happens as the number of letters grows?
+    - What is the expected number of letters in their own envelope, for any $n$?
+  explanation: |
+    By inclusion-exclusion, the probability that at least one letter is in place is
+    $\sum_{k \ge 1} (-1)^{k+1} \binom{5}{k} \frac{(5-k)!}{5!} = \sum_{k \ge 1} \frac{(-1)^{k+1}}{k!}$, so
+
+    $$P(\text{none}) = \sum_{k=0}^{5} \frac{(-1)^k}{k!} = 1 - 1 + \frac12 - \frac16 + \frac1{24} - \frac1{120} = \frac{44}{120} = \frac{11}{30}.$$
+
+    The 44 arrangements with no fixed point are the derangements of 5. As $n$ grows the sum tends to
+    $1/e \approx 0.368$, and it is already within $0.002$ of that at $n = 5$, which is why the answer
+    barely depends on the number of letters.
+
+    A common wrong answer is $(4/5)^5 \approx 0.33$, which treats the five events "letter $i$ is
+    misplaced" as independent. They are not: once some letters are misplaced the others are more
+    likely to be in place.
+  source: { name: "Montmort's matching problem (e.g. Blitzstein and Hwang, ch. 1)" }
+
+- id: prob-counting-005
+  topic: probability
+  subtopic: Counting and combinatorics
+  type: short
+  difficulty: easy
+  tags: [dice, multisets, equally-likely]
+  prompt: |
+    Three identical dice are rolled and you only record which numbers came up, not which die showed
+    which (so $\{1,1,2\}$ is one outcome). How many different outcomes are there, and why can you
+    *not* compute probabilities by dividing the number of favourable outcomes by that total?
+  reference: |
+    An outcome is a multiset of size 3 from 6 faces. By stars and bars there are
+    $\binom{6+3-1}{3} = \binom{8}{3} = 56$ of them (6 with all three equal, 30 with exactly two
+    equal, 20 with all different).
+
+    They are not equally likely. The dice are physically distinct even if we cannot tell them apart,
+    so the equally likely outcomes are the $6^3 = 216$ *ordered* triples. A multiset with three
+    different numbers, such as $\{1,2,3\}$, comes from $3! = 6$ ordered triples, one like
+    $\{1,1,2\}$ from 3, and $\{1,1,1\}$ from just 1. So $P(\{1,2,3\}) = 6/216$ while
+    $P(\{1,1,1\}) = 1/216$. Counting over the 56 multisets would give each $1/56$, which is wrong
+    (check: $6 \cdot 1 + 30 \cdot 3 + 20 \cdot 6 = 216$).
+  keyPoints:
+    - There are 56 unordered outcomes, from stars and bars $\binom{8}{3}$ or by cases 6 + 30 + 20
+    - The equally likely sample space is the 216 ordered triples
+    - An outcome with three different values has probability 6/216, one with a pair 3/216, a triple 1/216
+    - So "favourable over total" works only on an equally likely sample space
+  hints:
+    - Count by cases, according to how many of the three values are equal.
+    - Would you see a different frequency of $\{1,1,1\}$ if the dice were painted different colours?
+  followUps:
+    - What is the probability that the three dice show three different numbers?
+    - How many outcomes are there for $k$ identical dice, in general?
+  explanation: |
+    The trap is to think that because we cannot *distinguish* the dice, the unordered outcomes are
+    the right sample space. Indistinguishability is about what we record, not about the physics:
+    the probability of seeing $\{1,2,3\}$ is the same whether or not the dice are coloured, and with
+    coloured dice it is plainly $6/216$. Leibniz famously made this mistake, claiming that sums of
+    11 and 12 with two dice are equally likely because each arises "one way".
+  source: { name: "Classic counting pitfall (e.g. Blitzstein and Hwang, ch. 1)" }
+
+- id: prob-counting-006
+  topic: probability
+  subtopic: Counting and combinatorics
+  type: numeric
+  difficulty: hard
+  tags: [ballot-problem, reflection, lattice-paths]
+  prompt: |
+    In an election candidate A gets 7 votes and candidate B gets 5. The 12 ballots are counted one
+    at a time in a uniformly random order. What is the probability that A is **strictly ahead**
+    throughout the count, that is, after every ballot from the first to the last?
+  answer: 1/6
+  hints:
+    - Think of the count as a path that goes up for an A vote and down for a B vote.
+    - For A to be strictly ahead throughout, the first ballot must be for A. Count the bad paths that start with A.
+    - A path that starts with A and later touches zero can be reflected up to its first visit to zero.
+  followUps:
+    - What is the general answer for $a$ votes against $b$, with $a > b$?
+    - What if A only needs to be never behind (ties allowed)?
+  explanation: |
+    By the ballot theorem the answer is $\dfrac{a-b}{a+b} = \dfrac{7-5}{12} = \dfrac16$.
+
+    Proof by reflection. Draw the count as a path, $+1$ for A and $-1$ for B, from 0 to $+2$. All
+    $\binom{12}{5} = 792$ orders are equally likely. A good path must start with A. Bad paths are of
+    two kinds: those that start with B (there are $\binom{11}{4} = 330$), and those that start with A
+    but touch 0 later. Reflecting the part of the second kind before its first return to 0 turns it
+    into a path starting with B, one to one, so there are also 330 of those. Hence
+
+    $$P = \frac{792 - 2 \cdot 330}{792} = \frac{132}{792} = \frac16.$$
+
+    A common wrong answer is $7/12$, the chance that the *first* ballot is for A: that is necessary
+    but far from sufficient.
+  source: { name: "Bertrand's ballot theorem (e.g. Zhou, ch. 4)" }
+
+- id: prob-counting-007
+  topic: probability
+  subtopic: Counting and combinatorics
+  type: numeric
+  difficulty: hard
+  tags: [dice, inclusion-exclusion, surjections]
+  prompt: |
+    Ten fair dice are rolled. What is the probability that every face from 1 to 6 appears at least
+    once?
+  answer: 38045/139968
+  answerText: |-
+    $38045/139968 \approx 0.272$
+  hints:
+    - It is easier to count the rolls where some face is missing.
+    - Let $A_j$ be "face $j$ never appears". What is $P(A_1 \cap A_2)$?
+    - Inclusion-exclusion over the set of missing faces.
+  followUps:
+    - How many dice do you need before the probability of seeing all six faces exceeds one half?
+    - How does this relate to the expected number of rolls needed to see every face?
+  explanation: |
+    Use inclusion-exclusion over the faces that are missing. If a given set of $k$ faces is
+    missing, every die shows one of the other $6-k$ faces, with probability $\left(\frac{6-k}{6}\right)^{10}$. So
+
+    $$P(\text{all faces}) = \sum_{k=0}^{6} (-1)^k \binom{6}{k} \left(\frac{6-k}{6}\right)^{10} = \frac{16{,}435{,}440}{60{,}466{,}176} = \frac{38045}{139968} \approx 0.272.$$
+
+    The numerator counts the surjections from 10 dice onto 6 faces.
+
+    The tempting wrong method is "choose which 6 dice show the six faces, $\binom{10}{6} 6!$, and
+    let the other 4 be anything, $6^4$": that counts many outcomes several times (any outcome where
+    some face appears twice is counted once per choice of which copy is "the" one), and gives a
+    number above 1.
+  source: { name: "Classic occupancy problem (e.g. Blitzstein and Hwang, ch. 1)" }
+
+- id: prob-counting-008
+  topic: probability
+  subtopic: Counting and combinatorics
+  type: single
+  difficulty: medium
+  tags: [dice, binomial, newton-pepys]
+  prompt: |
+    Fair dice, all independent. Which of these is most likely?
+  choices:
+    - { id: a, text: "At least one six when 6 dice are rolled" }
+    - { id: b, text: "At least two sixes when 12 dice are rolled" }
+    - { id: c, text: "At least three sixes when 18 dice are rolled" }
+    - { id: d, text: "All three are equally likely" }
+  answer: a
+  explanation: |
+    Compute each through its complement, using binomial probabilities:
+
+    - $P(\ge 1 \text{ six in } 6) = 1 - (5/6)^6 \approx 0.665$
+    - $P(\ge 2 \text{ in } 12) = 1 - (5/6)^{12} - 12 \cdot \tfrac16 (5/6)^{11} \approx 0.619$
+    - $P(\ge 3 \text{ in } 18) \approx 0.597$
+
+    So a is the most likely. The intuition: in every case the expected number of sixes is exactly the
+    target (1, 2, 3), and the number of sixes is a binomial whose median sits at its mean. With
+    more dice the distribution spreads out and becomes more symmetric about the mean, so the chance
+    of reaching at least the mean falls towards $1/2$.
+
+    Choice d is the proportional reasoning "same ratio of sixes to dice, same chance". Choice c is
+    usually picked because "more dice, more stable", which is true of the *proportion* of sixes but
+    works against you here.
+  source: { name: "Newton-Pepys problem (1693; e.g. Mosteller, Fifty Challenging Problems)" }
+
+- id: prob-counting-009
+  topic: probability
+  subtopic: Counting and combinatorics
+  type: short
+  difficulty: medium
+  tags: [birthday-problem, approximation, collisions]
+  prompt: |
+    $n$ items are each assigned one of $d$ equally likely labels independently (people and birthdays,
+    or keys and hash buckets). Give a simple approximation for the probability that no two items
+    share a label, and use it to say roughly how large $n$ must be, in terms of $d$, for a collision
+    to be more likely than not.
+  reference: |
+    Exactly, $P(\text{no collision}) = \prod_{i=1}^{n-1}\left(1 - \frac{i}{d}\right)$. Using
+    $1 - x \approx e^{-x}$ for small $x$,
+
+    $$P(\text{no collision}) \approx \exp\!\left(-\sum_{i=1}^{n-1}\frac{i}{d}\right) = \exp\!\left(-\frac{n(n-1)}{2d}\right) \approx e^{-n^2/(2d)}.$$
+
+    Setting this to $1/2$ gives $n^2 \approx 2d \ln 2$, so $n \approx \sqrt{2 \ln 2}\,\sqrt{d} \approx
+    1.18\sqrt{d}$. For $d = 365$ that is about $22.5$, matching the exact answer 23. The point is
+    the square-root scaling: there are $\binom{n}{2} \approx n^2/2$ pairs and each collides with
+    probability $1/d$, so collisions become likely once $n^2/(2d)$ is of order 1.
+  keyPoints:
+    - Writes the exact product of (1 - i/d) over the successive items
+    - Approximates each factor by an exponential to get about exp(-n(n-1)/(2d))
+    - Solves for one half to get n of about 1.18 times the square root of d
+    - Explains the square-root scaling through the roughly n²/2 pairs, each colliding with probability 1/d
+    - Sanity check against 23 for d = 365
+  hints:
+    - Start from the exact product for "all labels distinct".
+    - What is $\ln(1 - x)$ for small $x$?
+    - How many pairs of items are there, and what is the chance a given pair collides?
+  followUps:
+    - With 32-bit hashes, about how many keys before a collision is likely?
+    - What is the expected number of colliding pairs, and why is that easy to get exactly?
+  explanation: |
+    Candidates often know "23" but not why. The approximation turns a product into a sum, and the
+    sum is the expected number of colliding pairs, $\binom{n}{2}/d$. A good answer gets to
+    $e^{-n^2/(2d)}$ and the $\sqrt{d}$ scaling, which is what makes the birthday bound matter for
+    hashes: a 64-bit hash starts colliding after about $2^{32}$ keys, not $2^{63}$.
+  source: { name: "Birthday bound (e.g. Blitzstein and Hwang, ch. 1)" }
