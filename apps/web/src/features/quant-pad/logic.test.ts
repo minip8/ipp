@@ -34,6 +34,7 @@ const question = (index: number, over: Partial<QuantQuestionView> = {}): QuantQu
   ...over,
 });
 const round = (over: Partial<QuantRoundView> = {}): QuantRoundView => ({
+  mode: 'ai',
   path: 'trader',
   total: 4,
   phase: 'asking',

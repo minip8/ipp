@@ -81,9 +81,9 @@ function ClockBar({ q }: { q: QuantQuestionView }) {
         <span>
           {c.over
             ? 'Past the time for this question. Finish your thought; the interviewer moves on soon.'
-            : `About ${plural(Math.max(1, Math.round(q.budgetSec / 60)), 'minute')} for this question`}
+            : `About ${plural(Math.max(1, Math.round((q.budgetSec ?? 0) / 60)), 'minute')} for this question`}
         </span>
-        <span className="shrink-0 tabular">{formatClock(q.budgetSec)}</span>
+        <span className="shrink-0 tabular">{formatClock(q.budgetSec ?? 0)}</span>
       </div>
       <div className="h-1 overflow-hidden rounded-full bg-surface-3" aria-hidden>
         <div
@@ -139,7 +139,7 @@ function Current({ q }: { q: QuantQuestionView }) {
 function Pending({ round }: { round: QuantRoundView }) {
   const { state } = usePad();
   const each = state.pad.durationMin
-    ? minutesPerQuestion(state.pad.durationMin, round.total)
+    ? minutesPerQuestion(state.pad.durationMin, round.total ?? 1)
     : null;
   return (
     <div className="flex flex-col items-center px-6 py-12 text-center" data-testid="round-pending">
@@ -148,7 +148,7 @@ function Pending({ round }: { round: QuantRoundView }) {
       </span>
       <p className="font-medium">The interviewer is about to start</p>
       <p className="mt-1 max-w-72 text-sm text-fg-muted">
-        It says hello first. Then the first of {plural(round.total, 'question')} appears here
+        It says hello first. Then the first of {plural(round.total ?? 0, 'question')} appears here
         {each ? `, with about ${plural(each, 'minute')} for each` : ''}.
       </p>
     </div>

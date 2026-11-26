@@ -616,7 +616,7 @@ export class MockQuantRounds {
       // Decided again on the round as it now is (the API's step names the version it read).
       s = step();
     }
-    if (s && id && s.type !== 'end' && s.type !== 'verdict' && s.type !== 'quote')
+    if (s && id && (s.type === 'start' || s.type === 'turn' || s.type === 'close'))
       s = { ...s, messageId: id };
     const ok = s ? this.apply(this.round(padId), s) !== null : false;
     if (!ok && id && !this.muted) this.host.push({ type: 'message.discarded', messageId: id });

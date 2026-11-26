@@ -37,9 +37,13 @@ export function closedLabel(q: Pick<QuantQuestionView, 'closedBy'>): string | nu
 /** "Question 2 of 4" for the current question; otherwise what the round is doing. */
 export function roundHeading(round: QuantRoundView): string {
   const q = currentQuestion(round);
-  if (q) return `Question ${q.index + 1} of ${round.total}`;
+  // A quant room's round (total null) has no "of N".
+  if (q)
+    return round.total === null
+      ? `Question ${q.index + 1}`
+      : `Question ${q.index + 1} of ${round.total}`;
   if (round.phase === 'finished') return 'Round finished';
-  return plural(round.total, 'question');
+  return plural(round.total ?? round.questions.length, 'question');
 }
 
 export type QuestionClock = {
@@ -57,13 +61,15 @@ export type QuestionClock = {
 export function questionClock(q: QuantQuestionView, now: number): QuestionClock {
   const end = q.closedAt ? Date.parse(q.closedAt) : now;
   const elapsedSec = Math.max(0, Math.floor((end - Date.parse(q.posedAt)) / 1000));
-  const leftSec = q.budgetSec - elapsedSec;
+  // A quant room's questions have no budget (null).
+  const budgetSec = q.budgetSec ?? 0;
+  const leftSec = budgetSec - elapsedSec;
   const over = leftSec < 0;
   return {
     elapsedSec,
     leftSec,
     over,
-    fraction: q.budgetSec > 0 ? Math.min(1, elapsedSec / q.budgetSec) : 1,
+    fraction: budgetSec > 0 ? Math.min(1, elapsedSec / budgetSec) : 1,
     label: over ? `${formatClock(-leftSec)} over` : `${formatClock(leftSec)} left`,
   };
 }
@@ -79,7 +85,7 @@ export function roundProgress(round: QuantRoundView): {
     posed: round.questions.length,
     closed: round.questions.filter((q) => q.closedAt !== null).length,
     hints: round.questions.reduce((n, q) => n + q.hintsGiven, 0),
-    total: round.total,
+    total: round.total ?? round.questions.length,
   };
 }
 

@@ -4,7 +4,8 @@ import { AiKeyState, AiModelChoice, InterviewerModel } from './ai';
 import { Id, IsoDate, Language, Slug } from './common';
 import { Difficulty, ProblemDetail } from './problem';
 import { QuantGameEntry } from './quant-game';
-import { QuantReport, QuantRoundDuration, QuantRoundView } from './quant-round';
+import { HostRoundView } from './quant-room';
+import { QUANT_QUEUE_MAX, QuantReport, QuantRoundDuration, QuantRoundView } from './quant-round';
 import { QuantPath } from './quiz';
 import { Run } from './run';
 
@@ -35,8 +36,9 @@ export type PadKind = z.infer<typeof PadKind>;
 
 /**
  *  coding  a coding problem in the shared editor, with runs (every pad before the quant round)
- *  quant   a live quant round (`quant-round.ts`): questions from the quant track one after
- *          another, worked on the scratchpad; no editor, no runs, no problem. Practice pads only.
+ *  quant   a quant round (`quant-round.ts`): questions one after another, worked on the
+ *          scratchpad and the whiteboard; no editor, no runs, no problem. A practice quant pad's
+ *          round is run by the AI interviewer (§8.2); a quant room's by its host (§8.4).
  */
 export const PadFormat = z.enum(['coding', 'quant']);
 export type PadFormat = z.infer<typeof PadFormat>;
@@ -54,7 +56,7 @@ export const Pad = z.object({
   format: PadFormat.default('coding'),
   /**
    * null: a room with no library problem (a blank editor, runs as plain programs), and every
-   * quant pad.
+   * quant pad (a quant room included).
    */
   problemSlug: Slug.nullable(),
   /** Stored as `python` and meaningless for a quant pad. */
@@ -73,24 +75,45 @@ export const Pad = z.object({
 });
 export type Pad = z.infer<typeof Pad>;
 
-export const CreatePadRequest = z.object({
-  kind: PadKind.default('practice'),
-  /** Either a specific problem or a random pick. */
-  problemSlug: Slug.optional(),
-  random: z.object({ difficulty: Difficulty.optional(), tag: Slug.optional() }).optional(),
-  /** Rooms only: start without a problem. */
-  blank: z.boolean().optional(),
-  language: Language,
-  /** null: no time limit. */
-  durationMin: z.int().min(5).max(180).nullable().default(45),
-  interviewer: InterviewerSettings.default({
-    enabled: true,
-    style: 'neutral',
-    proactivity: 'normal',
-    voice: false,
-  }),
-  title: z.string().max(120).optional(),
-});
+export const CreatePadRequest = z
+  .object({
+    kind: PadKind.default('practice'),
+    /**
+     * `quant` (rooms only): a quant room (§8.4), whose host poses questions of the bank; it takes
+     * no problem, `random`, `blank` or language, and needs no AI key. A practice quant pad is
+     * created with `POST /api/pads/quant` instead.
+     */
+    format: PadFormat.default('coding'),
+    /** Either a specific problem or a random pick. */
+    problemSlug: Slug.optional(),
+    random: z.object({ difficulty: Difficulty.optional(), tag: Slug.optional() }).optional(),
+    /** Rooms only: start without a problem. */
+    blank: z.boolean().optional(),
+    /** Required for a coding pad; a quant room has none (any given is ignored). */
+    language: Language.optional(),
+    /**
+     * A quant room only: bank question ids to line up for the interview, in order (the host's
+     * queue, host-only). Each must be an active question; none twice.
+     */
+    queue: z.array(Slug).max(QUANT_QUEUE_MAX).optional(),
+    /** null: no time limit. */
+    durationMin: z.int().min(5).max(180).nullable().default(45),
+    interviewer: InterviewerSettings.default({
+      enabled: true,
+      style: 'neutral',
+      proactivity: 'normal',
+      voice: false,
+    }),
+    title: z.string().max(120).optional(),
+  })
+  .superRefine((r, ctx) => {
+    if (r.format === 'coding' && r.language === undefined)
+      ctx.addIssue({
+        code: 'custom',
+        path: ['language'],
+        message: 'A coding pad needs a language',
+      });
+  });
 export type CreatePadRequest = z.infer<typeof CreatePadRequest>;
 
 /**
@@ -158,7 +181,7 @@ export type JoinGuestRequest = z.infer<typeof JoinGuestRequest>;
 
 /** What only a room's host may read (GET /api/pads/:id/host). Never sent to a candidate. */
 export const HostView = z.object({
-  /** The current problem's private material; null in a blank room. */
+  /** The current problem's private material; null in a blank room and a quant room. */
   problem: z
     .object({
       slug: Slug,
@@ -168,6 +191,11 @@ export const HostView = z.object({
     .nullable(),
   /** The host's own notes on this interview. */
   notes: z.string(),
+  /**
+   * A quant room's round as the host sees it (every question posed with its solution, hints and
+   * verdict, and the queue); null for a coding room (and absent from servers before quant rooms).
+   */
+  round: HostRoundView.nullable().default(null),
 });
 export type HostView = z.infer<typeof HostView>;
 
@@ -252,8 +280,15 @@ export const TimelineEvent = z.object({
     z.object({ type: z.literal('joined'), userId: z.string() }),
     /** The host changed the room's problem (null = blank). */
     z.object({ type: z.literal('problem'), problemSlug: Slug.nullable(), title: z.string() }),
-    /** A quant round posed its question `index` (0-based) of `total`. */
-    z.object({ type: z.literal('question'), index: z.int().min(0), total: z.int().min(1) }),
+    /**
+     * A quant round posed its question `index` (0-based) of `total`; `total` is null in a
+     * hosted round (a quant room), whose questions are posed one by one with no total.
+     */
+    z.object({
+      type: z.literal('question'),
+      index: z.int().min(0),
+      total: z.int().min(1).nullable(),
+    }),
     /** Something happened in the game of question `index`: a quote, trade, reveal or settlement. */
     z.object({ type: z.literal('game'), index: z.int().min(0), entry: QuantGameEntry }),
     z.object({ type: z.literal('ended') }),
@@ -336,7 +371,10 @@ export const Report = z.object({
     .nullable(),
   /** A room's report, which only its host can read: the host's own notes. */
   hostNotes: z.string().nullable().default(null),
-  /** A quant pad's questions with their answers and verdicts; null for a coding pad. */
+  /**
+   * A quant pad's questions with their answers and verdicts; null for a coding pad. A quant
+   * room's (`mode: 'hosted'`) holds the questions its host posed, with the host's verdicts.
+   */
   quant: QuantReport.nullable().default(null),
 });
 export type Report = z.infer<typeof Report>;
@@ -356,7 +394,10 @@ export const PadDetail = z.object({
   interviewerKey: AiKeyState,
   /** The model the interviewer runs on now (null without a usable owner key). */
   interviewerModel: InterviewerModel.nullable().default(null),
-  /** A quant pad's round as the browser may see it (`publicRound`); null for a coding pad. */
+  /**
+   * A quant pad's round as the browser may see it (`publicRound`); null for a coding pad. Its
+   * `mode` tells a quant room's (`hosted`) from a practice round's (`ai`).
+   */
   round: QuantRoundView.nullable().default(null),
 });
 export type PadDetail = z.infer<typeof PadDetail>;
@@ -378,7 +419,10 @@ export const PadSummary = Pad.pick({
   accepted: z.boolean(),
   /** The viewer's role: deleting an owned pad deletes it; a collaborator only leaves it. */
   role: PadRole,
-  /** A quant pad's path ("Quant · Trader" on the dashboard); null for a coding pad. */
+  /**
+   * A practice quant pad's path ("Quant · Trader" on the dashboard); null for a coding pad and
+   * a quant room.
+   */
   quantPath: QuantPath.nullable().default(null),
 });
 export type PadSummary = z.infer<typeof PadSummary>;

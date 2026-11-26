@@ -149,7 +149,7 @@ export function ReportPage({ id }: { id: string }) {
                   {pad.data.problem?.title ?? pad.data.pad.title}
                 </h1>
                 {pad.data.problem && <DifficultyBadge difficulty={pad.data.problem.difficulty} />}
-                {pad.data.round && <QuantPathBadge path={pad.data.round.path} />}
+                {pad.data.round?.path && <QuantPathBadge path={pad.data.round.path} />}
               </div>
               <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-fg-muted">
                 <span>{quant ? 'Quant round report' : 'Interview report'}</span>

@@ -42,6 +42,8 @@ const review = (over: Partial<QuantQuestionReview>): QuantQuestionReview => ({
   verdict: null,
   hintsGiven: 0,
   hintsAvailable: 2,
+  hintRungs: [],
+  followUpAsked: false,
   timeSec: 60,
   budgetSec: 420,
   game: null,
@@ -51,6 +53,7 @@ const review = (over: Partial<QuantQuestionReview>): QuantQuestionReview => ({
 describe('a quant report', () => {
   it('sums the round: answered, mean of the judged scores, hints over posed questions', () => {
     const report: QuantReport = {
+      mode: 'ai',
       path: 'trader',
       questions: [
         review({ verdict: { score: 0.9, summary: '' }, hintsGiven: 1 }),
@@ -70,11 +73,11 @@ describe('a quant report', () => {
       hintsAvailable: 7,
     });
     expect(f.meanScore).toBeCloseTo(0.6);
-    expect(roundFigures({ path: 'trader', questions: [] }).meanScore).toBeNull();
+    expect(roundFigures({ mode: 'ai', path: 'trader', questions: [] }).meanScore).toBeNull();
     expect(answeredDetail(f)).toBe('3 asked · 1 timed out · 1 not reached');
-    expect(answeredDetail(roundFigures({ path: 'trader', questions: [review({})] }))).toBe(
-      '1 asked',
-    );
+    expect(
+      answeredDetail(roundFigures({ mode: 'ai', path: 'trader', questions: [review({})] })),
+    ).toBe('1 asked');
   });
 
   it('shows scores as percentages with a tone', () => {
