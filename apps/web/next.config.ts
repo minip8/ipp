@@ -27,6 +27,16 @@ const config: NextConfig = {
   env: { NEXT_PUBLIC_WS_URL: env.NEXT_PUBLIC_WS_URL },
   poweredByHeader: false,
   devIndicators: false,
+  // A track alone is its Interviews, and the old quant pages moved into the Quant track. These
+  // need nothing from the session; the query passes through (`?path=`, `?seed=`). The old pages
+  // that do (`/dashboard`, `/new`, `/quiz`) send on from the client: see src/features/track.
+  async redirects() {
+    return [
+      { source: '/software', destination: '/software/interviews', permanent: false },
+      { source: '/quant', destination: '/quant/interviews', permanent: false },
+      { source: '/quant/drill', destination: '/quant/practice/drill', permanent: false },
+    ];
+  },
   async rewrites() {
     return [{ source: '/api/:path*', destination: `${env.API_INTERNAL_URL}/api/:path*` }];
   },

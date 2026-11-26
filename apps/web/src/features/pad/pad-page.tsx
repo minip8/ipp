@@ -9,6 +9,8 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ApiRequestError, api } from '@/lib/api';
 import { qk, useMe } from '@/lib/queries';
+import { tabHref } from '@/lib/track';
+import { useTrack } from '@/lib/track-hooks';
 import { PadSessionProvider } from './session';
 import { Workspace } from './workspace';
 
@@ -76,6 +78,7 @@ function PadSkeleton() {
 
 function PadLoader({ id }: { id: string }) {
   const me = useMe();
+  const interviews = tabHref(useTrack(), 'interviews');
   const q = useQuery({
     queryKey: qk.pad(id),
     queryFn: () => api.pad(id),
@@ -89,7 +92,7 @@ function PadLoader({ id }: { id: string }) {
     return (
       <div className="flex min-h-dvh flex-col">
         <header className="flex h-14 items-center px-4">
-          <Logo href={me.data.guest ? '/' : '/dashboard'} />
+          <Logo href={me.data.guest ? '/' : interviews} />
         </header>
         <div className="flex flex-1 items-start justify-center pt-[12vh]">
           {notFound ? (
@@ -101,7 +104,7 @@ function PadLoader({ id }: { id: string }) {
               </p>
               {!me.data.guest && (
                 <Button asChild className="mt-5" variant="primary">
-                  <Link href="/dashboard">Go to your interviews</Link>
+                  <Link href={interviews}>Go to your interviews</Link>
                 </Button>
               )}
             </div>

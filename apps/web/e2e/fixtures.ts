@@ -1035,6 +1035,8 @@ export const QUIZ_TOPICS = QuizTopicStats.array().parse([
     slug: 'python',
     title: 'Python',
     track: 'fundamentals',
+    // Shared into the Quant track, as in quiz/topics.yaml: the same topic and progress in both.
+    also: ['quant'],
     description: 'Language semantics, the data model, the standard library, and common gotchas.',
     questionCount: 62,
     shortCount: 15,

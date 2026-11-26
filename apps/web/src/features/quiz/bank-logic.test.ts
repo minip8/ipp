@@ -254,7 +254,7 @@ describe('recording an answer', () => {
 
   it('updates only the answered item in the cached bank', () => {
     const bank: QuizBank = {
-      topic: { slug: 'os', title: 'OS', description: '', track: 'fundamentals' },
+      topic: { slug: 'os', title: 'OS', description: '', track: 'fundamentals', also: [] },
       items,
     };
     const at = '2026-02-02T00:00:00.000Z';

@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Tooltip } from '@/components/ui/tooltip';
+import { practiceHref } from '@/lib/track';
+import { useTrack } from '@/lib/track-hooks';
 import { cn } from '@/lib/utils';
 import { ConfirmDeleteDialog } from './confirm-delete-dialog';
 import { useDeleteAttempt } from './hooks';
@@ -25,6 +27,7 @@ export function DeleteAttemptButton({
   className?: string;
 }) {
   const router = useRouter();
+  const history = practiceHref(useTrack(), { view: 'history' });
   const [open, setOpen] = useState(false);
   const { remove } = useDeleteAttempt();
   const target: AttemptTarget = {
@@ -56,7 +59,7 @@ export function DeleteAttemptButton({
         onClose={() => setOpen(false)}
         // The attempt's cached detail is left to expire: dropping it while this page is still
         // on screen would refetch it, and show "does not exist" on the way out.
-        onDone={() => router.push('/quiz?view=history')}
+        onDone={() => router.push(history)}
       />
     </>
   );

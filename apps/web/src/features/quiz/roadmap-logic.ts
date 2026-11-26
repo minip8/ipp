@@ -12,7 +12,7 @@
  *   4. x: each layer placed as close as possible to its neighbours' mean, with nodes kept apart
  *      (a least-squares fit solved exactly by pool-adjacent-violators), alternating down and up.
  */
-import type { QuizProgress } from '@ipp/contracts';
+import type { QuizProgress, Track } from '@ipp/contracts';
 
 // ---------------------------------------------------------------- layout
 
@@ -581,10 +581,13 @@ export function nodeLabel(
   return `${parts.join('. ')}.`;
 }
 
-/** Where the selected node and topic live in the URL (with `?view=roadmap`). */
-export const ROADMAP_TOPIC_PARAM = 'roadmap';
-export const ROADMAP_NODE_PARAM = 'node';
-export const ROADMAP_STORAGE_KEY = 'ipp.quiz.roadmap';
+/** Where the selected node and topic live in the URL (on the Roadmap's topic maps). */
+export { ROADMAP_NODE_PARAM, ROADMAP_TOPIC_PARAM } from '@/lib/track';
+
+/** The topic last shown on each track's topic maps, in this browser. */
+export const roadmapStorageKey = (track: Track) => `ipp.quiz.roadmap.${track}`;
+/** Before tracks: one topic for the whole roadmap, still read when a track has none yet. */
+export const LEGACY_ROADMAP_STORAGE_KEY = 'ipp.quiz.roadmap';
 
 /** The topic to show: the URL's when it is one, else the remembered one, else the first. */
 export function pickTopic(

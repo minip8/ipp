@@ -1,6 +1,6 @@
 'use client';
 /**
- * The mental math drill (/quant/drill): setup with the user's history beside it, the run, then
+ * The mental math drill (/quant/practice/drill): setup with the user's history beside it, the run, then
  * the results. Questions are generated and marked here in the browser (`logic.ts`); the server
  * only records each finished run, for the history and bests.
  *
@@ -15,6 +15,7 @@ import { useSearchParams } from 'next/navigation';
 import { useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { qk } from '@/lib/queries';
+import { tabHref } from '@/lib/track';
 import { DrillHistoryPanel } from './history';
 import { bestFor, parseSeed, type RunState, recordRequest, worthRecording } from './logic';
 import { DrillResults, type FinishedRun, type SaveState } from './results';
@@ -35,14 +36,15 @@ function randomSeed(): number {
 
 const PAGE = 'mx-auto max-w-6xl px-4 pt-8 pb-[calc(2rem_+_env(safe-area-inset-bottom))] sm:px-6';
 
-function BackToQuant() {
+/** Back to the Quant track's Practice, where the drill is. */
+function BackToPractice() {
   return (
     <Link
-      href="/quant"
+      href={tabHref('quant', 'practice')}
       className="-ml-1 inline-flex items-center gap-0.5 rounded-sm text-sm text-fg-muted transition-colors hover:text-fg"
     >
       <ChevronLeftIcon className="size-4" aria-hidden />
-      Quant
+      Practice
     </Link>
   );
 }
@@ -122,7 +124,7 @@ export function DrillPage() {
         />
       ) : phase.name === 'results' && save ? (
         <div className={PAGE}>
-          <BackToQuant />
+          <BackToPractice />
           <h1 className="mt-2 text-xl font-semibold tracking-tight">Mental math</h1>
           <div className="mt-5">
             <DrillResults
@@ -149,7 +151,7 @@ export function DrillPage() {
         </div>
       ) : (
         <div className={PAGE}>
-          <BackToQuant />
+          <BackToPractice />
           <h1 className="mt-2 text-xl font-semibold tracking-tight">Mental math</h1>
           <p className="mt-1 max-w-2xl text-sm text-fg-muted">
             Arithmetic against the clock, answered from the keyboard: the speed test trading

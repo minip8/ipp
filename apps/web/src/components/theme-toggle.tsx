@@ -13,10 +13,37 @@ import {
 } from './ui/menu';
 import { Tooltip } from './ui/tooltip';
 
-export function ThemeToggle({ size = 'icon-sm' }: { size?: 'icon-sm' | 'icon' }) {
-  const { theme, setTheme, resolvedTheme } = useTheme();
+function useMounted() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
+  return mounted;
+}
+
+/** Light, dark or system, as menu radio items: the theme button's menu, and on phones the account menu's. */
+export function ThemeItems() {
+  const { theme, setTheme } = useTheme();
+  const mounted = useMounted();
+  return (
+    <>
+      <MenuLabel>Theme</MenuLabel>
+      <MenuRadioGroup value={mounted ? (theme ?? 'system') : 'system'} onValueChange={setTheme}>
+        <MenuRadioItem value="light">
+          <SunIcon /> Light
+        </MenuRadioItem>
+        <MenuRadioItem value="dark">
+          <MoonIcon /> Dark
+        </MenuRadioItem>
+        <MenuRadioItem value="system">
+          <MonitorIcon /> System
+        </MenuRadioItem>
+      </MenuRadioGroup>
+    </>
+  );
+}
+
+export function ThemeToggle({ size = 'icon-sm' }: { size?: 'icon-sm' | 'icon' }) {
+  const { resolvedTheme } = useTheme();
+  const mounted = useMounted();
   const Icon = !mounted ? SunIcon : resolvedTheme === 'dark' ? MoonIcon : SunIcon;
   return (
     <Menu>
@@ -28,18 +55,7 @@ export function ThemeToggle({ size = 'icon-sm' }: { size?: 'icon-sm' | 'icon' })
         </MenuTrigger>
       </Tooltip>
       <MenuContent align="end" className="min-w-36">
-        <MenuLabel>Theme</MenuLabel>
-        <MenuRadioGroup value={mounted ? (theme ?? 'system') : 'system'} onValueChange={setTheme}>
-          <MenuRadioItem value="light">
-            <SunIcon /> Light
-          </MenuRadioItem>
-          <MenuRadioItem value="dark">
-            <MoonIcon /> Dark
-          </MenuRadioItem>
-          <MenuRadioItem value="system">
-            <MonitorIcon /> System
-          </MenuRadioItem>
-        </MenuRadioGroup>
+        <ThemeItems />
       </MenuContent>
     </Menu>
   );

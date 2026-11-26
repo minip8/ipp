@@ -1,6 +1,7 @@
-import type { AnswerFeedback, PublicQuizQuestion, QuizTrack } from '@ipp/contracts';
+import type { AnswerFeedback, PublicQuizQuestion } from '@ipp/contracts';
 import { describe, expect, it } from 'vitest';
 import {
+  attemptsInTrack,
   choiceIndexForKey,
   DEFAULT_SETUP,
   draftForKey,
@@ -8,8 +9,8 @@ import {
   emptyDraft,
   formatCorrect,
   formatResponse,
-  groupByTrack,
   isUnsendable,
+  modeHint,
   NUMERIC_HINT,
   numericProblem,
   outcomeOf,
@@ -18,6 +19,7 @@ import {
   promptSummary,
   questionsFor,
   resumeIndex,
+  setupStorageKey,
   summarySegments,
   TYPE_LABEL,
   toResponse,
@@ -314,24 +316,34 @@ describe('summaries with math', () => {
 });
 
 describe('tracks', () => {
-  const t = (slug: string, track: QuizTrack) => ({ slug, track });
+  const topics = [
+    { slug: 'cpp', track: 'fundamentals', also: [] },
+    { slug: 'python', track: 'fundamentals', also: ['quant'] },
+    { slug: 'probability', track: 'quant', also: [] },
+  ] as const;
+  const attempt = (id: string, ...slugs: string[]) => ({ id, topics: slugs });
 
-  it('groups in track order and keeps the given order within a track', () => {
-    const groups = groupByTrack([
-      t('probability', 'quant'),
-      t('cpp', 'fundamentals'),
-      t('brainteasers', 'quant'),
-      t('python', 'fundamentals'),
-    ]);
-    expect(groups.map((g) => [g.track, g.label, g.items.map((i) => i.slug)])).toEqual([
-      ['fundamentals', 'Fundamentals', ['cpp', 'python']],
-      ['quant', 'Quant', ['probability', 'brainteasers']],
-    ]);
-    expect(groups[1]?.description).toMatch(/^Probability, statistics/);
+  it('lists an attempt in every track one of its topics is in', () => {
+    const attempts = [
+      attempt('a', 'cpp'),
+      attempt('b', 'python'),
+      attempt('c', 'probability'),
+      attempt('d', 'cpp', 'probability'),
+      attempt('e', 'gone'),
+    ];
+    expect(attemptsInTrack(attempts, topics, 'software').map((a) => a.id)).toEqual(['a', 'b', 'd']);
+    expect(attemptsInTrack(attempts, topics, 'quant').map((a) => a.id)).toEqual(['b', 'c', 'd']);
   });
 
-  it('is one group (nothing to head) when every topic is in one track', () => {
-    expect(groupByTrack([t('cpp', 'fundamentals'), t('python', 'fundamentals')])).toHaveLength(1);
-    expect(groupByTrack([])).toEqual([]);
+  it('names the drill and live rounds only in Quant', () => {
+    expect(modeHint('practice', 'software')).not.toMatch(/drill/);
+    expect(modeHint('practice', 'quant')).toMatch(/mental math drill/);
+    expect(modeHint('discussion', 'software')).not.toMatch(/live round/);
+    expect(modeHint('discussion', 'quant')).toMatch(/live round from Interviews/);
+    expect(modeHint('exam', 'quant')).toBe(modeHint('exam', 'software'));
+  });
+
+  it('keeps one setup per track', () => {
+    expect(setupStorageKey('software')).not.toBe(setupStorageKey('quant'));
   });
 });

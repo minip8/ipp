@@ -92,6 +92,7 @@ export class MockQuizBank {
           title: topic.title,
           description: topic.description,
           track: topic.track,
+          also: topic.also,
         },
         items: questions.map((q) => this.item(q.id)).filter((i) => i !== null),
       });
