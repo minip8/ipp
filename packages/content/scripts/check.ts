@@ -3,6 +3,10 @@
  *   - every problem and quiz file parses against the contracts
  *   - quiz/roadmap.yaml is a sound graph and places every quiz subtopic on exactly one node
  *   - quiz Markdown has no math in fundamentals topics, and every formula typesets in quant ones
+ *   - every market-making game (games/) parses, has an id no quiz question has, typesets, and
+ *     its authored `expect` is what the engine computes
+ *   - every quant numeric answer and game fair value is recomputed independently
+ *     (scripts/verify-quant-quiz.py with scripts/quant_checks)
  *   - solution.py (+ harness.py) reproduces tests.json (run in a subprocess with a tiny runner);
  *     skipped for a problem without solution.py (one that does not offer Python)
  *   - solution.cpp, with harness.cpp appended as the API appends it, passes `g++ -fsyntax-only`
@@ -19,17 +23,20 @@ import type { Json } from '@ipp/contracts';
 import {
   CONTENT_ROOT,
   EXTENSIONS,
+  gameIdCollisions,
   judgedReferenceSolutions,
   listProblemSlugs,
   loadProblem,
+  loadQuantGames,
   loadQuizQuestions,
   loadQuizRoadmap,
   loadQuizTopics,
+  quantGameErrors,
   resultsEqual,
   roadmapGaps,
   untaxonomizedTags,
 } from '../src';
-import { quizMathErrors } from '../src/math';
+import { quantGameMathErrors, quizMathErrors } from '../src/math';
 
 const RUNNER = `
 import importlib.util, json, sys
@@ -132,7 +139,25 @@ if (!only.length) {
   } catch (e) {
     bad(`quiz: ${(e as Error).message}`);
   }
-  // Every numeric answer of the quant topics, recomputed (scripts/quant_checks).
+  // Market-making games: the schema, the engine's figures, the math, and ids of their own.
+  try {
+    const games = loadQuantGames();
+    for (const g of games) for (const m of quantGameErrors(g)) bad(`game ${m}`);
+    for (const m of quantGameMathErrors(games)) bad(`game math: ${m}`);
+    let questions: { id: string }[] = [];
+    try {
+      questions = loadQuizQuestions();
+    } catch {
+      // Reported above.
+    }
+    for (const id of gameIdCollisions(games, questions))
+      bad(`game ${id}: a quiz question has the same id`);
+    console.log(`games: ${games.length} (${games.map((g) => g.id).join(', ')})`);
+  } catch (e) {
+    bad(`games: ${(e as Error).message}`);
+  }
+  // Every numeric answer of the quant topics and every game's fair value, recomputed
+  // (scripts/quant_checks).
   try {
     const out = execFileSync('python3', ['scripts/verify-quant-quiz.py'], {
       cwd: CONTENT_ROOT,

@@ -1,0 +1,66 @@
+# A market-making game played live in a trader round (ARCHITECTURE §8.3). The server draws the
+# dice, keeps the books and settles; the interviewer only trades and reveals.
+id: mm-game-dice-sum
+topic: betting-market-making
+title: Sum of three dice
+difficulty: easy
+prompt: |
+  Three fair six-sided dice have been rolled where neither of us can see them. A contract settles
+  at their sum, $D_1 + D_2 + D_3$.
+
+  Make me a two-sided market on it: a bid, an offer and a size of up to 5 contracts, in steps of
+  0.5. I may buy from you, sell to you, or ask for another market. As we go I will show you some
+  of the dice, one at a time; each time your market is withdrawn and you make a new one. At the
+  end every die is shown and the contract settles.
+components:
+  - { label: Die 1, faces: [1, 2, 3, 4, 5, 6] }
+  - { label: Die 2, faces: [1, 2, 3, 4, 5, 6] }
+  - { label: Die 3, faces: [1, 2, 3, 4, 5, 6] }
+payoff: sum
+reveal: [0, 1]
+tick: 0.5
+maxSize: 5
+counterparty: |
+  Your books show the public fair value, the true value and your edge against both at the
+  candidate's bid and offer. Never say the fair value, a hidden die or the candidate's P&L.
+
+  Stage 1, nothing shown (fair 10.5): you are uninformed and trade only on the public fair value.
+  If the market is wider than 3, do not trade: ask for a tighter one (at most twice, then trade
+  it anyway). If the offer is below fair, lift it for the full size; if the bid is above fair,
+  hit it for the full size. Otherwise trade one lot on either side, your choice. After the first
+  trade, reveal Die 1.
+
+  Stage 2, one die shown: the market should move to the new fair at once. Trade it the same way,
+  against the new public fair value; a market left near 10.5 after a 6 or a 1 is picked off for
+  the full size. Ask what their position is and whether it changes their next quote. After a
+  trade here, reveal Die 2.
+
+  Stage 3, two dice shown: you are now informed and trade on the true value. Lift the offer for
+  the full size if it is below the true value, hit the bid if it is above it, and pass otherwise.
+  When the candidate notices that you only trade when they lose, ask what that tells them and
+  how they would quote against someone who knows. Close once this stage's market has been traded
+  or passed, or when time is short.
+hints:
+  - What is the expected value of one die, and of three?
+  - Against someone who knows no more than you, what does each trade earn you on average? How wide does that let you be?
+  - Once a die is shown, only the other two are still random. What is the new expected sum?
+explanation: |
+  Before anything is shown the fair value is $3 \times 3.5 = 10.5$, with standard deviation
+  $\sqrt{3 \times 35/12} \approx 2.96$ and a range of 3 to 18. Against an uninformed counterparty
+  a market such as 9.5 at 11.5 (width 2, about two-thirds of a standard deviation) earns 1 per
+  contract on whichever side is traded, and is tight enough to trade.
+
+  When Die 1 shows $d$, the other two still average 7, so the fair value becomes $d + 7$ and the
+  standard deviation falls to $\sqrt{35/6} \approx 2.42$: a good market-maker moves the mid by
+  $d - 3.5$ straight away and may tighten a little. With two dice $d_1, d_2$ shown it is
+  $d_1 + d_2 + 3.5$, with standard deviation $\sqrt{35/12} \approx 1.71$.
+
+  In the last stage the counterparty knows the answer, so every trade it makes is against the
+  candidate: the right response is to widen or cut the size, and the P&L of that stage measures
+  adverse selection rather than skill. The report separates the two: the expected edge of each
+  trade against the public fair value at the time, and the realised P&L at the true value.
+expect:
+  fair: 10.5
+  sd: 2.958
+  min: 3
+  max: 18

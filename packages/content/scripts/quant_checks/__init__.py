@@ -1,4 +1,5 @@
-"""Independent recomputations of quant quiz answers, one module per topic.
+"""Independent recomputations of quant quiz answers, one module per topic, and of the figures
+of the market-making games (games/*.yaml) in games.py.
 
 A check is a function registered under a question id. What it returns says how it is compared
 with the authored answer (see scripts/verify-quant-quiz.py):
@@ -11,8 +12,11 @@ with the authored answer (see scripts/verify-quant-quiz.py):
     str              the id of the right choice of a `single` question
     set / list       the ids of the right choices of a `multiple` question
     None             the check only asserts (a `short` question's facts and figures)
+    GameFigures      a game's fair value and standard deviation (and, optionally, its minimum and
+                     maximum), each an exact value, a float or a Simulated as above, compared with
+                     the game's `expect`; an sd as a float must agree to four significant figures
 
-Every `numeric` question needs a check. A check is worth having only when it does not repeat
+Every `numeric` question and every game needs a check. A check is worth having only when it does not repeat
 the explanation's own derivation: enumerate the sample space with Fractions, run the recurrence
 or the dynamic programme, or simulate, so that a slip in the algebra is caught.
 
@@ -49,6 +53,16 @@ class Simulated:
     trials: int
 
 
+@dataclass(frozen=True)
+class GameFigures:
+    """What a game's check returns: its contract before anything is shown."""
+
+    fair: object
+    sd: object
+    min: object = None
+    max: object = None
+
+
 def simulate(trial: Callable[[random.Random], float], n: int = 200_000, seed: int = 20260101) -> Simulated:
     """Mean of `trial(rng)` over `n` seeded runs, with its standard error.
 
@@ -67,4 +81,4 @@ def simulate(trial: Callable[[random.Random], float], n: int = 200_000, seed: in
     return Simulated(mean, math.sqrt(var / n), n)
 
 
-__all__ = ["CHECKS", "Fraction", "Simulated", "check", "simulate"]
+__all__ = ["CHECKS", "Fraction", "GameFigures", "Simulated", "check", "simulate"]
