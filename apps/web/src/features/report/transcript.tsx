@@ -7,18 +7,24 @@ import {
   type TimelineEvent,
 } from '@ipp/contracts';
 import {
+  ArrowDownLeftIcon,
   ArrowLeftRightIcon,
+  ArrowUpRightIcon,
   ClipboardPasteIcon,
   CodeIcon,
+  EyeIcon,
   EyeOffIcon,
   FlagIcon,
   HelpCircleIcon,
   MicIcon,
+  ScaleIcon,
+  TagIcon,
   UserPlusIcon,
 } from 'lucide-react';
 import { type ComponentType, forwardRef } from 'react';
 import { RunVerdictIcon, toneText } from '@/components/domain';
 import { Markdown } from '@/components/markdown';
+import { entryText } from '@/features/quant-game/logic';
 import { formatClock, formatDuration, humanize } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { MODE_LABEL, RUN_VERDICT } from '@/lib/verdict';
@@ -45,7 +51,55 @@ export function buildTranscript(
       event: e.event,
     })),
   ];
-  return items.sort((a, b) => a.t - b.t || (a.kind === 'event' ? -1 : 1));
+  return items.sort((a, b) => a.t - b.t || rank(a) - rank(b));
+}
+
+/**
+ * At the same moment an event comes before a message (a question's marker before its text),
+ * except a game's: the quote follows the candidate's message that posted it, and a trade or a
+ * reveal the interviewer's message that made it.
+ */
+function rank(i: TranscriptItem): number {
+  if (i.kind === 'message') return 1;
+  return i.event.type === 'game' ? 2 : 0;
+}
+
+type GameEvent = Extract<TimelineEvent['event'], { type: 'game' }>;
+
+/** A game's quote, trade, reveal or settlement, as one quiet line among the messages. */
+function GameEventRow({ event }: { event: GameEvent }) {
+  const e = event.entry;
+  const Icon =
+    e.kind === 'quote'
+      ? TagIcon
+      : e.kind === 'trade'
+        ? e.candidateSide === 'buy'
+          ? ArrowDownLeftIcon
+          : ArrowUpRightIcon
+        : e.kind === 'reveal'
+          ? EyeIcon
+          : ScaleIcon;
+  const tone =
+    e.kind === 'trade'
+      ? e.candidateSide === 'buy'
+        ? 'text-ok-text'
+        : 'text-bad-text'
+      : e.kind === 'settle'
+        ? 'text-accent-text'
+        : 'text-fg-subtle';
+  return (
+    <span
+      className={cn(
+        'flex min-w-0 items-center gap-2',
+        e.kind === 'quote' ? 'text-fg-muted' : 'font-medium text-fg',
+      )}
+      data-testid="game-event"
+      data-kind={e.kind}
+    >
+      <Icon className={cn('size-4 shrink-0', tone)} aria-hidden />
+      <span className="truncate tabular">{entryText(e)}</span>
+    </span>
+  );
 }
 
 export function asRunVerdict(v: string | null): RunVerdict | null {
@@ -131,6 +185,8 @@ function EventRow({ event }: { event: TimelineEvent['event'] }) {
           {event.index + 1} of {event.total}
         </span>
       );
+    case 'game':
+      return <GameEventRow event={event} />;
     case 'ended':
       return (
         <span className="flex items-center gap-2 text-fg-muted">

@@ -21,12 +21,19 @@ import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { usePad } from '@/features/pad/session';
 import { useNow } from '@/features/pad/top-bar';
+import {
+  GamePanel,
+  GameStripLine,
+  GameSummary,
+  SettledGame,
+} from '@/features/quant-game/game-panel';
 import { formatClock, plural } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import {
   closedLabel,
   currentQuestion,
   earlierQuestions,
+  lastSettledGame,
   minutesPerQuestion,
   questionClock,
   roundHeading,
@@ -92,6 +99,7 @@ function ClockBar({ q }: { q: QuantQuestionView }) {
 }
 
 function Current({ q }: { q: QuantQuestionView }) {
+  const { readOnly } = usePad();
   return (
     <article
       className="space-y-4 px-5 py-5 max-lg:px-4"
@@ -123,6 +131,7 @@ function Current({ q }: { q: QuantQuestionView }) {
           {plural(q.hintsGiven, 'hint')} so far
         </p>
       )}
+      {q.game && <GamePanel index={q.index} game={q.game} canQuote={!readOnly} />}
     </article>
   );
 }
@@ -226,6 +235,11 @@ function Earlier({ questions }: { questions: QuantQuestionView[] }) {
                 <MathMarkdown className="px-3 pt-0.5 pb-3 text-[13.5px] text-fg-muted">
                   {q.prompt}
                 </MathMarkdown>
+                {q.game && (
+                  <div className="px-3 pb-3">
+                    <GameSummary game={q.game} />
+                  </div>
+                )}
               </details>
             </li>
           );
@@ -249,6 +263,7 @@ export function QuestionPanel({
   const round = state.round;
   if (!round) return null;
   const current = currentQuestion(round);
+  const settled = lastSettledGame(round);
   return (
     <section
       aria-label="Question"
@@ -265,6 +280,7 @@ export function QuestionPanel({
         {round.phase === 'pending' && <Pending round={round} />}
         {current && <Current q={current} />}
         {round.phase === 'finished' && <Finished onEnd={onEnd} ending={ending} />}
+        {settled?.game && <SettledGame index={settled.index} game={settled.game} />}
         <Earlier questions={earlierQuestions(round)} />
       </div>
     </section>
@@ -286,15 +302,23 @@ export function QuestionStrip({ onOpen }: { onOpen: () => void }) {
       onClick={onOpen}
       className="block w-full shrink-0 border-b border-border bg-surface-2/60 px-3 py-2 text-left active:bg-surface-3"
       data-testid="question-strip"
-      aria-label={`${roundHeading(round)}: show the question`}
+      aria-label={
+        current.game
+          ? `${roundHeading(round)}: show the game and quote`
+          : `${roundHeading(round)}: show the question`
+      }
     >
       <span className="flex items-center gap-2 text-xs">
         <span className="font-medium text-fg">{roundHeading(round)}</span>
         <QuestionTimer q={current} className="ml-auto text-xs" />
       </span>
-      <MathMarkdown className="mt-0.5 line-clamp-2 text-[13px] leading-snug text-fg-muted [&>*+*]:mt-0">
-        {current.prompt}
-      </MathMarkdown>
+      {current.game ? (
+        <GameStripLine game={current.game} />
+      ) : (
+        <MathMarkdown className="mt-0.5 line-clamp-2 text-[13px] leading-snug text-fg-muted [&>*+*]:mt-0">
+          {current.prompt}
+        </MathMarkdown>
+      )}
     </button>
   );
 }

@@ -3,12 +3,14 @@ import { describe, expect, it } from 'vitest';
 import { ApiRequestError } from '@/lib/api';
 import {
   discussionPool,
+  includesGame,
   listTitles,
   loadRoundPrefs,
   PATHS,
   pathSteps,
   practiceCount,
   ROUND_OPTIONS,
+  RoundPrefs,
   roundShape,
   roundStartError,
   topicBankHref,
@@ -140,7 +142,17 @@ describe('the live round', () => {
 
   it('keeps the last setup, starting from the coding setup’s interviewer', () => {
     const style = { style: 'tough', proactivity: 'high', voice: false } as const;
-    expect(loadRoundPrefs(style)).toEqual({ durationMin: 30, interviewer: style });
+    expect(loadRoundPrefs(style)).toEqual({ durationMin: 30, interviewer: style, games: {} });
+  });
+
+  it('includes a game on the trader path unless turned off, on the researcher path only if asked', () => {
+    expect(includesGame({ games: {} }, 'trader')).toBe(true);
+    expect(includesGame({ games: {} }, 'researcher')).toBe(false);
+    expect(includesGame({ games: { trader: false } }, 'trader')).toBe(false);
+    expect(includesGame({ games: { trader: false } }, 'researcher')).toBe(false);
+    expect(includesGame({ games: { researcher: true } }, 'researcher')).toBe(true);
+    expect(RoundPrefs.parse({ durationMin: 45, games: { trader: 'no' } }).games).toEqual({});
+    expect(RoundPrefs.parse({ games: { trader: false } }).games).toEqual({ trader: false });
   });
 
   it('says why a round could not start', () => {

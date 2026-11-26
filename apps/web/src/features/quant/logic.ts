@@ -7,7 +7,7 @@ import {
   QUANT_PATH_INFO,
   QUANT_PATHS,
   QUANT_ROUND_DURATIONS,
-  type QuantPath,
+  QuantPath,
   QuantRoundDuration,
   type QuizTopicStats,
   quantQuestionCount,
@@ -98,7 +98,10 @@ export function roundShape(durationMin: number): string {
   return `${n} questions, about ${Math.round(durationMin / n)} minutes each`;
 }
 
-/** The round's last setup in this browser (duration and interviewer), as the coding setup keeps its own. */
+/**
+ * The round's last setup in this browser (duration, interviewer, and per path whether to include
+ * a market-making game), as the coding setup keeps its own.
+ */
 export const RoundPrefs = z.object({
   durationMin: QuantRoundDuration.catch(30),
   interviewer: InterviewerSettings.omit({ enabled: true }).catch({
@@ -106,10 +109,20 @@ export const RoundPrefs = z.object({
     proactivity: 'normal',
     voice: false,
   }),
+  /** Set only once the candidate turns the game on or off on that path. */
+  games: z.partialRecord(QuantPath, z.boolean()).catch({}),
 });
 export type RoundPrefs = z.infer<typeof RoundPrefs>;
 
 const ROUND_PREFS_KEY = 'ipp:quant-round';
+
+/**
+ * Whether a round on `path` includes a market-making game (`includeGame`): the candidate's own
+ * choice on that path, else what the path decides on the server (a trader round has one, a
+ * researcher round none).
+ */
+export const includesGame = (prefs: Pick<RoundPrefs, 'games'>, path: QuantPath): boolean =>
+  prefs.games[path] ?? path === 'trader';
 
 /** Saved round prefs, else the interviewer the coding setup last used, at 30 minutes. */
 export function loadRoundPrefs(fallback: RoundPrefs['interviewer']): RoundPrefs {

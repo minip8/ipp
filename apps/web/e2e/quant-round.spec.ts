@@ -107,6 +107,8 @@ test.describe('starting a round', () => {
         path,
         durationMin: 20,
         interviewer: { style: 'tough', proactivity: 'high', voice: false },
+        // As the path decides: a trader round has a game, a researcher round none.
+        includeGame: path === 'trader',
       });
     });
   }
@@ -241,6 +243,8 @@ test.describe('the quant pad', () => {
   }) => {
     const b = await setup(page);
     await page.goto('/quant');
+    // Bank questions only (quant-game.spec.ts plays the game).
+    await page.getByRole('switch', { name: 'Include a market-making game' }).click();
     await page.getByRole('button', { name: 'Start the round' }).click();
     await expect(heading(page)).toHaveText('Question 1 of 4', { timeout: 20_000 });
     const id = new URL(page.url()).pathname.split('/')[2] ?? '';

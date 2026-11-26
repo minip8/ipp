@@ -1,10 +1,12 @@
-import type { QuantQuestionView, QuantRoundView } from '@ipp/contracts';
+import type { QuantGameView, QuantQuestionView, QuantRoundView } from '@ipp/contracts';
 import { describe, expect, it } from 'vitest';
 import {
   clearQuantUnread,
   closedLabel,
   currentQuestion,
   earlierQuestions,
+  gameMoves,
+  lastSettledGame,
   minutesPerQuestion,
   NO_QUANT_UNREAD,
   noteQuantActivity,
@@ -107,5 +109,69 @@ describe('the phone layout', () => {
     u = clearQuantUnread(u, 'question');
     expect(u).toEqual(NO_QUANT_UNREAD);
     expect(noteQuantActivity(u, 'chat', { messages: 0, newQuestion: false })).toBe(u);
+  });
+});
+
+describe('a round with a game', () => {
+  const game = (over: Partial<QuantGameView> = {}): QuantGameView => ({
+    title: 'Sum of three dice',
+    components: [
+      { label: 'Die 1', value: null },
+      { label: 'Die 2', value: null },
+    ],
+    payoff: 'sum',
+    tick: 0.5,
+    maxSize: 5,
+    quote: null,
+    log: [],
+    position: 0,
+    cash: 0,
+    settlement: null,
+    quotesLeft: 100,
+    ...over,
+  });
+  const quote = { kind: 'quote', at: at(10), bid: 6, ask: 8, size: 1 } as const;
+  const trade = {
+    kind: 'trade',
+    at: at(20),
+    candidateSide: 'sell',
+    price: 8,
+    quantity: 1,
+  } as const;
+  const shown = { kind: 'reveal', at: at(30), component: 0, label: 'Die 1', value: 6 } as const;
+
+  it('counts the interviewer’s moves in the current game, not the candidate’s quotes', () => {
+    expect(gameMoves(null)).toBe(0);
+    expect(gameMoves(round())).toBe(0);
+    const playing = (log: QuantGameView['log']) =>
+      round({
+        questions: [question(0, { closedAt: at(300) }), question(1, { game: game({ log }) })],
+      });
+    expect(gameMoves(playing([quote]))).toBe(0);
+    expect(gameMoves(playing([quote, trade, shown]))).toBe(2);
+  });
+
+  it('keeps the last closed question’s settled game in view', () => {
+    const settled = game({
+      components: [
+        { label: 'Die 1', value: 6 },
+        { label: 'Die 2', value: 2 },
+      ],
+      settlement: { at: at(400), value: 8, pnl: 0 },
+    });
+    const r = round({
+      questions: [question(0, { closedAt: at(400), game: settled }), question(1)],
+    });
+    expect(lastSettledGame(r)?.index).toBe(0);
+    expect(lastSettledGame(round())).toBeNull();
+    // A later bank question closing moves it out of view.
+    const later = round({
+      questions: [
+        question(0, { closedAt: at(400), game: settled }),
+        question(1, { closedAt: at(900) }),
+        question(2),
+      ],
+    });
+    expect(lastSettledGame(later)).toBeNull();
   });
 });
