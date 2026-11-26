@@ -15,7 +15,13 @@
  *
  * Once the pad has ended, every question with a verdict is also one of the owner's quiz answers
  * (`quant_round_answers`), written in the transaction that finishes the round and by any later
- * `verdict` step, so the quiz's stats, roadmap and question bank count it.
+ * `verdict` step, so the quiz's stats, roadmap and question bank count it. Never for a quant
+ * room's (hosted) round: its owner is the host, who asked the questions and answered none.
+ *
+ * A quant room's round (§8.4) goes through here too, moved by its host's steps (`applyHostStep`,
+ * from `quant/room.ts`): the question a `pose` reveals is posted as the host's message. Steps
+ * that change nothing a candidate can see (the queue, a follow-up, a verdict) broadcast no
+ * `round.updated`.
  *
  * The state is server-only: what leaves this module for the browser is `publicRound` (and, once
  * the pad has ended, the report's `QuantReport`).
@@ -26,9 +32,11 @@ import {
   gameSolution,
   gameStats,
   Id,
+  isHostStep,
   type Message,
   publicRound,
   type QuantGame,
+  type QuantHostStep,
   type QuantQuestionReview,
   type QuantQuoteStep,
   type QuantRefusal,
@@ -40,10 +48,12 @@ import {
   type QuizQuestion,
   quantClock,
   quantGameReview,
+  quantMode,
   quantPhase,
   quantQuestionStatus,
   quantRoundEndsAt,
   quantTimeSec,
+  quizSolution,
 } from '@ipp/contracts';
 import {
   aiUsage,
@@ -117,8 +127,27 @@ async function applyAndBroadcast(
   if (!outcome.ok) return outcome;
   for (const message of outcome.posted)
     ctx.rooms.broadcast(padId, { type: 'message.created', message });
-  ctx.rooms.broadcast(padId, { type: 'round.updated', round: outcome.view });
+  if (outcome.viewChanged)
+    ctx.rooms.broadcast(padId, { type: 'round.updated', round: outcome.view });
   return outcome;
+}
+
+/**
+ * A quant room's host moves its round (`QuantHostStep`, §8.4). Like `quote` and `end` it names
+ * no version, so losing the compare-and-swap to a concurrent write only means deciding it again
+ * on the newer round. A question a `pose` reveals is posted as `userId`'s (the host's) message.
+ */
+export async function applyHostStep(
+  ctx: Ctx,
+  padId: string,
+  userId: string,
+  step: QuantHostStep,
+): Promise<QuantStepResult> {
+  for (let i = 0; i < CAS_RETRIES; i++) {
+    const out = await applyStep(ctx, padId, step, { userId });
+    if (out.ok || out.reason !== 'stale') return out;
+  }
+  return { ok: false, reason: 'stale' };
 }
 
 /**
@@ -149,8 +178,22 @@ export async function postQuote(
 }
 
 type StepOutcome =
-  | { ok: true; result: QuantStepResult & { ok: true }; posted: Message[]; view: QuantRoundView }
+  | {
+      ok: true;
+      result: QuantStepResult & { ok: true };
+      posted: Message[];
+      view: QuantRoundView;
+      /** Whether the round as a member sees it changed (else no `round.updated` is needed). */
+      viewChanged: boolean;
+    }
   | (QuantStepResult & { ok: false });
+
+/**
+ * Whether a step's quiz answers are recorded: only a practice round's, whose owner answered
+ * them. A quant room's owner is its host.
+ */
+const recordsAnswers = (kind: string, state: QuantRoundState) =>
+  kind === 'practice' && quantMode(state) === 'ai';
 
 async function tryStep(
   ctx: Ctx,
@@ -162,14 +205,21 @@ async function tryStep(
     // Shared lock on the pad: `endPad` (which updates it) waits for this step, or this step
     // waits for it and then sees the pad ended.
     const [pad] = await tx
-      .select({ status: pads.status, startedAt: pads.startedAt, ownerId: pads.ownerId })
+      .select({
+        status: pads.status,
+        startedAt: pads.startedAt,
+        ownerId: pads.ownerId,
+        kind: pads.kind,
+      })
       .from(pads)
       .where(eq(pads.id, padId))
       .for('share');
     const [row] = await tx.select().from(quantRounds).where(eq(quantRounds.padId, padId));
     if (!pad || !row) return { ok: false, reason: 'ended' } as const;
-    if (pad.status !== 'active' && step.type !== 'end' && step.type !== 'verdict')
-      return { ok: false, reason: 'ended' } as const;
+    // After the end: the interviewer's late verdicts, and a host's verdict on a question that
+    // has none yet (the round decides which).
+    const afterEnd = step.type === 'end' || step.type === 'verdict' || step.type === 'host_verdict';
+    if (pad.status !== 'active' && !afterEnd) return { ok: false, reason: 'ended' } as const;
 
     // The database's clock, read after the lock: what stamps every other message (`now()`) and
     // the pad's start, so the round's messages sort among the candidate's whatever the API
@@ -185,7 +235,12 @@ async function tryStep(
     if (!next.ok) {
       // The round finished before the pad ended (its last question closed, or its clock ran
       // out): ending the pad changes nothing in it, but its answers count from now on.
-      if (step.type === 'end' && next.reason === 'ended' && pad.status !== 'active')
+      if (
+        step.type === 'end' &&
+        next.reason === 'ended' &&
+        pad.status !== 'active' &&
+        recordsAnswers(pad.kind, row.state)
+      )
         await recordAnswers(tx, padId, pad.ownerId, row.state);
       return next;
     }
@@ -260,7 +315,7 @@ async function tryStep(
     }
     if (reveal) {
       // After the interviewer's message, whatever the clock's resolution; posted by the server,
-      // so it does not count against anyone's AI allowance.
+      // so it does not count against anyone's AI allowance. A host's `pose` is their message.
       const at = new Date(now.getTime() + 1);
       const [m] = await tx
         .insert(messages)
@@ -272,7 +327,7 @@ async function tryStep(
           intent: 'question',
           text: reveal.text,
           via: 'text',
-          userId: null,
+          userId: isHostStep(step) ? (actor?.userId ?? null) : null,
           createdAt: at,
         })
         .returning();
@@ -286,8 +341,16 @@ async function tryStep(
     if (note) await tx.insert(interviewerNotes).values({ padId, note: note.slice(0, 4000) });
     // Only once the pad has ended (the `end` step, or a verdict the assessment gives later): a
     // verdict in the question bank mid-round would give it away, and name the bank question.
-    if (pad.status !== 'active') await recordAnswers(tx, padId, pad.ownerId, next.state);
+    if (pad.status !== 'active' && recordsAnswers(pad.kind, next.state))
+      await recordAnswers(tx, padId, pad.ownerId, next.state);
 
+    const view = publicRound(next.state, next.version);
+    // A hosted round's host-only steps (the queue, a follow-up, a verdict) change nothing a
+    // member sees: no `round.updated` for them. An AI round's every step is broadcast, as ever.
+    const { version: _was, ...before } = publicRound(row.state, row.version);
+    const { version: _now, ...after } = view;
+    const viewChanged =
+      quantMode(next.state) === 'ai' || JSON.stringify(before) !== JSON.stringify(after);
     return {
       ok: true,
       result: {
@@ -297,7 +360,8 @@ async function tryStep(
         clock: quantClock(next.state, roundEndsAt),
       },
       posted,
-      view: publicRound(next.state, next.version),
+      view,
+      viewChanged,
     } as const;
   });
 }
@@ -442,6 +506,7 @@ export function buildQuantReport(
   bank: ReadonlyMap<string, QuizQuestion>,
   games: ReadonlyMap<string, QuantGame> = new Map(),
 ): QuantReport {
+  const hosted = quantMode(state) === 'hosted';
   const questions = state.questions.map((q, index): QuantQuestionReview => {
     if (q.game) {
       return {
@@ -461,6 +526,8 @@ export function buildQuantReport(
         verdict: q.verdict ? { score: q.verdict.score, summary: q.verdict.summary } : null,
         hintsGiven: q.hintRungs.length,
         hintsAvailable: q.hintsAvailable,
+        hintRungs: [...q.hintRungs],
+        followUpAsked: q.followUpAsked,
         timeSec: quantTimeSec(q),
         budgetSec: q.budgetSec,
         game: quantGameReview(q),
@@ -469,6 +536,33 @@ export function buildQuantReport(
     const b = bank.get(q.questionId);
     const short = b?.type === 'short' ? b : null;
     const numeric = b?.type === 'numeric' ? b : null;
+    if (hosted) {
+      // A quant room's question may be of any type of the bank; its solution reads as a person
+      // would say it, whatever the type.
+      return {
+        index,
+        questionId: q.questionId,
+        topic: q.topic,
+        topicTitle: q.topicTitle ?? q.topic,
+        subtopic: b?.subtopic ?? '',
+        difficulty: q.difficulty,
+        type: q.type ?? b?.type ?? 'short',
+        prompt: q.prompt,
+        unit: q.unit,
+        solution: b ? quizSolution(b) : '',
+        keyPoints: short ? [...short.keyPoints] : [],
+        explanation: b?.explanation ?? '',
+        status: quantQuestionStatus(q),
+        verdict: q.verdict ? { score: q.verdict.score, summary: q.verdict.summary } : null,
+        hintsGiven: q.hintRungs.length,
+        hintsAvailable: q.hintsAvailable,
+        hintRungs: [...q.hintRungs],
+        followUpAsked: q.followUpAsked,
+        timeSec: quantTimeSec(q),
+        budgetSec: null,
+        game: null,
+      };
+    }
     return {
       index,
       questionId: q.questionId,
@@ -487,12 +581,14 @@ export function buildQuantReport(
       verdict: q.verdict ? { score: q.verdict.score, summary: q.verdict.summary } : null,
       hintsGiven: q.hintRungs.length,
       hintsAvailable: q.hintsAvailable,
+      hintRungs: [...q.hintRungs],
+      followUpAsked: q.followUpAsked,
       timeSec: quantTimeSec(q),
       budgetSec: q.budgetSec,
       game: null,
     };
   });
-  return { path: state.path, questions };
+  return { mode: hosted ? 'hosted' : 'ai', path: state.path, questions };
 }
 
 export { bankQuestions, gameContent };

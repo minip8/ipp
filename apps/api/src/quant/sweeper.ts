@@ -23,9 +23,11 @@
  *   rebuilt from the context it loads (a new runtime hydrates; one still held refreshes on its
  *   next load), so it carries on from the round as it now is.
  *
+ * A quant room's round (hosted, §8.4) has no clock: the sweeper never touches it.
+ *
  * The API is a single instance (pad rooms are in memory), so one sweeper sees every live pad.
  */
-import { quantClock, quantRoundEndsAt } from '@ipp/contracts';
+import { quantClock, quantMode, quantRoundEndsAt } from '@ipp/contracts';
 import { pads, quantRounds } from '@ipp/db';
 import { and, eq, sql } from '@ipp/db/orm';
 import { cannedCloseLine, quantDue } from '@ipp/interviewer';
@@ -56,11 +58,13 @@ export async function sweepQuantRounds(
         eq(pads.status, 'active'),
         // Asking: a question is open.
         sql`${current} >= 0 and ${current} < jsonb_array_length(${quantRounds.state}->'questions')`,
+        // An AI round (stored ones have no mode); a hosted round has no clock.
+        sql`coalesce(${quantRounds.state}->>'mode', 'ai') = 'ai'`,
       ),
     );
   let closed = 0;
   for (const row of rows) {
-    if (isLive(row.padId)) continue;
+    if (quantMode(row.state) !== 'ai' || isLive(row.padId)) continue;
     const now = (await ctx.dbNow(ctx.db)).getTime();
     const clock = quantClock(row.state, quantRoundEndsAt(row.startedAt, row.state.durationMin));
     const due = quantDue(clock, now);

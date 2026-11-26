@@ -351,6 +351,7 @@ describe('creating a quant round', () => {
     expect(detail.json.problem).toBeNull();
     expect(detail.json.runs).toEqual([]);
     expect(detail.json.round).toEqual({
+      mode: 'ai',
       path: 'trader',
       total: 4,
       phase: 'pending',
@@ -560,6 +561,7 @@ describe('a round, step by step', () => {
       for (const s of sockets) {
         const e = await s.waitFor('round.updated');
         expect(e.round).toEqual({
+          mode: 'ai',
           path: 'trader',
           total: 3,
           phase: 'pending',
@@ -1400,6 +1402,8 @@ describe('ending a quant pad', () => {
         status: 'answered',
         verdict: null,
         hintsGiven: 1,
+        hintRungs: [1],
+        followUpAsked: false,
         timeSec: expect.any(Number),
         budgetSec: expect.any(Number),
       },
@@ -1408,6 +1412,8 @@ describe('ending a quant pad', () => {
         status: 'unfinished',
         verdict: null,
         hintsGiven: 0,
+        hintRungs: [],
+        followUpAsked: false,
         timeSec: expect.any(Number),
         budgetSec: expect.any(Number),
       },
@@ -1416,6 +1422,8 @@ describe('ending a quant pad', () => {
         status: 'not_reached',
         verdict: null,
         hintsGiven: 0,
+        hintRungs: [],
+        followUpAsked: false,
         timeSec: null,
         budgetSec: null,
       },
@@ -2289,6 +2297,8 @@ describe('market-making games', () => {
         verdict: { score: 0.7, summary: 'VERDICT-SUMMARY-GAME' },
         hintsGiven: 0,
         hintsAvailable: 2,
+        hintRungs: [],
+        followUpAsked: false,
         timeSec: expect.any(Number),
         budgetSec: expect.any(Number),
         game: gameReview(game),

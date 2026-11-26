@@ -18,6 +18,7 @@ import { Hono } from 'hono';
 import type { Ctx } from '../context';
 import { type Env, parseBody, requireAccount } from '../http/app';
 import { badRequest, conflict, HttpError, notFound, rateLimited } from '../http/errors';
+import { refuseDuringQuantInterview } from '../quant/guard';
 import {
   type AnswerRow,
   applySelfGrade,
@@ -217,11 +218,13 @@ export function quizRoutes(ctx: Ctx) {
 
   r.get('/quiz/attempts/:id', async (c) => {
     const user = requireAccount(c);
+    await refuseDuringQuantInterview(ctx, user.id);
     return c.json(await view(await loadAttempt(c.req.param('id'), user.id)));
   });
 
   r.post('/quiz/attempts/:id/answers', async (c) => {
     const user = requireAccount(c);
+    await refuseDuringQuantInterview(ctx, user.id);
     const attempt = await loadAttempt(c.req.param('id'), user.id);
     const body = await parseBody(c, SubmitAnswerRequest);
     if (!attempt.questionIds.includes(body.questionId))
@@ -282,6 +285,7 @@ export function quizRoutes(ctx: Ctx) {
    */
   r.post('/quiz/attempts/:id/discussion', async (c) => {
     const user = requireAccount(c);
+    await refuseDuringQuantInterview(ctx, user.id);
     const attempt = await loadAttempt(c.req.param('id'), user.id);
     const body = await parseBody(c, DiscussionReplyRequest);
     if (attempt.mode !== 'discussion')
@@ -345,6 +349,7 @@ export function quizRoutes(ctx: Ctx) {
 
   r.post('/quiz/attempts/:id/finish', async (c) => {
     const user = requireAccount(c);
+    await refuseDuringQuantInterview(ctx, user.id);
     const attempt = await loadAttempt(c.req.param('id'), user.id);
     if (attempt.status === 'finished') return c.json(await view(attempt));
     const score = await recomputeScore(attempt);

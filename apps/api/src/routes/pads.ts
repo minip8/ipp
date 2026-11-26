@@ -1,25 +1,41 @@
 import { randomBytes } from 'node:crypto';
 import {
   ChangeProblemRequest,
+  CloseQuantQuestionRequest,
   CreatePadRequest,
   CreateQuantPadRequest,
+  createHostedRound,
   createQuantRound,
   type DeletePadResponse,
+  HostBankQuery,
+  type HostRoundView,
   type HostView,
   type InviteInfo,
   JoinGuestRequest,
+  type Language,
   PAD_MEMBERS_MAX,
   type PadDetail,
   type PadSummary,
   type Playback,
+  PoseQuantQuestionRequest,
   PostQuantQuoteRequest,
+  QUANT_HOSTED_HINTS_MAX,
+  QUANT_HOSTED_QUESTIONS_MAX,
   QUANT_PATH_INFO,
+  QUANT_QUEUE_MAX,
+  type QuantHostStep,
   type QuantPath,
   type QuantRefusal,
+  QuantSecondOpinionRequest,
+  quantPhase,
+  RecordQuantFollowUpRequest,
+  RecordQuantHintRequest,
   type Report,
   ReviewRequest,
+  SetQuantVerdictRequest,
   UpdateHostNotesRequest,
   UpdatePadRequest,
+  UpdateQuantQueueRequest,
 } from '@ipp/contracts';
 import {
   messages,
@@ -56,7 +72,15 @@ import {
   wrongFormat,
 } from '../pads/service';
 import { assembleForUser } from '../quant/assemble';
-import { postQuote, quantReport, roundView } from '../quant/round';
+import {
+  activeBankQuestion,
+  assertQueueable,
+  hostRoundView,
+  poseOf,
+  quantRoomHasRecord,
+  searchBank,
+} from '../quant/room';
+import { applyHostStep, loadRound, postQuote, quantReport, roundView } from '../quant/round';
 import { toPublicRun } from '../runs/redact';
 import { eventView, messageView, padView, storedRun } from '../views';
 
@@ -71,6 +95,7 @@ const QUOTE_REFUSALS: Partial<Record<QuantRefusal, string>> = {
   wrong_phase: 'The round has not started yet',
   wrong_index: 'That question is no longer the current one',
   not_game: 'The current question takes no quotes',
+  wrong_mode: 'This interview takes no quotes',
   bad_quote:
     'That market cannot be posted: prices on the tick, the bid below the offer, and a whole size up to the maximum',
   quote_limit: 'No quotes are left on this game',
@@ -81,6 +106,28 @@ const QUOTE_REFUSALS: Partial<Record<QuantRefusal, string>> = {
 /** 409 with the round's refusal as the error code (§8.3). */
 const quoteRefused = (reason: QuantRefusal) =>
   conflict(reason, QUOTE_REFUSALS[reason] ?? 'The quote was refused');
+
+/** Why a quant room's round refused what its host did, for the host to read (§8.4). */
+const HOST_REFUSALS: Partial<Record<QuantRefusal, string>> = {
+  already_posed: 'That question was already asked in this interview',
+  not_open: 'No question is open',
+  wrong_index: 'That question is not the one open (or not one asked here)',
+  hint_rung: 'That is not the next hint of this question',
+  hint_limit: `At most ${QUANT_HOSTED_HINTS_MAX} hints can be recorded on one question`,
+  follow_up_used: 'The follow-up was already recorded',
+  not_closed: 'That question is still open, or was never asked',
+  has_verdict: 'That question already has a verdict, and the interview has ended',
+  question_limit: `At most ${QUANT_HOSTED_QUESTIONS_MAX} questions can be asked in one interview`,
+  queue_limit: `At most ${QUANT_QUEUE_MAX} questions can be queued`,
+  invalid: 'That cannot be recorded',
+  stale: 'The round changed in the meantime; try again',
+};
+
+/** 409 with the round's refusal as the code; the pad having ended is `pad_ended`, as in every room route. */
+const hostRefused = (reason: QuantRefusal) =>
+  reason === 'ended'
+    ? conflict('pad_ended', 'This interview has ended')
+    : conflict(reason, HOST_REFUSALS[reason] ?? 'The round refused that');
 
 type ReportRow = typeof reports.$inferSelect;
 
@@ -103,6 +150,38 @@ export function padRoutes(ctx: Ctx) {
     if (pad.kind !== 'room' || role !== 'owner')
       throw forbidden('Only the host of a room can do this');
     return { pad, user };
+  }
+
+  /** The pad, for its host, when it is a quant room: the round's host-only routes. */
+  async function quantRoomForHost(c: C): Promise<{ pad: PadRow; user: SessionUser }> {
+    const out = await roomForHost(c);
+    if (out.pad.format !== 'quant')
+      throw conflict('wrong_format', 'Only a quant room has questions to pose');
+    return out;
+  }
+
+  /** The host's view of the round after a step; the room is a quant room, so it has one. */
+  async function hostRound(padId: string): Promise<HostRoundView> {
+    const view = await hostRoundView(ctx, padId);
+    if (!view) throw notFound('Round');
+    return view;
+  }
+
+  /**
+   * One host step on a quant room's round (§8.4), limited like the room's other events; returns
+   * the host's view of the round after it.
+   */
+  async function hostStep(pad: PadRow, userId: string, step: QuantHostStep) {
+    const out = await applyHostStep(ctx, pad.id, userId, step);
+    if (!out.ok) throw hostRefused(out.reason);
+    return hostRound(pad.id);
+  }
+
+  async function hostEventLimit(userId: string): Promise<void> {
+    const wait = await ctx.limiter.hit([
+      { key: `hostround:u:${userId}`, ...ctx.config.limits.padEvents.userBurst },
+    ]);
+    if (wait > 0) throw rateLimited(wait);
   }
 
   /** Invite links are guessed at or read by anyone: limit them per client address. */
@@ -154,6 +233,10 @@ export function padRoutes(ctx: Ctx) {
   r.post('/pads', async (c) => {
     const user = requireAccount(c);
     const body = await parseBody(c, CreatePadRequest);
+    if (body.format === 'quant') return c.json(await createQuantRoom(user, body));
+    if (body.queue) throw badRequest('Only a quant room has a queue', 'validation_error');
+    // The schema requires a language for a coding pad.
+    const language: Language = body.language ?? 'python';
     if (body.blank && body.kind !== 'room')
       throw badRequest('Only an interview room can start without a problem', 'validation_error');
     if (body.blank && (body.problemSlug || body.random))
@@ -173,7 +256,7 @@ export function padRoutes(ctx: Ctx) {
       if (body.random?.difficulty) where.push(eq(problems.difficulty, body.random.difficulty));
       if (body.random?.tag) where.push(arrayContains(problems.tags, [body.random.tag]));
       // Only problems that can be solved in the chosen language.
-      where.push(arrayContains(problems.languages, [body.language]));
+      where.push(arrayContains(problems.languages, [language]));
       [problem] = await db
         .select()
         .from(problems)
@@ -182,7 +265,7 @@ export function padRoutes(ctx: Ctx) {
         .limit(1);
     }
     if (!problem && !body.blank) throw notFound('Problem');
-    if (problem) assertLanguageOffered(problem, body.language);
+    if (problem) assertLanguageOffered(problem, language);
 
     const row = await db.transaction(async (tx) => {
       const [pad] = await tx
@@ -193,7 +276,7 @@ export function padRoutes(ctx: Ctx) {
             body.title?.trim() || problem?.title || (body.kind === 'room' ? 'Interview room' : ''),
           kind: body.kind,
           problemSlug: problem?.slug ?? null,
-          language: body.language,
+          language,
           durationMin: body.durationMin,
           // A room has no AI in the conversation: the host is the interviewer.
           interviewer:
@@ -209,6 +292,49 @@ export function padRoutes(ctx: Ctx) {
     });
     return c.json(padView(row, user.id));
   });
+
+  /**
+   * A quant room (§8.4): a room of format `quant`, with a hosted round that starts empty and the
+   * host's initial queue. No problem, language or AI key: the host runs it, and the AI only
+   * advises the host on request.
+   */
+  async function createQuantRoom(user: SessionUser, body: CreatePadRequest) {
+    if (body.kind !== 'room')
+      throw badRequest(
+        'A quant pad here is a room; a practice quant round is POST /api/pads/quant',
+        'validation_error',
+      );
+    if (body.problemSlug || body.random || body.blank)
+      throw badRequest('A quant room takes no problem', 'validation_error');
+    const queue = body.queue ?? [];
+    await assertQueueable(ctx, queue);
+    await padCreateLimit(user.id);
+    const row = await db.transaction(async (tx) => {
+      const [pad] = await tx
+        .insert(pads)
+        .values({
+          ownerId: user.id,
+          title: body.title?.trim() || 'Quant interview',
+          kind: 'room',
+          format: 'quant',
+          problemSlug: null,
+          // Stored because the column is required; a quant pad has no language.
+          language: 'python',
+          durationMin: body.durationMin,
+          // A room has no AI in the conversation: the host is the interviewer.
+          interviewer: { ...body.interviewer, enabled: false, voice: false },
+          shareToken: randomBytes(18).toString('base64url'),
+        })
+        .returning();
+      if (!pad) throw new Error('pad insert failed');
+      await tx.insert(padMembers).values({ padId: pad.id, userId: user.id, role: 'owner' });
+      await tx
+        .insert(quantRounds)
+        .values({ padId: pad.id, state: createHostedRound(queue), version: 0 });
+      return pad;
+    });
+    return padView(row, user.id);
+  }
 
   // A live quant round: a practice pad with no problem and no code, run by the AI interviewer
   // on the owner's key, so it cannot start without one.
@@ -467,7 +593,8 @@ export function padRoutes(ctx: Ctx) {
     return c.json({ pad: row ? padView(row, user.id) : changed.pad, problem: changed.problem });
   });
 
-  // What only the host sees: the problem's interviewer notes and reference solutions, and
+  // What only the host sees: the problem's interviewer notes and reference solutions (a quant
+  // room: its round with every solution, the hints recorded, the verdicts and the queue), and
   // their own notes on the interview.
   r.get('/pads/:id/host', async (c) => {
     const { pad } = await roomForHost(c);
@@ -481,8 +608,119 @@ export function padRoutes(ctx: Ctx) {
           .from(problems)
           .where(eq(problems.slug, pad.problemSlug))
       : [];
-    const view: HostView = { problem: problem ?? null, notes: pad.hostNotes };
+    const view: HostView = {
+      problem: problem ?? null,
+      notes: pad.hostNotes,
+      round: pad.format === 'quant' ? await hostRoundView(ctx, pad.id) : null,
+    };
     return c.json(view);
+  });
+
+  // ---------------------------------------------------------------- a quant room's host (§8.4)
+
+  // The bank with its solutions, to choose what to ask: for this room's host only.
+  r.get('/pads/:id/host/round/bank', async (c) => {
+    const { pad, user } = await quantRoomForHost(c);
+    const parsed = HostBankQuery.safeParse(c.req.query());
+    if (!parsed.success) throw badRequest('Invalid search', 'validation_error');
+    const wait = await ctx.limiter.hit([
+      { key: `hostbank:u:${user.id}`, ...ctx.config.limits.padEvents.userBurst },
+    ]);
+    if (wait > 0) throw rateLimited(wait);
+    const row = await loadRound(ctx, pad.id);
+    if (!row) throw notFound('Round');
+    return c.json(await searchBank(ctx, row.state, parsed.data));
+  });
+
+  // The whole queue, in order: reordering, adding and removing are one call.
+  r.put('/pads/:id/host/round/queue', async (c) => {
+    const { pad, user } = await quantRoomForHost(c);
+    const { questionIds } = await parseBody(c, UpdateQuantQueueRequest);
+    if (pad.status !== 'active') throw hostRefused('ended');
+    await hostEventLimit(user.id);
+    await assertQueueable(ctx, questionIds);
+    return c.json(await hostStep(pad, user.id, { type: 'queue', questionIds }));
+  });
+
+  // Poses a question of the bank (queued or not): the candidate sees it at once. An open one is
+  // closed first. It is posted as the host's message, so it counts as one.
+  r.post('/pads/:id/host/round/pose', async (c) => {
+    const { pad, user } = await quantRoomForHost(c);
+    const { questionId } = await parseBody(c, PoseQuantQuestionRequest);
+    if (pad.status !== 'active') throw hostRefused('ended');
+    const l = ctx.config.limits.chat;
+    const wait = await ctx.limiter.hit([
+      { key: `chat:u:${user.id}:burst`, ...l.userBurst },
+      { key: `chat:u:${user.id}:day`, ...l.userDaily },
+    ]);
+    if (wait > 0) throw rateLimited(wait);
+    const entry = await activeBankQuestion(ctx, questionId);
+    return c.json(await hostStep(pad, user.id, { type: 'pose', pick: poseOf(entry) }));
+  });
+
+  // Bookkeeping for the report: the host gave a hint (they say it themselves).
+  r.post('/pads/:id/host/round/hint', async (c) => {
+    const { pad, user } = await quantRoomForHost(c);
+    const { index, rung } = await parseBody(c, RecordQuantHintRequest);
+    if (pad.status !== 'active') throw hostRefused('ended');
+    await hostEventLimit(user.id);
+    return c.json(await hostStep(pad, user.id, { type: 'host_hint', index, rung }));
+  });
+
+  r.post('/pads/:id/host/round/follow-up', async (c) => {
+    const { pad, user } = await quantRoomForHost(c);
+    const { index } = await parseBody(c, RecordQuantFollowUpRequest);
+    if (pad.status !== 'active') throw hostRefused('ended');
+    await hostEventLimit(user.id);
+    return c.json(await hostStep(pad, user.id, { type: 'host_follow_up', index }));
+  });
+
+  r.post('/pads/:id/host/round/close', async (c) => {
+    const { pad, user } = await quantRoomForHost(c);
+    const { index, verdict } = await parseBody(c, CloseQuantQuestionRequest);
+    if (pad.status !== 'active') throw hostRefused('ended');
+    await hostEventLimit(user.id);
+    return c.json(await hostStep(pad, user.id, { type: 'host_close', index, verdict }));
+  });
+
+  // Gives or changes a verdict; after the room ended only one that is still missing.
+  r.put('/pads/:id/host/round/verdict', async (c) => {
+    const { pad, user } = await quantRoomForHost(c);
+    const { index, verdict } = await parseBody(c, SetQuantVerdictRequest);
+    await hostEventLimit(user.id);
+    return c.json(await hostStep(pad, user.id, { type: 'host_verdict', index, verdict }));
+  });
+
+  // The AI's second opinion on a question (the open one by default): for the host only, on the
+  // host's key, never broadcast or stored.
+  r.post('/pads/:id/host/round/review', async (c) => {
+    const { pad, user } = await quantRoomForHost(c);
+    const body = await parseBody(c, QuantSecondOpinionRequest);
+    const row = await loadRound(ctx, pad.id);
+    if (!row) throw notFound('Round');
+    const open = quantPhase(row.state) === 'asking' ? row.state.current : null;
+    const index = body.index ?? open;
+    if (index === null)
+      throw conflict('no_question', 'No question is open: say which one to look at');
+    if (!row.state.questions[index]?.posedAt)
+      throw conflict('wrong_index', 'That question was not asked in this interview');
+    if ((await ctx.ai.keyState(user.id)) !== 'active')
+      throw conflict('ai_key_missing', 'Add your AI API key first');
+    const l = ctx.config.limits.review;
+    const wait = await ctx.limiter.hit([
+      { key: `review:u:${user.id}:burst`, ...l.userBurst },
+      { key: `review:u:${user.id}:day`, ...l.userDaily },
+    ]);
+    if (wait > 0) throw rateLimited(wait);
+    const out = await ctx.ai.interviewer.reviewQuantRoom(pad.id, {
+      index,
+      ...(body.question ? { question: body.question } : {}),
+    });
+    if (out.ok) return c.json(out.review);
+    if (out.reason === 'no_key') throw conflict('ai_key_missing', 'Add your AI API key first');
+    if (out.reason === 'budget')
+      throw new HttpError(429, 'ai_budget', out.message ?? 'The daily AI limit has been reached');
+    throw new HttpError(502, 'review_failed', 'The AI could not look at the question just now');
   });
 
   // Also after the room ended, so the notes can be finished once the candidate has left.
@@ -497,6 +735,8 @@ export function padRoutes(ctx: Ctx) {
   // never broadcast or stored.
   r.post('/pads/:id/review', async (c) => {
     const { pad, user } = await roomForHost(c);
+    // A quant room's second opinion is on a question: POST …/host/round/review.
+    if (pad.format === 'quant') throw wrongFormat('code to review');
     const body = await parseBody(c, ReviewRequest);
     if ((await ctx.ai.keyState(user.id)) !== 'active')
       throw conflict('ai_key_missing', 'Add your AI API key first');
@@ -543,9 +783,13 @@ export function padRoutes(ctx: Ctx) {
                 interviewer: {
                   ...pad.interviewer,
                   ...body.interviewer,
-                  // The AI never joins a room's conversation, and always runs a quant round.
-                  ...(pad.kind === 'room' ? { enabled: false, voice: false } : {}),
-                  ...(pad.format === 'quant' ? { enabled: true } : {}),
+                  // The AI never joins a room's conversation (a quant room's included), and
+                  // always runs a practice quant round.
+                  ...(pad.kind === 'room'
+                    ? { enabled: false, voice: false }
+                    : pad.format === 'quant'
+                      ? { enabled: true }
+                      : {}),
                 },
               }
             : {}),
@@ -672,6 +916,12 @@ export function padRoutes(ctx: Ctx) {
     const [row] = await db.select().from(reports).where(eq(reports.padId, pad.id));
     if (!row) throw notFound('Report');
     if (row.assessment || row.status === 'pending') return c.json(await reportView(pad, row));
+    // A quant room in which nobody asked or wrote anything has nothing to assess.
+    if (pad.kind === 'room' && pad.format === 'quant' && !(await quantRoomHasRecord(ctx, pad.id)))
+      throw conflict(
+        'nothing_to_assess',
+        'Nothing to assess: no question was asked, and the candidate wrote nothing',
+      );
     if ((await ctx.ai.keyState(user.id)) !== 'active')
       throw conflict('ai_key_missing', 'Add your AI API key first');
     const wait = await ctx.limiter.hit([
