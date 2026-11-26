@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { AiKeyState, AiModelChoice, InterviewerModel } from './ai';
 import { Id, IsoDate, Language, Slug } from './common';
 import { Difficulty, ProblemDetail } from './problem';
+import { QuantReport, QuantRoundDuration, QuantRoundView } from './quant-round';
+import { QuantPath } from './quiz';
 import { Run } from './run';
 
 export const InterviewerSettings = z.object({
@@ -30,6 +32,14 @@ export type PadRole = z.infer<typeof PadRole>;
 export const PadKind = z.enum(['practice', 'room']);
 export type PadKind = z.infer<typeof PadKind>;
 
+/**
+ *  coding  a coding problem in the shared editor, with runs (every pad before the quant round)
+ *  quant   a live quant round (`quant-round.ts`): questions from the quant track one after
+ *          another, worked on the scratchpad; no editor, no runs, no problem. Practice pads only.
+ */
+export const PadFormat = z.enum(['coding', 'quant']);
+export type PadFormat = z.infer<typeof PadFormat>;
+
 export const HOST_NOTES_MAX = 20_000;
 export const GUEST_NAME_MAX = 60;
 /** People who can join one pad by its invite link (the owner not counted). */
@@ -40,8 +50,13 @@ export const Pad = z.object({
   ownerId: z.string(),
   title: z.string(),
   kind: PadKind.default('practice'),
-  /** null: a room with no library problem (a blank editor, runs as plain programs). */
+  format: PadFormat.default('coding'),
+  /**
+   * null: a room with no library problem (a blank editor, runs as plain programs), and every
+   * quant pad.
+   */
   problemSlug: Slug.nullable(),
+  /** Stored as `python` and meaningless for a quant pad. */
   language: Language,
   status: z.enum(['active', 'ended']),
   /** null: no time limit (no countdown, and the AI interviewer never brings up the clock). */
@@ -76,6 +91,23 @@ export const CreatePadRequest = z.object({
   title: z.string().max(120).optional(),
 });
 export type CreatePadRequest = z.infer<typeof CreatePadRequest>;
+
+/**
+ * POST /api/pads/quant -> Pad: a practice pad of format `quant`, its round assembled from the
+ * path's topics. No language or problem, and the interviewer is always on (it runs the round),
+ * so its settings take no `enabled`.
+ */
+export const CreateQuantPadRequest = z.object({
+  path: QuantPath,
+  durationMin: QuantRoundDuration.default(30),
+  interviewer: InterviewerSettings.omit({ enabled: true }).default({
+    style: 'neutral',
+    proactivity: 'normal',
+    voice: false,
+  }),
+  title: z.string().max(120).optional(),
+});
+export type CreateQuantPadRequest = z.infer<typeof CreateQuantPadRequest>;
 
 export const UpdatePadRequest = z.object({
   language: Language.optional(),
@@ -174,6 +206,8 @@ export const MessageIntent = z.enum([
   'time_check',
   'wrap_up',
   'answer',
+  /** A quant round's question, posed by the server with the bank's exact prompt (not the model). */
+  'question',
 ]);
 export type MessageIntent = z.infer<typeof MessageIntent>;
 
@@ -211,6 +245,8 @@ export const TimelineEvent = z.object({
     z.object({ type: z.literal('joined'), userId: z.string() }),
     /** The host changed the room's problem (null = blank). */
     z.object({ type: z.literal('problem'), problemSlug: Slug.nullable(), title: z.string() }),
+    /** A quant round posed its question `index` (0-based) of `total`. */
+    z.object({ type: z.literal('question'), index: z.int().min(0), total: z.int().min(1) }),
     z.object({ type: z.literal('ended') }),
   ]),
 });
@@ -224,12 +260,31 @@ export const REPORT_DIMENSIONS = [
   'complexity_analysis',
 ] as const;
 
+/** A quant pad's dimensions, in the order the scorecard shows them. */
+export const QUANT_REPORT_DIMENSIONS = [
+  'structuring',
+  'correctness',
+  'communication',
+  'speed',
+  'independence',
+] as const;
+
+/** Either format's dimensions; `communication` is in both lists, so the rest are spelled out. */
+export const ReportDimension = z.enum([
+  ...REPORT_DIMENSIONS,
+  'structuring',
+  'correctness',
+  'speed',
+  'independence',
+]);
+export type ReportDimension = z.infer<typeof ReportDimension>;
+
 export const ReportAssessment = z.object({
   recommendation: z.enum(['strong_hire', 'hire', 'lean_hire', 'lean_no_hire', 'no_hire']),
   summary: z.string(),
   scores: z.array(
     z.object({
-      dimension: z.enum(REPORT_DIMENSIONS),
+      dimension: ReportDimension,
       score: z.int().min(1).max(4),
       evidence: z.string(),
     }),
@@ -268,6 +323,8 @@ export const Report = z.object({
     .nullable(),
   /** A room's report, which only its host can read: the host's own notes. */
   hostNotes: z.string().nullable().default(null),
+  /** A quant pad's questions with their answers and verdicts; null for a coding pad. */
+  quant: QuantReport.nullable().default(null),
 });
 export type Report = z.infer<typeof Report>;
 
@@ -286,6 +343,8 @@ export const PadDetail = z.object({
   interviewerKey: AiKeyState,
   /** The model the interviewer runs on now (null without a usable owner key). */
   interviewerModel: InterviewerModel.nullable().default(null),
+  /** A quant pad's round as the browser may see it (`publicRound`); null for a coding pad. */
+  round: QuantRoundView.nullable().default(null),
 });
 export type PadDetail = z.infer<typeof PadDetail>;
 
@@ -293,6 +352,7 @@ export const PadSummary = Pad.pick({
   id: true,
   title: true,
   kind: true,
+  format: true,
   problemSlug: true,
   language: true,
   status: true,

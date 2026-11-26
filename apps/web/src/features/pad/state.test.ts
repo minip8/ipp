@@ -1,6 +1,12 @@
-import { generateScaffolds, type Message, type PadDetail, type Run } from '@ipp/contracts';
+import {
+  generateScaffolds,
+  type Message,
+  type PadDetail,
+  type QuantRoundView,
+  type Run,
+} from '@ipp/contracts';
 import { describe, expect, it } from 'vitest';
-import { activeRun, chatItems, initPadState, padReducer } from './state';
+import { activeRun, chatItems, initPadState, newerRound, padReducer } from './state';
 
 const PAD = '00000000-0000-4000-8000-000000000001';
 const sig = {
@@ -15,6 +21,7 @@ const detail: PadDetail = {
     ownerId: 'me',
     title: 'T',
     kind: 'practice',
+    format: 'coding',
     problemSlug: 'two-sum',
     language: 'cpp',
     status: 'active',
@@ -45,6 +52,7 @@ const detail: PadDetail = {
   interviewerAvailable: true,
   interviewerKey: 'active',
   interviewerModel: null,
+  round: null,
 };
 const msg = (over: Partial<Message>): Message => ({
   id: '00000000-0000-4000-8000-0000000000aa',
@@ -381,5 +389,57 @@ describe('interview rooms', () => {
     });
     expect(s.pad.language).toBe('python');
     expect(s.pad.shareToken).toBe('tok');
+  });
+});
+
+describe('quant rounds', () => {
+  const view = (version: number, questions = 0): QuantRoundView => ({
+    path: 'trader',
+    total: 3,
+    phase: questions === 0 ? 'pending' : 'asking',
+    version,
+    questions: Array.from({ length: questions }, (_, index) => ({
+      index,
+      topic: 'probability',
+      difficulty: 'easy' as const,
+      prompt: `Question ${index + 1}`,
+      unit: null,
+      posedAt: '2026-01-01T00:01:00.000Z',
+      budgetSec: 420,
+      closedAt: null,
+      hintsGiven: 0,
+    })),
+  });
+  const quant: PadDetail = {
+    ...detail,
+    pad: { ...detail.pad, format: 'quant', problemSlug: null },
+    problem: null,
+    round: view(0),
+  };
+  const updated = (round: QuantRoundView) =>
+    ({ type: 'event', event: { type: 'round.updated', round } }) as const;
+
+  it('starts from the pad detail, and a coding pad has no round', () => {
+    expect(initPadState(quant, 'me').round?.version).toBe(0);
+    expect(initPadState(detail, 'me').round).toBeNull();
+  });
+
+  it('keeps the view with the highest version, whatever order they arrive in', () => {
+    let s = initPadState(quant, 'me');
+    s = padReducer(s, updated(view(2, 2)));
+    expect(s.round?.questions).toHaveLength(2);
+    // An older view (sent before, delivered after) is ignored, and so is a repeat.
+    const before = s;
+    s = padReducer(s, updated(view(1, 1)));
+    expect(s).toBe(before);
+    s = padReducer(s, updated(view(2, 2)));
+    expect(s).toBe(before);
+    s = padReducer(s, updated(view(3, 3)));
+    expect(s.round?.version).toBe(3);
+    expect(s.round?.questions.at(-1)?.prompt).toBe('Question 3');
+  });
+
+  it('takes a view on a pad that had none', () => {
+    expect(newerRound(null, view(0))?.version).toBe(0);
   });
 });

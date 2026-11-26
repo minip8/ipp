@@ -24,6 +24,7 @@ export function padView(row: PadRow, viewerId: string | null): Pad {
     ownerId: row.ownerId,
     title: row.title,
     kind: row.kind,
+    format: row.format,
     problemSlug: row.problemSlug,
     language: row.language,
     status: row.status,

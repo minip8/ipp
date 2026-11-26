@@ -8,6 +8,7 @@ export * from './math';
 export * from './numeric';
 export * from './pad';
 export * from './problem';
+export * from './quant-round';
 export * from './quiz';
 export * from './run';
 export * from './scaffold';

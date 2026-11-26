@@ -9,6 +9,7 @@ import { Id, Language } from './common';
 import { JudgeProgress } from './judge';
 import { Message, Pad, PadMember } from './pad';
 import { ProblemDetail } from './problem';
+import { QuantRoundView } from './quant-round';
 import { Run } from './run';
 
 export const ServerEvent = z.discriminatedUnion('type', [
@@ -32,6 +33,12 @@ export const ServerEvent = z.discriminatedUnion('type', [
   z.object({ type: z.literal('pad.problem'), pad: Pad, problem: ProblemDetail.nullable() }),
   /** Someone joined by the invite link. */
   z.object({ type: z.literal('member.joined'), member: PadMember }),
+  /**
+   * A quant pad's round changed (a question posed or closed, a hint given): the whole view. Sent
+   * after the step's messages, and to every new socket of a quant pad on connection. A client
+   * keeps the view with the highest `version`.
+   */
+  z.object({ type: z.literal('round.updated'), round: QuantRoundView }),
   z.object({ type: z.literal('error'), code: z.string(), message: z.string() }),
   z.object({ type: z.literal('pong') }),
 ]);

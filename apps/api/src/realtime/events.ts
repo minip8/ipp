@@ -10,6 +10,7 @@ import { WebSocket, WebSocketServer } from 'ws';
 import type { Ctx } from '../context';
 import { HttpError } from '../http/errors';
 import { changeLanguage } from '../pads/service';
+import { roundView } from '../quant/round';
 import { messageView } from '../views';
 import type { RoomClient } from './rooms';
 
@@ -87,7 +88,19 @@ export class EventsGateway {
         }),
       );
     });
+    void this.sendRound(padId, client).catch((err) =>
+      ctx.log.error({ err, padId }, 'sending the round failed'),
+    );
     void this.maybeStartSession(padId);
+  }
+
+  /**
+   * A quant pad's round as it is now, to a socket that just connected: the web never refetches
+   * after a drop, and the question panel reads the round, so a reconnect must not leave it stale.
+   */
+  private async sendRound(padId: string, client: RoomClient): Promise<void> {
+    const round = await roundView(this.ctx, padId);
+    if (round) send(client, { type: 'round.updated', round });
   }
 
   /** session_started is sent once per pad, the first time anyone opens its event channel. */
@@ -126,7 +139,7 @@ export class EventsGateway {
     if (ev.type === 'ping') return send(client, { type: 'pong' });
 
     const [pad] = await ctx.db
-      .select({ status: pads.status, kind: pads.kind, ownerId: pads.ownerId })
+      .select({ status: pads.status, kind: pads.kind, ownerId: pads.ownerId, format: pads.format })
       .from(pads)
       .where(eq(pads.id, padId));
     if (pad?.status !== 'active') {
@@ -188,6 +201,8 @@ export class EventsGateway {
         return;
       }
       case 'telemetry': {
+        // A quant pad has no code to paste into: only leaving the tab is kept, for playback.
+        if (pad.format === 'quant' && ev.kind === 'paste') return;
         const chars = clampInt(ev.chars);
         const ms = clampInt(ev.ms);
         await ctx.db.insert(timelineEvents).values({
@@ -209,7 +224,8 @@ export class EventsGateway {
         try {
           await changeLanguage(ctx, padId, ev.language as Language);
         } catch (err) {
-          // e.g. language_unavailable: the problem does not offer this language.
+          // e.g. language_unavailable (the problem does not offer this language), or
+          // wrong_format (a quant pad has no language).
           if (!(err instanceof HttpError)) throw err;
           send(client, { type: 'error', code: err.code, message: err.message });
         }

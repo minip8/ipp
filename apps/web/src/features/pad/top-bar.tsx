@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { DifficultyBadge } from '@/components/domain';
+import { DifficultyBadge, QuantPathBadge } from '@/components/domain';
 import { LogoMark } from '@/components/logo';
 import { Button } from '@/components/ui/button';
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from '@/components/ui/menu';
@@ -185,8 +185,9 @@ function Presence({ max = 4, more = false }: { max?: number; more?: boolean }) {
 }
 
 type TopBarProps = {
-  onSettings: () => void;
-  onShortcuts: () => void;
+  /** Editor settings and the keyboard shortcuts; a quant pad has no editor and leaves them out. */
+  onSettings?: () => void;
+  onShortcuts?: () => void;
   onEnd: () => void;
   /** Phone layout only: the invite link opens in a dialog from the menu. */
   onShare?: () => void;
@@ -245,13 +246,17 @@ function CompactTopBar({ onSettings, onShortcuts, onEnd, onShare }: TopBarProps)
                 <UserPlusIcon /> {isRoom ? 'Invite your candidate' : 'Invite'}
               </MenuItem>
             )}
-            <MenuItem onSelect={onSettings}>
-              <Settings2Icon /> Editor settings
-            </MenuItem>
-            <MenuItem onSelect={onShortcuts}>
-              <KeyboardIcon /> Keyboard shortcuts
-            </MenuItem>
-            {(canEnd || canReport) && <MenuSeparator />}
+            {onSettings && (
+              <MenuItem onSelect={onSettings}>
+                <Settings2Icon /> Editor settings
+              </MenuItem>
+            )}
+            {onShortcuts && (
+              <MenuItem onSelect={onShortcuts}>
+                <KeyboardIcon /> Keyboard shortcuts
+              </MenuItem>
+            )}
+            {(canEnd || canReport) && (canShare || onSettings || onShortcuts) && <MenuSeparator />}
             {canEnd && (
               <MenuItem onSelect={onEnd}>
                 <FlagIcon /> End interview
@@ -285,6 +290,7 @@ export function TopBar(props: TopBarProps) {
           {state.problem?.title ?? state.pad.title}
         </h1>
         {state.problem && <DifficultyBadge difficulty={state.problem.difficulty} />}
+        {state.round && <QuantPathBadge path={state.round.path} />}
         {isRoom ? (
           <span className="truncate text-xs text-fg-subtle" data-testid="room-role">
             {isHost ? '· you are hosting' : host ? `· interview with ${host.name}` : '· interview'}
@@ -307,21 +313,30 @@ export function TopBar(props: TopBarProps) {
             </Button>
           </SharePopover>
         )}
-        <Tooltip label="Keyboard shortcuts" shortcut="Mod+/">
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            onClick={onShortcuts}
-            aria-label="Keyboard shortcuts"
-          >
-            <KeyboardIcon />
-          </Button>
-        </Tooltip>
-        <Tooltip label="Editor settings" shortcut="Mod+.">
-          <Button size="icon-sm" variant="ghost" onClick={onSettings} aria-label="Editor settings">
-            <Settings2Icon />
-          </Button>
-        </Tooltip>
+        {onShortcuts && (
+          <Tooltip label="Keyboard shortcuts" shortcut="Mod+/">
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              onClick={onShortcuts}
+              aria-label="Keyboard shortcuts"
+            >
+              <KeyboardIcon />
+            </Button>
+          </Tooltip>
+        )}
+        {onSettings && (
+          <Tooltip label="Editor settings" shortcut="Mod+.">
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              onClick={onSettings}
+              aria-label="Editor settings"
+            >
+              <Settings2Icon />
+            </Button>
+          </Tooltip>
+        )}
         {readOnly
           ? (!isRoom || isHost) && (
               <Button asChild size="sm" variant="primary" className="ml-1">

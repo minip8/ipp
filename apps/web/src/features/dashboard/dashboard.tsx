@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
-import { DifficultyBadge, LanguageTag } from '@/components/domain';
+import { DifficultyBadge, PadTag } from '@/components/domain';
 import { PageTabPanel, PageTabs, usePageView } from '@/components/page-tabs';
 import { EmptyState, ErrorState } from '@/components/states';
 import { Badge } from '@/components/ui/badge';
@@ -56,6 +56,13 @@ function RoomBadge({ p }: { p: PadSummary }) {
 }
 
 function Outcome({ p }: { p: PadSummary }) {
+  // A quant round is not solved or not: its report scores each question.
+  if (p.format === 'quant')
+    return (
+      <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-fg-muted">
+        <FileTextIcon className="size-4 text-fg-subtle" aria-hidden /> Scored in the report
+      </span>
+    );
   return p.accepted ? (
     <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-ok-text">
       <CircleCheckIcon className="size-4 text-ok" aria-hidden /> Solved
@@ -90,7 +97,7 @@ function ActivePads({ pads, onDelete }: { pads: PadSummary[]; onDelete: OnDelete
               <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-fg-muted">
                 <RoomBadge p={p} />
                 {p.difficulty && <DifficultyBadge difficulty={p.difficulty} />}
-                <LanguageTag language={p.language} />
+                <PadTag pad={p} />
                 <span>Started {formatRelative(p.startedAt)}</span>
               </p>
             </div>
@@ -140,7 +147,7 @@ function HistoryCards({ pads, onDelete }: { pads: PadSummary[]; onDelete: OnDele
                 <RoomBadge p={p} />
               </p>
               <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-xs text-fg-muted">
-                <LanguageTag language={p.language} className="text-xs" />
+                <PadTag pad={p} className="text-xs" />
                 <span aria-hidden>·</span>
                 <span>{formatRelative(p.startedAt)}</span>
                 {len !== null && (
@@ -204,7 +211,7 @@ function HistoryTable({ pads, onDelete }: { pads: PadSummary[]; onDelete: OnDele
                   </div>
                 </td>
                 <td className="hidden px-4 py-2.5 md:table-cell">
-                  <LanguageTag language={p.language} />
+                  <PadTag pad={p} />
                 </td>
                 <td className="hidden px-4 py-2.5 text-fg-muted sm:table-cell">
                   {formatRelative(p.startedAt)}

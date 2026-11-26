@@ -12,10 +12,11 @@ import {
   CodeIcon,
   EyeOffIcon,
   FlagIcon,
+  HelpCircleIcon,
   MicIcon,
   UserPlusIcon,
 } from 'lucide-react';
-import { forwardRef } from 'react';
+import { type ComponentType, forwardRef } from 'react';
 import { RunVerdictIcon, toneText } from '@/components/domain';
 import { Markdown } from '@/components/markdown';
 import { formatClock, formatDuration, humanize } from '@/lib/format';
@@ -123,6 +124,13 @@ function EventRow({ event }: { event: TimelineEvent['event'] }) {
           </span>
         </span>
       );
+    case 'question':
+      return (
+        <span className="flex items-center gap-2 font-medium text-fg" data-testid="question-event">
+          <HelpCircleIcon className="size-4 text-accent-text" aria-hidden /> Question{' '}
+          {event.index + 1} of {event.total}
+        </span>
+      );
     case 'ended':
       return (
         <span className="flex items-center gap-2 text-fg-muted">
@@ -145,38 +153,48 @@ export function speaker(message: Message, selfId?: string, names?: Map<string, s
   return message.userId && selfId ? 'Collaborator' : 'You';
 }
 
+/** How interviewer messages are rendered: plain Markdown, or with math for a quant pad. */
+export type TranscriptText = ComponentType<{ children: string; className?: string }>;
+
 function MessageBody({
   message,
   selfId,
   names,
+  Text,
 }: {
   message: Message;
   selfId?: string;
   names?: Map<string, string>;
+  Text: TranscriptText;
 }) {
   const interviewer = message.role === 'interviewer';
-  const proactive = interviewer && message.kind === 'proactive';
+  const question = interviewer && message.intent === 'question';
+  const proactive = interviewer && message.kind === 'proactive' && !question;
   const who = speaker(message, selfId, names);
   return (
     <div
       className={cn(
         'rounded-lg px-3 py-2 text-sm',
-        proactive
-          ? 'border border-proactive/40 bg-proactive-soft/60'
-          : interviewer
-            ? 'border border-border bg-surface'
-            : 'bg-accent-soft/70',
+        question
+          ? 'border border-accent/40 bg-accent-soft/30'
+          : proactive
+            ? 'border border-proactive/40 bg-proactive-soft/60'
+            : interviewer
+              ? 'border border-border bg-surface'
+              : 'bg-accent-soft/70',
       )}
     >
       <p
         className={cn(
           'mb-0.5 flex items-center gap-1.5 text-2xs font-medium',
-          proactive ? 'text-proactive' : 'text-fg-subtle',
+          question ? 'text-accent-text' : proactive ? 'text-proactive' : 'text-fg-subtle',
         )}
       >
-        {proactive
-          ? `Spoke up${message.intent ? ` · ${humanize(message.intent).toLowerCase()}` : ''}`
-          : who}
+        {question
+          ? 'Question'
+          : proactive
+            ? `Spoke up${message.intent ? ` · ${humanize(message.intent).toLowerCase()}` : ''}`
+            : who}
         {message.via === 'voice' && (
           <span className="inline-flex items-center gap-0.5 text-fg-subtle">
             <MicIcon className="size-3" aria-hidden />
@@ -185,7 +203,7 @@ function MessageBody({
         )}
       </p>
       {interviewer ? (
-        <Markdown className="text-sm leading-relaxed">{message.text}</Markdown>
+        <Text className="text-sm leading-relaxed">{message.text}</Text>
       ) : (
         <p className="leading-relaxed whitespace-pre-wrap">{message.text}</p>
       )}
@@ -203,8 +221,12 @@ export const TranscriptRow = forwardRef<
     onSeek: (t: number) => void;
     selfId?: string;
     names?: Map<string, string>;
+    Text?: TranscriptText;
   }
->(function TranscriptRow({ item, start, past, current, onSeek, selfId, names }, ref) {
+>(function TranscriptRow(
+  { item, start, past, current, onSeek, selfId, names, Text = Markdown },
+  ref,
+) {
   const time = formatClock(Math.max(0, (item.t - start) / 1000));
   return (
     <li ref={ref} className={cn('group relative transition-opacity', !past && 'opacity-45')}>
@@ -222,7 +244,7 @@ export const TranscriptRow = forwardRef<
       </button>
       <div className={cn('pl-12', item.kind === 'message' ? '' : 'py-1 text-xs')}>
         {item.kind === 'message' ? (
-          <MessageBody message={item.message} selfId={selfId} names={names} />
+          <MessageBody message={item.message} selfId={selfId} names={names} Text={Text} />
         ) : (
           <EventRow event={item.event} />
         )}

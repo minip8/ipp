@@ -63,7 +63,8 @@ Better Auth owns `user`, `session`, `account`, `verification` (text ids). App ta
 |---|---|
 | `problems` | `slug` pk, title, difficulty, category, tags text[], statement, signature jsonb, limits jsonb, interviewer_notes, reference_solutions jsonb, languages text[], starter_code jsonb, harness jsonb (server-only), source jsonb |
 | `problem_tests` | problem_slug, idx, hidden, data jsonb (`TestCase`) |
-| `pads` | id uuid, owner_id, title, kind (`practice` / `room`), problem_slug (null: a blank room), language, status, duration_min (null: no time limit), interviewer jsonb, share_token, host_notes (rooms, host-only), started_at, ended_at |
+| `pads` | id uuid, owner_id, title, kind (`practice` / `room`), format (`coding` / `quant`, §8.2), problem_slug (null: a blank room, and every quant pad), language (stored as `python` and unused for a quant pad), status, duration_min (null: no time limit), interviewer jsonb, share_token, host_notes (rooms, host-only), started_at, ended_at |
+| `quant_rounds` | pad_id pk (a quant pad, cascade), state jsonb (`QuantRoundState`, server-only: question ids, verdicts, hint rungs), version (compare-and-swap guard), updated_at |
 | `pad_members` | pad_id, user_id, role (`owner`; `collaborator` = a room's candidate) |
 | `pad_docs` | pad_id pk, state bytea (merged Yjs state), updated_at |
 | `pad_updates` | pad_id, seq, at, update bytea — append-only Yjs history for playback, coalesced to at most one row per ~2 s of editing |
@@ -104,9 +105,10 @@ Every body is validated with the contracts schema named below.
 | `GET /api/problems?difficulty=&tag=&q=` | | `ProblemSummary[]` |
 | `GET /api/problems/:slug` | | `ProblemDetail` |
 | `POST /api/pads` | `CreatePadRequest` (`kind: 'room'` hosts an interview; a room may be `blank`) | `Pad` |
-| `GET /api/pads` | | `PadSummary[]` (mine, newest first) |
-| `GET /api/pads/:id` | | `PadDetail` |
-| `PATCH /api/pads/:id` | `UpdatePadRequest` | `Pad` |
+| `POST /api/pads/quant` | `CreateQuantPadRequest` (`path`, `durationMin` 20 / 30 / 45, `interviewer` without `enabled`, `title?`) | `Pad` (`format: 'quant'`, §8.2); 409 `ai_key_missing` without a usable key, 409 `quant_unavailable` when the path has too few questions, 429 (the `POST /api/pads` allowance) |
+| `GET /api/pads` | | `PadSummary[]` (mine, newest first, with `format`) |
+| `GET /api/pads/:id` | | `PadDetail` (`round`: a quant pad's `QuantRoundView`, else null) |
+| `PATCH /api/pads/:id` | `UpdatePadRequest` | `Pad` (a quant pad: 409 `wrong_format` with `language`; `interviewer.enabled` stays true) |
 | `POST /api/pads/:id/end` | | `Pad` (starts report generation) |
 | `DELETE /api/pads/:id` | | `DeletePadResponse` (owner: deletes the pad and everything attached, closing its live sockets; collaborator: removes only their own membership) |
 | `GET /api/pads/invite/:token` | no session needed | `InviteInfo` (`kind`, `title`, `hostName`, `status`) |
@@ -116,10 +118,10 @@ Every body is validated with the contracts schema named below.
 | `GET /api/pads/:id/host` | | `HostView` (room host: interviewer notes, reference solutions, own notes) |
 | `PUT /api/pads/:id/host/notes` | `UpdateHostNotesRequest` | `{ notes }` (room host; also after the room ended) |
 | `POST /api/pads/:id/review` | `ReviewRequest` (`question?`) | `SolutionReview` (room host, on their key; 409 `ai_key_missing`, 429, 502 `review_failed`) |
-| `GET /api/pads/:id/report` | | `Report` (`assessmentUnavailable` says why there is no assessment; a room's report is its host's alone and carries `hostNotes`) |
+| `GET /api/pads/:id/report` | | `Report` (`assessmentUnavailable` says why there is no assessment; a room's report is its host's alone and carries `hostNotes`; a quant pad's carries `quant`, §8.2); 409 `pad_active` before the pad ends |
 | `POST /api/pads/:id/report/assessment` | | `Report` (owner only, after the pad ended, with a usable key; starts the assessment again, or for a room writes it for the first time) |
 | `GET /api/pads/:id/playback` | | `Playback` |
-| `POST /api/pads/:id/runs` | `CreateRunRequest` | `201 Run` (status `queued`) |
+| `POST /api/pads/:id/runs` | `CreateRunRequest` | `201 Run` (status `queued`); 409 `wrong_format` on a quant pad |
 | `GET /api/runs/:id` | | `Run` |
 | `POST /api/ws-ticket` | `{ padId }` | `WsTicketResponse` |
 | `GET /api/quiz/topics` | | `QuizTopicStats[]` |
@@ -143,7 +145,9 @@ four characters). `PadDetail.interviewerAvailable` / `interviewerKey` describe t
 state and `PadDetail.interviewerModel` the model the interviewer runs on (which implies the key's
 provider); collaborators learn nothing else about it.
 Problem responses never contain hidden tests, interviewer notes or reference solutions; the one
-exception is `GET /api/pads/:id/host`, for the host of a room.
+exception is `GET /api/pads/:id/host`, for the host of a room. Nothing a member reads about an
+active quant pad contains a question's id, answer, explanation, hints or follow-ups, a verdict, or
+any question not yet posed (§8.2).
 
 ### 4.1 Interview rooms
 
@@ -191,14 +195,19 @@ single-use ticket (`POST /api/ws-ticket`, 30 s TTL, stored in Redis, bound to us
 - `/ws/pads/:padId?ticket=` — JSON events, `ServerEvent` / `ClientEvent` in `contracts/src/ws.ts`.
   Run progress and results, chat, streamed interviewer replies, pad updates, and
   `interviewer.status` when the pad owner's key is saved, removed, expires or is rejected (so the
-  interviewer panel changes without a reload). Rooms add `member.joined` and `pad.problem`.
+  interviewer panel changes without a reload). Rooms add `member.joined` and `pad.problem`. A quant
+  pad adds `round.updated` (the whole `QuantRoundView`) after every change to its round and to each
+  socket as it connects; it answers a `language` event with an `error` `wrong_format`, and of
+  `telemetry` keeps only `blur` (on the timeline).
 - `/collab` — Hocuspocus (Yjs). Document `pad:<padId>` (layout in `YDOC`, `contracts/src/pad.ts`);
   the ticket is the Hocuspocus token. On first load the server seeds `code:<language>` for all three
-  languages with `problemScaffold` (the problem's starter code where it has some, else the generated scaffold; empty for a language the problem does not offer). State is persisted to `pad_docs` (debounced) and history to
+  languages with `problemScaffold` (the problem's starter code where it has some, else the generated scaffold; empty for a language the problem does not offer). A quant pad is seeded with nothing: it uses only `notes` (the scratchpad) and the whiteboard. State is persisted to `pad_docs` (debounced) and history to
   `pad_updates`. Ended pads are read-only.
 
 The API holds the live Y.Doc, so the interviewer reads the code server-side without the browser
-sending it. A `code_changed` trigger is raised from the Hocuspocus change hook.
+sending it. A `code_changed` trigger is raised from the Hocuspocus change hook; for a quant pad
+the host turns it into `scratch_changed`, and drops `run_finished`, `telemetry` and
+`language_changed` (`quantTrigger` in `apps/api/src/interviewer/host.ts`).
 
 Single API instance is assumed for now (in-memory pad rooms and interviewer state). Scaling out
 later means the Hocuspocus Redis extension and Redis pub/sub for the event channel; keep room
@@ -446,6 +455,81 @@ browser-native (Web Speech API recognition and synthesis, with barge-in), behind
 can replace it without touching the interviewer. In voice mode the interviewer is told to speak in
 short conversational turns.
 
+### 7.3 The interviewer in a quant round
+
+A quant pad (§8.2) runs on the same per-pad pump, reply queue, key resolution, breakers and budget
+as a coding pad; `hydrate` learns the format from `InterviewerDeps.loadQuantContext` (null: a
+coding pad, which then behaves exactly as before) and hands the pad to
+`packages/interviewer/src/quant/round.ts`. The server keeps every book of the round; the
+interviewer only decides what to say and which step to ask for, and each trigger ends in at most
+one model call and at most one `applyQuantStep`. It keeps a mirror of the round's version, phase
+and clock, refreshed from every context load and step result.
+
+- **Each pass of the pump**, in order: a queued candidate message (a `turn` or a `close`; before
+  the first question the opening and `start`; after the round a plain message through
+  `saveMessage`); the clock (`quantDue` in `quant/clock.ts`: a nudge once the budget is up, a close
+  for `timeout` after the grace, a close for `round_time` at the round's end); then the policy's
+  greeting and stall moments. The policy runs with `quant` set: `scratch_changed` counts as typing
+  activity, and there are no clock checkpoints, checkpoint reviews or approach checks. A nudge
+  waits while the candidate has just spoken; a reply sent once the budget is up carries the nudge
+  itself (`nudge: true`), so there is no separate message.
+- **One structured call per turn**, the same for replies, the opening, nudges, stalls and closes
+  for time: purpose `turn`, `QuantTurnSchema` (`action` silent / stay / hint / follow_up / close,
+  `hint_rung`, `message`, `score`, `summary`, `note`, `reason`) and `QUANT_CALLS.turn` (medium
+  effort), so the cached prefix is never invalidated by a change of effort or schema. Messages are
+  posted whole when the step is taken (no `message.delta`).
+- **Prompt** (`quant/prompts.ts`): `system[0]` is `QUANT_CORE` (the same for every quant pad),
+  `system[1]` the current question in full (prompt, answer or reference and key points,
+  explanation, numbered hints, follow-ups), both cache breakpoints; then this question's
+  conversation (the posted question message is left out: it is in `system[1]`), with a breakpoint
+  on the last interviewer turn; the final user turn holds the new candidate messages and
+  `<candidate_scratchpad>`; the final system message holds the clocks, the books (hints given and
+  the next rung, follow-up asked, whether closing ends the round), earlier questions as numbers
+  only (topic, difficulty, time, hints, score: never their text, answer or verdict wording),
+  settings, private notes and the task. Candidate text is only in user turns, neutralised. The
+  core tells the model never to state the answer while the round is on, at a close to say at most
+  whether the answer was right, never to announce or paraphrase the next question (the platform
+  posts it), to treat thinking aloud as thinking and ask "is that your final answer?" rather than
+  close on a tentative number, to run market-making and betting questions as a dialogue with the
+  authored follow-ups as its next moves, to write mathematics as LaTeX in `$...$` with a literal
+  dollar as `\$` (backslashes doubled in the JSON), and on voice to say mathematics in words.
+- **The books in code** (`normaliseTurn`, `quant/turn.ts`), so a step is never one the server would
+  refuse for its own reasons: a forced turn is a close whatever the model chose; a hint records the
+  next unused authored rung (a higher rung is clamped down, a rung already given or a hint past
+  the ladder is 0, the interviewer's own words), never skipping one; a second follow-up is a plain
+  `stay`; the score is clamped to 0..1 and an empty summary means no verdict; `silent` is honoured
+  on a proactive turn and on a reply to a spoken message only. A typed message with nothing to say
+  is a failed call.
+- **LaTeX in JSON** (`quant/latex.ts`): a single backslash inside a JSON string turns `\frac`,
+  `\binom`/`\beta`, `\times`/`\text`, `\rho`/`\right`, `\nu`/`\neq` into control characters, and
+  `\alpha` or `\$` into invalid JSON. Unparseable output is re-parsed with every backslash that
+  starts no JSON escape doubled; then `message` and `summary` are repaired: a backspace or form
+  feed anywhere becomes `\b` / `\f`; inside `$...$` or `$$...$$` only, a tab or carriage return
+  before a letter becomes `\t` / `\r`, and a newline before a known `\n…` command (`\nu`, `\neq`,
+  `\nabla`, `\not`, …, as a whole word) becomes `\n`. Real newlines, tabs and line endings in
+  ordinary text are never touched.
+- **Failure rules**: a failed, refused or unparseable call on a candidate message gets the usual
+  canned reply and no step; a refused chosen model falls back to the provider default as for
+  coding pads; a close the clock requires happens with a canned line and a null verdict when there
+  is no key, no budget, an open breaker or a failed call, and a nudge likewise with a canned line,
+  so the round's clock never depends on the model; the opening likewise starts the round. A
+  candidate message aborts an in-flight clock turn or opening, and its reply does what the clock
+  required (a forced close on a reply is `kind: 'chat'`). A refused step (`stale`, …) posts
+  nothing. A clock action that failed or was refused is retried after 30 s, not on every pass. A
+  restart greets only while the round is pending and nothing was said, and nudges only while the
+  server's `nudgedAt` is null.
+- **Voice**: the model may stay silent on a spoken message that is plainly mid-thought, and before
+  answering a spoken message the pump waits `voiceSettleMs` (1.5 s, real time, at most four times)
+  for further pieces and answers them together, which keeps a round under the per-pad caps.
+- **Assessment** (`generateQuantAssessment`): with scope `all`, each closed question without a
+  verdict is judged first (one call each, `QuantVerdictSchema`, medium effort) and written back
+  with a `verdict` step; then one high-effort call sees every posed question in full, the
+  transcript with a marker where each question was posted, the final scratchpad, and a code-built
+  table of time, budget, hints (authored used of available, and own), follow-up, how it ended and
+  score per question, and returns a `ReportAssessment` over `QUANT_REPORT_DIMENSIONS` (structuring,
+  correctness, communication, speed, independence), each with quoted or cited evidence.
+- `scripts/simulate.ts --quant` plays a scripted 20-minute round against a live model.
+
 ## 8. Quizzes
 
 Question types (`QuizQuestion`): single choice, multiple choice, output prediction
@@ -535,6 +619,55 @@ is true when a full-mix run scores strictly higher than every earlier full-mix r
 and level (the first one when it scores above 0). Both routes need an account (a guest gets
 `account_required`) and act only on the caller's runs; recording is limited per user
 (`limits.drillRuns`: 6 a minute, 200 a day).
+
+### 8.2 Live quant round
+
+A practice pad of format `quant` (`POST /api/pads/quant`, from the Quant page): the AI interviewer
+asks a few questions of a quant path one after another, out loud or in chat, under the pad's
+clock. There is no problem, no code and no runs; the candidate works on the scratchpad
+(`YDOC.notes`) and the whiteboard. The interviewer runs the round, so a quant pad needs the
+owner's key to be created and its `interviewer.enabled` is always true. Collaborators (an account
+joining by the link, as on any practice pad) see exactly what the owner sees.
+
+- **Assembly** (`apps/api/src/quant/assemble.ts`, pure and seeded, unit-tested): 3, 4 or 6
+  questions for 20, 30 or 45 minutes (`quantQuestionCount`), from the active `short` questions of
+  the path's topics and the `numeric` ones that have hints or follow-ups. Difficulty rises by slot
+  (E M H; E M M H; E M M M H H), topics go round-robin from a random one, no subtopic twice, at
+  least one of each type when the pool has both, the owner's weak questions first (the quiz's
+  latest answers, as "focus weak"), and none posed in the owner's last five rounds (unless the
+  pool would then be too small). An empty cell relaxes the topic, then the difficulty, and only
+  then allows a repeated subtopic. Too few questions is 409 `quant_unavailable`. The prompt, unit
+  and the number of authored hints are copied into the round when it is built.
+- **State** (`quant_rounds.state`, server-only) changes only through `advanceRound`
+  (`packages/contracts/src/quant-round.ts`): `start`, `turn`, `close`, `verdict` from the
+  interviewer (`InterviewerDeps.applyQuantStep`) and `end` from the API. `apps/api/src/quant/round.ts`
+  applies a step in one transaction: a share lock on the pad (so ending it waits, or the step sees
+  it ended), the next state behind a compare-and-swap on `version`, the interviewer's message,
+  the revealed question's message (intent `question`, the bank's exact prompt, `createdAt` 1 ms
+  after the message before it, its id recorded as `posedMessageId`) with a `question` timeline
+  event, and the interviewer's private note. After the commit the room gets `message.created` for
+  each message, then `round.updated`. A step decided on an older version (`stale`), or refused by
+  the transition (`QuantRefusal`), posts nothing; once the pad has ended only `end` and `verdict`
+  are accepted. The interviewer's message counts against the owner's daily AI messages; a posted
+  question counts against neither that nor the per-pad cap.
+- **Clock**: the round ends at `startedAt + durationMin`; each question's budget is set when it is
+  posed (`quantBudgetSec`, unused time rolls forward). The round finishing (last question closed,
+  or closed for `round_time`) does not end the pad; the owner does. Ending the pad
+  (`endPad`) closes the open question as `ended` before `session_ended`, and the assessment
+  (`generateQuantAssessment`, quant dimensions) first judges questions closed without a verdict.
+- **What the browser sees**: `PadDetail.round` and `round.updated` carry `publicRound(state,
+  version)`, the posed questions only (topic, difficulty, prompt, unit, times, hints given as a
+  count); never a question id, a subtopic, a verdict, how a question closed or a question still to
+  come. The report (`Report.quant`, only after the pad ended) is built when read from the state and
+  the bank: per question its status (`answered`, `timed_out`, `unfinished`, `not_reached`),
+  solution, key points, explanation, verdict, time and budget, and hints as counts. The text of
+  hints and follow-ups never leaves the server, not even there.
+- **What the interviewer sees** (`InterviewerHost.loadQuantContext`): the current question in full
+  (scope `all`, for the assessment: every posed one), a code-built summary of the closed ones, the
+  transcript from the latest posed question's message on, and the scratchpad cut at 8,000
+  characters. A later question is in it in no form.
+- **Refused on a quant pad**: runs and a language change (409 / WS `error` `wrong_format`), the
+  room-only endpoints (403 as for any practice pad; `POST …/problem` also checks the format).
 
 ## 9. Security checklist
 

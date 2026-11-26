@@ -2,13 +2,15 @@
 import type { Message } from '@ipp/contracts';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { storage } from '@/lib/storage';
+import { spokenText } from '../questions';
 import { type VoiceErrorCode, type VoiceTransport, WebSpeechTransport } from './transport';
 
 export type VoiceMode = 'push' | 'handsfree';
 
 /**
  * Voice on top of chat: final transcripts are sent as chat messages (via "voice"), and interviewer
- * messages that arrive while voice is on are spoken. Speaking over the interviewer interrupts it.
+ * messages that arrive while voice is on are spoken (a quant round's posed question is pointed to,
+ * not read: see `spokenText`). Speaking over the interviewer interrupts it.
  */
 export function useVoice({
   enabled,
@@ -66,7 +68,7 @@ export function useVoice({
     for (const m of messages) {
       if (spoken.current.has(m.id)) continue;
       spoken.current.add(m.id);
-      if (m.role === 'interviewer') transport?.speak(m.text);
+      if (m.role === 'interviewer') transport?.speak(spokenText(m, messages));
     }
   }, [enabled, messages, transport]);
 

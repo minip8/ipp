@@ -12,9 +12,11 @@ import type {
   InterviewerSettings,
   JudgeResult,
   Language,
+  PadFormat,
   ProblemCategory,
   ProblemLimits,
   ProblemSignature,
+  QuantRoundState,
   QuizQuestion,
   QuizResponse,
   QuizRoadmapNode,
@@ -179,6 +181,8 @@ export const pads = pgTable(
     title: text('title').notNull(),
     /** practice: the owner is the candidate; room: the owner hosts and interviews whoever joins. */
     kind: text('kind').$type<PadKind>().notNull().default('practice'),
+    /** coding: a problem in the editor; quant: a live quant round (`quant_rounds`). */
+    format: text('format').$type<PadFormat>().notNull().default('coding'),
     /** null: a room with a blank editor. A room's host can change it during the interview. */
     problemSlug: text('problem_slug').references(() => problems.slug),
     language: text('language').$type<Language>().notNull(),
@@ -196,6 +200,21 @@ export const pads = pgTable(
   },
   (t) => [index('pads_owner_idx').on(t.ownerId, t.startedAt)],
 );
+
+/**
+ * A quant pad's round, one row per pad of format `quant`, written with it. SERVER-ONLY: the state
+ * holds the question ids and the interviewer's verdicts; the browser gets `publicRound(state,
+ * version)`. Every change goes through `advanceRound` (@ipp/contracts) and a compare-and-swap on
+ * `version`.
+ */
+export const quantRounds = pgTable('quant_rounds', {
+  padId: uuid('pad_id')
+    .primaryKey()
+    .references(() => pads.id, { onDelete: 'cascade' }),
+  state: jsonb('state').$type<QuantRoundState>().notNull(),
+  version: integer('version').notNull().default(0),
+  updatedAt: tsz('updated_at').notNull().defaultNow(),
+});
 
 export const padMembers = pgTable(
   'pad_members',

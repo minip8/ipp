@@ -5,6 +5,8 @@
  * - Candidate messages always get a streamed reply and take priority: an in-flight proactive
  *   decision is aborted and its result discarded (epoch check), so two replies never overlap.
  * - Proactive moments come from the policy; the model makes a structured speak/stay-silent call.
+ * - A quant pad (the pad's format, learned in `hydrate` from `loadQuantContext`) runs the same
+ *   pump, queue, keys and budget through the round runtime in ./quant/round.ts instead.
  */
 import { randomUUID } from 'node:crypto';
 import {
@@ -40,6 +42,7 @@ import {
   systemBlocks,
 } from './prompts';
 import { createModelClient, defaultModelFor } from './providers';
+import { createQuantRuntime, type QuantMirror, type QuantTraceEvent } from './quant/round';
 import { reviewMessages, roomAssessmentMessages, roomSystem } from './room-prompts';
 import type {
   AiScope,
@@ -62,7 +65,8 @@ type UsableKey = Extract<ResolvedKey, { ok: true }>;
 export const DecisionSchema = z.object({
   reason: z.string(),
   speak: z.boolean(),
-  intent: MessageIntent,
+  /** `question` is posed by the server in a quant round, never chosen by a decision. */
+  intent: MessageIntent.exclude(['question']),
   message: z.string(),
   note: z.string(),
 });
@@ -155,7 +159,8 @@ export type TraceEvent =
     }
   | { type: 'error'; purpose: string; kind: string; message: string }
   | { type: 'budget'; reason: string }
-  | { type: 'key'; state: 'active' | 'missing' | 'rejected' };
+  | { type: 'key'; state: 'active' | 'missing' | 'rejected' }
+  | QuantTraceEvent;
 
 export interface InterviewerOptions {
   /**
@@ -168,6 +173,11 @@ export interface InterviewerOptions {
   /** Bounds of the per-key client cache. */
   clientCache?: { max?: number; idleMs?: number };
   trace?: (padId: string, event: TraceEvent) => void;
+  /**
+   * Quant pads on voice: how long (real time) to wait after a spoken message for the next piece
+   * of it before replying; the pieces are answered together. Default 1500 ms; 0 replies at once.
+   */
+  voiceSettleMs?: number;
 }
 
 /** The Interviewer plus test/simulation helpers. */
@@ -247,6 +257,8 @@ interface PadRuntime {
   silentDecisions: { at: number; kind: string; reason: string }[];
   runs: number;
   released: boolean;
+  /** Set for a quant pad (null for a coding pad): the round as last seen. */
+  quant: QuantMirror | null;
 }
 
 export function createInterviewer(
@@ -267,7 +279,11 @@ export function createInterviewer(
    * The model a pad call runs on: the pad's choice while it is for the key's provider (and the
    * provider has not refused it in this session), otherwise the provider default.
    */
-  function padModel(rt: PadRuntime | undefined, ctx: InterviewContext, key: UsableKey): string {
+  function padModel(
+    rt: PadRuntime | undefined,
+    ctx: Pick<InterviewContext, 'pad'>,
+    key: UsableKey,
+  ): string {
     const m = effectiveModel(ctx.pad.interviewer.model, key.provider, defaultModel(key.provider));
     return m.chosen && rt?.unavailableModel === m.id ? defaultModel(key.provider) : m.id;
   }
@@ -299,6 +315,7 @@ export function createInterviewer(
         silentDecisions: [],
         runs: 0,
         released: false,
+        quant: null,
       };
       pads.set(padId, rt);
     }
@@ -440,6 +457,24 @@ export function createInterviewer(
     }
   }
 
+  // ------------------------------------------------------------ quant rounds
+
+  const quant = createQuantRuntime<PadRuntime>({
+    deps,
+    now,
+    callModel,
+    padKey,
+    budgetOk,
+    padModel,
+    keyRejectedNotice,
+    backoffUntil: (keyId) => (keyId && breakers.get(keyId)?.openUntil) || null,
+    note,
+    trace: (padId, e) => trace(padId, e),
+    runtimeOf: (padId) => pads.get(padId),
+    messages: MESSAGES,
+    voiceSettleMs: options.voiceSettleMs ?? 1500,
+  });
+
   // ------------------------------------------------------------ hydration (first work for a pad)
 
   function applyContext(rt: PadRuntime, ctx: InterviewContext): void {
@@ -453,6 +488,21 @@ export function createInterviewer(
 
   async function hydrate(rt: PadRuntime): Promise<void> {
     rt.hydrated = true;
+    if (deps.loadQuantContext) {
+      let q: Awaited<ReturnType<NonNullable<InterviewerDeps['loadQuantContext']>>>;
+      try {
+        q = await deps.loadQuantContext(rt.padId);
+      } catch (err) {
+        // The pad's format is unknown: try again on the next trigger.
+        rt.hydrated = false;
+        throw err;
+      }
+      if (q) {
+        quant.hydrate(rt, q);
+        trace(rt.padId, { type: 'hydrated' });
+        return;
+      }
+    }
     const ctx = await deps.loadContext(rt.padId);
     applyContext(rt, ctx);
     const s = rt.policy;
@@ -593,7 +643,9 @@ export function createInterviewer(
       } catch (err) {
         deps.log.warn({ padId: rt.padId, err: String(err) }, 'interviewer hydrate failed');
       }
+      if (!rt.hydrated) return;
     }
+    if (rt.quant) return quant.pump(rt);
     for (;;) {
       if (rt.released) return;
       if (rt.replyQueue.length > 0) {
@@ -978,6 +1030,13 @@ export function createInterviewer(
     });
   }
 
+  // ------------------------------------------------------------ quant rounds
+
+  /** Verdicts for questions closed without one, then the assessment (./quant/round.ts). */
+  async function generateQuantAssessment(padId: string): Promise<ReportAssessment | null> {
+    return quant.assess(padId);
+  }
+
   // ------------------------------------------------------------ rooms (the host interviews)
 
   async function generateRoomAssessment(padId: string): Promise<ReportAssessment | null> {
@@ -1138,6 +1197,7 @@ export function createInterviewer(
     },
     generateAssessment,
     generateRoomAssessment,
+    generateQuantAssessment,
     reviewSolution,
     gradeShortAnswer,
     discussShortAnswer,

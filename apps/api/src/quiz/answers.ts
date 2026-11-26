@@ -17,6 +17,7 @@ import { type Db, quizAnswers, quizAttempts, quizStandaloneAnswers } from '@ipp/
 import { and, type Column, desc, eq, inArray, sql } from '@ipp/db/orm';
 import type { Ctx } from '../context';
 import { badRequest } from '../http/errors';
+import { type Rand, shuffle } from '../random';
 import { CORRECT_THRESHOLD, correctAnswer, gradeAuto } from './grade';
 
 export type AnswerRow = typeof quizAnswers.$inferSelect;
@@ -188,6 +189,27 @@ export function latestAnswers(
     })
     .from(all)
     .orderBy(all.questionId, desc(all.answeredAt));
+}
+
+/**
+ * The "focus weak" order of question ids: missed or never seen first (mixed), then the ones
+ * answered correctly, least recently first. `seen` is `latestAnswerMap`'s result.
+ */
+export function weakFirst(
+  ids: readonly string[],
+  seen: ReadonlyMap<string, Pick<RecordedAnswer, 'correct' | 'answeredAt'>>,
+  rand: Rand = Math.random,
+): string[] {
+  const weak = shuffle(
+    ids.filter((id) => !seen.get(id)?.correct),
+    rand,
+  );
+  const strong = ids
+    .filter((id) => seen.get(id)?.correct)
+    .sort(
+      (a, b) => (seen.get(a)?.answeredAt.getTime() ?? 0) - (seen.get(b)?.answeredAt.getTime() ?? 0),
+    );
+  return [...weak, ...strong];
 }
 
 export async function latestAnswerMap(

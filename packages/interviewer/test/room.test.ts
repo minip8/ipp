@@ -19,6 +19,7 @@ const pad: Pad = {
   ownerId: 'host',
   title: 'Two Sum',
   kind: 'room',
+  format: 'coding',
   problemSlug: 'two-sum',
   language: 'python',
   status: 'active',

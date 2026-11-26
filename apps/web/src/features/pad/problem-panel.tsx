@@ -1,5 +1,4 @@
 'use client';
-import { CAPS, YDOC } from '@ipp/contracts';
 import {
   ArrowLeftRightIcon,
   BookOpenCheckIcon,
@@ -11,8 +10,7 @@ import {
   FileTextIcon,
   NotebookPenIcon,
 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
-import type * as Y from 'yjs';
+import { useState } from 'react';
 import { CategoryBadge, DifficultyBadge } from '@/components/domain';
 import { Markdown } from '@/components/markdown';
 import { Button } from '@/components/ui/button';
@@ -20,6 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { HostGuide } from '@/features/room/host-tools';
 import { formatMs, humanize, plural } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { NotesEditor } from './notes';
 import { usePad } from './session';
 import { describeTest, tyName } from './tests-format';
 
@@ -206,87 +205,15 @@ function ProblemTab({ onChangeProblem }: { onChangeProblem?: () => void }) {
   );
 }
 
-/** Applies the minimal edit between two strings to a Y.Text. */
-export function applyTextDiff(ytext: Y.Text, prev: string, next: string) {
-  let start = 0;
-  while (start < prev.length && start < next.length && prev[start] === next[start]) start++;
-  let endPrev = prev.length;
-  let endNext = next.length;
-  while (endPrev > start && endNext > start && prev[endPrev - 1] === next[endNext - 1]) {
-    endPrev--;
-    endNext--;
-  }
-  ytext.doc?.transact(() => {
-    if (endPrev > start) ytext.delete(start, endPrev - start);
-    if (endNext > start) ytext.insert(start, next.slice(start, endNext));
-  }, 'notes');
-}
-
 function NotesTab() {
-  const { collab, synced, readOnly } = usePad();
-  const [value, setValue] = useState('');
-  const ref = useRef<HTMLTextAreaElement>(null);
-  const ytext = collab?.doc.getText(YDOC.notes);
-
-  useEffect(() => {
-    if (!ytext) return;
-    setValue(ytext.toString());
-    const obs = (e: Y.YTextEvent) => {
-      if (e.transaction.origin === 'notes' && e.transaction.local) return;
-      const el = ref.current;
-      const next = ytext.toString();
-      if (el && document.activeElement === el) {
-        // Keep the caret where it was relative to the text around it.
-        const { selectionStart, selectionEnd } = el;
-        let shift = 0;
-        let idx = 0;
-        for (const op of e.delta) {
-          if (op.retain) idx += op.retain;
-          else if (op.insert && typeof op.insert === 'string') {
-            if (idx < selectionStart) shift += op.insert.length;
-            idx += op.insert.length;
-          } else if (op.delete) {
-            if (idx < selectionStart) shift -= Math.min(op.delete, selectionStart - idx);
-          }
-        }
-        setValue(next);
-        requestAnimationFrame(() =>
-          el.setSelectionRange(selectionStart + shift, selectionEnd + shift),
-        );
-      } else {
-        setValue(next);
-      }
-    };
-    ytext.observe(obs);
-    return () => ytext.unobserve(obs);
-  }, [ytext]);
-
   return (
-    <div className="flex h-full flex-col">
-      <label htmlFor="pad-notes" className="sr-only">
-        Scratch notes
-      </label>
-      <textarea
-        id="pad-notes"
-        ref={ref}
-        value={value}
-        readOnly={readOnly || !synced}
-        maxLength={CAPS.notesChars}
-        placeholder={
-          'Scratch space for your approach, edge cases and complexity.\n\nNotes are shared with everyone in this pad and kept in the report.'
-        }
-        onChange={(e) => {
-          if (!ytext) return;
-          const next = e.target.value;
-          applyTextDiff(ytext, value, next);
-          setValue(next);
-        }}
-        className="min-h-0 flex-1 resize-none bg-transparent px-4 py-3 font-mono text-[13px] leading-relaxed text-fg outline-none placeholder:font-sans placeholder:text-fg-subtle max-lg:text-base"
-      />
-      <p className="shrink-0 border-t border-border px-4 py-1.5 text-right text-2xs text-fg-subtle tabular">
-        {value.length.toLocaleString()} / {CAPS.notesChars.toLocaleString()}
-      </p>
-    </div>
+    <NotesEditor
+      id="pad-notes"
+      label="Scratch notes"
+      placeholder={
+        'Scratch space for your approach, edge cases and complexity.\n\nNotes are shared with everyone in this pad and kept in the report.'
+      }
+    />
   );
 }
 

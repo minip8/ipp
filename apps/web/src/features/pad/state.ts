@@ -9,6 +9,7 @@ import {
   type Message,
   type Pad,
   type PadDetail,
+  type QuantRoundView,
   type Run,
   type ServerEvent,
 } from '@ipp/contracts';
@@ -57,6 +58,11 @@ export type PadState = {
   progress: Record<string, RunProgress>;
   /** Last error event from the server, shown once as a toast. */
   serverError: { code: string; message: string; at: number } | null;
+  /**
+   * A quant pad's round as the browser may see it (null for a coding pad). Replaced only by a
+   * view with a higher version, so an older `round.updated` arriving late never wins.
+   */
+  round: QuantRoundView | null;
 };
 
 export type PadAction =
@@ -95,7 +101,16 @@ export function initPadState(detail: PadDetail, me: string): PadState {
     runs: [...detail.runs].sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
     progress: {},
     serverError: null,
+    round: detail.round ?? null,
   };
+}
+
+/** The newer of two views of a round: a view replaces another only with a higher version. */
+export function newerRound(
+  current: QuantRoundView | null,
+  next: QuantRoundView,
+): QuantRoundView | null {
+  return current && current.version >= next.version ? current : next;
 }
 
 const sortMessages = (m: Message[]) =>
@@ -299,6 +314,10 @@ function applyEvent(state: PadState, ev: ServerEvent): PadState {
     }
     case 'pong':
       return state;
+    case 'round.updated': {
+      const round = newerRound(state.round, ev.round);
+      return round === state.round ? state : { ...state, round };
+    }
   }
 }
 

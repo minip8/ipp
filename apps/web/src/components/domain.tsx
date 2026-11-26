@@ -4,7 +4,10 @@ import {
   type Difficulty,
   LANGUAGE_LABELS,
   type Language,
+  type PadFormat,
   type ProblemCategory,
+  QUANT_PATH_INFO,
+  type QuantPath,
   type RunVerdict,
   type TestVerdict,
 } from '@ipp/contracts';
@@ -20,6 +23,7 @@ import {
   FileWarningIcon,
   MemoryStickIcon,
   ScrollTextIcon,
+  SigmaIcon,
   XIcon,
   ZapIcon,
 } from 'lucide-react';
@@ -195,6 +199,46 @@ export function LanguageTag({ language, className }: { language: Language; class
     <span className={cn('inline-flex items-center gap-1.5 text-sm text-fg-muted', className)}>
       <span aria-hidden className={cn('size-2 rounded-full', LANG_COLOR[language])} />
       {LANG_LABEL[language]}
+    </span>
+  );
+}
+
+/** Marks a quant round beside its title (the pad's top bar, the report); the path is its tooltip. */
+export function QuantPathBadge({ path, className }: { path: QuantPath; className?: string }) {
+  return (
+    <span
+      data-testid="quant-badge"
+      title={`A live quant round on the ${QUANT_PATH_INFO[path].label.toLowerCase()} path`}
+      className={cn(
+        'inline-flex h-5 items-center gap-1 rounded-[4px] border border-border px-1.5 text-2xs font-medium whitespace-nowrap text-fg-muted',
+        className,
+      )}
+    >
+      <SigmaIcon aria-hidden className="size-3 text-accent-text" />
+      Quant
+    </span>
+  );
+}
+
+/**
+ * What a pad is in a list: its language, or "Quant" for a quant round (whose stored language
+ * means nothing).
+ */
+export function PadTag({
+  pad,
+  className,
+}: {
+  pad: { format: PadFormat; language: Language };
+  className?: string;
+}) {
+  if (pad.format !== 'quant') return <LanguageTag language={pad.language} className={className} />;
+  return (
+    <span
+      data-testid="quant-badge"
+      className={cn('inline-flex items-center gap-1.5 text-sm text-fg-muted', className)}
+    >
+      <SigmaIcon aria-hidden className="size-3.5 text-accent-text" />
+      Quant
     </span>
   );
 }

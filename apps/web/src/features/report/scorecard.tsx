@@ -1,9 +1,11 @@
 'use client';
 import {
   type PadDetail,
+  type QuantReport,
   REPORT_DIMENSIONS,
   type Report,
   type ReportAssessment,
+  type ReportDimension,
 } from '@ipp/contracts';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -17,7 +19,7 @@ import {
   RotateCwIcon,
   SparklesIcon,
 } from 'lucide-react';
-import type { ReactNode } from 'react';
+import type { ComponentType, ReactNode } from 'react';
 import { toast } from 'sonner';
 import { Markdown } from '@/components/markdown';
 import { Button } from '@/components/ui/button';
@@ -25,12 +27,13 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Spinner } from '@/components/ui/spinner';
 import { AiKeyPrompt } from '@/features/ai-key/ai-key-prompt';
 import { api, errorMessage } from '@/lib/api';
-import { formatDuration } from '@/lib/format';
+import { formatDuration, plural } from '@/lib/format';
 import { qk, useAiKey } from '@/lib/queries';
 import { cn } from '@/lib/utils';
+import { roundFigures, scoreView } from './quant-logic';
 
 type Recommendation = ReportAssessment['recommendation'];
-type Dimension = (typeof REPORT_DIMENSIONS)[number];
+type Dimension = ReportDimension;
 
 const RECOMMENDATIONS: { value: Recommendation; label: string; tone: 'bad' | 'warn' | 'ok' }[] = [
   { value: 'no_hire', label: 'No hire', tone: 'bad' },
@@ -46,6 +49,11 @@ export const DIMENSION_LABEL: Record<Dimension, string> = {
   communication: 'Communication',
   testing: 'Testing',
   complexity_analysis: 'Complexity analysis',
+  // A quant round's (QUANT_REPORT_DIMENSIONS; communication is shared).
+  structuring: 'Structuring',
+  correctness: 'Correctness',
+  speed: 'Speed',
+  independence: 'Independence',
 };
 
 const SCORE_WORD = ['', 'Weak', 'Mixed', 'Good', 'Strong'] as const;
@@ -228,6 +236,58 @@ export function StatsStrip({ stats, room }: { stats: Report['stats']; room?: boo
   );
 }
 
+/** The stats strip of a quant round: how far it got, how well, with how much help, how long. */
+export function QuantStatsStrip({ stats, quant }: { stats: Report['stats']; quant: QuantReport }) {
+  const f = roundFigures(quant);
+  const tiles: { label: string; value: ReactNode; sub?: string }[] = [
+    { label: 'Duration', value: formatDuration(stats.durationSec) },
+    {
+      label: 'Answered',
+      value: `${f.answered} of ${f.total}`,
+      sub: f.posed < f.total ? `${f.total - f.posed} not reached` : 'every question posed',
+    },
+    {
+      label: 'Mean score',
+      value: f.meanScore === null ? '—' : scoreView(f.meanScore).label,
+      sub: f.judged ? `over ${plural(f.judged, 'judged answer')}` : 'no answer judged',
+    },
+    {
+      label: 'Hints used',
+      value: f.hintsGiven,
+      sub: f.hintsAvailable ? `${f.hintsAvailable} written for these questions` : undefined,
+    },
+    {
+      label: 'Messages',
+      value: stats.candidateMessages + stats.interviewerMessages,
+      sub: `${stats.candidateMessages} you · ${stats.interviewerMessages} interviewer`,
+    },
+  ];
+  return (
+    <dl
+      className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border sm:grid-cols-3 lg:grid-cols-5"
+      data-testid="quant-stats"
+    >
+      {tiles.map((t, i) => (
+        <div
+          key={t.label}
+          className={cn(
+            'bg-surface px-4 py-3',
+            i === tiles.length - 1 && 'col-span-2 sm:col-span-1',
+          )}
+        >
+          <dt className="text-xs text-fg-muted">{t.label}</dt>
+          <dd className="mt-1 text-lg font-semibold tabular">{t.value}</dd>
+          {t.sub && (
+            <dd className="mt-0.5 truncate text-2xs text-fg-subtle tabular" title={t.sub}>
+              {t.sub}
+            </dd>
+          )}
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 function Notice({
   icon,
   title,
@@ -373,10 +433,16 @@ export function Assessment({
   report,
   pad,
   onRetry,
+  dimensions = REPORT_DIMENSIONS,
+  Text = Markdown,
 }: {
   report: Report;
   pad: PadDetail;
   onRetry: () => void;
+  /** The scorecard's dimensions in order: the coding ones unless given (a quant round's). */
+  dimensions?: readonly ReportDimension[];
+  /** Renders the summary; a quant report typesets its math. */
+  Text?: ComponentType<{ children: string; className?: string }>;
 }) {
   if (report.status === 'pending') {
     return (
@@ -404,9 +470,10 @@ export function Assessment({
   }
   const a = report.assessment;
   if (!a) return <NoAssessment report={report} pad={pad} />;
-  const scores = REPORT_DIMENSIONS.map((d) => a.scores.find((s) => s.dimension === d)).filter(
-    (s): s is NonNullable<typeof s> => Boolean(s),
-  );
+  const scores = dimensions.flatMap((d) => {
+    const s = a.scores.find((x) => x.dimension === d);
+    return s ? [{ ...s, dimension: d }] : [];
+  });
   return (
     <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
       <Card aria-labelledby="assessment-heading">
@@ -415,7 +482,7 @@ export function Assessment({
         </CardHeader>
         <div className="px-4 pt-4 pb-5 sm:px-5">
           <RecommendationScale value={a.recommendation} />
-          <Markdown className="mt-5 text-base leading-relaxed">{a.summary}</Markdown>
+          <Text className="mt-5 text-base leading-relaxed">{a.summary}</Text>
         </div>
         <div className="border-t border-border px-4 sm:px-5">
           <ul className="divide-y divide-border">

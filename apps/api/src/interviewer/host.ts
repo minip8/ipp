@@ -12,12 +12,18 @@ import {
   type InterviewerSettings,
   type Language,
   type Message,
+  type PadFormat,
   type ProblemContent,
+  quantClock,
+  quantPhase,
+  quantRoundEndsAt,
+  quantTimeSec,
   type ServerEvent,
 } from '@ipp/contracts';
 import { aiUsage, interviewerNotes, messages, pads, problems, runs, timelineEvents } from '@ipp/db';
-import { and, asc, count, desc, eq, inArray, sql } from '@ipp/db/orm';
+import { and, asc, count, desc, eq, gte, inArray, sql } from '@ipp/db/orm';
 import type { Ctx } from '../context';
+import { applyStep, bankQuestions, loadRound } from '../quant/round';
 import { toInterviewerRun } from '../runs/redact';
 import { messageView, padView, storedRun } from '../views';
 import type {
@@ -28,6 +34,8 @@ import type {
   InterviewerDeps,
   ModelUsage,
   NewMessage,
+  QuantContext,
+  QuantQuestion,
   QuizQuestionShort,
   ResolvedKey,
   RoomContext,
@@ -40,12 +48,22 @@ export type InterviewerFactory = (deps: InterviewerDeps) => Interviewer;
 
 const TRANSCRIPT_LIMIT = 200;
 const PRIVATE_NOTES_LIMIT = 50;
+/** The scratchpad a quant round's interviewer reads (a coding pad's notes are cut at 3,000). */
+export const QUANT_SCRATCH_CHARS = 8_000;
+
+/** Head and tail of a long text, as the interviewer's prompts cut it. */
+function cut(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const head = Math.floor(max * 0.75);
+  return `${text.slice(0, head)}\n… [${text.length - max} characters omitted] …\n${text.slice(text.length - (max - head))}`;
+}
 
 export const utcDay = (d = new Date()) => d.toISOString().slice(0, 10);
 
 interface PadGate {
   active: boolean;
   enabled: boolean;
+  format: PadFormat;
   at: number;
 }
 
@@ -202,11 +220,16 @@ export class InterviewerHost {
     const cached = this.gates.get(padId);
     if (cached && Date.now() - cached.at < 10_000) return cached;
     const [row] = await this.ctx.db
-      .select({ status: pads.status, interviewer: pads.interviewer })
+      .select({ status: pads.status, interviewer: pads.interviewer, format: pads.format })
       .from(pads)
       .where(eq(pads.id, padId));
     if (!row) return null;
-    const g = { active: row.status === 'active', enabled: row.interviewer.enabled, at: Date.now() };
+    const g = {
+      active: row.status === 'active',
+      enabled: row.interviewer.enabled,
+      format: row.format,
+      at: Date.now(),
+    };
     this.gates.set(padId, g);
     return g;
   }
@@ -215,13 +238,17 @@ export class InterviewerHost {
    * Fire and forget. Dropped when the interviewer is disabled for the pad or the pad ended. A
    * pad whose owner has no key still gets its triggers: the interviewer keeps track of the
    * session and stays silent until a key is there.
+   *
+   * A quant pad has no code and no runs: its document changes arrive as `scratch_changed`, and
+   * run results, telemetry and language changes are not its business.
    */
   trigger(padId: string, trigger: Trigger): void {
     void this.gate(padId)
       .then((g) => {
         if (!g?.enabled) return;
         if (!g.active && trigger.type !== 'session_ended') return;
-        this.interviewer.handle(padId, trigger);
+        const t = g.format === 'quant' ? quantTrigger(trigger) : trigger;
+        if (t) this.interviewer.handle(padId, t);
       })
       .catch((err) =>
         this.ctx.log.error({ err, padId, trigger: trigger.type }, 'interviewer trigger failed'),
@@ -253,6 +280,8 @@ export class InterviewerHost {
       modelUnavailable: (padId, model) => this.modelUnavailable(padId, model),
       loadContext: (padId) => this.loadContext(padId),
       loadRoomContext: (padId) => this.loadRoomContext(padId),
+      loadQuantContext: (padId, scope) => this.loadQuantContext(padId, scope),
+      applyQuantStep: (padId, step) => applyStep(ctx, padId, step),
       saveMessage: (padId, message) => this.saveMessage(padId, message),
       appendPrivateNote: async (padId, note) => {
         await ctx.db.insert(interviewerNotes).values({ padId, note: note.slice(0, 4000) });
@@ -351,6 +380,118 @@ export class InterviewerHost {
       hostNotes: pad.hostNotes,
       transcript: transcript.reverse().map(messageView),
       recentRuns: recent.map((r) => toInterviewerRun(storedRun(r))),
+      now: new Date(),
+    };
+  }
+
+  /**
+   * A quant pad as its interviewer sees it; null for any other pad. Only the current question is
+   * in it in full (`all`, for the assessment: every posed one), and nothing at all about the
+   * questions still to come: they are not in the transcript either, as they have not been posed.
+   */
+  async loadQuantContext(
+    padId: string,
+    scope: 'current' | 'all' = 'current',
+  ): Promise<QuantContext | null> {
+    const { db } = this.ctx;
+    const [pad] = await db.select().from(pads).where(eq(pads.id, padId));
+    if (pad?.format !== 'quant') return null;
+    const row = await loadRound(this.ctx, padId);
+    if (!row) throw new Error(`quant pad ${padId} has no round`);
+    const { state } = row;
+    const phase = quantPhase(state);
+    const posed = state.questions
+      .map((q, index) => ({ q, index }))
+      .filter(({ q }) => q.posedAt !== null);
+    const shown =
+      scope === 'all'
+        ? posed
+        : posed.filter(({ index }) => phase === 'asking' && index === state.current);
+    const bank = await bankQuestions(
+      this.ctx,
+      shown.map(({ q }) => q.questionId),
+    );
+    const questions: QuantContext['questions'] = [];
+    for (const { q, index } of shown) {
+      const b = bank.get(q.questionId);
+      if (b?.type !== 'short' && b?.type !== 'numeric') {
+        this.ctx.log.warn(
+          { padId, questionId: q.questionId },
+          'quant question missing from the bank',
+        );
+        continue;
+      }
+      const question: QuantQuestion = {
+        ...b,
+        // What was posed, should the bank have changed since. The round's books allow only the
+        // authored hints it was built with (`hintsAvailable`): a ladder grown since would have
+        // the interviewer ask for a rung the round refuses, leaving the candidate unanswered.
+        prompt: q.prompt,
+        hints: (b.hints ?? []).slice(0, q.hintsAvailable),
+        followUps: b.followUps ?? [],
+      };
+      questions.push({
+        index,
+        question,
+        hintRungs: [...q.hintRungs],
+        followUpAsked: q.followUpAsked,
+      });
+    }
+
+    // 'current': the conversation since the latest question was posed (all of it before one is).
+    const last = posed.at(-1)?.q.posedMessageId ?? null;
+    const [from] =
+      scope === 'current' && last
+        ? await db
+            .select({ at: messages.createdAt })
+            .from(messages)
+            .where(and(eq(messages.padId, padId), eq(messages.id, last)))
+        : [];
+    const [texts, transcript, notes] = await Promise.all([
+      this.ctx.collab.readTexts(padId),
+      db
+        .select()
+        .from(messages)
+        .where(and(eq(messages.padId, padId), from ? gte(messages.createdAt, from.at) : undefined))
+        .orderBy(desc(messages.createdAt))
+        .limit(TRANSCRIPT_LIMIT),
+      db
+        .select({ note: interviewerNotes.note })
+        .from(interviewerNotes)
+        .where(eq(interviewerNotes.padId, padId))
+        .orderBy(desc(interviewerNotes.at))
+        .limit(PRIVATE_NOTES_LIMIT),
+    ]);
+    const roundEndsAt = quantRoundEndsAt(pad.startedAt, state.durationMin);
+    return {
+      pad: padView(pad, null),
+      round: {
+        version: row.version,
+        total: state.questions.length,
+        phase,
+        clock: quantClock(state, roundEndsAt),
+        path: state.path,
+        closed: state.questions.flatMap((q, index) =>
+          q.closedAt === null
+            ? []
+            : [
+                {
+                  index,
+                  topic: q.topic,
+                  difficulty: q.difficulty,
+                  hints: q.hintRungs.length,
+                  timeSec: quantTimeSec(q) ?? 0,
+                  verdict: q.verdict,
+                  budgetSec: q.budgetSec,
+                  closedBy: q.closedBy,
+                },
+              ],
+        ),
+      },
+      questions,
+      transcript: transcript.reverse().map(messageView),
+      scratch: cut(texts.notes, QUANT_SCRATCH_CHARS),
+      privateNotes: notes.map((n) => n.note).reverse(),
       now: new Date(),
     };
   }
@@ -483,13 +624,34 @@ export class InterviewerHost {
     if (!pad) return { ok: false, reason: 'Pad not found.' };
     const over = await this.overDailyLimit(pad.ownerId);
     if (over) return { ok: false, reason: over };
+    // A quant round's questions are posted by the server, not the model: they do not count.
     const [perPad] = await db
       .select({ n: count() })
       .from(messages)
-      .where(and(eq(messages.padId, padId), eq(messages.role, 'interviewer')));
+      .where(
+        and(
+          eq(messages.padId, padId),
+          eq(messages.role, 'interviewer'),
+          sql`${messages.intent} is distinct from 'question'`,
+        ),
+      );
     if ((perPad?.n ?? 0) >= config.limits.interviewerMessagesPerPad) {
       return { ok: false, reason: 'The interviewer message limit for this pad has been reached.' };
     }
     return { ok: true };
+  }
+}
+
+/** What a trigger means on a quant pad: null when it is not its business. */
+export function quantTrigger(trigger: Trigger): Trigger | null {
+  switch (trigger.type) {
+    case 'code_changed':
+      return { type: 'scratch_changed' };
+    case 'run_finished':
+    case 'telemetry':
+    case 'language_changed':
+      return null;
+    default:
+      return trigger;
   }
 }

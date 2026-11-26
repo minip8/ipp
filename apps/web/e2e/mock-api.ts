@@ -81,6 +81,7 @@ import {
 import { DRILL_RUNS, drillBests } from './fixtures-drill';
 import { QUANT_FOLLOW_UP, QUANT_QUESTIONS, QUANT_TOPIC } from './fixtures-quiz-quant';
 import { QUIZ_ROADMAP } from './fixtures-quiz-roadmap';
+import { MockQuantRounds } from './mock-quant-round';
 import { MockQuizBank } from './mock-quiz-bank';
 
 type RunScript = (id: string, mode: Run['mode']) => Run;
@@ -133,6 +134,8 @@ export class MockBackend {
   quizTopics: QuizTopicStats[] = QUIZ_TOPICS;
   /** Mental math drill runs, newest first (`[]` for a first visit). */
   drillRuns: DrillRun[] = structuredClone(DRILL_RUNS);
+  /** Live quant rounds: their pads, the scripted interviewer and their reports. */
+  quant: MockQuantRounds;
 
   constructor() {
     this.pads.set(ACTIVE_PAD_ID, makePadDetail());
@@ -151,6 +154,7 @@ export class MockBackend {
         },
       }),
     );
+    this.quant = new MockQuantRounds(this);
   }
 
   fail(match: RegExp, status: number, body: unknown, times = 1) {
@@ -219,6 +223,8 @@ export class MockBackend {
 
     await page.routeWebSocket(/\/ws\/pads\//, (ws) => {
       this.sockets.push(ws);
+      const socketPad = /\/ws\/pads\/([0-9a-f-]{36})/.exec(ws.url())?.[1] ?? '';
+      this.quant.connected(ws, socketPad);
       ws.onMessage((raw) => {
         const parsed = ClientEvent.safeParse(JSON.parse(String(raw)));
         if (!parsed.success) {
@@ -228,6 +234,27 @@ export class MockBackend {
         const ev = parsed.data;
         this.received.push(ev);
         if (ev.type === 'ping') ws.send(JSON.stringify({ type: 'pong' }));
+        const quantPad = this.pads.get(socketPad)?.pad.format === 'quant';
+        if (quantPad && ev.type === 'language') {
+          ws.send(
+            JSON.stringify({
+              type: 'error',
+              code: 'wrong_format',
+              message: 'A quant pad has no code',
+            }),
+          );
+          return;
+        }
+        if (quantPad && ev.type === 'chat.send') {
+          const d = this.pads.get(socketPad);
+          this.quant.chat(
+            socketPad,
+            ev.text,
+            ev.via,
+            Boolean(d && this.detail(d).interviewerKey === 'active'),
+          );
+          return;
+        }
         if (ev.type === 'chat.send') {
           // Like the real interviewer: silent without the pad owner's key.
           const padId = /\/ws\/pads\/([0-9a-f-]{36})/.exec(ws.url())?.[1] ?? '';
@@ -515,6 +542,7 @@ export class MockBackend {
       this.pads.set(id, detail);
       return detail.pad;
     }
+    if (path === '/api/pads/quant' && method === 'POST') return this.quant.create(body);
     if (path === '/api/pads' && method === 'GET') return this.summaries;
     if (path === '/api/pads/join' && method === 'POST') {
       const token = (body as { shareToken?: string })?.shareToken ?? '';
@@ -542,8 +570,13 @@ export class MockBackend {
       if (!pad)
         return this.status(404, 'not_found', 'This pad does not exist or you are not a member.');
       if (rest === '' && method === 'GET') return this.detail(pad);
+      const quant = pad.pad.format === 'quant';
       if (rest === '' && method === 'PATCH') {
         const upd = UpdatePadRequest.parse(body);
+        // As on the API: a quant pad has no language, and its interviewer is always on.
+        if (quant && upd.language)
+          return this.status(409, 'wrong_format', 'A quant pad has no language');
+        if (quant && upd.interviewer) upd.interviewer = { ...upd.interviewer, enabled: true };
         const refusal =
           upd.language &&
           pad.pad.problemSlug &&
@@ -559,10 +592,16 @@ export class MockBackend {
         return next;
       }
       if (rest === '/end' && method === 'POST') {
-        pad.pad = { ...pad.pad, status: 'ended', endedAt: new Date().toISOString() };
+        const at = new Date();
+        pad.pad = { ...pad.pad, status: 'ended', endedAt: at.toISOString() };
         this.push({ type: 'pad.updated', pad: pad.pad });
+        if (quant) this.quant.end(id, at);
         return pad.pad;
       }
+      if (quant && rest === '/report') return this.quant.report(id);
+      if (quant && rest === '/playback') return this.quant.playback(id) ?? undefined;
+      if (quant && rest === '/runs' && method === 'POST')
+        return this.status(409, 'wrong_format', 'A quant pad has no code to run');
       const room = pad.pad.kind === 'room';
       const hostOnly = () => this.status(403, 'forbidden', 'Only the host of a room can do this');
       if (rest === '/host' || rest === '/host/notes' || rest === '/review' || rest === '/problem') {
