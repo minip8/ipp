@@ -1,0 +1,280 @@
+# Geometry and spatial puzzles: unfold the surface, look at the limiting case, use continuity or angular speed.
+- id: bt-geometry-001
+  topic: brainteasers
+  subtopic: Geometry and spatial puzzles
+  type: short
+  difficulty: hard
+  tags: [pursuit, angular-speed, circles]
+  prompt: |
+    A duck is at the centre of a circular pond. A fox waits on the shore. It cannot swim, but it runs
+    around the edge 4 times as fast as the duck swims, it can see the duck at all times, and it can
+    change direction instantly. The duck can only take off from the shore, and it escapes if it
+    reaches the shore at a point where the fox is not. The fox plays as well as possible. Can the
+    duck escape? Describe how.
+  reference: |
+    Yes. Let the pond have radius $r$ and the duck swim at speed $v$, so the fox runs at $4v$.
+
+    **Stage 1: get the fox to the opposite side.** On a circle of radius $\rho$ around the centre the
+    duck can go round at angular speed $v / \rho$, while the fox's angular speed is at most
+    $4v / r$. For $\rho < r/4$ the duck turns faster than the fox. So the duck swims out to a radius
+    just under $r/4$ and circles; it gains angle on the fox until the fox is diametrically opposite
+    (as far round the shore as possible from the duck's direction).
+
+    **Stage 2: dash.** The duck swims straight out along its radius. It has just over $\tfrac34 r$
+    to go, taking just over $\tfrac{3r}{4v}$. The fox must run half the shore, $\pi r$, at $4v$,
+    taking $\tfrac{\pi r}{4v}$. Since $3 < \pi$, the duck arrives first (choosing its circling
+    radius close enough to $r/4$).
+  keyPoints:
+    - "Yes, the duck can escape"
+    - Uses angular speed - inside radius r/4 the duck can circle faster (in angle) than the fox
+    - Circles at a radius just under r/4 until the fox is directly opposite
+    - Dashes straight to the shore, covering about 3r/4 while the fox must run πr at four times the speed
+    - Compares 3/4 with π/4 (that is, 3 < π) to show the duck wins
+  hints:
+    - Swimming straight from the centre fails. Why?
+    - Compare angular speeds. On a small circle, who can go round faster?
+    - Get the fox as far away as possible before making a run for it.
+  followUps:
+    - With this strategy, up to what speed ratio does the duck escape?
+    - A cleverer final path lets the duck beat a fox up to about 4.6 times as fast. Why might a straight radial dash not be best?
+  explanation: |
+    The first idea, swimming straight out, fails: the duck needs $r/v$ and the fox needs $\pi r/(4v)$,
+    and $\pi/4 < 1$. The insight is that the fox's disadvantage is angular: near the centre the duck
+    can out-turn it. That lets the duck choose the starting geometry of its dash.
+
+    With a speed ratio $k$ the same plan works while $1 - \tfrac1k < \tfrac{\pi}{k}$, that is
+    $k < 1 + \pi \approx 4.14$. Swimming along a tangent to the circle of radius $r/k$ instead of
+    straight out does better still, raising the limit to about $4.60$. Candidates often answer "no,
+    the fox is too fast" after trying the direct route, or say "circle and then dash" without checking
+    that the dash beats the fox.
+  source: { name: "Duck and fox (classic; e.g. Gardner, Mathematical Carnival; tradinginterview.com)", url: "https://www.tradinginterview.com/trading-brain-teasers/" }
+
+- id: bt-geometry-002
+  topic: brainteasers
+  subtopic: Geometry and spatial puzzles
+  type: short
+  difficulty: medium
+  tags: [sphere, latitude, poles]
+  prompt: |
+    Treat the Earth as a perfect sphere. You walk 1 km due south, then 1 km due east, then 1 km due
+    north, and end up exactly where you started. Where could you have started? Find **all** such
+    points.
+  reference: |
+    **The North Pole.** Walking south 1 km, then east along a circle of latitude, then north 1 km
+    returns you to the pole whatever the east leg did.
+
+    **Infinitely many circles near the South Pole.** Near the South Pole there is a circle of latitude
+    whose length is exactly 1 km. Start anywhere on the circle 1 km north of it: walking south brings
+    you onto the 1 km circle, walking east takes you once around it back to the same point, and
+    walking north retraces your first leg. The same works for the circle of length $\tfrac12$ km (the
+    east leg goes round twice), $\tfrac13$ km (three times), and so on: for every whole number
+    $n \ge 1$, every point 1 km north of the circle of length $\tfrac1n$ km works.
+
+    No other points work: unless you start at the North Pole, the south and north legs are along the
+    same meridian, so you return only if the east leg brings you back to that meridian, that is, it
+    goes around a whole number of times. (The South Pole itself does not work, since you cannot walk
+    south from it.)
+  keyPoints:
+    - The North Pole is one answer
+    - Near the South Pole, the east leg can go exactly once around a circle of latitude of length 1 km
+    - Any starting point 1 km north of that circle works
+    - More generally, circles of length 1/n km, giving infinitely many circles of starting points
+    - Explains why no other point works (the east leg must return you to the same meridian)
+  hints:
+    - The North Pole works. Why?
+    - The south and north legs cancel only if you come back to the same meridian. When does walking east 1 km do that?
+    - Think about very small circles of latitude.
+  followUps:
+    - What if the walk is 1 km south, 1 km west, 1 km north?
+    - "What if the legs are: 1 km north, 1 km east, 1 km south?"
+  explanation: |
+    Most people find the North Pole and stop; the interviewer is waiting for the circles near the
+    South Pole, and then for the realisation that there are infinitely many of them (an east leg that
+    wraps 2, 3, ... times). A complete answer also says why nothing else works.
+
+    The sphere matters only through one fact: away from the poles, walking east keeps you on your
+    circle of latitude, and you come back to your meridian exactly when you have gone round a whole
+    number of times.
+  source: { name: "Where on Earth (classic; e.g. Poundstone, How Would You Move Mount Fuji?)" }
+
+- id: bt-geometry-003
+  topic: brainteasers
+  subtopic: Geometry and spatial puzzles
+  type: numeric
+  difficulty: medium
+  tags: [unfolding, shortest-path, box]
+  prompt: |
+    An ant stands at one corner of a closed box measuring 30 cm by 20 cm by 10 cm and wants to reach
+    the diagonally opposite corner, crawling only on the outside surface. What is the length of the
+    shortest route, in centimetres?
+  answer: 42.4264069
+  answerText: |-
+    $30\sqrt{2} \approx 42.43$ cm
+  unit: cm
+  hints:
+    - Unfold the box so that the two faces the ant crosses lie flat in one plane.
+    - There are three essentially different pairs of faces the ant can cross. Compute each.
+  followUps:
+    - On a cube of side 1, what is the shortest route between opposite corners?
+    - Can the shortest route between two points on a box ever cross three faces?
+  explanation: |
+    A shortest route between opposite corners crosses two adjacent faces. Unfold those two faces into
+    one flat rectangle: the route becomes a straight line, the diagonal of a rectangle whose sides are
+    one edge length and the sum of the other two. The three choices give
+
+    $$\sqrt{(20 + 10)^2 + 30^2} = \sqrt{1800} \approx 42.43, \quad \sqrt{(30 + 10)^2 + 20^2} = \sqrt{2000} \approx 44.72, \quad \sqrt{(30 + 20)^2 + 10^2} = \sqrt{2600} \approx 50.99.$$
+
+    The shortest is $\sqrt{1800} = 30\sqrt2 \approx 42.43$ cm: add the two shorter edges and pair them
+    with the longest.
+
+    The common wrong answers are the space diagonal $\sqrt{30^2 + 20^2 + 10^2} \approx 37.4$ cm (the
+    ant cannot go through the box) and the route along a face diagonal and then an edge,
+    $\sqrt{30^2 + 20^2} + 10 \approx 46.1$ cm.
+  source: { name: "Ant on a box (classic unfolding puzzle; e.g. Dudeney's spider and fly)" }
+
+- id: bt-geometry-004
+  topic: brainteasers
+  subtopic: Geometry and spatial puzzles
+  type: numeric
+  difficulty: hard
+  tags: [volume, limiting-case, cavalieri]
+  prompt: |
+    A cylindrical hole is drilled straight through the centre of a solid sphere, along a diameter. The
+    ring that remains is 6 cm tall (the hole is 6 cm long). You are not told the radius of the sphere.
+    What volume of material is left, in cubic centimetres?
+  answer: 113.097336
+  answerText: |-
+    $36\pi \approx 113.1$ cubic cm
+  unit: cubic cm
+  hints:
+    - The question can only be answered if the result does not depend on the sphere's size. Assume it does not.
+    - What happens if the hole has zero width?
+    - To prove it, compare cross-sections at height $z$ from the centre.
+  followUps:
+    - Prove that the volume does not depend on the radius of the sphere.
+    - What is the volume for a ring of height $h$?
+  explanation: |
+    **Quick route.** If the answer is determined, it is the same for every sphere, including the one
+    whose radius is 3 cm, where the hole has zero width. That leaves the whole sphere:
+    $\tfrac43 \pi \cdot 3^3 = 36\pi \approx 113.1$ cubic cm.
+
+    **Proof.** Let the sphere have radius $R$ and the hole radius $a$, with $R^2 - a^2 = 3^2$ (the
+    ring's half-height is 3). At height $z$ (for $|z| \le 3$), the cross-section is an annulus between
+    radius $\sqrt{R^2 - z^2}$ and $a$, with area
+
+    $$\pi\left(R^2 - z^2 - a^2\right) = \pi\left(9 - z^2\right),$$
+
+    which does not involve $R$. It equals the cross-section of a sphere of radius 3 at height $z$, so
+    by Cavalieri's principle the volumes agree: $36\pi$, or $\tfrac{\pi h^3}{6}$ for a ring of height
+    $h$.
+
+    Candidates often say the question is missing information. It is not, and spotting the limiting
+    case is the intended shortcut; the cross-section argument is the follow-up.
+  source: { name: "Napkin ring problem (classic; e.g. Gardner)" }
+
+- id: bt-geometry-005
+  topic: brainteasers
+  subtopic: Geometry and spatial puzzles
+  type: single
+  difficulty: easy
+  tags: [circumference, linearity, intuition]
+  prompt: |
+    A rope fits tightly around the Earth's equator (about 40,000 km). A second rope fits tightly
+    around a football (about 70 cm). Each rope is lengthened just enough to be held, as a circle,
+    1 metre above the surface all the way round. Which needs more extra rope?
+  choices:
+    - { id: a, text: "The Earth's rope needs far more" }
+    - { id: b, text: "The football's rope needs more" }
+    - { id: c, text: "They need the same, about 6.3 metres each" }
+    - { id: d, text: "They need the same, about 1 metre each" }
+  answer: c
+  explanation: |
+    A circle of radius $R$ has circumference $2\pi R$. Raising the rope by 1 metre makes the radius
+    $R + 1$, so the extra length is
+
+    $$2\pi(R + 1) - 2\pi R = 2\pi \approx 6.28 \text{ metres},$$
+
+    whatever $R$ is. The Earth and the football need exactly the same extra rope.
+
+    Choice a is the intuition that a bigger circle needs more of everything, which fails because
+    circumference is linear in the radius. Choice d confuses the increase in radius with the increase
+    in length.
+  source: { name: "Rope around the Earth (classic; e.g. Whiston, 1702; Poundstone)" }
+
+- id: bt-geometry-006
+  topic: brainteasers
+  subtopic: Geometry and spatial puzzles
+  type: single
+  difficulty: medium
+  tags: [counting, euler-formula, pattern-trap]
+  prompt: |
+    Six points are placed on a circle so that no three of the chords joining them meet at a single
+    point inside the circle. All 15 chords are drawn. Into how many regions do they divide the inside
+    of the circle?
+  choices:
+    - { id: a, text: "32" }
+    - { id: b, text: "31" }
+    - { id: c, text: "30" }
+    - { id: d, text: "16" }
+  answer: b
+  explanation: |
+    With 1, 2, 3, 4, 5 points the counts are 1, 2, 4, 8, 16, so 32 looks inevitable. It is wrong.
+
+    Count directly. Start with 1 region and draw the chords one at a time. A chord that crosses $c$
+    chords already drawn is cut into $c + 1$ pieces, and each piece splits a region in two, so it adds
+    $c + 1$ regions. Adding up, the number of regions is 1 plus the number of chords plus the number of
+    crossings. Each set of 4 points gives exactly one crossing (the two diagonals of their
+    quadrilateral), so
+
+    $$\text{regions} = 1 + \binom{n}{2} + \binom{n}{4} = 1 + 15 + 15 = 31 \quad\text{for } n = 6.$$
+
+    Choice a is the doubling pattern, the point of the question: a few terms of a sequence do not
+    determine it. Choice c usually comes from a miscount by hand, and d from the case of five points.
+  source: { name: "Moser's circle problem (classic; e.g. Winkler, Mathematical Puzzles)" }
+
+- id: bt-geometry-007
+  topic: brainteasers
+  subtopic: Geometry and spatial puzzles
+  type: short
+  difficulty: hard
+  tags: [intermediate-value-theorem, bisection, continuity]
+  prompt: |
+    Two pancakes lie on a table. Each is a flat region of any shape, in one piece; they may overlap
+    or be far apart. Show that a single straight cut (a line in the plane) can divide **each** pancake
+    into two parts of equal area.
+  reference: |
+    **Step 1: bisect one pancake in every direction.** Fix a direction $\theta$ and slide a line with
+    that direction across the plane. The area of pancake $A$ on its left goes continuously from 0 to
+    all of $A$, so by the intermediate value theorem some line in direction $\theta$ cuts $A$ in half.
+    Because $A$ is in one piece, that area strictly increases while the line is crossing $A$, so the
+    halving line is unique. Call it $L_\theta$; it depends continuously on $\theta$.
+
+    **Step 2: rotate and track the other pancake.** Let $f(\theta)$ be the area of pancake $B$ to the
+    left of $L_\theta$, minus half the area of $B$. Turning the direction by 180 degrees gives the same
+    line with left and right swapped, so $f(\theta + 180^\circ) = -f(\theta)$.
+
+    **Step 3: conclude.** $f$ is continuous and takes opposite signs (or is zero) at $\theta$ and
+    $\theta + 180^\circ$, so it is zero somewhere in between. At that direction, $L_\theta$ halves $A$
+    by construction and $B$ because $f = 0$.
+  keyPoints:
+    - For every direction, uses the intermediate value theorem to find a line in that direction halving the first pancake
+    - Defines a continuous function measuring how unevenly that line splits the second pancake
+    - Observes that reversing the direction (turning by 180 degrees) changes the sign of that function
+    - Applies the intermediate value theorem again to get a direction where both are halved
+  hints:
+    - First forget the second pancake. For a fixed direction, can you always halve one pancake with a line in that direction?
+    - Now rotate the direction. What happens to the second pancake's split?
+    - Compare the line for direction $\theta$ with the line for $\theta$ plus 180 degrees.
+  followUps:
+    - Can you always halve three pancakes with one straight cut?
+    - Show that one pancake can always be cut into four equal pieces by two perpendicular straight cuts.
+  explanation: |
+    This is the two-dimensional ham sandwich theorem, and it is a test of using continuity twice. The
+    first use (a halving line in every direction) is routine; the key is the second, where the
+    symmetry $f(\theta + 180^\circ) = -f(\theta)$ guarantees a sign change without knowing anything
+    about the shapes.
+
+    Answers that cut through both centres of mass are wrong for non-symmetric shapes: a line through
+    the centroid need not halve the area. Three pancakes cannot always be halved in the plane (three
+    small discs not on a line), though three solids in space can be halved by one plane.
+  source: { name: "Pancake theorem / ham sandwich theorem (Steinhaus; e.g. Winkler, Mathematical Puzzles)" }

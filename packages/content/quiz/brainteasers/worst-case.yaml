@@ -1,0 +1,332 @@
+# Optimisation and worst case: the fewest drops, crossings, races or comparisons that always suffice, with a matching lower bound.
+- id: bt-worst-case-001
+  topic: brainteasers
+  subtopic: Optimisation and worst case
+  type: numeric
+  difficulty: medium
+  tags: [egg-drop, minimax, dynamic-programming]
+  prompt: |
+    A building has 100 floors. There is some floor (possibly 0, possibly 100) such that an egg dropped
+    from that floor or below survives, and an egg dropped from any higher floor breaks. You have two
+    identical eggs. An egg that survives a drop is undamaged and can be reused; a broken egg is gone.
+    What is the smallest number of drops that guarantees you find that floor?
+  answer: 14
+  unit: drops
+  hints:
+    - With one egg, what must you do?
+    - With two eggs, suppose your first drop is from floor $k$. If it breaks, how many more drops can you need?
+    - If you are allowed $d$ drops in total, the first drop should be from floor $d$, the next from $d + (d - 1)$, and so on. How many floors can that cover?
+  followUps:
+    - With three eggs and 100 floors, how many drops do you need?
+    - Write the recurrence for $e$ eggs and $n$ floors. How would you compute it quickly?
+  explanation: |
+    With one egg you must go floor by floor from the bottom, so after the first egg breaks at floor
+    $k$ you may need to test every floor between the last safe floor and $k$.
+
+    Turn the question around: with $d$ drops and two eggs, how many floors can you handle? The first
+    drop should be from floor $d$: if it breaks, the second egg checks floors $1, \ldots, d - 1$ in
+    $d - 1$ drops. If it survives, you have $d - 1$ drops left, so the next drop is $d - 1$ floors
+    higher, and so on. That covers
+
+    $$d + (d - 1) + \cdots + 1 = \frac{d(d+1)}{2}$$
+
+    floors, and no strategy covers more. Since $\frac{13 \cdot 14}{2} = 91 < 100 \le 105 = \frac{14 \cdot 15}{2}$,
+    14 drops are needed and enough (first drop from floor 14, then 27, 39, 50, ...).
+
+    The common wrong answer is 19 or 20 from dropping every 10 floors and then going one at a time: it
+    wastes drops because the step does not shrink as the first egg uses up drops. Another is 7, from
+    binary search, which is only possible with many eggs.
+  source: { name: "Two-egg problem (widely asked; e.g. techinterview.org; LSU Quant Interview Prep)", url: "https://www.math.lsu.edu/~smolinsk/Quant_Interview_Prep.pdf" }
+
+- id: bt-worst-case-002
+  topic: brainteasers
+  subtopic: Optimisation and worst case
+  type: numeric
+  difficulty: medium
+  tags: [bridge-and-torch, optimisation, search]
+  prompt: |
+    Four people must cross a bridge at night. The bridge holds at most two people at a time, and
+    they have one torch, which must be carried on every crossing (it cannot be thrown back). Alone,
+    they take 1, 2, 6 and 9 minutes to cross; two crossing together go at the slower one's pace.
+    What is the shortest total time to get everyone across?
+  answer: 16
+  unit: minutes
+  hints:
+    - The obvious plan sends the fastest person back with the torch every time. How long does that take?
+    - Where is time wasted in that plan? Think about the two slowest people.
+    - What if the two slowest cross together?
+  followUps:
+    - With crossing times 1, 4, 5 and 10, is the same plan still best?
+    - Describe the rule for $n$ people.
+  explanation: |
+    The plan that sends the 1-minute person back each time costs $2 + 1 + 6 + 1 + 9 = 19$ minutes:
+    the 6 and the 9 are each paid separately.
+
+    Better: send the two slowest across **together**, so only one of their times is paid.
+
+    1. 1 and 2 cross: 2 minutes.
+    2. 1 returns: 1 minute.
+    3. 6 and 9 cross: 9 minutes.
+    4. 2 returns: 2 minutes.
+    5. 1 and 2 cross: 2 minutes.
+
+    Total $2 + 1 + 9 + 2 + 2 = 16$ minutes. Any plan needs at least three forward trips and two
+    returns, and an exhaustive search over all plans confirms 16 is the minimum.
+
+    The pairing trick pays off when $2b < a + c$, with $a$ the fastest, $b$ the second fastest and $c$
+    the second slowest. Here $4 < 7$. With times 1, 4, 5, 10 it does not ($8 > 6$), and escorting
+    with the fastest person (21 minutes) beats pairing (23). Answers that memorise "17" from the usual
+    1, 2, 5, 10 version or always apply one plan miss this.
+  source: { name: "Bridge and torch problem (classic; e.g. Poundstone, How Would You Move Mount Fuji?)" }
+
+- id: bt-worst-case-003
+  topic: brainteasers
+  subtopic: Optimisation and worst case
+  type: short
+  difficulty: medium
+  tags: [tournament, ranking, horses]
+  prompt: |
+    You have 25 horses and a track on which at most 5 horses can race at once. You have no stopwatch:
+    a race only tells you the order in which its horses finish. Each horse always runs at the same
+    speed, and no two horses have the same speed. Show how to find the three fastest horses, in order,
+    in 7 races, and explain why fewer than 6 races cannot work.
+  reference: |
+    **Races 1 to 5:** split the horses into five groups of five and race each group. Label the groups
+    $A$ to $E$ by the order of their winners in race 6 below, and within each group label horses by
+    finishing place: $A_1, A_2, \ldots$.
+
+    **Race 6:** race the five group winners. Say $A_1 > B_1 > C_1 > D_1 > E_1$. Then $A_1$ is the
+    fastest horse overall.
+
+    Now the candidates for second and third: $D$ and $E$ are out entirely (their best is behind $A_1$,
+    $B_1$ and $C_1$). From group $C$, only $C_1$ can be third ($C_2$ is behind $C_1$, $B_1$ and $A_1$).
+    From group $B$, $B_1$ and $B_2$ can be second or third, but not $B_3$. From group $A$, $A_2$ and
+    $A_3$.
+
+    **Race 7:** race $A_2, A_3, B_1, B_2, C_1$. The first two finishers are the second and third
+    fastest overall.
+
+    **Lower bound:** every horse other than the fastest must lose at least one race, or it could be the
+    fastest. Each race has at most 4 losers, so finding even the fastest horse needs at least
+    $\lceil 24 / 4 \rceil = 6$ races, and 5 races cannot work.
+  keyPoints:
+    - Races all 25 horses in five heats of five
+    - Races the five heat winners; the winner of that race is the fastest horse
+    - Identifies the only five candidates for second and third (A2, A3, B1, B2, C1) and explains why the others are ruled out
+    - A seventh race among those five settles second and third
+    - Argues that at least six races are needed, since 24 horses must each lose at least once and a race has only four losers
+  hints:
+    - Every horse has to race at least once. How many races does that take?
+    - After the heats, race the winners. Who is now known to be fastest?
+    - Which horses can still be second or third? List them.
+  followUps:
+    - Where does a plan with only six races run into trouble?
+    - How many races do you need to find only the fastest horse? Only the fastest two?
+  explanation: |
+    The skill being tested is ruling candidates out carefully. Most candidates get the five heats and
+    the race of winners; the errors come in the candidate list. A horse can only be in the top three
+    if at most two horses are known to be faster than it: $B_3$ is behind $B_2$, $B_1$ and $A_1$, and
+    $C_2$ is behind $C_1$, $B_1$ and $A_1$, so both are out.
+
+    The counting bound gives 6. Seven is the accepted optimum, but showing that 6 races can never
+    also settle second and third takes a longer case analysis, and the question does not ask for it.
+    The commonly quoted wrong answers are 6 (taking the top three of the race of winners, forgetting
+    that a group's runner-up can beat another group's winner) and 8 (racing too many candidates in
+    race 7).
+  source: { name: "25 horses (widely asked; e.g. techinterview.org)", url: "https://www.techinterview.org/post/3233476822/quant-interview-logic-puzzles/" }
+
+- id: bt-worst-case-004
+  topic: brainteasers
+  subtopic: Optimisation and worst case
+  type: numeric
+  difficulty: hard
+  tags: [comparisons, adversary-argument, lower-bound]
+  prompt: |
+    You are given 100 distinct numbers and can only compare two at a time (each comparison tells you
+    which of the two is larger). What is the smallest number of comparisons that **guarantees** you
+    find both the largest and the smallest number?
+  answer: 148
+  unit: comparisons
+  hints:
+    - Finding the largest takes 99 comparisons, and then the smallest takes 98 more. Can one comparison help with both?
+    - Compare the numbers in pairs first. Where can the largest be, and where the smallest?
+    - For the lower bound, count how many numbers still need to lose a comparison and how many still need to win one.
+  followUps:
+    - Prove that no method does better (an adversary argument).
+    - What is the answer for an odd number $n$ of numbers?
+  explanation: |
+    **148 comparisons suffice.** Compare the numbers in 50 pairs (50 comparisons). The largest
+    number is among the 50 pair winners, so find the largest winner (49 comparisons); the smallest is
+    among the 50 losers (49 comparisons). Total $50 + 49 + 49 = 148$, which is $\tfrac{3n}{2} - 2$.
+
+    **No method does better.** To be sure of the answer, every number except the largest must have
+    lost a comparison and every number except the smallest must have won one: $99 + 99 = 198$ pieces
+    of information. An adversary answers each comparison so as to give away as little as possible.
+    A comparison between two numbers never compared before must hand out 2 pieces (one wins, one
+    loses), but there can be at most 50 such comparisons. Any other comparison can be answered so that
+    it gives at most 1 new piece (for example a number that has only won so far is declared the winner
+    again). So at least $50 + (198 - 100) = 148$ comparisons are needed.
+
+    The common wrong answer is 197 or 198 ($2n - 3$ from finding the maximum and minimum separately).
+    Others guess 150 from "$1.5n$" without the $-2$.
+  source: { name: "Simultaneous maximum and minimum (Pohl, 1972; e.g. CLRS, Introduction to Algorithms)" }
+
+- id: bt-worst-case-005
+  topic: brainteasers
+  subtopic: Optimisation and worst case
+  type: short
+  difficulty: easy
+  tags: [binary, payment, gold-bar]
+  prompt: |
+    You hire a worker for 7 days and must pay one-seventh of a gold bar at the end of each day, so
+    that at the end of day $k$ the worker holds exactly $k$ sevenths. The bar is marked into 7 equal
+    segments and you may make **two** straight cuts along the marks. You may take pieces back from
+    the worker as change. How do you cut the bar, and how do you pay?
+  reference: |
+    Cut it into pieces of 1, 2 and 4 segments.
+
+    - Day 1: give the 1.
+    - Day 2: give the 2, take back the 1.
+    - Day 3: give the 1 (worker has 1 + 2).
+    - Day 4: give the 4, take back the 1 and the 2.
+    - Day 5: give the 1.
+    - Day 6: give the 2, take back the 1.
+    - Day 7: give the 1 (worker has everything).
+
+    It works because every number from 1 to 7 is a sum of distinct pieces from $\{1, 2, 4\}$ (binary
+    representation). One cut cannot work: two pieces $a + b = 7$ only make the totals $0, a, b, 7$.
+  keyPoints:
+    - Cuts the bar into pieces of 1, 2 and 4 segments
+    - Uses exchanges (taking pieces back) so the worker holds exactly k sevenths on day k
+    - Every total from 1 to 7 is a sum of distinct pieces from 1, 2, 4 (binary)
+    - Notes one cut (two pieces) cannot produce every total
+  hints:
+    - The worker can give pieces back. So what matters is which totals the pieces can make.
+    - With three pieces, which sizes let you make every total from 1 to 7?
+  followUps:
+    - With three cuts, for how many days can you pay?
+    - The bar is replaced by a chain of 23 links, and you may cut individual links (a cut link becomes a separate piece). How few cuts suffice?
+  explanation: |
+    Once you allow change, the question is which piece sizes make every total from 1 to 7, and
+    powers of two are the answer: with $k$ cuts you get $k + 1$ pieces and can pay for $2^{k+1} - 1$
+    days. Candidates often look for a plan that only ever hands over pieces, which needs 6 cuts.
+  source: { name: "Paying a worker with a gold bar (classic; e.g. Poundstone, How Would You Move Mount Fuji?)" }
+
+- id: bt-worst-case-006
+  topic: brainteasers
+  subtopic: Optimisation and worst case
+  type: short
+  difficulty: hard
+  tags: [search, competitive-ratio, doubling]
+  prompt: |
+    You stand on a long straight road. Somewhere along it, at a whole number of kilometres from you
+    (at least 1), either to the east or to the west, is a gate. You will only notice the gate when you
+    reach it. You plan to walk 1 km east and back, then 2 km west and back, then 4 km east and back,
+    and so on, doubling each time and alternating directions, until you find it.
+
+    In the worst case, how does the total distance you walk compare with the gate's true distance?
+    Why is doubling a good choice of factor?
+  reference: |
+    The worst case is a gate just beyond a turning point: you reach $2^k$ on its side, turn back
+    without seeing it, and only find it on the next trip to that side, $2^{k+2}$ out. With the gate at
+    distance just over $2^k$, you walk
+
+    $$2(1 + 2 + \cdots + 2^{k+1}) + 2^k = 2(2^{k+2} - 1) + 2^k,$$
+
+    which is about $9 \times 2^k$. So the distance walked is at most about **9 times** the gate's
+    distance, and the ratio approaches 9 for gates just past turning points (with whole-number
+    distances, at 1 more than a turning point, it approaches 9 from below).
+
+    With a general factor $r$ (turning points $1, r, r^2, \ldots$), the same worst case gives a ratio
+    of about $1 + \frac{2r^2}{r - 1}$. That is minimised where its derivative vanishes, at $r = 2$,
+    giving $1 + 8 = 9$. A factor near 1 wastes trips; a large factor overshoots far beyond the gate.
+  keyPoints:
+    - Identifies the worst case as the gate lying just beyond a turning point on one side
+    - Adds up the out-and-back trips to get a walked distance of about 9 times the gate's distance
+    - Writes the ratio for a general factor r as about 1 + 2r²/(r - 1)
+    - Shows the ratio is minimised at r = 2, giving 9
+  hints:
+    - Where would you hate the gate to be?
+    - Suppose the gate is just past the point where you last turned back on its side. Add up every trip until you find it.
+    - Now repeat with a factor $r$ instead of 2 and minimise.
+  followUps:
+    - Can any deterministic strategy guarantee a better ratio than 9?
+    - What can a randomised strategy (a random starting direction and scale) achieve on average?
+  explanation: |
+    This is the "cow path" or linear search problem, a standard example of a competitive ratio: how
+    much worse than an omniscient walker you can be forced to do. The worst case is found by an
+    adversary who puts the gate just where you have just given up, which makes each failed trip as
+    costly as possible.
+
+    The answer 9 is optimal among all deterministic strategies (Beck and Newman), not just doubling
+    ones; the derivative argument only shows doubling is best among geometric strategies. Common
+    mistakes are to compute the average case instead of the worst, or to forget the return trips and
+    get 3.
+  source: { name: "Linear search / cow path problem (Beck and Newman, 1970)" }
+
+- id: bt-worst-case-007
+  topic: brainteasers
+  subtopic: Optimisation and worst case
+  type: single
+  difficulty: easy
+  tags: [ants, relabelling, symmetry]
+  prompt: |
+    Fifty ants are placed on a stick 1 metre long, at any positions and each facing left or right.
+    They all walk at 1 metre per minute. When two ants meet, both instantly turn around. An ant that
+    reaches an end of the stick falls off. What is the longest you might have to wait, over all
+    starting arrangements, until every ant has fallen off?
+  choices:
+    - { id: a, text: "1 minute" }
+    - { id: b, text: "2 minutes" }
+    - { id: c, text: "50 minutes" }
+    - { id: d, text: "There is no limit: ants can bounce back and forth indefinitely" }
+  answer: a
+  explanation: |
+    Ignore which ant is which. When two ants meet and both turn around, the picture is exactly the
+    same as if they had walked through each other. So the set of positions over time is the same as
+    for 50 ants that never interact, each walking straight to the end it faces. Each of those takes
+    at most 1 minute, so after 1 minute no ant can be left on the stick; an ant starting at one end
+    and facing the other end needs almost the full minute.
+
+    Choice b comes from tracking one ant: it can be turned around and walk most of the stick twice,
+    which is true of the labels but not of the set of positions. Choice c multiplies by the number of
+    ants; choice d forgets that the "pass-through" picture ends in a minute.
+  source: { name: "Ants on a stick (classic; e.g. Winkler, Mathematical Puzzles; LSU Quant Interview Prep)", url: "https://www.math.lsu.edu/~smolinsk/Quant_Interview_Prep.pdf" }
+
+- id: bt-worst-case-008
+  topic: brainteasers
+  subtopic: Optimisation and worst case
+  type: numeric
+  difficulty: hard
+  tags: [tournament, comparisons, lower-bound]
+  prompt: |
+    64 players enter a tennis tournament. In any match the stronger player always wins, and no two
+    players are equally strong. What is the smallest number of matches that **guarantees** you can
+    identify both the strongest and the second-strongest player?
+  answer: 68
+  unit: matches
+  hints:
+    - How many matches does a knockout need to find the strongest? Who could be second strongest when it is over?
+    - The second strongest only ever lost to the strongest.
+    - How many players did the champion beat in a knockout of 64?
+  followUps:
+    - Prove that no schedule of matches can do it in fewer.
+    - What is the answer for $n$ players when $n$ is not a power of 2?
+  explanation: |
+    **68 matches suffice.** A knockout takes 63 matches (every player but the champion loses exactly
+    once). The second-strongest player can only have lost to the champion, so they are one of the 6
+    players the champion beat (one per round, since $64 = 2^6$). A knockout among those 6 takes 5 more
+    matches: $63 + 5 = 68$.
+
+    **No schedule does better.** Every player except the strongest must lose a match, and every player
+    except the top two must also lose to someone other than the champion, or they could be second.
+    If the champion beats $k$ players directly, all but one of those $k$ must lose a second match:
+    at least $63 + (k - 1)$ matches. An adversary can always force $k \ge \log_2 64 = 6$: when two
+    players meet, let the one who has (directly or indirectly) beaten more players win. Then a
+    player's count of beaten players at most doubles with each win, so the champion needs at least 6
+    wins to have beaten all 63. That gives at least $63 + 5 = 68$.
+
+    In general the answer is $n + \lceil \log_2 n \rceil - 2$. The common wrong answers are 126 (two
+    separate knockouts, $63 + 62$) and 63 (assuming the losing finalist is second best, which is false
+    when the two strongest meet early).
+  source: { name: "Second-best in a tournament (Schreier, 1932; Kislitsyn, 1964; e.g. Knuth, The Art of Computer Programming, Vol. 3)" }

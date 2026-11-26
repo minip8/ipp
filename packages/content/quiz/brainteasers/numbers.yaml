@@ -1,0 +1,318 @@
+# Number puzzles and quick insight: divisibility, digits, clocks and sums where one observation replaces a long computation.
+- id: bt-numbers-001
+  topic: brainteasers
+  subtopic: Number puzzles and quick insight
+  type: numeric
+  difficulty: easy
+  tags: [factorial, trailing-zeros, divisibility]
+  prompt: |
+    How many zeros does $200!$ (the product $1 \times 2 \times \cdots \times 200$) end with?
+  answer: 49
+  unit: zeros
+  followUps:
+    - What is the last non-zero digit of $10!$?
+    - For which $n$ does $n!$ end in exactly 5 zeros?
+  explanation: |
+    Each trailing zero is a factor $10 = 2 \times 5$, and factors of 2 are far more plentiful than
+    factors of 5, so count the factors of 5 in $200!$:
+
+    $$\left\lfloor \frac{200}{5} \right\rfloor + \left\lfloor \frac{200}{25} \right\rfloor + \left\lfloor \frac{200}{125} \right\rfloor = 40 + 8 + 1 = 49.$$
+
+    The multiples of 25 contribute a second 5 and the multiple of 125 a third. The common wrong
+    answer is 40, counting only the multiples of 5, or 48, forgetting 125.
+  source: { name: "Trailing zeros of a factorial (classic; e.g. Zhou, A Practical Guide to Quantitative Finance Interviews)" }
+
+- id: bt-numbers-002
+  topic: brainteasers
+  subtopic: Number puzzles and quick insight
+  type: short
+  difficulty: easy
+  tags: [divisors, perfect-squares, lockers]
+  prompt: |
+    A corridor has 100 closed lockers, numbered 1 to 100. A first student opens every locker. A
+    second student changes the state of (opens if closed, closes if open) every second locker: 2, 4,
+    6, ... . A third changes every third locker, and so on, until the 100th student changes only
+    locker 100. Which lockers are open at the end, and why?
+  reference: |
+    Locker $n$ is changed once by each student $k$ that divides $n$, so it ends open exactly when $n$
+    has an odd number of divisors.
+
+    Divisors come in pairs $d$ and $n/d$. The only way to have an odd number is for one divisor to be
+    paired with itself, $d = n/d$, that is, $n = d^2$. So the open lockers are the perfect squares
+    1, 4, 9, 16, 25, 36, 49, 64, 81, 100: ten lockers.
+  keyPoints:
+    - Locker n is changed once for each divisor of n
+    - It ends open exactly when n has an odd number of divisors
+    - Divisors pair up as d and n/d, so the count is odd only for perfect squares
+    - The open lockers are the ten perfect squares from 1 to 100
+  hints:
+    - Which students touch locker 12? Locker 16?
+    - When does a number have an odd number of divisors?
+  followUps:
+    - Which lockers are changed exactly twice?
+    - Which locker is changed the most times?
+  explanation: |
+    The reformulation (open means an odd number of divisors) is the step to make, and the pairing
+    argument finishes it. Answers that simulate the first few lockers and spot the pattern have the
+    right answer without a reason; the interviewer will ask for the reason.
+  source: { name: "100 lockers (classic; e.g. techinterview.org)", url: "https://www.techinterview.org/post/3233476822/quant-interview-logic-puzzles/" }
+
+- id: bt-numbers-003
+  topic: brainteasers
+  subtopic: Number puzzles and quick insight
+  type: single
+  difficulty: medium
+  tags: [clocks, relative-speed]
+  prompt: |
+    How many times in a day, from midnight (included) up to but not including the next midnight, do
+    the hour hand and the minute hand of an ordinary clock point in exactly the same direction?
+  choices:
+    - { id: a, text: "24" }
+    - { id: b, text: "23" }
+    - { id: c, text: "22" }
+    - { id: d, text: "44" }
+  answer: c
+  explanation: |
+    The minute hand turns at 6 degrees per minute and the hour hand at half a degree per minute, so
+    the minute hand gains $5.5$ degrees per minute and laps the hour hand every
+    $\frac{360}{5.5} = \frac{720}{11}$ minutes, about 65.45 minutes. In 12 hours that is
+    $\frac{720}{720/11} = 11$ times, so 22 times in 24 hours (at 00:00, about 01:05, ..., about 10:54,
+    then 12:00, and so on).
+
+    Choice a assumes one overlap per hour; but between 11:00 and 13:00 there is only one, at noon.
+    Choice b spots the missing overlap around noon but forgets the same thing happens around
+    midnight. Choice d counts the times the hands are in a straight line, together or opposite.
+  source: { name: "Clock hands overlapping (classic; e.g. Poundstone, How Would You Move Mount Fuji?)" }
+
+- id: bt-numbers-004
+  topic: brainteasers
+  subtopic: Number puzzles and quick insight
+  type: numeric
+  difficulty: easy
+  tags: [clocks, angles, mental-arithmetic]
+  prompt: |
+    What is the smaller of the two angles between the hour hand and the minute hand of a clock at
+    2:45?
+  answer: 172.5
+  unit: degrees
+  followUps:
+    - At what time between 2:00 and 3:00 are the two hands exactly opposite?
+  explanation: |
+    The minute hand is at 45 minutes: $45 \times 6 = 270$ degrees from 12. The hour hand is not at
+    the 2 but three-quarters of the way from 2 to 3: $2 \times 30 + 45 \times 0.5 = 82.5$ degrees. The
+    difference is $270 - 82.5 = 187.5$ degrees, so the smaller angle is $360 - 187.5 = 172.5$
+    degrees.
+
+    The common wrong answer is $180$ degrees (taking the hour hand to point exactly at the 2), and
+    the other common slip is to give the reflex angle 187.5.
+  source: { name: "Clock angle problem (classic)" }
+
+- id: bt-numbers-005
+  topic: brainteasers
+  subtopic: Number puzzles and quick insight
+  type: numeric
+  difficulty: medium
+  tags: [divisibility, digits, constraint-search]
+  prompt: |
+    There is exactly one nine-digit number that uses each of the digits 1 to 9 exactly once and has
+    this property: for every $k$ from 1 to 9, the number formed by its first $k$ digits is divisible
+    by $k$. What is it?
+  answer: 381654729
+  hints:
+    - Which digit must be in position 5?
+    - What can you say about the digits in the even positions?
+    - The first three digits, and also digits 4 to 6, must have a digit sum divisible by 3. Use the divisibility rules for 4 and 8 to narrow the even positions further.
+  followUps:
+    - Extend it to ten digits with 0 at the end. Why does that work?
+    - How would you write a program to find it quickly?
+  explanation: |
+    Use the divisibility rules to cut the search down.
+
+    - Position 5 must be 5 (the first five digits are divisible by 5, and 0 is not available).
+    - Positions 2, 4, 6, 8 must be even (divisibility by 2, 4, 6, 8 all need an even last digit), so
+      the odd digits 1, 3, 7, 9 fill positions 1, 3, 7, 9.
+    - Divisibility by 3 and 6 makes digits 1 to 3, and digits 4 to 6, each sum to a multiple of 3.
+    - Divisibility by 4 needs digits 3 and 4 to form a multiple of 4; with digit 3 odd, digit 4 is 2
+      or 6. Divisibility by 8 needs digits 6 to 8 to form a multiple of 8, so digit 8 is 2 or 6 as
+      well, and digits 2 and 6 are 4 and 8.
+
+    Checking the few remaining cases (positions 4, 5, 6 are 258 or 654, and so on) leaves only
+    $381654729$. Divisibility by 9 is automatic, since $1 + 2 + \cdots + 9 = 45$.
+
+    Candidates who start by brute force by hand get lost; the interviewer is looking for the
+    constraint propagation, starting with the 5 and the even positions.
+  source: { name: "Polydivisible pandigital number (classic; LSU Quant Interview Prep)", url: "https://www.math.lsu.edu/~smolinsk/Quant_Interview_Prep.pdf" }
+
+- id: bt-numbers-006
+  topic: brainteasers
+  subtopic: Number puzzles and quick insight
+  type: single
+  difficulty: easy
+  tags: [logarithms, mental-arithmetic, powers-of-two]
+  prompt: |
+    How many digits does $2^{100}$ have when written in base 10?
+  choices:
+    - { id: a, text: "30" }
+    - { id: b, text: "31" }
+    - { id: c, text: "32" }
+    - { id: d, text: "101" }
+  answer: b
+  explanation: |
+    A positive number $x$ has $\lfloor \log_{10} x \rfloor + 1$ digits. With
+    $\log_{10} 2 \approx 0.30103$, $\log_{10} 2^{100} \approx 30.103$, so $2^{100}$ has 31 digits. A
+    quick cross-check: $2^{10} = 1024 \approx 10^3$, so $2^{100} \approx 1.024^{10} \times 10^{30}$,
+    a little over $10^{30}$, which has 31 digits.
+
+    Choice a forgets the $+1$ (the number $10^{30}$ already has 31 digits). Choice c over-corrects
+    for the $1.024^{10} \approx 1.27$ factor, which does not reach another power of ten. Choice d is
+    the number of binary digits of $2^{100}$.
+  source: { name: "Mental estimation of powers (common trading interview warm-up)" }
+
+- id: bt-numbers-007
+  topic: brainteasers
+  subtopic: Number puzzles and quick insight
+  type: short
+  difficulty: medium
+  tags: [streaming, sums, algorithms]
+  prompt: |
+    A stream delivers the integers $1, 2, \ldots, n$ in some order, except that one of them is
+    missing. Using a single pass and a constant number of variables, how do you find the missing
+    number? How do you extend the method if **two** numbers are missing?
+  reference: |
+    **One missing:** add up the stream. The missing number is $\frac{n(n+1)}{2}$ minus that sum.
+    (Equivalently, XOR all the numbers from 1 to $n$ with all the numbers in the stream; this avoids
+    overflow.)
+
+    **Two missing, $x$ and $y$:** keep both the sum and the sum of squares. From the shortfalls
+
+    $$S = x + y = \frac{n(n+1)}{2} - \sum a_i, \qquad Q = x^2 + y^2 = \frac{n(n+1)(2n+1)}{6} - \sum a_i^2,$$
+
+    you get $(x - y)^2 = 2Q - S^2$, so $x - y = \sqrt{2Q - S^2}$ (taking $x > y$), and then
+    $x = \frac{S + (x - y)}{2}$, $y = \frac{S - (x - y)}{2}$.
+
+    (An XOR alternative: XOR of everything gives $x \oplus y$; any bit set in it splits the numbers
+    into two groups, each containing exactly one missing number, and a second XOR per group finds
+    each.)
+  keyPoints:
+    - For one missing number, subtracts the stream's sum from n(n+1)/2 (or uses XOR)
+    - For two, also tracks the sum of squares (or another independent symmetric function)
+    - Recovers x + y and x² + y², hence x - y, hence x and y
+    - Notes the method uses a single pass and constant extra memory
+    - Optionally mentions overflow and the XOR variant
+  hints:
+    - What do you know about the sum of $1, \ldots, n$?
+    - With two unknowns you need two equations. Which second quantity is easy to keep?
+  followUps:
+    - What if one number is missing and another appears twice?
+    - What if $k$ numbers are missing?
+  explanation: |
+    The point is to turn "which numbers are missing" into a small number of equations in the
+    unknowns, using symmetric functions you can update in one pass. One sum gives one equation; two
+    unknowns need two independent ones, and the sum of squares is the natural second.
+
+    A common weak answer is "sort the stream" or "keep a bit array", which needs $O(n)$ memory. For
+    $k$ missing numbers the same idea uses the power sums up to $k$ (or arithmetic modulo a prime to
+    keep numbers small).
+  source: { name: "Missing integers (classic; e.g. Zhou, A Practical Guide to Quantitative Finance Interviews)" }
+
+- id: bt-numbers-008
+  topic: brainteasers
+  subtopic: Number puzzles and quick insight
+  type: numeric
+  difficulty: medium
+  tags: [digit-sums, pairing, symmetry]
+  prompt: |
+    Write down every whole number from 1 to 1,000,000. What is the sum of all the digits you have
+    written?
+  answer: 27000001
+  hints:
+    - Include 0 and write every number from 0 to 999,999 with six digits, padding with leading zeros. How often does each digit appear in each position?
+    - Alternatively, pair $n$ with $999999 - n$. What is the digit sum of each pair?
+    - Do not forget 1,000,000 itself.
+  followUps:
+    - What is the sum of the digits of all numbers from 1 to $10^k$?
+    - What is the sum of the digits of all numbers from 1 to 500?
+  explanation: |
+    Write 0 to 999,999 as six-digit strings (leading zeros add nothing to the sum). Pair $n$ with
+    $999999 - n$: in each position the two digits add to 9, so each pair has digit sum $6 \times 9 = 54$.
+    There are 500,000 pairs, for a total of $27{,}000{,}000$. Equivalently, each of the ten digits
+    appears $100{,}000$ times in each of the six positions: $6 \times 100{,}000 \times 45$.
+
+    Adding the digit sum of $1{,}000{,}000$, which is 1, gives $27{,}000{,}001$.
+
+    The usual slips are forgetting 1,000,000 (answering 27,000,000) or trying to sum position by
+    position with carries.
+  source: { name: "Digit sums by pairing (classic mental-arithmetic puzzle)" }
+
+- id: bt-numbers-009
+  topic: brainteasers
+  subtopic: Number puzzles and quick insight
+  type: short
+  difficulty: medium
+  tags: [consecutive-integers, powers-of-two, factorisation]
+  prompt: |
+    Which positive integers **cannot** be written as a sum of two or more consecutive positive
+    integers (like $9 = 2 + 3 + 4$)? Prove it.
+  reference: |
+    Exactly the powers of 2: $1, 2, 4, 8, \ldots$.
+
+    A sum of $k \ge 2$ consecutive positive integers starting at $a \ge 1$ is
+
+    $$N = a + (a + 1) + \cdots + (a + k - 1) = \frac{k(2a + k - 1)}{2},$$
+
+    so $2N = k \cdot (2a + k - 1)$. The two factors $k$ and $2a + k - 1$ have opposite parity (they
+    differ by $2a - 1$, which is odd), and both are at least 2.
+
+    - If $N$ is a power of 2, so is $2N$, and it cannot be the product of an odd factor of at least 3
+      and an even factor. So $N$ has no such representation.
+    - If $N$ has an odd divisor $m \ge 3$, write $2N = m \cdot \frac{2N}{m}$: one factor is odd, the
+      other even. Let $k$ be the smaller of the two and $2a + k - 1$ the larger; then $k \ge 2$ and
+      $a = \frac{(\text{larger}) - k + 1}{2}$ is a positive integer. For example $9$: $2N = 18 = 3 \times 6$,
+      $k = 3$, $a = 2$.
+  keyPoints:
+    - "The answer is the powers of 2 (1, 2, 4, 8, ...)"
+    - Writes the sum of k consecutive integers from a as k(2a + k - 1)/2
+    - Notes the factors k and 2a + k - 1 of 2N have opposite parity and are both at least 2
+    - A power of 2 has no odd factor of at least 3, so it has no representation
+    - Any number with an odd divisor of at least 3 does, by choosing the factors (with an example or a general construction)
+  hints:
+    - Write a formula for the sum of $k$ consecutive integers starting at $a$.
+    - Multiply by 2. What can you say about the parities of the two factors?
+    - Which numbers have no odd factor bigger than 1?
+  followUps:
+    - In how many ways can 2025 be written as a sum of two or more consecutive positive integers?
+    - What if negative integers and zero are allowed?
+  explanation: |
+    The formula $2N = k(2a + k - 1)$ turns the question into one about factorisations, and the
+    parity observation does the rest. In general the number of ways to write $N$ as a sum of one or
+    more consecutive positive integers equals the number of odd divisors of $N$.
+
+    Answers that test small numbers and spot that 1, 2, 4, 8, 16 fail have the right guess; the
+    proof needs both directions: powers of two fail, and everything else works.
+  source: { name: "Sums of consecutive integers (classic; e.g. Engel, Problem-Solving Strategies)" }
+
+- id: bt-numbers-010
+  topic: brainteasers
+  subtopic: Number puzzles and quick insight
+  type: numeric
+  difficulty: easy
+  tags: [relative-speed, series, quick-insight]
+  prompt: |
+    Two trains are 100 km apart on the same track and head towards each other, each at 50 km/h. A fly
+    starts at the front of one train and flies at 75 km/h to the other train, turns around instantly,
+    flies back to the first, and keeps going back and forth until the trains meet. How far does the
+    fly travel in total?
+  answer: 75
+  unit: km
+  followUps:
+    - How far does the fly travel on its first leg alone?
+    - How many legs does the fly make? Does that matter?
+  explanation: |
+    The trains close the gap at $50 + 50 = 100$ km/h, so they meet after exactly 1 hour. The fly
+    flies the whole hour at 75 km/h: 75 km.
+
+    You can also sum the legs: each leg ends when the fly meets the oncoming train, and the legs form
+    a geometric series. That gives the same 75 km, but with much more work. (The story goes that von
+    Neumann answered instantly; when told the shortcut he said he had summed the series.) The
+    question rewards spotting that only the total time matters.
+  source: { name: "Two trains and a fly (classic; attributed anecdote about von Neumann)" }
