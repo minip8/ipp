@@ -63,6 +63,16 @@ for (const width of WIDTHS) {
       await shoot(page, 'roadmap-selected');
     });
 
+    test('roadmap-related', async ({ page }) => {
+      test.skip(!want('roadmap-related'));
+      await setup(page);
+      // An area with links to another topic's areas.
+      await page.goto('/quiz?view=roadmap&roadmap=cpp&node=cpp-concurrency');
+      await expect(page.getByTestId('roadmap-details')).toBeVisible();
+      await page.waitForTimeout(400);
+      await shoot(page, 'roadmap-related');
+    });
+
     test('roadmap-loading', async ({ page }) => {
       test.skip(!want('roadmap-loading'));
       await setup(page);

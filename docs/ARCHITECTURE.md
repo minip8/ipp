@@ -468,7 +468,9 @@ exams (a running exam never shows up).
 The roadmap (the Quizzes page's Roadmap view, `?view=roadmap&roadmap=<topic>&node=<id>`) draws each
 topic as a layered graph of study areas. `quiz/roadmap.yaml` maps each topic to its nodes
 (`QuizRoadmapNode`: id, short title, one-line description, the question `subtopics` it groups,
-and `requires`, the nodes of the same topic to learn first); the seed stores them on
+`requires`, the nodes of the same topic to learn first, and `related`, nodes of other topics that
+go with it: a link is written on one side, listed on both in the details panel, draws no edge and
+has no say in "next up"); the seed stores them on
 `quiz_topics.roadmap` and the study order (the order of `quiz/topics.yaml`) on `position`.
 `GET /api/quiz/roadmap` adds progress per node and subtopic from the same latest graded answers as
 the topic stats. An area is complete when every question is answered with a mean score of at

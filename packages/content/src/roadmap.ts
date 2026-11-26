@@ -1,11 +1,12 @@
 /**
  * The quiz roadmap: quiz/roadmap.yaml maps each topic to its study areas (`QuizRoadmapNode`), each
  * grouping one or more question subtopics, with "learn this first" edges between areas of the
- * same topic.
+ * same topic and `related` links to areas of other topics.
  *
  * Two levels of checking, as for problem tags:
  *   - loadQuizRoadmap: the structure (schema, known topics, unique ids, prerequisites that exist in
- *     the same topic, no cycles, no subtopic in two nodes). The seed needs this to draw a graph.
+ *     the same topic, related links that exist in another topic, no cycles, no subtopic in two
+ *     nodes). The seed needs this to draw a graph.
  *   - roadmapGaps: the fit with the questions (every subtopic in use is on a node, every node
  *     subtopic has questions). The seed tolerates gaps; `check` and the content tests fail on any,
  *     so a question with a new subtopic must be placed on the roadmap before it ships.
@@ -38,6 +39,8 @@ export function roadmapErrors(roadmap: QuizRoadmap, topics: readonly string[]): 
       else topicOf.set(n.id, topic);
     }
   }
+  // "from to" for every related link seen so far, to catch one written on both sides.
+  const related = new Set<string>();
   for (const [topic, nodes] of Object.entries(roadmap)) {
     const placed = new Map<string, string>();
     for (const n of nodes) {
@@ -59,6 +62,22 @@ export function roadmapErrors(roadmap: QuizRoadmap, topics: readonly string[]): 
         else if (topicOf.get(r) !== topic)
           errors.push(`${topic} ${n.id}: requires "${r}" from ${topicOf.get(r)}; stay in ${topic}`);
         seen.add(r);
+      }
+      const linked = new Set<string>();
+      for (const r of n.related) {
+        const at = topicOf.get(r);
+        if (linked.has(r)) errors.push(`${topic} ${n.id}: related to "${r}" twice`);
+        else if (at === undefined) errors.push(`${topic} ${n.id}: related to unknown node "${r}"`);
+        else if (at === topic)
+          errors.push(
+            `${topic} ${n.id}: related to "${r}" of the same topic; related is for other topics (use requires)`,
+          );
+        else if (related.has(`${r} ${n.id}`))
+          errors.push(
+            `${topic} ${n.id}: related to "${r}", which already lists it; write a link on one side`,
+          );
+        linked.add(r);
+        related.add(`${n.id} ${r}`);
       }
     }
     const cycle = findCycle(nodes);

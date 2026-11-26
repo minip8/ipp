@@ -43,6 +43,7 @@ import {
   ROADMAP_NODE_PARAM,
   ROADMAP_STORAGE_KEY,
   ROADMAP_TOPIC_PARAM,
+  relatedAreas,
   relations,
   roadmapStatuses,
   STATE_LABEL,
@@ -232,13 +233,18 @@ export function RoadmapSkeleton() {
 
 // ---------------------------------------------------------------- details
 
+const NOT_STARTED: NodeStatus = { state: 'not_started', next: false };
+
 function NodeLink({
   node,
   status,
+  caption,
   onSelect,
 }: {
   node: QuizRoadmapNodeProgress;
   status: NodeStatus;
+  /** a second line under the title (the topic, for an area of another topic) */
+  caption?: string;
   onSelect: (id: string) => void;
 }) {
   return (
@@ -253,7 +259,15 @@ function NodeLink({
           value={node.questionCount ? node.correct / node.questionCount : 0}
           className="size-3.5 shrink-0"
         />
-        <span className="min-w-0 flex-1 truncate">{node.title}</span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate">{node.title}</span>
+          {caption && (
+            <span className="block truncate text-2xs text-fg-subtle">
+              <span className="sr-only">, in </span>
+              {caption}
+            </span>
+          )}
+        </span>
         <span className="sr-only">
           , {STATE_LABEL[status.state]}
           {status.next ? ', next up' : ''}
@@ -275,16 +289,22 @@ function completionHint(n: QuizRoadmapNodeProgress, s: NodeStatus): string {
 }
 
 function NodeDetails({
+  topics,
   topic,
   node,
   statuses,
   onSelect,
+  onSelectIn,
   headingAs = 'h2',
 }: {
+  /** every topic: related areas are in the other ones */
+  topics: QuizRoadmapTopic[];
   topic: QuizRoadmapTopic;
   node: QuizRoadmapNodeProgress;
   statuses: Map<string, NodeStatus>;
   onSelect: (id: string) => void;
+  /** select an area of another topic, switching to that topic's roadmap */
+  onSelectIn: (topic: string, id: string) => void;
   /** in the phone sheet the title is the dialog's own */
   headingAs?: 'h2' | 'dialog';
 }) {
@@ -334,6 +354,15 @@ function NodeDetails({
       ));
   const before = list(requires.get(node.id) ?? []);
   const after = list(leadsTo.get(node.id) ?? []);
+  // Each related area's state comes from its own topic's roadmap.
+  const related = useMemo(
+    () =>
+      relatedAreas(topics, node.id).map((r) => ({
+        ...r,
+        status: roadmapStatuses(r.topic.nodes).get(r.node.id) ?? NOT_STARTED,
+      })),
+    [topics, node.id],
+  );
 
   return (
     <div className="space-y-5" data-testid="roadmap-details">
@@ -463,6 +492,24 @@ function NodeDetails({
           <p className="text-sm text-fg-subtle">Nothing further on this roadmap.</p>
         )}
       </section>
+      {related.length > 0 && (
+        <section aria-labelledby="roadmap-related" className="space-y-1">
+          <h3 id="roadmap-related" className="text-xs font-medium text-fg-muted">
+            Related in other topics
+          </h3>
+          <ul className="-mx-2">
+            {related.map((r) => (
+              <NodeLink
+                key={r.node.id}
+                node={r.node}
+                status={r.status}
+                caption={r.topic.title}
+                onSelect={(id) => onSelectIn(r.topic.slug, id)}
+              />
+            ))}
+          </ul>
+        </section>
+      )}
       <section aria-labelledby="roadmap-covers" className="space-y-1">
         <h3 id="roadmap-covers" className="text-xs font-medium text-fg-muted">
           Covers
@@ -616,10 +663,12 @@ export function QuizRoadmap() {
   const details = selected ? (
     <NodeDetails
       key={selected.id}
+      topics={topics}
       topic={topic}
       node={selected}
       statuses={statuses}
       onSelect={select}
+      onSelectIn={(t, id) => params.set({ [ROADMAP_TOPIC_PARAM]: t, [ROADMAP_NODE_PARAM]: id })}
       headingAs={wide ? 'h2' : 'dialog'}
     />
   ) : null;

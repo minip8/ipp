@@ -5,6 +5,12 @@
 # site never locks a node. Keep each graph readable: direct prerequisites only (leave out what
 # follows from them), and a title short enough for a node (28 characters at most).
 #
+# `related` links a node to nodes of *other* topics that go with it: background it leans on, or the
+# same ground seen from another side (C++ concurrency and the Concurrency topic's atomics). Write a
+# link on one of its two nodes; the site lists it on both, under "Related in other topics". It
+# draws no edge and never affects what is "next up". Keep these few: only links a learner would
+# be glad to be told about.
+#
 # Every subtopic used by a question must be on exactly one node of its topic, and every subtopic
 # listed here must have questions: `pnpm --filter @ipp/content check` and the content tests fail
 # otherwise. So a question with a new subtopic needs a place here before it ships.
@@ -53,6 +59,7 @@ cpp:
     description: Translation units, linkage, the One Definition Rule and what the linker sees.
     subtopics: ["Build model, ODR and linkage"]
     requires: [cpp-overloading]
+    related: [os-linking]
   - id: cpp-ownership
     title: Ownership and exceptions
     description: Smart pointers, who owns what, and code that stays correct when something throws.
@@ -78,11 +85,13 @@ cpp:
     description: Alignment, allocation and the idioms that make C++ fast.
     subtopics: ["Memory, alignment and allocation", Performance idioms]
     requires: [cpp-ownership, cpp-containers]
+    related: [ca-caches, os-allocators]
   - id: cpp-concurrency
     title: Concurrency
     description: Threads, atomics and the C++ memory model.
     subtopics: [Concurrency and the memory model]
     requires: [cpp-undefined-behaviour, cpp-lambdas-algorithms]
+    related: [cc-races, cc-atomics, cc-memory-ordering]
 
 python:
   - id: py-numbers-strings
@@ -137,6 +146,7 @@ python:
     description: The GIL, threads, processes, free-threading and asyncio.
     subtopics: [GIL, Threading, Multiprocessing, Free-threading, Concurrency models, asyncio]
     requires: [py-iteration, py-exceptions]
+    related: [cc-python, cc-asyncio]
   - id: py-typing
     title: Type hints
     description: Annotations, generics and variance, and protocols.
@@ -228,6 +238,7 @@ operating-systems:
     description: Address spaces, paging, page faults, mmap, overcommit and the OOM killer.
     subtopics: [Virtual memory, Overcommit and OOM]
     requires: [os-kernel]
+    related: [ca-memory-hierarchy]
   - id: os-process-control
     title: fork, exec and signals
     description: Creating processes with copy-on-write, replacing their image, and signals.
@@ -279,6 +290,7 @@ concurrency:
     title: Threads and processes
     description: Concurrency versus parallelism, a thread's life, and what limits scaling.
     subtopics: [Threads and processes, Concurrency vs parallelism, Thread lifecycle, Thread-local storage]
+    related: [os-processes]
   - id: cc-races
     title: Races and thread safety
     description: Data races and race conditions, critical sections and what thread-safe means.
@@ -314,6 +326,7 @@ concurrency:
     description: Happens-before, acquire and release, fences and hardware memory models.
     subtopics: [Memory ordering, Happens-before, Fences, Hardware memory models, Java memory model]
     requires: [cc-atomics]
+    related: [ca-coherence]
   - id: cc-classic-problems
     title: Classic problems
     description: Producer-consumer, readers-writers and the dining philosophers.
@@ -334,11 +347,13 @@ concurrency:
     description: Amdahl's law, contended locks and atomics, false sharing and cache coherence.
     subtopics: [Scaling, Contention, False sharing, Cache coherence]
     requires: [cc-mutexes, cc-atomics]
+    related: [ca-caches, ca-coherence]
   - id: cc-event-loops
     title: Event loops and coroutines
     description: Event loops, green threads and coroutines, and when they beat threads.
     subtopics: [Event loops, Coroutines]
     requires: [cc-pools-futures]
+    related: [net-sockets]
   - id: cc-asyncio
     title: asyncio
     description: Tasks, cancellation and the traps of Python's event loop.
@@ -385,6 +400,7 @@ networking:
     description: The sockets API and its options, and multiplexing many connections.
     subtopics: [Sockets API and options, I/O multiplexing]
     requires: [net-tcp-performance]
+    related: [os-files]
   - id: net-http
     title: HTTP
     description: Methods, status codes, caching, HTTP/1.1 connections and WebSockets.

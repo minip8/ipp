@@ -514,6 +514,27 @@ export function relations(nodes: readonly { id: string; requires: readonly strin
   return { requires, leadsTo };
 }
 
+type RelatedNode = { id: string; related: readonly string[] };
+
+/**
+ * The areas of other topics linked with `id` through `related`, whichever side the link is
+ * written on, in topic order and then roadmap order. Unknown ids and same-topic links are left out.
+ */
+export function relatedAreas<T extends { slug: string; nodes: readonly RelatedNode[] }>(
+  topics: readonly T[],
+  id: string,
+): { topic: T; node: T['nodes'][number] }[] {
+  const home = topics.find((t) => t.nodes.some((n) => n.id === id));
+  const own = new Set(home?.nodes.find((n) => n.id === id)?.related ?? []);
+  const out: { topic: T; node: T['nodes'][number] }[] = [];
+  for (const topic of topics) {
+    if (topic === home) continue;
+    for (const node of topic.nodes)
+      if (own.has(node.id) || node.related.includes(id)) out.push({ topic, node });
+  }
+  return out;
+}
+
 export interface RoadmapSummary {
   total: number;
   complete: number;

@@ -121,6 +121,35 @@ test.describe('quiz roadmap', () => {
     await expect(page.getByTestId('roadmap-overview')).toBeVisible();
   });
 
+  test('related areas of other topics are listed on both sides and switch topic', async ({
+    page,
+  }) => {
+    await setup(page);
+    await page.goto('/quiz?view=roadmap&roadmap=cpp&node=cpp-concurrency');
+    const related = () =>
+      details(page).getByRole('region', { name: 'Related in other topics' }).getByRole('button');
+    // Written on this area in roadmap.yaml; each names its topic.
+    await expect(related()).toHaveText([
+      /^Races and thread safety, in Concurrency/,
+      /^Atomics and CAS, in Concurrency/,
+      /^Memory ordering, in Concurrency/,
+    ]);
+    await related().nth(1).click();
+    await expect(page).toHaveURL(/roadmap=concurrency/);
+    await expect(page).toHaveURL(/node=cc-atomics/);
+    await expect(node(page, 'cc-atomics')).toHaveAttribute('aria-pressed', 'true');
+    await expect(details(page).getByRole('heading', { name: 'Atomics and CAS' })).toBeVisible();
+    // The same link, seen from the side it is not written on.
+    await expect(related()).toHaveText([/^Concurrency, in C\+\+/]);
+
+    // An area with no such link has no section at all.
+    await node(page, 'cc-mutexes').click();
+    await expect(details(page).getByRole('heading', { name: 'Mutexes and locks' })).toBeVisible();
+    await expect(
+      details(page).getByRole('region', { name: 'Related in other topics' }),
+    ).toHaveCount(0);
+  });
+
   test('Practise starts a practice quiz on that area', async ({ page }) => {
     const backend = await setup(page);
     await page.goto('/quiz?view=roadmap&roadmap=cpp&node=cpp-undefined-behaviour');
