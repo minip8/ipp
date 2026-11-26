@@ -1415,3 +1415,292 @@ def _():
     m, s = mean(r), math.sqrt(var(r))
     kurt = mean([((x - m) / s) ** 4 for x in r])
     assert kurt > 3.5  # conditionally normal, unconditionally fat-tailed
+
+
+# ---------------------------------------------------------------- model validation and backtesting
+
+
+def expected_max_normal(n):
+    """E[max of n i.i.d. standard normals], by integrating the distribution function."""
+    upper = simpson(lambda x: 1 - STD.cdf(x) ** n, 0, 10, 8000)
+    lower = simpson(lambda x: STD.cdf(x) ** n, -10, 0, 8000)
+    return upper - lower
+
+
+@check("stat-backtesting-001")
+def _():
+    # a leaky signal (it sees today's return) collapses when execution is delayed by one day;
+    # a genuine but slow signal (it predicts the next two days) only weakens
+    rng = random.Random(101)
+    n = 20_000
+    r = [rng.gauss(0, 1) for _ in range(n + 3)]
+    leak = [r[t] + rng.gauss(0, 3) for t in range(n)]  # uses the same day's return
+    slow = [r[t + 1] + r[t + 2] + rng.gauss(0, 6) for t in range(n)]  # predicts the next two days
+
+    def sharpe(sig, delay):
+        pnl = [sig[t] * r[t + delay] for t in range(n)]
+        return mean(pnl) / math.sqrt(var(pnl))
+
+    assert sharpe(leak, 0) > 0.25 and abs(sharpe(leak, 1)) < 0.03
+    assert sharpe(slow, 1) > 0.08 and sharpe(slow, 2) > 0.5 * sharpe(slow, 1)
+
+
+@check("stat-backtesting-002")
+def _():
+    em = expected_max_normal(100)
+    assert abs(em - 2.5076) < 0.0005
+    return simulate(lambda r: max(r.gauss(0, 0.5) for _ in range(100)), n=20_000, seed=102)
+
+
+@check("stat-backtesting-003")
+def _():
+    # labels are overlapping 20-day forward sums of i.i.d. returns; the "model" predicts a test
+    # day's label by the label of the nearest training day. Random folds leak; purged folds do not.
+    rng = random.Random(103)
+    n = 3000
+    r = [rng.gauss(0, 1) for _ in range(n + 20)]
+    y = [sum(r[t + 1 : t + 21]) for t in range(n)]
+    days = list(range(n))
+    rng.shuffle(days)
+    folds = [set(days[k::5]) for k in range(5)]
+
+    def cv(purge):
+        preds, actual = [], []
+        for test in folds:
+            train_set = set(range(n)) - test
+            for t in sorted(test):
+                best = None
+                for gap in range(purge + 1, n):
+                    for c in (t - gap, t + gap):
+                        if c in train_set:
+                            best = c
+                            break
+                    if best is not None:
+                        break
+                preds.append(y[best])
+                actual.append(y[t])
+        return corr(preds, actual)
+
+    leaky = cv(0)
+    purged = cv(20)
+    # overlapping labels make the purged correlation noisy (about 150 independent points)
+    assert leaky > 0.85 and abs(purged) < 0.3
+    return "a"
+
+
+@check("stat-backtesting-004")
+def _():
+    # R^2 depends only on the projection of y on the span of the features (with the intercept);
+    # project onto an orthonormal basis of a fixed random design
+    rng = random.Random(104)
+    n, p = 200, 50
+    design = [[1.0] * n] + [[rng.gauss(0, 1) for _ in range(n)] for _ in range(p)]
+    q = orthonormal_columns(design)[1:]  # basis of the features' span, orthogonal to the intercept
+
+    def trial(r):
+        yv = [r.gauss(0, 1) for _ in range(n)]
+        m = sum(yv) / n
+        yc = [v - m for v in yv]
+        explained = sum(sum(a * b for a, b in zip(col, yc)) ** 2 for col in q)
+        return explained / sum(v * v for v in yc)
+
+    return simulate(trial, n=600, seed=1104)  # a seed unrelated to the design's
+
+
+@check("stat-backtesting-005")
+def _():
+    # simulate the t-statistic with known volatility from 16 years of monthly returns
+    months = 16 * 12
+    mu, sd = 0.5 / 12, 1 / math.sqrt(12)
+
+    def trial(r):
+        total = sum(r.gauss(mu, sd) for _ in range(months))
+        return (total / months) / (sd / math.sqrt(months))
+
+    sim = simulate(trial, n=8000, seed=105)
+    assert abs(sim.mean - 2) < 4 * sim.stderr
+    return next(t for t in range(1, 100) if 0.5 * math.sqrt(t) >= 2)
+
+
+@check("stat-backtesting-006")
+def _():
+    em = expected_max_normal(200)
+    assert abs(em - 2.75) < 0.01
+    assert abs(em / math.sqrt(10) - 0.87) < 0.005
+
+
+@check("stat-backtesting-007")
+def _():
+    # b: full-sample standardisation leaks: a signal z-scored with the full-sample mean of a
+    # trending series "knows" whether the future is above or below today
+    rng = random.Random(107)
+    leaks = 0
+    for _ in range(300):
+        p = random_walk(rng, 500)
+        m = mean(p)
+        # sign of (p_t - full-sample mean) predicts the sign of the future drift towards the mean
+        hits = sum((p[t] - m) * (p[-1] - p[t]) < 0 for t in range(0, 400))
+        leaks += hits > 200
+    assert leaks / 300 > 0.6
+    return {"a", "b", "c", "f"}
+
+
+@check("stat-backtesting-008")
+def _():
+    # standard error of a one-year Sharpe estimate is about 1; selection inflates in-sample numbers
+    rng = random.Random(108)
+    est = []
+    for _ in range(2000):
+        r = [rng.gauss(1 / 252, 1 / math.sqrt(252)) for _ in range(252)]
+        est.append(mean(r) / math.sqrt(var(r)) * math.sqrt(252))
+    assert abs(math.sqrt(var(est)) - 1) < 0.06
+    # pick the best of 20 strategies with true Sharpe 1 over 5 years: its in-sample Sharpe overstates
+    best = [max(1 + rng.gauss(0, 1 / math.sqrt(5)) for _ in range(20)) for _ in range(2000)]
+    assert mean(best) > 1.6
+
+
+# ---------------------------------------------------------------- regularisation and model complexity
+
+
+@check("stat-ml-001")
+def _():
+    # polynomial fits of increasing degree to noisy data: training error falls, test error is U-shaped
+    rng = random.Random(111)
+
+    def f(x):
+        return math.sin(3 * x)
+
+    xs = [i / 29 * 2 - 1 for i in range(30)]
+    train_err, test_err = {}, {}
+    for degree in (1, 3, 12):
+        tr = te = 0.0
+        for _ in range(100):
+            y = [f(x) + rng.gauss(0, 0.5) for x in xs]
+            cols = [[x**k for x in xs] for k in range(degree + 1)]
+            b = ols(cols, y, ridge=1e-9)
+            fit = [sum(bk * x**k for k, bk in enumerate(b)) for x in xs]
+            tr += mean([(a - c) ** 2 for a, c in zip(y, fit)])
+            te += mean([(f(x) + rng.gauss(0, 0.5) - c) ** 2 for x, c in zip(xs, fit)])
+        train_err[degree], test_err[degree] = tr / 100, te / 100
+    assert train_err[1] > train_err[3] > train_err[12]
+    assert test_err[3] < test_err[1] and test_err[3] < test_err[12]
+
+
+@check("stat-ml-002")
+def _():
+    b, lam = 0.3, 0.5
+    ridge = b / (1 + lam)
+    # lasso on one orthonormal column: minimise (1/2)(beta - b)^2 + lam |beta| on a fine grid
+    grid = [i / 10_000 for i in range(-20_000, 20_001)]
+    lasso = min(grid, key=lambda beta: 0.5 * (beta - b) ** 2 + lam * abs(beta))
+    assert lasso == 0 and ridge != 0
+    return "a"
+
+
+@check("stat-ml-003")
+def _():
+    rng = random.Random(113)
+    n = 60
+    x = [rng.gauss(0, 1) for _ in range(n)]
+    y = [1.5 * v + rng.gauss(0, 1) for v in x]
+    yc, xc = centred(y), centred(x)
+    lam = 4.0
+    # d: identical columns get equal weights; their sum is the one-copy ridge with lam/2
+    b1, b2 = ols([xc, list(xc)], yc, ridge=lam)
+    one = ols([xc], yc, ridge=lam / 2)[0]
+    assert abs(b1 - b2) < 1e-9 and abs(b1 + b2 - one) < 1e-9
+    # c: rescaling a feature changes the ridge fit
+    fit = ols([xc], yc, ridge=lam)[0] * xc[0]
+    fit_scaled = ols([[100 * v for v in xc]], yc, ridge=lam)[0] * 100 * xc[0]
+    assert abs(fit - fit_scaled) > 1e-3
+    # f: ridge is biased towards zero (shrinks the OLS coefficient)
+    assert abs(ols([xc], yc, ridge=lam)[0]) < abs(ols([xc], yc)[0])
+    # a: ridge equals the MAP with a normal prior of variance sigma^2 / lam (here sigma^2 = 1)
+    tau2 = 1 / lam
+    r = ols([xc], yc, ridge=lam)[0]
+    post = lambda c: -sum((a - c * b) ** 2 for a, b in zip(yc, xc)) / 2 - c * c / (2 * tau2)
+    assert abs(argmax_unimodal(post, -10, 10) - r) < 1e-6
+    # b: lasso equals the MAP with a Laplace prior of scale 1/lam
+    lap = lambda c: -sum((a - c * b) ** 2 for a, b in zip(yc, xc)) / 2 - lam * abs(c)
+    sxx, sxy = sum(v * v for v in xc), sum(a * b for a, b in zip(xc, yc))
+    soft = math.copysign(max(abs(sxy) - lam, 0) / sxx, sxy)
+    assert abs(argmax_unimodal(lap, -10, 10) - soft) < 1e-6
+    return {"a", "b", "d", "f"}
+
+
+@check("stat-ml-004")
+def _():
+    # an orthonormal design with OLS coefficients (2, -1), solved with Fractions
+    half = Fraction(1, 2)
+    c1 = [half, half, half, half]
+    c2 = [half, -half, half, -half]
+    y = [2 * a - b + e for a, b, e in zip(c1, c2, (Fraction(1, 10), Fraction(-1, 10), Fraction(-1, 10), Fraction(1, 10)))]
+    assert ols([c1, c2], y) == [2, -1]
+    return ols([c1, c2], y, ridge=Fraction(1, 4))[0]
+
+
+@check("stat-ml-005")
+def _():
+    # low signal-to-noise: a 10-feature OLS fit on 250 points loses to a 1-feature fit out of sample
+    rng = random.Random(115)
+    wins = 0
+    for _ in range(200):
+        n = 250
+        feats = [[rng.gauss(0, 1) for _ in range(n)] for _ in range(10)]
+        y = [0.05 * feats[0][i] + rng.gauss(0, 1) for i in range(n)]
+        test_f = [[rng.gauss(0, 1) for _ in range(n)] for _ in range(10)]
+        test_y = [0.05 * test_f[0][i] + rng.gauss(0, 1) for i in range(n)]
+        big = ols([[1.0] * n] + feats, y)
+        small = ols([[1.0] * n, feats[0]], y)
+        e_big = mean([(test_y[i] - big[0] - sum(big[k + 1] * test_f[k][i] for k in range(10))) ** 2 for i in range(n)])
+        e_small = mean([(test_y[i] - small[0] - small[1] * test_f[0][i]) ** 2 for i in range(n)])
+        wins += e_small < e_big
+    assert wins / 200 > 0.75
+
+
+@check("stat-ml-006")
+def _():
+    rng = random.Random(116)
+    n, p = 50, 10
+    design = [[1.0] * n] + [[rng.gauss(0, 1) for _ in range(n)] for _ in range(p - 1)]
+    q = orthonormal_columns(design)  # H = Q Q^T
+
+    def trial(r):
+        e = [r.gauss(0, 1) for _ in range(n)]
+        fresh = [r.gauss(0, 1) for _ in range(n)]
+        coef = [sum(a * b for a, b in zip(col, e)) for col in q]
+        he = [sum(c * col[i] for c, col in zip(coef, q)) for i in range(n)]
+        train = sum((a - b) ** 2 for a, b in zip(e, he)) / n
+        test = sum((a - b) ** 2 for a, b in zip(fresh, he)) / n
+        return test - train
+
+    return simulate(trial, n=12_000, seed=1116)  # a seed unrelated to the design's
+
+
+@check("stat-ml-007")
+def _():
+    # lasso on two nearly identical features picks one and its choice flips across samples;
+    # ridge splits the weight evenly every time
+    rng = random.Random(117)
+
+    def lasso2(x1, x2, y, lam, iters=300):
+        b1 = b2 = 0.0
+        s11, s22 = sum(v * v for v in x1), sum(v * v for v in x2)
+        for _ in range(iters):  # coordinate descent
+            r1 = sum(a * (c - b2 * b) for a, b, c in zip(x1, x2, y))
+            b1 = math.copysign(max(abs(r1) - lam, 0) / s11, r1)
+            r2 = sum(b * (c - b1 * a) for a, b, c in zip(x1, x2, y))
+            b2 = math.copysign(max(abs(r2) - lam, 0) / s22, r2)
+        return b1, b2
+
+    picks, ridge_gaps = set(), []
+    for _ in range(20):
+        common = [rng.gauss(0, 1) for _ in range(100)]
+        x1 = centred([c + rng.gauss(0, 0.1) for c in common])
+        x2 = centred([c + rng.gauss(0, 0.1) for c in common])
+        y = centred([c + rng.gauss(0, 1) for c in common])
+        l1, l2 = lasso2(x1, x2, y, lam=10.0)
+        picks.add("first" if abs(l1) > abs(l2) else "second")
+        r1, r2 = ols([x1, x2], y, ridge=50.0)
+        ridge_gaps.append(abs(r1 - r2) / abs(r1 + r2))
+    assert picks == {"first", "second"} and max(ridge_gaps) < 0.1
