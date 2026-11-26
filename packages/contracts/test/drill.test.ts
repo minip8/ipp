@@ -62,6 +62,19 @@ describe('drill contracts', () => {
     expect(
       bad({ byCategory: [{ category: 'multiply', correct: 361, wrong: 0, skipped: 0 }] }),
     ).toBe(false);
+    // Stopped after a second: the allowance is for the time played (plus the grace), not the clock.
+    expect(
+      bad({
+        elapsedMs: 1_000,
+        byCategory: [{ category: 'multiply', correct: 100, wrong: 0, skipped: 0 }],
+      }),
+    ).toBe(false);
+    expect(
+      bad({
+        elapsedMs: 1_000,
+        byCategory: [{ category: 'multiply', correct: 18, wrong: 0, skipped: 0 }],
+      }),
+    ).toBe(true);
     expect(bad({ byCategory: [{ category: 'multiply', correct: -1, wrong: 0, skipped: 0 }] })).toBe(
       false,
     );

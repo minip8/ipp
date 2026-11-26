@@ -99,6 +99,8 @@ export interface Limits {
   invites: { ipBurst: RateLimit; ipDaily: RateLimit };
   /** A room host changing the problem (each rewrites the editor document). */
   problemChange: { userBurst: RateLimit };
+  /** Recording a finished mental math drill run (each stores a row; a full run lasts a minute or more). */
+  drillRuns: { userBurst: RateLimit; userDaily: RateLimit };
   /** Hard cap on interviewer messages per pad (spend guard). */
   interviewerMessagesPerPad: number;
   collab: {
@@ -138,6 +140,10 @@ export const DEFAULT_LIMITS: Limits = {
   review: { userBurst: { limit: 6, windowSec: 60 }, userDaily: { limit: 150, windowSec: 86_400 } },
   invites: { ipBurst: { limit: 30, windowSec: 60 }, ipDaily: { limit: 600, windowSec: 86_400 } },
   problemChange: { userBurst: { limit: 10, windowSec: 60 } },
+  drillRuns: {
+    userBurst: { limit: 6, windowSec: 60 },
+    userDaily: { limit: 200, windowSec: 86_400 },
+  },
   interviewerMessagesPerPad: 200,
   collab: { docBytes: 16 * 1024 * 1024, preAuthBytes: 64 * 1024, authTimeoutMs: 15_000 },
 };

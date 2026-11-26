@@ -112,7 +112,9 @@ export const RecordDrillRunRequest = z
     }
     if (r.elapsedMs > r.config.durationSec * 1000 + DRILL_GRACE_MS)
       ctx.addIssue({ code: 'custom', message: 'the run is longer than its clock' });
-    if (answers > r.config.durationSec * DRILL_MAX_ANSWERS_PER_SEC)
+    // Against the time actually played, so a run stopped early cannot claim a full run's answers.
+    const played = Math.min(r.elapsedMs + DRILL_GRACE_MS, r.config.durationSec * 1000);
+    if (answers > Math.ceil((played / 1000) * DRILL_MAX_ANSWERS_PER_SEC))
       ctx.addIssue({ code: 'custom', message: 'too many answers for the time' });
   });
 export type RecordDrillRunRequest = z.infer<typeof RecordDrillRunRequest>;

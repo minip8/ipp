@@ -124,6 +124,9 @@ browser ── /api/* (Next rewrite, same origin, cookie session) ──▶ apps
   A room has no AI in the conversation and may have no problem (`problemSlug` null), and
   host-only data (interviewer notes, reference solutions, `host_notes`, the AI review, the
   report) must never be put in `PadDetail`, the shared Yjs document or a broadcast event.
+- **The mental math drill** (ARCHITECTURE §8.1) is generated and marked in the browser; the API
+  only stores finished runs (`drill_runs`, `POST`/`GET /api/drill/runs`) after the contract's
+  consistency checks, computing totals, score and `finishedAt` itself. Bests count full-mix runs only.
 - **`apps/web`** is UI only. Read `apps/web/AGENTS.md` first: this Next.js version differs from
   older ones, and the relevant guide under `apps/web/node_modules/next/dist/docs/` should be read
   before writing Next-specific code. Features live in `src/features/<name>/`, with pure logic in
