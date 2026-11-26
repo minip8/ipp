@@ -285,4 +285,4 @@
 
     A common wrong answer starts the clock late (for example "wait until minute 7, then measure 2
     more"), which does not measure 9 minutes from the start, or assumes a glass can be read halfway.
-  source: { name: "Hourglass puzzle (classic; e.g. Winkler, Mathematical Puzzles)" }
+  source: { name: "Hourglass puzzle (classic)" }

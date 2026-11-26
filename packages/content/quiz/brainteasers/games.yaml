@@ -51,7 +51,7 @@
     The rules matter. With "at least half" the two-pirate game is a dictatorship; with a strict
     majority, pirate 4 would always be thrown overboard by pirate 5, which changes everything above
     it. A strong answer says which rule it assumed and why the tie-breaking preference is needed.
-  source: { name: "Screwy pirates (Omohundro and Stewart, Scientific American 1999; e.g. Zhou, A Practical Guide to Quantitative Finance Interviews)" }
+  source: { name: "Screwy pirates (Stewart, after Omohundro, Scientific American 1999; e.g. Zhou, A Practical Guide to Quantitative Finance Interviews)" }
 
 - id: bt-games-002
   topic: brainteasers
@@ -360,7 +360,7 @@
     Weak answers say "first player, by mirroring" without explaining why the mirror spot cannot be
     blocked, which is the whole content. Others try to estimate how many coins fit, which is
     irrelevant.
-  source: { name: "Coins on a round table (classic; e.g. Winkler, Mathematical Puzzles)" }
+  source: { name: "Coins on a round table (classic)" }
 
 - id: bt-games-010
   topic: brainteasers

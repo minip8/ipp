@@ -48,7 +48,7 @@
     A common wrong answer is "close to 0", from the feeling that any one person rarely gets their
     hat; 100 small chances add up to one expected match. Candidates who try to find the
     distribution first tend to get stuck: for the mean you never need it.
-  source: { name: "Hat-check problem (e.g. Zhou, A Practical Guide to Quantitative Finance Interviews)" }
+  source: { name: "Hat-check problem" }
 
 - id: prob-expectation-003
   topic: probability

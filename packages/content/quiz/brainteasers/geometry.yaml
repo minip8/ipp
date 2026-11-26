@@ -230,7 +230,7 @@
 
     Choice a is the doubling pattern, the point of the question: a few terms of a sequence do not
     determine it. Choice c usually comes from a miscount by hand, and d from the case of five points.
-  source: { name: "Moser's circle problem (classic; e.g. Winkler, Mathematical Puzzles)" }
+  source: { name: "Moser's circle problem (classic)" }
 
 - id: bt-geometry-007
   topic: brainteasers
