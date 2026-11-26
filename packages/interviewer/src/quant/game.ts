@@ -122,19 +122,23 @@ export function revealLine(e: Extract<QuantGameEntry, { kind: 'reveal' }>): stri
 /** "long 3", "short 2", "flat" */
 export const positionText = (p: number) => (p > 0 ? `long ${p}` : p < 0 ? `short ${-p}` : 'flat');
 
-/** The settled game: every value, the contract's value, the candidate's position and P&L. */
+/**
+ * The settled game: the contract's value, every component, the candidate's position and P&L.
+ * The components are listed as "label: value" so a label is never set mid-sentence with its
+ * capital ("…and Twenty-sided die is 3", seen live).
+ */
 export function settleLine(state: QuantGameState): string {
   const s = state.settlement;
   if (!s) return '';
   const values = state.spec.components.map(
-    (c, i) => `${c.label} is ${formatGameNumber(state.values[i] as number)}`,
+    (c, i) => `${c.label}: ${formatGameNumber(state.values[i] as number)}`,
   );
   const traded = state.events.some((e) => e.kind === 'trade');
   const pnl = formatGameNumber(Math.abs(s.pnl));
   const result = !traded
     ? 'We made no trades.'
     : `You finish ${positionText(state.position)}, ${s.pnl > 0 ? `a profit of ${pnl}` : s.pnl < 0 ? `a loss of ${pnl}` : 'with nothing made or lost'}.`;
-  return `That settles the game: ${listed(values)}, so the contract is worth ${formatGameNumber(s.value)}. ${result}`;
+  return `That settles the game at ${formatGameNumber(s.value)} (${values.join(', ')}). ${result}`;
 }
 
 /**
@@ -179,7 +183,8 @@ export const withFacts = (facts: readonly string[], words: string): string =>
  * repeat the facts line or contradict it.
  */
 export const claimsTrade = (words: string): boolean =>
-  /\bI(?:'ll|’ll| will|'m|’m| am)?\s+(?:buy|buying|sell|selling|lift|lifting|hit|hitting|take|taking)\b/i.test(
+  // "take" only with a quantity: "I'll take that as your best market" claims nothing (seen live).
+  /\bI(?:'ll|’ll| will|'m|’m| am)?\s+(?:buy|buying|sell|selling|lift|lifting|hit|hitting|(?:take|taking)\s+(?:\d+|one|two|three|four|five|ten|twenty)\b)/i.test(
     words,
   );
 
@@ -319,7 +324,7 @@ export function gameBooksLines(
   const stage = tally(b.log.slice(lastReveal + 1));
   const all = tally(b.log);
   lines.push(
-    `Stage ${b.revealed + 1} (${b.revealed} reveal${b.revealed === 1 ? '' : 's'} so far). This stage: ${stage.quotes} market${stage.quotes === 1 ? '' : 's'} posted, ${stage.traded} traded; you bought ${stage.bought} and sold ${stage.sold} here. The whole game: ${all.quotes} markets, ${all.traded} trades; you bought ${all.bought} and sold ${all.sold} in all.`,
+    `Stage ${b.revealed + 1} (${b.revealed} reveal${b.revealed === 1 ? '' : 's'} so far). This stage: ${stage.quotes} market${stage.quotes === 1 ? '' : 's'} posted, ${stage.traded} traded; you bought ${stage.bought} and sold ${stage.sold} here. The whole game: ${all.quotes} market${all.quotes === 1 ? '' : 's'}, ${all.traded} trade${all.traded === 1 ? '' : 's'}; you bought ${all.bought} and sold ${all.sold} in all.`,
   );
   const q = b.quote;
   if (q) {

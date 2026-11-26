@@ -188,10 +188,10 @@ describe('the facts of a move', () => {
     // A close: the last trade, then the settlement (the candidate sold 2 at 11.5; the dice are 13).
     expect(moveFacts(s, { trade: { interviewerSide: 'buy', quantity: 2 } }, true)).toEqual([
       'I buy 2 at your offer of 11.5.',
-      'That settles the game: Die 1 is 6, Die 2 is 2 and Die 3 is 5, so the contract is worth 13. You finish short 2, a loss of 3.',
+      'That settles the game at 13 (Die 1: 6, Die 2: 2, Die 3: 5). You finish short 2, a loss of 3.',
     ]);
     expect(moveFacts(fresh(), {}, true)).toEqual([
-      'That settles the game: Die 1 is 6, Die 2 is 2 and Die 3 is 5, so the contract is worth 13. We made no trades.',
+      'That settles the game at 13 (Die 1: 6, Die 2: 2, Die 3: 5). We made no trades.',
     ]);
     // The settlement line says what the engine settles.
     const long = ok(
@@ -218,7 +218,13 @@ describe('the facts of a move', () => {
       'I hit you.',
     ])
       expect(claimsTrade(w), w).toBe(true);
-    for (const w of ['What is your new market?', 'Would you buy here?', 'If I bought, what then?'])
+    expect(claimsTrade("I'll take two at your offer.")).toBe(true);
+    for (const w of [
+      'What is your new market?',
+      'Would you buy here?',
+      'If I bought, what then?',
+      "I'll take that as your best opening market.",
+    ])
       expect(claimsTrade(w), w).toBe(false);
   });
 });
@@ -468,7 +474,7 @@ describe('the books and the review in words', () => {
     expect(after).toContain('you bought 2 at their offer of 12 (they sold)');
     expect(after).toContain('Die 1 was revealed: 6');
     expect(after).toContain('Stage 2 (1 reveal so far). This stage: 0 markets posted, 0 traded');
-    expect(after).toContain('The whole game: 1 markets, 1 trades; you bought 2 and sold 0 in all.');
+    expect(after).toContain('The whole game: 1 market, 1 trade; you bought 2 and sold 0 in all.');
     const done = ok(revealNext(t, T(30)));
     expect(gameBooksLines(slot(done), T0, T0).join('\n')).toContain('Nothing is left to reveal');
   });

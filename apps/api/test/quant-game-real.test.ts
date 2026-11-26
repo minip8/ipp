@@ -256,7 +256,7 @@ describe('a game played by the real interviewer', () => {
     await s.waitFor('round.updated', (e) => e.round.version === 7, 15_000);
     await rig.idle(id);
     expect(said()).toContain(
-      'That settles the game: First is 23456.789 and Second is 34567.891, so the contract is worth 58024.68. You finish flat, a loss of 3000. Thanks.',
+      'That settles the game at 58024.68 (First: 23456.789, Second: 34567.891). You finish flat, a loss of 3000. Thanks.',
     );
     const closed = (await roundRow(id)).state;
     expect(closed.current).toBe(2);

@@ -135,7 +135,7 @@ describe('a game played through the round', () => {
     expect(h.applied().at(-1)).toMatchObject({ type: 'close', by: 'interviewer' });
     const closing = h.interviewerSaid().at(-1)?.text;
     expect(closing).toBe(
-      "That settles the game: Die 1 is 6, Die 2 is 2 and Die 3 is 5, so the contract is worth 13. You finish long 2, a loss of 5.5. Let's stop there.",
+      "That settles the game at 13 (Die 1: 6, Die 2: 2, Die 3: 5). You finish long 2, a loss of 5.5. Let's stop there.",
     );
     expect(g().settlement).toMatchObject({ value: 13, pnl: -5.5 });
     expect(h.round.questions[1]?.verdict).toEqual({ score: 0.6, summary: 'Moved well.' });
@@ -186,7 +186,7 @@ describe('a game played through the round', () => {
     });
     expect(close && 'game' in close && close.game?.reveal).toBeFalsy();
     expect(lastSaid(h)).toBe(
-      "I buy 2 at your offer of 11.5. That settles the game: Die 1 is 6, Die 2 is 2 and Die 3 is 5, so the contract is worth 13. You finish short 2, a loss of 3. That's the game.",
+      "I buy 2 at your offer of 11.5. That settles the game at 13 (Die 1: 6, Die 2: 2, Die 3: 5). You finish short 2, a loss of 3. That's the game.",
     );
     expect(h.game().settlement?.pnl).toBe(-3);
     expect(h.quantTraces().at(-1)?.adjusted).toEqual([
@@ -347,8 +347,8 @@ describe('the clock and failures on a game', () => {
     expect(h.interviewerSaid().some((m) => m.text === QUANT_MESSAGES.gameNudge)).toBe(true);
     const close = h.applied().find((s) => s.type === 'close' && s.by === 'timeout');
     expect(close).toMatchObject({ verdict: null });
-    expect(close?.say).toBe(
-      `That settles the game: Die 1 is 6, Die 2 is 2 and Die 3 is 5, so the contract is worth 13. We made no trades. ${QUANT_MESSAGES.timeout}`,
+    expect(close && close.type === 'close' ? close.say : null).toBe(
+      `That settles the game at 13 (Die 1: 6, Die 2: 2, Die 3: 5). We made no trades. ${QUANT_MESSAGES.timeout}`,
     );
     expect(h.game(1).settlement).toMatchObject({ value: 13, pnl: 0 });
     expect(h.round.current).toBe(2);

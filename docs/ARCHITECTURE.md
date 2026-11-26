@@ -497,15 +497,21 @@ a fresh start for stalls and the unanswered count, as after a step of its own.
   waits while the candidate has just spoken; a reply sent once the budget is up carries the nudge
   itself (`nudge: true`), so there is no separate message.
 - **One structured call per turn**, the same for replies, the opening, nudges, stalls and closes
-  for time: purpose `turn`, `QuantTurnSchema` (`action` silent / stay / hint / follow_up / close,
-  `hint_rung`, `message`, `score`, `summary`, `note`, `reason`) and `QUANT_CALLS.turn` (medium
-  effort), so the cached prefix is never invalidated by a change of effort or schema.
+  for time, in every round with a game or without: purpose `turn`, `QuantTurnSchema` (in the
+  order the model writes them: `reason`, `action` silent / stay / hint / follow_up / close, the
+  game move `trade` none / buy / sell, `quantity` and `reveal`, then `hint_rung`, `message`,
+  `score`, `summary`, `note`) and `QUANT_CALLS.turn` (medium effort), so the cached prefix is
+  never invalidated by a change of effort or schema. The move comes before the message so it is
+  decided first and the stream can check it before showing a word; on a bank question it is
+  always none (and ignored if not). A turn read without the move fields is a turn with no move.
 - **Streaming** (`quant/stream.ts`): replies (after the round too) and the opening stream their
   `message` while the model writes the JSON. `TurnJsonReader` follows the partial object and
-  decodes the top-level `action` and `message` strings across chunk boundaries (escapes, `\uXXXX`
-  and surrogate pairs included; a backslash that starts no valid escape stands for itself, as in
-  the repair before parsing); `MessageStream` shows nothing until `action` is known and is one that
-  speaks (never `silent`), then the message with `repairLatexEscapes` applied, leading whitespace
+  decodes the top-level `action`, `trade` and `message` strings and the `quantity` and `reveal`
+  scalars across chunk boundaries (escapes, `\uXXXX` and surrogate pairs included; a backslash
+  that starts no valid escape stands for itself, as in the repair before parsing), keeping the
+  move as it stood when the message began; `MessageStream` shows nothing until `action` is known
+  and is one that speaks (never `silent`) and the message has begun, then asks its gate (a game's,
+  below; none on a bank question) what may show, then the message with `repairLatexEscapes` applied, leading whitespace
   and a role label dropped, holding back the few characters the repair may still change (a tab,
   return or newline until 15 characters follow it, a trailing `$` or `\`). The deltas go out under
   a fresh id; the step names it (`QuantStep.messageId`, optional) and `advanceRound` hands it back
@@ -521,7 +527,11 @@ a fresh start for stalls and the unanswered count, as after a step of its own.
   request is the same with or without streaming (`onText` is local), and a provider that does not
   stream structured output works without deltas. The web shows a streaming message with any
   formula not yet closed held back (`settledMath`, `components/math-guard.ts`), so `$\frac{5}{`
-  never flashes as source or a KaTeX error, and speaks only posted messages.
+  never flashes as source or a KaTeX error, and speaks only posted messages. On a game a reply
+  streams only when its move was written before the message and shows nothing the step has not
+  yet made public: no reveal and no close (whose facts hold values); a trade's facts line is shown
+  first, decided by the same normalisation the step uses, so the streamed text is the posted one.
+  A reveal or a game's close is posted whole (in live runs, 2 to 4 turns a game).
 - **Prompt** (`quant/prompts.ts`): `system[0]` is `QUANT_CORE` (the same for every quant pad),
   `system[1]` the current question in full (prompt, answer or reference and key points,
   explanation, numbered hints, follow-ups), both cache breakpoints; then this question's
@@ -543,7 +553,15 @@ a fresh start for stalls and the unanswered count, as after a step of its own.
   rung gets a hint in the interviewer's own words (rung 0), no bigger than a rung; and on a
   market-making or betting question (`DIALOGUE_TOPICS`) the recorded follow-up is only the first
   move, after which the dialogue goes on with `stay` turns while the question's time allows (the
-  per-turn books say so, outside the cached prefix).
+  per-turn books say so, outside the cached prefix). A market-making game (§8.3) has its own
+  section of the core (how a game runs, what the interviewer must and must not do, the verdict on
+  decisions not dice), its own `system[1]` (`gameBlock`: the prompt, the mechanics in words, the
+  author's counterparty playbook, the explanation, the hint ladder; nothing that changes with
+  play, so it stays cached for the whole game), the game's books in the per-turn system message
+  (`gameBooksLines`, below) and game variants of the reply, nudge, stall and forced-close tasks.
+  One rule of it comes from a live game: ask for a tighter or bigger market at most twice in a
+  stage, then trade the market as it stands (a playbook with no cap had the interviewer ask five
+  times while the candidate re-posted the same market).
 - **The books in code** (`normaliseTurn`, `quant/turn.ts`), so a step is never one the server would
   refuse for its own reasons: a forced turn is a close whatever the model chose; a hint records the
   next unused authored rung (a higher rung is clamped down, a rung already given or a hint past
@@ -553,6 +571,38 @@ a fresh start for stalls and the unanswered count, as after a step of its own.
   is a failed call. `parseTurn` first strips the JSON a model sometimes writes inside the last
   string field it closes (`stripJsonDebris`: a trailing `"}`, an unbalanced closing quote, a
   trailing `<br>`).
+- **A game's move, and its words** (`quant/game.ts`). The move is kept inside the books
+  (`normaliseGameMove`, on the slot's state as loaded for the turn): ignored on a bank question;
+  no trade without a live quote; a trade's quantity a whole number clamped to 1..the quote's size;
+  no reveal with nothing left, nor on a close (the settlement shows everything); no move on a
+  turn that says nothing; `follow_up` is a `stay` (a game has no follow-up). `moveFacts` then
+  plays the move with the engine's own transitions (`tradeQuote`, `revealNext`, `settleGame`, the
+  ones `advanceRound` applies) and words what they did, and those lines open the posted message,
+  the model's words after them: "I buy 2 at your offer of 11.5. Die 1 shows 6. Where's your
+  market now?", and on every close of a game (the model's, the clock's, a canned one) the
+  settlement: "That settles the game at 13 (Die 1: 6, Die 2: 2, Die 3: 5). You finish short 2, a
+  loss of 3." The model is told never to state a trade, a price,
+  a quantity or a value itself. So every figure on the screen is the books' figure, whatever the
+  model's arithmetic or memory: a move the model wrote but the books do not allow is not made and
+  not announced, a clamped quantity is announced as traded, and a message that announces a trade
+  nobody made can only come from the model's words breaking that rule (the trace flags words
+  that claim a trade, `adjusted`, and the simulator counts them). A move needs no words (the
+  facts line is a reply). The step names the version the state was loaded at, so a quote that
+  lands while the turn is written makes it `stale`: nothing of it is booked or posted, what it
+  streamed is discarded, and the quote, queued meanwhile, is answered next on a fresh load. A
+  `close` may carry a last trade (`QuantStep.close.game`), so "I lift you for five; that's the
+  game" is one step.
+- **The game's books per turn** (`gameBooksLines`, in the final system message, outside the
+  cached prefix): every component and whether it is shown, the next reveal and what it is, the
+  public fair value, standard deviation and range now, and what the next reveal would make them,
+  the true value, the stage (reveals so far; markets, trades, contracts bought and sold this stage
+  and in all, as the playbooks count them), the live quote with its mid, its width in standard
+  deviations, whether fair is inside it and the interviewer's edge per contract at the bid and at
+  the offer against both values, the sign convention stated in words on each line ("bid minus
+  value", "value minus offer", "Edges are YOURS"), the candidate's position and cash marked to
+  both values, the log and the quotes left. Candidate messages that are quotes posted through the
+  quote box (exactly `formatQuote` of a logged quote, at its time) are marked `source="quote"`, so
+  a market typed in the chat can be told from one posted.
 - **LaTeX in JSON** (`quant/latex.ts`): a single backslash inside a JSON string turns `\frac`,
   `\binom`/`\beta`, `\times`/`\text`, `\rho`/`\right`, `\nu`/`\neq` into control characters, and
   `\alpha` or `\$` into invalid JSON. Unparseable output is re-parsed with every backslash that
@@ -570,7 +620,10 @@ a fresh start for stalls and the unanswered count, as after a step of its own.
   required (a forced close on a reply is `kind: 'chat'`). A refused step (`stale`, …) posts
   nothing (what it streamed is discarded). A clock action that failed or was refused is retried after 30 s, not on every pass. A
   restart greets only while the round is pending and nothing was said, and nudges only while the
-  server's `nudgedAt` is null.
+  server's `nudgedAt` is null. On a game nothing is traded or shown when a call fails: the
+  canned reply asks them to say it again or post their market again (`gameReplyFailed`), the
+  canned nudge asks for one last market (`gameNudge`), and a canned close states the settlement
+  before its line.
 - **Voice**: the model may stay silent on a spoken message that is plainly mid-thought, and before
   answering a spoken message the pump waits `voiceSettleMs` (1.5 s, real time, at most four times)
   for further pieces and answers them together. Each piece of speech is stored as a candidate
@@ -588,12 +641,25 @@ a fresh start for stalls and the unanswered count, as after a step of its own.
   transcript with a marker where each question was posted, the final scratchpad, and a code-built
   table of time, budget, hints (authored used of available, and own), follow-up, how it ended and
   score per question, and returns a `ReportAssessment` over `QUANT_REPORT_DIMENSIONS` (structuring,
-  correctness, communication, speed, independence), each with quoted or cited evidence.
+  correctness, communication, speed, independence), each with quoted or cited evidence. A game is
+  presented with its review as played (`reviewText` of `gameReview`: each quote against the fair
+  value at the time, each trade's edge, each reveal's effect on fair and on the next mid, the
+  position, the expected edge and the realised P&L) instead of a reference answer, in its verdict
+  and in the assessment, both told to judge the decisions and never the luck.
 - `scripts/simulate.ts --quant` plays a scripted 20-minute round against a live model, and
   reports latencies, including the time to a streamed message's first character against the
   whole call (live, Opus 5.5: p50 2.6 s against 3.9 s, p90 4.8 s against 5.7 s; the `reason`
   field and adaptive thinking come before `message`), and whether any streamed text changed when
-  it was posted.
+  it was posted. `--game <id>` (with `--values` to fix the dice) puts a game in the second slot,
+  played by a scripted candidate who posts quotes through the same `quote` step as the API, quotes
+  around the public fair value and shades after fills, leaves a stale market once after a
+  reveal, types a market in the chat once and asks for the fair value once; it prints the books
+  after every step and compares the game's turns with the others. Live (Opus 5.5, five games):
+  a game's turn p50 4.1 to 5.8 s against 2.8 to 3.9 s for the bank question of the same run, as
+  its per-turn books add about 1.2 to 1.6 thousand uncached input tokens (1.7 to 2.1 thousand a
+  call against about 0.53 thousand) and its moves more output, while the cache reads stay whole
+  (6.2 to 7.1 thousand tokens a call); reveal turns, posted whole, are most of the difference in
+  a game with many reveals.
 
 ## 8. Quizzes
 
@@ -804,7 +870,7 @@ The pieces, and what is **built** and **not yet built**:
 | the quote route, the effects' I/O (quote message, `game` timeline events) | `apps/api/src/routes/pads.ts`, `src/quant/round.ts` | built |
 | the assembly rule (one game in a trader round's second slot) and `includeGame` | `apps/api/src/quant/assemble.ts` | built |
 | the interviewer's seam: a game's entry in `QuantContext.questions` (content and books) | `packages/interviewer/src/types.ts`, `InterviewerHost.loadQuantContext` | built |
-| the interviewer's moves, its books in the prompt | `packages/interviewer/src/quant/` | **not yet** (a game is a conversation about its prompt with the hint ladder, and no move is made) |
+| the interviewer's moves, the facts it posts, its books in the prompt, the review in the verdict and the assessment | `packages/interviewer/src/quant/` (`game.ts`, §7.3) | built |
 | the quote widget, the blotter, the report's game section | `apps/web` | **not yet** |
 
 A round without a game behaves exactly as before (its stored state is byte-for-byte what it
@@ -878,7 +944,9 @@ was, and so is its assembly: the same draws from the same generator).
     one at your offer. Now the first die: it is a 6."). It combines with any `action` (a hint may
     ride along) and the whole step is refused when any part of it is. An empty move is no move.
   - every close settles an open game: `close` for `interviewer`, `timeout` or `round_time`, and
-    the API's `end`. A game never posed is never settled.
+    the API's `end`. A game never posed is never settled. A `close` may carry a last move
+    (`game`, as on a turn: in practice a trade), made before the settlement, so the interviewer
+    can trade and end the game in one step; the close is refused whole when the move is.
   - new refusals (nothing changes, nothing is posted): `not_game` (a quote or a move on a
     question that is not a game), `bad_quote`, `quote_limit`, `no_quote` (a trade with no live
     quote), `bad_quantity`, `nothing_to_reveal`, `game_settled` (unreachable through the round);
@@ -927,15 +995,25 @@ was, and so is its assembly: the same draws from the same generator).
   question is `QuantBankEntry` (`kind` `'question'`, or absent in code written before games,
   with `question`), a game's slot `QuantGameSlotEntry` (`kind: 'game'`, with `game`, its
   `QuantGameContent`: id, topic, title, difficulty, the posted prompt, `counterparty`, the hints
-  cut to `hintsAvailable`, `explanation` and the round's snapshot of the mechanics; and `books`,
-  `gameBooks` of the state at the context load), both with `index`, `hintRungs` and
-  `followUpAsked`. `InterviewerHost.loadQuantContext` fills it from `quant_games` (a missing row
-  leaves the notes, hints and explanation empty). `quant/entry.ts` reads what both kinds have
-  (prompt, hints, topic, difficulty, type). Until the interviewer gets its moves, a game is run
-  as a conversation about its prompt with the hint ladder (`gameBlock` in `quant/prompts.ts`):
-  the block has the prompt and the hints and tells the model it cannot trade or show a value;
-  the books, the counterparty notes and the explanation are in no prompt, and no step carries a
-  game move.
+  cut to `hintsAvailable`, `explanation` and the round's snapshot of the mechanics; `state`, the
+  game's `QuantGameState` at the context load; and `books`, `gameBooks` of it), both with
+  `index`, `hintRungs` and `followUpAsked`. `InterviewerHost.loadQuantContext` fills it from
+  `quant_games` (a missing row leaves the notes, hints and explanation empty, and the block then
+  has a generic uninformed playbook). `quant/entry.ts` reads what both kinds have (prompt, hints,
+  topic, difficulty, type).
+- **The interviewer plays it** (§7.3, `packages/interviewer/src/quant/game.ts`): its turn's
+  `trade`, `quantity` and `reveal` fields are its move, kept inside the books by
+  `normaliseGameMove` and played on `state` with the engine's transitions; the facts of the move
+  (the trade, the value shown, the settlement on a close) open its message, built from what the
+  engine computed, so the words can never give a figure the books do not hold. The question's
+  system block has the prompt, the mechanics in words, the counterparty playbook, the
+  explanation and the hints; the per-turn books (`gameBooksLines`) have everything of
+  `gameBooks` and the stage counts the playbooks use, edges with their sign convention spelt out.
+  The verdict on a game and the assessment get its review as played (`gameReview(state)` in
+  words, `reviewText`) in place of a reference answer, and are told to judge decisions, not the
+  dice. A typed or spoken market is not a quote: the model asks for it in the quote box. No
+  playbook figure, hidden value, fair value or mark reaches a browser: proven through the real
+  API, database and socket in `apps/api/test/quant-game-real.test.ts`.
 - **The report** (`QuantQuestionReview` with `type: 'game'`, only after the pad ended):
   `subtopic` empty, `solution` the figures before anything was shown (`gameSolution`: "Fair value
   10.5, standard deviation 2.96, from 3 to 18"), `keyPoints` empty, `explanation` the game's,
@@ -966,14 +1044,21 @@ was, and so is its assembly: the same draws from the same generator).
   explanation is in `PadDetail`, the list, `round.updated`, `message.created`, the quote
   route's response or errors, the timeline or the playback (the tests choose values no visible
   number can contain and scan every payload); after it ended, the report shows the review.
+- **In the interviewer, proven by tests** (`packages/interviewer/test/quant-game*.test.ts`, the
+  round played with the real `advanceRound`; `apps/api/test/quant-game-real.test.ts` through the
+  real API, database and socket with only the model scripted): a full game (quote, trade and
+  reveal, a new quote, an informed trade, a close settling it) with the books asserted at each
+  step and every posted figure found in the books; a trade without a quote, a quantity beyond the
+  size, a reveal with nothing left and a move on a bank question, each kept out of the step and
+  out of the words; a trade carried by a close; a quote landing mid-turn (the turn goes `stale`,
+  its stream is discarded, the new quote is answered at its own price); closes for time and failed
+  calls on a game; voice; nothing hidden ever streamed before its step, and nothing hidden, fair,
+  marked or from the playbook in any socket event before the settlement.
 - **To build next** (specified, not implemented):
   - The browser tests' mock (`apps/web/e2e/mock-quant-round.ts`) must mirror the route and post
     the same `formatQuote` text.
-  - Interviewer: `gameBooks` (from the entry's `books`) in the per-turn books and the game's
-    counterparty notes in the question's system block (replacing `gameBlock`); the turn schema
-    gains the trade and reveal; `normaliseTurn` keeps a move the server would refuse out of the
-    step (no live quote, a quantity beyond the size, nothing left to reveal), so a step is never
-    refused for the books' sake.
+  - The API's sweeper closes an unattended game with `cannedCloseLine` alone; the settlement is
+    on the panel but not stated in the chat, as the interviewer's closes state it.
   - Web: a quote widget (bid, ask, size, checked with `quoteProblem`), the components and the
     blotter from `QuantQuestionView.game`, and the report's game section from
     `QuantQuestionReview.game`.
