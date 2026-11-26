@@ -228,10 +228,26 @@ export function PadTag({
   pad,
   className,
 }: {
-  pad: { format: PadFormat; language: Language; quantPath?: QuantPath | null };
+  pad: {
+    format: PadFormat;
+    language: Language;
+    quantPath?: QuantPath | null;
+    kind?: 'practice' | 'room';
+  };
   className?: string;
 }) {
   if (pad.format !== 'quant') return <LanguageTag language={pad.language} className={className} />;
+  // A quant room: someone interviewed on questions of the bank, no path.
+  if (pad.kind === 'room')
+    return (
+      <span
+        data-testid="quant-badge"
+        className={cn('inline-flex items-center gap-1.5 text-sm text-fg-muted', className)}
+      >
+        <SigmaIcon aria-hidden className="size-3.5 text-accent-text" />
+        Quant questions
+      </span>
+    );
   return (
     <span
       data-testid="quant-badge"

@@ -14,6 +14,7 @@ import {
   FAIR_SIDE_LABEL,
   fairSide,
   hintsLabel,
+  hostedAskedDetail,
   pnlParts,
   quoteRows,
   quoteSummary,
@@ -104,6 +105,28 @@ describe('a quant report', () => {
       over: false,
     });
     expect(timeLabel({ timeSec: null, budgetSec: null })).toBeNull();
+    // A quant room's questions have no budget: only how long they were open.
+    expect(timeLabel({ timeSec: 130, budgetSec: null })).toEqual({
+      label: '2:10 open',
+      over: false,
+    });
+  });
+});
+
+describe('a quant room’s report', () => {
+  it('counts what the host asked, closed and left open', () => {
+    const f = roundFigures({
+      mode: 'hosted',
+      path: null,
+      questions: [
+        review({ budgetSec: null, verdict: { score: 1, summary: '' } }),
+        review({ budgetSec: null, status: 'unfinished' }),
+      ],
+    });
+    expect(hostedAskedDetail(f)).toBe('1 closed · 1 open at the end');
+    expect(hostedAskedDetail(roundFigures({ mode: 'hosted', path: null, questions: [] }))).toBe(
+      'no question was asked',
+    );
   });
 });
 

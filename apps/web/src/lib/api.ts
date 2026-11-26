@@ -18,6 +18,10 @@ import {
   type DiscussionReplyRequest,
   DiscussionReplyResponse,
   DrillHistory,
+  HostBankPage,
+  type HostBankQuery,
+  HostRoundView,
+  type HostVerdictInput,
   HostView,
   InviteInfo,
   Pad,
@@ -30,6 +34,8 @@ import {
   ProblemProgress,
   ProblemSummary,
   QuantRoundView,
+  QuantSecondOpinion,
+  type QuantSecondOpinionRequest,
   QuizAttempt,
   QuizAttemptSummary,
   QuizBank,
@@ -201,6 +207,52 @@ export const api = {
       method: 'POST',
       body: question ? { question } : {},
     }),
+  /**
+   * A quant room's host (§8.4): the bank with its solutions, and the round's steps. Each step
+   * answers with the host's view of the round as it now is.
+   */
+  hostBank: (id: string, query: Partial<HostBankQuery>) =>
+    request(
+      `/pads/${id}/host/round/bank${qs(
+        Object.fromEntries(
+          Object.entries(query).map(([k, v]) => [k, v === undefined ? undefined : String(v)]),
+        ),
+      )}`,
+      HostBankPage,
+    ),
+  setQueue: (id: string, questionIds: string[]) =>
+    request(`/pads/${id}/host/round/queue`, HostRoundView, {
+      method: 'PUT',
+      body: { questionIds },
+    }),
+  poseQuestion: (id: string, questionId: string) =>
+    request(`/pads/${id}/host/round/pose`, HostRoundView, {
+      method: 'POST',
+      body: { questionId },
+    }),
+  recordHint: (id: string, index: number, rung: number) =>
+    request(`/pads/${id}/host/round/hint`, HostRoundView, {
+      method: 'POST',
+      body: { index, rung },
+    }),
+  recordFollowUp: (id: string, index: number) =>
+    request(`/pads/${id}/host/round/follow-up`, HostRoundView, {
+      method: 'POST',
+      body: { index },
+    }),
+  closeQuestion: (id: string, index: number, verdict: HostVerdictInput | null) =>
+    request(`/pads/${id}/host/round/close`, HostRoundView, {
+      method: 'POST',
+      body: { index, verdict },
+    }),
+  setVerdict: (id: string, index: number, verdict: HostVerdictInput) =>
+    request(`/pads/${id}/host/round/verdict`, HostRoundView, {
+      method: 'PUT',
+      body: { index, verdict },
+    }),
+  /** The AI's second opinion on a question of a quant room (the host's own key). */
+  quantSecondOpinion: (id: string, body: QuantSecondOpinionRequest) =>
+    request(`/pads/${id}/host/round/review`, QuantSecondOpinion, { method: 'POST', body }),
   /** A market on the current question's game (§8.3): the round as it now is, or a 409 refusal. */
   postQuote: (id: string, body: PostQuantQuoteRequest) =>
     request(`/pads/${id}/round/quote`, QuantRoundView, { method: 'POST', body }),

@@ -87,6 +87,8 @@ export function ReportPage({ id }: { id: string }) {
   const hostOnly = pad.data?.pad.kind === 'room' && pad.data.role !== 'owner';
   const isRoomHost = pad.data?.pad.kind === 'room' && pad.data.role === 'owner';
   const quant = pad.data?.pad.format === 'quant';
+  // A quant room: its host posed questions of the bank and gave the verdicts.
+  const quantRoom = quant && pad.data?.pad.kind === 'room';
   const ended = pad.data?.pad.status === 'ended' && !deleted && !hostOnly;
   const target: DeleteTarget | null = pad.data
     ? {
@@ -152,7 +154,13 @@ export function ReportPage({ id }: { id: string }) {
                 {pad.data.round?.path && <QuantPathBadge path={pad.data.round.path} />}
               </div>
               <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-fg-muted">
-                <span>{quant ? 'Quant round report' : 'Interview report'}</span>
+                <span>
+                  {quantRoom
+                    ? 'Quant interview report'
+                    : quant
+                      ? 'Quant round report'
+                      : 'Interview report'}
+                </span>
                 {!quant && (
                   <>
                     <span aria-hidden className="text-fg-subtle">
@@ -243,7 +251,13 @@ export function ReportPage({ id }: { id: string }) {
                       onRetry={() => report.refetch()}
                     />
                   )}
-                  {report.data.quant && <QuantReview quant={report.data.quant} />}
+                  {report.data.quant && (
+                    <QuantReview
+                      quant={report.data.quant}
+                      padId={id}
+                      canGiveVerdicts={isRoomHost}
+                    />
+                  )}
                 </>
               )}
               {isRoomHost && (
