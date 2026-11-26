@@ -1,5 +1,5 @@
 'use client';
-import { AlertTriangleIcon, ClockIcon, RotateCwIcon, WifiOffIcon } from 'lucide-react';
+import { AlertTriangleIcon, ClockIcon, LockIcon, RotateCwIcon, WifiOffIcon } from 'lucide-react';
 import type * as React from 'react';
 import { useEffect, useState } from 'react';
 import { ApiRequestError, errorMessage, formatRetry } from '@/lib/api';
@@ -54,6 +54,16 @@ export function useRetryCountdown(err: unknown) {
   return retryAfter ? left : 0;
 }
 
+/**
+ * The quiz refuses answers to a candidate in a quant interview that is still going (409
+ * `in_quant_interview`, ARCHITECTURE §8.4): not a fault, so it is explained, not shown as one.
+ */
+export const isQuantInterviewGuard = (e: unknown) =>
+  e instanceof ApiRequestError && e.code === 'in_quant_interview';
+export const QUANT_GUARD_TITLE = 'Answers are hidden during your interview';
+export const QUANT_GUARD_TEXT =
+  'You are the candidate in a quant interview that is still going, so the quiz keeps its answers and explanations to itself until it ends. You can still browse the questions. Once the interview is over, everything is back.';
+
 export function ErrorState({
   error,
   onRetry,
@@ -68,6 +78,29 @@ export function ErrorState({
   compact?: boolean;
 }) {
   const wait = useRetryCountdown(error);
+  if (isQuantInterviewGuard(error))
+    return (
+      <div
+        role="status"
+        data-testid="quant-interview-guard"
+        className={cn(
+          'flex flex-col items-center justify-center text-center',
+          compact ? 'px-4 py-6' : 'px-6 py-12',
+          className,
+        )}
+      >
+        <div className="mb-3 flex size-10 items-center justify-center rounded-lg border border-border bg-surface-2 text-fg-subtle">
+          <LockIcon className="size-5" />
+        </div>
+        <p className="text-base font-medium text-fg">{QUANT_GUARD_TITLE}</p>
+        <p className="mt-1 max-w-sm text-sm text-fg-muted">{QUANT_GUARD_TEXT}</p>
+        {onRetry && (
+          <Button className="mt-4" size="sm" onClick={onRetry}>
+            <RotateCwIcon /> Check again
+          </Button>
+        )}
+      </div>
+    );
   const isNetwork = error instanceof ApiRequestError && error.status === 0;
   const isRate = error instanceof ApiRequestError && error.isRateLimited;
   const Icon = isNetwork ? WifiOffIcon : isRate ? ClockIcon : AlertTriangleIcon;
@@ -111,6 +144,22 @@ export function ErrorState({
 
 export function InlineError({ error, className }: { error: unknown; className?: string }) {
   if (!error) return null;
+  if (isQuantInterviewGuard(error))
+    return (
+      <p
+        role="status"
+        data-testid="quant-interview-guard"
+        className={cn(
+          'flex items-start gap-2 rounded-md border border-border bg-surface-2 px-3 py-2 text-sm text-fg-muted',
+          className,
+        )}
+      >
+        <LockIcon className="mt-0.5 size-4 shrink-0 text-fg-subtle" />
+        <span>
+          <span className="font-medium text-fg">{QUANT_GUARD_TITLE}.</span> {QUANT_GUARD_TEXT}
+        </span>
+      </p>
+    );
   return (
     <p
       role="alert"
