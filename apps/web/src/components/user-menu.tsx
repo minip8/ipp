@@ -69,7 +69,8 @@ export function UserMenu() {
   const me = useMe();
   const qc = useQueryClient();
   const router = useRouter();
-  const key = useAiKey(Boolean(me.data));
+  // A guest has no key and may not ask (403 account_required): only an account has one.
+  const key = useAiKey(Boolean(me.data && !me.data.guest));
   const track = useTrack();
   const phone = usePhone();
   if (!me.data) return <span className="skeleton size-7 rounded-full" />;

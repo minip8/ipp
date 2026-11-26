@@ -26,7 +26,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Segmented } from '@/components/ui/segmented';
 import { Spinner } from '@/components/ui/spinner';
 import { Switch } from '@/components/ui/switch';
-import { roundProgress } from '@/features/quant-pad/logic';
+import { isHosted, roundProgress } from '@/features/quant-pad/logic';
+import { hostedEndNote } from '@/features/quant-room/logic';
 import { formatDuration } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import {
@@ -416,10 +417,14 @@ export function EndDialog({
   const accepted = submissions.some((r) => r.verdict === 'accepted');
   const round = state.round;
   const progress = round && roundProgress(round);
+  const hosted = round !== null && isHosted(round);
   const tiles: [string, string][] = progress
     ? [
         ['Time', formatDuration(elapsed)],
-        ['Questions done', `${progress.closed} of ${progress.total}`],
+        // A quant room has no total: what was asked is all there is.
+        hosted
+          ? ['Questions asked', String(progress.posed)]
+          : ['Questions done', `${progress.closed} of ${progress.total}`],
         ['Hints', String(progress.hints)],
       ]
     : [
@@ -449,11 +454,13 @@ export function EndDialog({
           </dl>
           {progress && round ? (
             <p className="mt-3 text-sm text-fg-muted" data-testid="end-round-note">
-              {round.phase === 'finished'
-                ? 'The round is over. The report scores each answer and shows the solutions.'
-                : progress.closed < progress.posed
-                  ? `Question ${progress.posed} is still open: ending now leaves it unfinished${progress.posed < progress.total ? ' and the rest unasked' : ''}. The report scores what you answered.`
-                  : 'The round has not started yet. Ending now leaves every question unasked.'}
+              {hosted
+                ? hostedEndNote(round)
+                : round.phase === 'finished'
+                  ? 'The round is over. The report scores each answer and shows the solutions.'
+                  : progress.closed < progress.posed
+                    ? `Question ${progress.posed} is still open: ending now leaves it unfinished${progress.posed < progress.total ? ' and the rest unasked' : ''}. The report scores what you answered.`
+                    : 'The round has not started yet. Ending now leaves every question unasked.'}
             </p>
           ) : (
             <div className="mt-3 text-sm">

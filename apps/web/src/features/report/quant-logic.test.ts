@@ -14,6 +14,7 @@ import {
   FAIR_SIDE_LABEL,
   fairSide,
   hintsLabel,
+  hostedAskedDetail,
   pnlParts,
   quoteRows,
   quoteSummary,
@@ -42,6 +43,8 @@ const review = (over: Partial<QuantQuestionReview>): QuantQuestionReview => ({
   verdict: null,
   hintsGiven: 0,
   hintsAvailable: 2,
+  hintRungs: [],
+  followUpAsked: false,
   timeSec: 60,
   budgetSec: 420,
   game: null,
@@ -51,6 +54,7 @@ const review = (over: Partial<QuantQuestionReview>): QuantQuestionReview => ({
 describe('a quant report', () => {
   it('sums the round: answered, mean of the judged scores, hints over posed questions', () => {
     const report: QuantReport = {
+      mode: 'ai',
       path: 'trader',
       questions: [
         review({ verdict: { score: 0.9, summary: '' }, hintsGiven: 1 }),
@@ -70,11 +74,11 @@ describe('a quant report', () => {
       hintsAvailable: 7,
     });
     expect(f.meanScore).toBeCloseTo(0.6);
-    expect(roundFigures({ path: 'trader', questions: [] }).meanScore).toBeNull();
+    expect(roundFigures({ mode: 'ai', path: 'trader', questions: [] }).meanScore).toBeNull();
     expect(answeredDetail(f)).toBe('3 asked · 1 timed out · 1 not reached');
-    expect(answeredDetail(roundFigures({ path: 'trader', questions: [review({})] }))).toBe(
-      '1 asked',
-    );
+    expect(
+      answeredDetail(roundFigures({ mode: 'ai', path: 'trader', questions: [review({})] })),
+    ).toBe('1 asked');
   });
 
   it('shows scores as percentages with a tone', () => {
@@ -101,6 +105,28 @@ describe('a quant report', () => {
       over: false,
     });
     expect(timeLabel({ timeSec: null, budgetSec: null })).toBeNull();
+    // A quant room's questions have no budget: only how long they were open.
+    expect(timeLabel({ timeSec: 130, budgetSec: null })).toEqual({
+      label: '2:10 open',
+      over: false,
+    });
+  });
+});
+
+describe('a quant room’s report', () => {
+  it('counts what the host asked, closed and left open', () => {
+    const f = roundFigures({
+      mode: 'hosted',
+      path: null,
+      questions: [
+        review({ budgetSec: null, verdict: { score: 1, summary: '' } }),
+        review({ budgetSec: null, status: 'unfinished' }),
+      ],
+    });
+    expect(hostedAskedDetail(f)).toBe('1 closed · 1 open at the end');
+    expect(hostedAskedDetail(roundFigures({ mode: 'hosted', path: null, questions: [] }))).toBe(
+      'no question was asked',
+    );
   });
 });
 

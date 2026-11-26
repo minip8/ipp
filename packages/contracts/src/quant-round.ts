@@ -24,6 +24,23 @@
  *
  *   asking(i, game) ──quote──▶ live quote ──turn + trade──▶ no quote ──quote──▶ … ──close──▶ settled
  *                       └──turn + reveal (withdraws the quote)──┘
+ *
+ * A round is driven one of two ways (`QuantRoundState.mode`, read with `quantMode`):
+ *
+ *  ai      (absent in every round stored before quant rooms) assembled up front and moved by the
+ *          AI interviewer under the round's clock: everything above.
+ *  hosted  a quant room's round (ARCHITECTURE §8.4): it starts empty and a person, the room's
+ *          host, moves it with the host steps (`QuantHostStep`), with no clock, budget, nudge or
+ *          timeout. Its questions are only the ones the host posed, in the order posed; the
+ *          host's queue of questions to come (`queue`) is server-only and never part of them.
+ *
+ *   pending ──pose──▶ asking(0) ──hint / follow_up──▶ asking(0) ──host_close──▶ idle ──pose──▶ asking(1)
+ *                        └─────────────── pose (closes the open one first) ──────────────▶ asking(1) …
+ *   any phase ──end──▶ ended: only `host_verdict` on a question that has no verdict yet
+ *
+ * "idle" is phase `finished`: no question is open, and the host may pose another until the pad
+ * ends. The AI's steps are refused on a hosted round and the host's on an AI round
+ * (`wrong_mode`); `end` is valid on both.
  */
 import { z } from 'zod';
 import { Id, IsoDate, Slug } from './common';
@@ -47,6 +64,23 @@ import {
   tradeQuote,
 } from './quant-game';
 import { QuantPath, QuizDifficulty } from './quiz';
+
+// ---------------------------------------------------------------- how the round is driven
+
+/**
+ *  ai      the AI interviewer runs the round under a clock (a practice quant pad, §8.2)
+ *  hosted  a person, a quant room's host, runs it: no clock, questions posed one by one (§8.4)
+ */
+export const QuantRoundMode = z.enum(['ai', 'hosted']);
+export type QuantRoundMode = z.infer<typeof QuantRoundMode>;
+
+/** How a round is driven. Rounds stored before quant rooms have no `mode`: they are AI-run. */
+export const quantMode = (state: { mode?: QuantRoundMode | undefined }): QuantRoundMode =>
+  state.mode ?? 'ai';
+
+/** A bank question's type, as a hosted round records it when the host poses it. */
+export const QuantQuestionType = z.enum(['single', 'multiple', 'output', 'short', 'numeric']);
+export type QuantQuestionType = z.infer<typeof QuantQuestionType>;
 
 // ---------------------------------------------------------------- length and clock
 
@@ -140,8 +174,11 @@ export const QuantQuestionView = z.object({
   /** numeric questions that have one: the unit the answer is in */
   unit: z.string().nullable(),
   posedAt: IsoDate,
-  /** The time the question was given when it was posed (`quantBudgetSec`). */
-  budgetSec: z.int(),
+  /**
+   * The time the question was given when it was posed (`quantBudgetSec`). null in a hosted
+   * round, which has no budgets (an AI round always has one).
+   */
+  budgetSec: z.int().nullable(),
   /** null while it is the current question. */
   closedAt: IsoDate.nullable(),
   /**
@@ -166,9 +203,22 @@ export type QuantQuestionView = z.infer<typeof QuantQuestionView>;
 
 /** `PadDetail.round` and the `round.updated` event: the round as the browser may see it. */
 export const QuantRoundView = z.object({
-  path: QuantPath,
-  /** Questions in the round, posed or not. */
-  total: z.int().min(0),
+  /** Absent from servers before quant rooms, hence the default. */
+  mode: QuantRoundMode.default('ai'),
+  /** An AI round's path; null in a hosted round (the host picks from the whole bank). */
+  path: QuantPath.nullable(),
+  /**
+   * Questions in an AI round, posed or not. null in a hosted round: its questions are only those
+   * posed so far and nobody (the candidate least of all) knows how many more will come, so a
+   * hosted round shows "Question 3", never "3 of N".
+   */
+  total: z.int().min(0).nullable(),
+  /**
+   * An AI round: `pending` before the first question, then `asking`, then `finished`. A hosted
+   * round: `pending` until the host poses a first question, `asking` while one is open,
+   * `finished` whenever none is (between questions, and after the pad ended): until the pad
+   * ends the host may pose another.
+   */
   phase: QuantPhase,
   /** The posed questions only, in order; while `asking` the last is the current one. */
   questions: z.array(QuantQuestionView),
@@ -197,11 +247,20 @@ export const QuantRoundQuestion = z.object({
   topic: Slug,
   difficulty: QuizDifficulty,
   /**
+   * The bank question's type, recorded by a hosted round when the host poses it (any type of the
+   * bank). Absent in an AI round (short or numeric, read from the bank, or a game).
+   */
+  type: QuantQuestionType.optional(),
+  /**
    * The topic's title. Snapshotted with the prompt; absent in rounds assembled before it was
    * (`quant_rounds.state` is read without parsing), so readers fall back to `topic`.
    */
   topicTitle: z.string().optional(),
-  /** Snapshot of the bank question when the round was assembled, so a reveal needs no lookup. */
+  /**
+   * Snapshot of the bank question when the round was assembled, so a reveal needs no lookup. In
+   * a hosted round, what was posed (`hostedPrompt`: a choice question's options and an output
+   * question's program are composed into it).
+   */
   prompt: z.string(),
   unit: z.string().nullable(),
   /** Authored hints the question has (the length of its `hints`). */
@@ -210,6 +269,7 @@ export const QuantRoundQuestion = z.object({
   posedAt: IsoDate.nullable(),
   /** The `question` message that posed it. */
   posedMessageId: Id.nullable(),
+  /** null until posed, and always in a hosted round (no budgets). */
   budgetSec: z.int().nullable(),
   /** When the interviewer said the budget was up; at most once. */
   nudgedAt: IsoDate.nullable(),
@@ -222,7 +282,10 @@ export const QuantRoundQuestion = z.object({
   followUpAsked: z.boolean(),
   closedAt: IsoDate.nullable(),
   closedBy: QuantClosedBy.nullable(),
-  /** null until judged; a question closed for time or by the pad's end may be judged later. */
+  /**
+   * null until judged; a question closed for time or by the pad's end may be judged later. In a
+   * hosted round, the host's own verdict (the AI never gives one there).
+   */
   verdict: QuantVerdict.nullable(),
   /**
    * A market-making game in this slot (`questionId` is then the game's id, `prompt` its prompt).
@@ -233,13 +296,35 @@ export const QuantRoundQuestion = z.object({
 });
 export type QuantRoundQuestion = z.infer<typeof QuantRoundQuestion>;
 
+/** At most this many question ids wait in a hosted round's queue. */
+export const QUANT_QUEUE_MAX = 50;
+/** A hosted round poses at most this many questions. */
+export const QUANT_HOSTED_QUESTIONS_MAX = 60;
+/** At most this many hints are recorded on one question of a hosted round (authored and own). */
+export const QUANT_HOSTED_HINTS_MAX = 20;
+
 /** `quant_rounds.state`. SERVER-ONLY; the browser gets `publicRound(state, version)`. */
 export const QuantRoundState = z.object({
-  path: QuantPath,
-  durationMin: z.int().min(1),
+  /** Absent in every AI round (rounds stored before quant rooms included); read with `quantMode`. */
+  mode: QuantRoundMode.optional(),
+  /** An AI round's path; null in a hosted round. */
+  path: QuantPath.nullable(),
+  /** An AI round's length; 0 in a hosted round, which has no clock. */
+  durationMin: z.int().min(0),
   questions: z.array(QuantRoundQuestion),
-  /** -1 while pending, the current question's index while asking, `questions.length` when finished. */
+  /**
+   * -1 while pending, the current question's index while asking, `questions.length` when
+   * finished (in a hosted round: whenever no question is open).
+   */
   current: z.int().min(-1),
+  /**
+   * A hosted round only: the bank question ids the host has lined up, in order, none of them
+   * posed (posing a question takes it out). Host-only: no view a candidate gets says anything
+   * about it.
+   */
+  queue: z.array(Slug).optional(),
+  /** A hosted round only: true once the pad ended (`end`). An AI round's end is its phase. */
+  ended: z.boolean().optional(),
 });
 export type QuantRoundState = z.infer<typeof QuantRoundState>;
 
@@ -250,7 +335,12 @@ export type QuantRoundState = z.infer<typeof QuantRoundState>;
 export type QuantPick = Pick<
   QuantRoundQuestion,
   'questionId' | 'topic' | 'difficulty' | 'prompt' | 'unit' | 'hintsAvailable'
-> & { topicTitle: string; game?: QuantGameState };
+> & {
+  topicTitle: string;
+  game?: QuantGameState;
+  /** A hosted round's pick (`hostedPick`): the bank question's type. `createQuantRound` ignores it. */
+  type?: QuantQuestionType;
+};
 
 /**
  * The slot of a game: its hidden values drawn now from `rand` (the assembler's seeded PRNG), its
@@ -300,6 +390,19 @@ export const createQuantRound = (
   })),
 });
 
+/**
+ * A quant room's round: empty and driven by its host (`QuantHostStep`), with the host's initial
+ * queue (bank question ids in order, checked against the bank by the caller).
+ */
+export const createHostedRound = (queue: readonly string[] = []): QuantRoundState => ({
+  mode: 'hosted',
+  path: null,
+  durationMin: 0,
+  current: -1,
+  questions: [],
+  queue: [...queue],
+});
+
 export const quantPhase = (state: Pick<QuantRoundState, 'current' | 'questions'>): QuantPhase =>
   state.current < 0 ? 'pending' : state.current >= state.questions.length ? 'finished' : 'asking';
 
@@ -309,6 +412,7 @@ export const quantPhase = (state: Pick<QuantRoundState, 'current' | 'questions'>
  * come) can reach it. How a question closed is named: it happened in front of everyone.
  */
 export function publicRound(state: QuantRoundState, version: number): QuantRoundView {
+  const hosted = quantMode(state) === 'hosted';
   const questions: QuantQuestionView[] = [];
   state.questions.forEach((q, index) => {
     if (q.posedAt === null) return;
@@ -320,7 +424,7 @@ export function publicRound(state: QuantRoundState, version: number): QuantRound
       prompt: q.prompt,
       unit: q.unit,
       posedAt: q.posedAt,
-      budgetSec: q.budgetSec ?? 0,
+      budgetSec: hosted ? null : (q.budgetSec ?? 0),
       closedAt: q.closedAt,
       closedBy: q.closedBy,
       hintsGiven: q.hintRungs.length,
@@ -328,9 +432,11 @@ export function publicRound(state: QuantRoundState, version: number): QuantRound
       game: q.game ? gameView(q.game) : null,
     });
   });
+  // Field by field: a hosted round's queue is never named here.
   return {
+    mode: hosted ? 'hosted' : 'ai',
     path: state.path,
-    total: state.questions.length,
+    total: hosted ? null : state.questions.length,
     phase: quantPhase(state),
     questions,
     version,
@@ -340,10 +446,10 @@ export function publicRound(state: QuantRoundState, version: number): QuantRound
 // ---------------------------------------------------------------- report (after the pad ended)
 
 /**
- *  answered     the interviewer closed it
+ *  answered     the interviewer closed it (in a hosted round: the host did, or posed the next one)
  *  timed_out    closed when its budget and grace ran out
  *  unfinished   open when the round's clock ran out or the pad was ended
- *  not_reached  never posed
+ *  not_reached  never posed (an AI round only: a hosted round holds only posed questions)
  */
 export const QuantQuestionStatus = z.enum(['answered', 'timed_out', 'unfinished', 'not_reached']);
 export type QuantQuestionStatus = z.infer<typeof QuantQuestionStatus>;
@@ -378,12 +484,14 @@ export const QuantQuestionReview = z.object({
   /** A game has none: empty. */
   subtopic: z.string(),
   difficulty: QuizDifficulty,
-  type: z.enum(['short', 'numeric', 'game']),
+  /** An AI round's are short, numeric or game; a hosted round's any type of the bank. */
+  type: z.enum(['single', 'multiple', 'output', 'short', 'numeric', 'game']),
   prompt: z.string(),
   unit: z.string().nullable(),
   /**
    * short: the reference answer; numeric: `answerText`, else the answer itself; game: its figures
-   * before anything was shown (`gameSolution`, plain text).
+   * before anything was shown (`gameSolution`, plain text). In a hosted round every type's is
+   * `quizSolution` (Markdown: the right options, or what the program does).
    */
   solution: z.string(),
   /** short questions; empty for numeric and game. */
@@ -394,7 +502,16 @@ export const QuantQuestionReview = z.object({
   verdict: QuantVerdict.nullable(),
   hintsGiven: z.int().min(0),
   hintsAvailable: z.int().min(0),
+  /**
+   * The hints given, in order: the authored rung (1-based) or 0 for one in the interviewer's
+   * (the host's) own words. Numbers only: no hint text is ever in a report. Absent from reports
+   * built before quant rooms, hence the default.
+   */
+  hintRungs: z.array(z.int().min(0)).default([]),
+  /** Whether the question's follow-up was asked. */
+  followUpAsked: z.boolean().default(false),
   timeSec: z.int().nullable(),
+  /** null for a question never posed, and for every question of a hosted round. */
   budgetSec: z.int().nullable(),
   /**
    * A posed game's analysis (`quantGameReview`); null for a bank question and a game never
@@ -410,7 +527,14 @@ export const quantGameReview = (
 ): QuantGameReview | null => (q.game && q.posedAt !== null ? gameReview(q.game) : null);
 
 export const QuantReport = z.object({
-  path: QuantPath,
+  /** Absent from reports built before quant rooms, hence the default. */
+  mode: QuantRoundMode.default('ai'),
+  /** null for a hosted round. */
+  path: QuantPath.nullable(),
+  /**
+   * An AI round: every question assembled, posed or not. A hosted round: the questions the host
+   * posed, in the order posed (the queue is not part of the report).
+   */
   questions: z.array(QuantQuestionReview),
 });
 export type QuantReport = z.infer<typeof QuantReport>;
@@ -430,9 +554,9 @@ export interface QuantClock {
   roundEndsAt: number;
 }
 
-/** The clock of the current question; null unless the round is asking. */
+/** The clock of the current question; null unless the round is asking, and for a hosted round. */
 export function quantClock(state: QuantRoundState, roundEndsAt: Date | number): QuantClock | null {
-  if (quantPhase(state) !== 'asking') return null;
+  if (quantMode(state) === 'hosted' || quantPhase(state) !== 'asking') return null;
   const q = state.questions[state.current];
   if (!q || q.posedAt === null) return null;
   const budgetSec = q.budgetSec ?? 0;
@@ -534,7 +658,48 @@ export type QuantQuoteStep = {
   size: number;
 };
 
-export type QuantRoundStep = QuantStep | QuantEndStep | QuantQuoteStep;
+/**
+ * What a quant room's host does to its round (`apps/api/src/quant/room.ts`, from the host's
+ * routes). Raised by the API only; like `end` and `quote` they name no version (the caller's
+ * compare-and-swap guards the write, and decides the step again when it loses). Each is refused
+ * on an AI round (`wrong_mode`) and, once the pad ended, all but `host_verdict` (`ended`).
+ *
+ *  pose          poses `pick` (`hostedPick` of a bank question): appended to the round's
+ *                questions and made the current one, with the posing message (`reveal`). An open
+ *                question is closed first (by `interviewer`, without a verdict) in the same step.
+ *                The pick leaves the queue. A question already posed in this round is refused.
+ *  host_hint     the host gave a hint on the open question `index`: `rung` is the next authored
+ *                rung (1-based) or 0 for one in their own words. Bookkeeping only: the host says
+ *                the hint themselves.
+ *  host_follow_up  the host asked the open question's follow-up (once per question).
+ *  host_close    closes the open question `index` (by `interviewer`), with the host's verdict or
+ *                none; no question is open afterwards (phase `finished`) until the next `pose`.
+ *  host_verdict  sets or replaces the host's verdict on closed question `index`; once the pad has
+ *                ended only on a question that has none yet (`has_verdict`).
+ *  queue         replaces the host's queue: question ids in order, none posed, none twice, at most
+ *                `QUANT_QUEUE_MAX` (the caller checks each is an active bank question).
+ */
+export type QuantHostStep =
+  | { type: 'pose'; pick: QuantPick }
+  | { type: 'host_hint'; index: number; rung: number }
+  | { type: 'host_follow_up'; index: number }
+  | { type: 'host_close'; index: number; verdict: QuantVerdict | null }
+  | { type: 'host_verdict'; index: number; verdict: QuantVerdict }
+  | { type: 'queue'; questionIds: readonly string[] };
+
+const HOST_STEPS: ReadonlySet<string> = new Set([
+  'pose',
+  'host_hint',
+  'host_follow_up',
+  'host_close',
+  'host_verdict',
+  'queue',
+] satisfies QuantHostStep['type'][]);
+
+export const isHostStep = (step: { type: string }): step is QuantHostStep =>
+  HOST_STEPS.has(step.type);
+
+export type QuantRoundStep = QuantStep | QuantEndStep | QuantQuoteStep | QuantHostStep;
 
 /**
  * Why a step was refused. Nothing changes and no message is posted.
@@ -555,6 +720,15 @@ export type QuantRoundStep = QuantStep | QuantEndStep | QuantQuoteStep;
  *  not_game        a `quote`, or a `turn` or `close` with a game move, on a question that is not a game
  *  …               and the game's own (`QuantGameRefusal`): `bad_quote`, `quote_limit`,
  *                  `no_quote`, `bad_quantity`, `nothing_to_reveal`, `game_settled`
+ *
+ * A hosted round's (`QuantHostStep`) besides `ended`, `wrong_index`, `hint_rung`,
+ * `follow_up_used`, `not_closed`, `has_verdict` and `invalid` as above:
+ *  wrong_mode      an AI step on a hosted round, or a host step on an AI round
+ *  already_posed   `pose` of a question this round already posed, or one in a `queue`
+ *  not_open        `host_hint`, `host_follow_up` or `host_close` while no question is open
+ *  hint_limit      `QUANT_HOSTED_HINTS_MAX` hints are already recorded on the question
+ *  question_limit  `QUANT_HOSTED_QUESTIONS_MAX` questions were already posed
+ *  queue_limit     a `queue` longer than `QUANT_QUEUE_MAX`
  */
 export type QuantRefusal =
   | 'stale'
@@ -569,6 +743,12 @@ export type QuantRefusal =
   | 'has_verdict'
   | 'invalid'
   | 'not_game'
+  | 'wrong_mode'
+  | 'already_posed'
+  | 'not_open'
+  | 'hint_limit'
+  | 'question_limit'
+  | 'queue_limit'
   | QuantGameRefusal;
 
 /** What `applyQuantStep` tells the interviewer. On success, the round's new version and clock. */
@@ -587,9 +767,10 @@ export interface QuantEffects {
   } | null;
   /**
    * Post the revealed question: a proactive interviewer message with intent `question`, id
-   * `messageId` and exactly `text` (the bank prompt), and a `question` timeline event.
+   * `messageId` and exactly `text` (the bank prompt), and a `question` timeline event. `total`
+   * is null in a hosted round (there is no "of N").
    */
-  reveal: { index: number; total: number; messageId: string; text: string } | null;
+  reveal: { index: number; total: number | null; messageId: string; text: string } | null;
   /** Append to the interviewer's private notes. */
   note: string | null;
   /** The round finished with this step. */
@@ -654,6 +835,11 @@ export function advanceRound(
   step: QuantRoundStep,
   env: QuantAdvanceEnv,
 ): QuantAdvance {
+  // A hosted round is moved by its host, an AI round by its interviewer; `end` ends either.
+  const hosted = quantMode(state) === 'hosted';
+  if (isHostStep(step)) return hosted ? advanceHosted(state, step, env) : refuse('wrong_mode');
+  if (hosted) return step.type === 'end' ? advanceHosted(state, step, env) : refuse('wrong_mode');
+
   const phase = quantPhase(state);
   if (phase === 'finished' && step.type !== 'verdict') return refuse('ended');
   if (step.type !== 'end' && step.type !== 'quote' && step.version !== env.version)
@@ -843,6 +1029,155 @@ export function advanceRound(
       };
     }
     if (step.note) effects.note = step.note;
+  }
+  return { ok: true, state: next, version: env.version + 1, effects };
+}
+
+const verdictOf = (v: QuantVerdict): QuantVerdict => ({ score: v.score, summary: v.summary });
+
+/** A hosted round's pick is the API's own, but the transition stays total: a malformed one is refused. */
+const pickIsValid = (p: QuantPick): boolean =>
+  Slug.safeParse(p.questionId).success &&
+  Slug.safeParse(p.topic).success &&
+  QuizDifficulty.safeParse(p.difficulty).success &&
+  typeof p.prompt === 'string' &&
+  p.prompt.trim() !== '' &&
+  Number.isInteger(p.hintsAvailable) &&
+  p.hintsAvailable >= 0 &&
+  (p.type === undefined || QuantQuestionType.safeParse(p.type).success) &&
+  !p.game;
+
+/**
+ * One transition of a hosted round (`QuantHostStep`, or the API's `end`; the module comment draws
+ * them). Pure and total like `advanceRound`, which is its only caller. No clock: nothing here
+ * reads `env.roundEndsAt`, no question gets a budget, and nothing closes for time.
+ */
+function advanceHosted(
+  state: QuantRoundState,
+  step: QuantHostStep | QuantEndStep,
+  env: QuantAdvanceEnv,
+): QuantAdvance {
+  if (state.ended && step.type !== 'host_verdict') return refuse('ended');
+  const nowIso = env.now.toISOString();
+  const questions = state.questions.map((q) => ({ ...q, hintRungs: [...q.hintRungs] }));
+  const next: QuantRoundState = { ...state, questions, queue: [...(state.queue ?? [])] };
+  const effects: QuantEffects = {
+    say: null,
+    reveal: null,
+    note: null,
+    finished: false,
+    quote: null,
+    game: null,
+  };
+  const phase = quantPhase(state);
+  const open = phase === 'asking' ? questions[state.current] : undefined;
+  /** Closes the open question, if any; afterwards none is open. */
+  const closeOpen = (by: QuantClosedBy, verdict: QuantVerdict | null = null) => {
+    if (open) {
+      open.closedAt = nowIso;
+      open.closedBy = by;
+      if (verdict) open.verdict = verdictOf(verdict);
+    }
+    next.current = questions.length;
+  };
+  /** Why the open question cannot be `index`, or null when it is. */
+  const notOpen = (index: number): QuantRefusal | null =>
+    !open ? 'not_open' : index !== state.current ? 'wrong_index' : null;
+
+  switch (step.type) {
+    case 'end': {
+      closeOpen('ended');
+      next.ended = true;
+      effects.finished = true;
+      break;
+    }
+
+    case 'pose': {
+      const p = step.pick;
+      if (!pickIsValid(p)) return refuse('invalid');
+      if (questions.some((q) => q.questionId === p.questionId)) return refuse('already_posed');
+      if (questions.length >= QUANT_HOSTED_QUESTIONS_MAX) return refuse('question_limit');
+      // Posing the next question closes the open one first, without a verdict.
+      closeOpen('interviewer');
+      const index = questions.length;
+      const messageId = env.newId();
+      questions.push({
+        questionId: p.questionId,
+        topic: p.topic,
+        difficulty: p.difficulty,
+        ...(p.type ? { type: p.type } : {}),
+        topicTitle: p.topicTitle,
+        prompt: p.prompt,
+        unit: p.unit,
+        hintsAvailable: p.hintsAvailable,
+        posedAt: nowIso,
+        posedMessageId: messageId,
+        budgetSec: null,
+        nudgedAt: null,
+        hintRungs: [],
+        followUpAsked: false,
+        closedAt: null,
+        closedBy: null,
+        verdict: null,
+      });
+      next.current = index;
+      next.queue = (next.queue ?? []).filter((id) => id !== p.questionId);
+      effects.reveal = { index, total: null, messageId, text: p.prompt };
+      break;
+    }
+
+    case 'host_hint': {
+      const refused = notOpen(step.index);
+      if (refused || !open) return refuse(refused ?? 'not_open');
+      const rung = step.rung;
+      if (!Number.isInteger(rung) || rung < 0) return refuse('invalid');
+      if (open.hintRungs.length >= QUANT_HOSTED_HINTS_MAX) return refuse('hint_limit');
+      if (rung > 0) {
+        const given = open.hintRungs.filter((r) => r > 0).length;
+        if (rung !== given + 1 || rung > open.hintsAvailable) return refuse('hint_rung');
+      }
+      open.hintRungs.push(rung);
+      break;
+    }
+
+    case 'host_follow_up': {
+      const refused = notOpen(step.index);
+      if (refused || !open) return refuse(refused ?? 'not_open');
+      if (open.followUpAsked) return refuse('follow_up_used');
+      open.followUpAsked = true;
+      break;
+    }
+
+    case 'host_close': {
+      const refused = notOpen(step.index);
+      if (refused) return refuse(refused);
+      if (step.verdict !== null && !QuantVerdict.safeParse(step.verdict).success)
+        return refuse('invalid');
+      closeOpen('interviewer', step.verdict);
+      break;
+    }
+
+    case 'host_verdict': {
+      const q = Number.isInteger(step.index) ? questions[step.index] : undefined;
+      if (!q) return refuse('wrong_index');
+      if (q.posedAt === null || q.closedAt === null) return refuse('not_closed');
+      // Until the pad ends a verdict may be changed; after it, only a missing one given.
+      if (state.ended && q.verdict !== null) return refuse('has_verdict');
+      if (!QuantVerdict.safeParse(step.verdict).success) return refuse('invalid');
+      q.verdict = verdictOf(step.verdict);
+      break;
+    }
+
+    case 'queue': {
+      const ids = [...step.questionIds];
+      if (!ids.every((id) => Slug.safeParse(id).success)) return refuse('invalid');
+      if (new Set(ids).size !== ids.length) return refuse('invalid');
+      if (ids.length > QUANT_QUEUE_MAX) return refuse('queue_limit');
+      const posed = new Set(questions.map((q) => q.questionId));
+      if (ids.some((id) => posed.has(id))) return refuse('already_posed');
+      next.queue = ids;
+      break;
+    }
   }
   return { ok: true, state: next, version: env.version + 1, effects };
 }

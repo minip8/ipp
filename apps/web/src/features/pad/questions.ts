@@ -18,7 +18,9 @@ export function questionNumber(round: RoundLike | null, messageId: string): numb
   if (!round) return null;
   const q = round.questions.find((x) => x.posedMessageId === messageId);
   if (q) return q.index + 1;
-  if (round.phase === 'finished' || round.questions.length >= round.total) return null;
+  // A quant room's round has no total (null): its questions are only ever looked up by id.
+  if (round.phase === 'finished' || round.total === null || round.questions.length >= round.total)
+    return null;
   return round.questions.length + 1;
 }
 

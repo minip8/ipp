@@ -437,6 +437,7 @@ describe('interview rooms', () => {
 
 describe('quant rounds', () => {
   const view = (version: number, questions = 0): QuantRoundView => ({
+    mode: 'ai',
     path: 'trader',
     total: 3,
     phase: questions === 0 ? 'pending' : 'asking',

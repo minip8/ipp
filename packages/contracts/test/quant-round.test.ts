@@ -719,6 +719,7 @@ describe('publicRound', () => {
   it('shows the posed questions only, with exactly the fields of the view', () => {
     const r = round();
     expect(publicRound(r.state, 0)).toEqual({
+      mode: 'ai',
       path: 'trader',
       total: 4,
       phase: 'pending',

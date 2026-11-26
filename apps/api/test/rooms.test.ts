@@ -161,6 +161,7 @@ describe('joining by the invite link', () => {
     const info = await anon.get(`/api/pads/invite/${pad.shareToken}`);
     expect(InviteInfo.parse(info.json)).toEqual({
       kind: 'room',
+      format: 'coding',
       title: 'Two Sum',
       hostName: 'Hana',
       status: 'active',
@@ -509,6 +510,7 @@ describe('host only', () => {
     expect(HostView.parse((await host.get(`/api/pads/${pad.id}/host`)).json)).toEqual({
       problem: null,
       notes: 'Strong start. Missed duplicates.',
+      round: null,
     });
   });
 

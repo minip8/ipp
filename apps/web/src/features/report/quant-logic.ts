@@ -54,6 +54,23 @@ export function roundFigures(report: QuantReport): RoundFigures {
   };
 }
 
+/** A quant room's questions: closed by the host, and the one open when the interview ended. */
+export const HOSTED_STATUS_LABEL: Record<QuantQuestionStatus, string> = {
+  answered: 'Closed',
+  timed_out: 'Timed out',
+  unfinished: 'Open at the end',
+  not_reached: 'Not asked',
+};
+
+/** Under a quant room's "Asked": "2 closed · 1 open at the end", or why there is nothing. */
+export function hostedAskedDetail(f: RoundFigures): string {
+  if (f.posed === 0) return 'no question was asked';
+  const open = f.posed - f.answered - f.timedOut;
+  const parts = [`${f.answered} closed`];
+  if (open) parts.push(`${open} open at the end`);
+  return parts.join(' · ');
+}
+
 /** Under "Answered": "3 asked · 1 timed out · 1 not reached", leaving out what is zero. */
 export function answeredDetail(f: RoundFigures): string {
   const parts = [`${f.posed} asked`];
@@ -78,11 +95,15 @@ export function hintsLabel(q: Pick<QuantQuestionReview, 'hintsGiven' | 'hintsAva
   return `${q.hintsGiven} of ${plural(q.hintsAvailable, 'hint')}`;
 }
 
-/** "5:12 of 7:00", with how far over when it ran past its time; null for one never posed. */
+/**
+ * "5:12 of 7:00", with how far over when it ran past its time; null for one never posed. A
+ * quant room's questions have no budget: "5:12 open".
+ */
 export function timeLabel(
   q: Pick<QuantQuestionReview, 'timeSec' | 'budgetSec'>,
 ): { label: string; over: boolean } | null {
-  if (q.budgetSec === null) return null;
+  if (q.budgetSec === null)
+    return q.timeSec === null ? null : { label: `${formatClock(q.timeSec)} open`, over: false };
   if (q.timeSec === null) return { label: `${formatClock(q.budgetSec)} given`, over: false };
   return {
     label: `${formatClock(q.timeSec)} of ${formatClock(q.budgetSec)}`,

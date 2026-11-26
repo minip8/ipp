@@ -9,6 +9,7 @@ export * from './numeric';
 export * from './pad';
 export * from './problem';
 export * from './quant-game';
+export * from './quant-room';
 export * from './quant-round';
 export * from './quiz';
 export * from './run';

@@ -106,7 +106,14 @@ function InterviewerMark({ className }: { className?: string }) {
 /** A question the round posed: the bank's prompt, set apart from the conversation around it. */
 function QuestionMessage({ m }: { m: Message }) {
   const { Text, questionNumber } = useContext(ChatCtx);
-  const n = questionNumber(m.id);
+  return <QuestionCard m={m} n={questionNumber(m.id)} Text={Text} />;
+}
+
+/**
+ * A posed question as a card in a conversation (`n` its number, when known). Also the quant
+ * room's chat (room-chat.tsx), where the host's posing message is shown the same way.
+ */
+export function QuestionCard({ m, n, Text }: { m: Message; n: number | null; Text: MessageText }) {
   return (
     <div className="animate-fade-in" data-testid="question-message">
       <div className="rounded-lg border border-accent/40 bg-accent-soft/30 px-3.5 py-3">

@@ -68,7 +68,8 @@ function Marker({
 }) {
   const time = formatClock((item.t - span.start) / 1000);
   if (item.kind === 'event' && item.event.type === 'question') {
-    const text = `Question ${item.event.index + 1} of ${item.event.total} at ${time}`;
+    const of = item.event.total === null ? '' : ` of ${item.event.total}`;
+    const text = `Question ${item.event.index + 1}${of} at ${time}`;
     return (
       <Tooltip label={text} side="top">
         <button

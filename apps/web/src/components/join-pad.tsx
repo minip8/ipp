@@ -96,8 +96,17 @@ function JoinRoom({ token, invite, me }: { token: string; invite: InviteInfo; me
   return (
     <Shell title={`${invite.hostName} invited you to an interview`}>
       <p className="mt-2 text-sm text-fg-muted">
-        You&apos;ll share a code editor and a chat with {invite.hostName}. They see your code as you
-        type.
+        {invite.format === 'quant' ? (
+          <>
+            You&apos;ll share a scratchpad, a whiteboard and a chat with {invite.hostName}. They see
+            what you write as you go.
+          </>
+        ) : (
+          <>
+            You&apos;ll share a code editor and a chat with {invite.hostName}. They see your code as
+            you type.
+          </>
+        )}
       </p>
       <form
         className="mt-6 space-y-4"

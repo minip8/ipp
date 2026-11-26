@@ -20,6 +20,8 @@ import type {
   QuantGameState,
   QuantPath,
   QuantPhase,
+  QuantQuestionType,
+  QuantSecondOpinion,
   QuantStep,
   QuantStepResult,
   QuantVerdict,
@@ -169,7 +171,7 @@ export interface QuantContext {
     /** The current question's clock; null unless asking. */
     clock: QuantClock | null;
     /** Optional: the round's path (`QuantRoundState.path`), named in the opening. */
-    path?: QuantPath;
+    path?: QuantPath | null;
     /** The questions already closed, oldest first: a code-built summary, no prompts. */
     closed: {
       index: number;
@@ -201,8 +203,60 @@ export interface QuantContext {
 
 export type { QuantClock, QuantStep, QuantStepResult };
 
+/**
+ * A question a quant room's host posed (ARCHITECTURE §8.4), as the host's adviser sees it. Any
+ * type of the bank. SERVER-ONLY material: the answer, key points, explanation, hints and
+ * follow-ups are in `question`, which only the host and the model see.
+ */
+export interface QuantRoomQuestion {
+  index: number;
+  /** The bank question in full; null if it has left the bank since (the snapshot below remains). */
+  question: QuizQuestion | null;
+  /** Exactly what was posed (`hostedPrompt`: a choice question's options and an output question's program in it). */
+  prompt: string;
+  topic: string;
+  topicTitle: string;
+  difficulty: QuizDifficulty;
+  type: QuantQuestionType;
+  posedAt: string;
+  /** The `question` message that posed it (it is in the transcript). */
+  posedMessageId: string | null;
+  closedAt: string | null;
+  closedBy: QuantClosedBy | null;
+  /** As in `QuantRoundQuestion.hintRungs`: the authored rung given, or 0 for one of the host's own. */
+  hintRungs: number[];
+  followUpAsked: boolean;
+  /** The host's verdict, if they gave one. */
+  verdict: QuantVerdict | null;
+}
+
+/**
+ * A quant room as the host's adviser sees it (`InterviewerDeps.loadQuantRoomContext`): a person
+ * (the host) interviews, the model only advises them. There is no round clock, no budgets, and no
+ * queue in it (what the host plans to ask is not the model's business).
+ */
+export interface QuantRoomContext {
+  pad: Pad;
+  /** Every question the host posed, in the order posed. */
+  questions: QuantRoomQuestion[];
+  /** The open question's index; null when none is open. */
+  open: number | null;
+  /** `interviewer` messages are the host's (and the posed questions, intent `question`), `candidate` the candidates'. */
+  transcript: Message[];
+  /** The scratchpad (`YDOC.notes`); the whiteboard is a drawing the model cannot see. */
+  scratch: string;
+  /** The host's private notes. */
+  hostNotes: string;
+  now: Date;
+}
+
 export type ReviewResult =
   | { ok: true; review: SolutionReview }
+  | { ok: false; reason: 'no_key' | 'budget' | 'failed'; message?: string };
+
+/** `Interviewer.reviewQuantRoom`: the second opinion on one question of a quant room. */
+export type QuantReviewResult =
+  | { ok: true; review: QuantSecondOpinion }
   | { ok: false; reason: 'no_key' | 'budget' | 'failed'; message?: string };
 
 export interface NewMessage {
@@ -255,6 +309,11 @@ export interface InterviewerDeps {
    * is how the interviewer learns a pad's format. `scope` defaults to `current`.
    */
   loadQuantContext?(padId: string, scope?: 'current' | 'all'): Promise<QuantContext | null>;
+  /**
+   * Quant rooms (optional, like `loadRoomContext`). Null for a pad that is not a quant room. The
+   * interviewer never runs a quant room's round: this is only for advising its host.
+   */
+  loadQuantRoomContext?(padId: string): Promise<QuantRoomContext | null>;
   /**
    * Applies one step to a quant pad's round (`advanceRound` from @ipp/contracts, behind a
    * compare-and-swap on the version) and posts what it says: the interviewer's `say`, then the
@@ -325,6 +384,21 @@ export interface Interviewer {
   generateQuantAssessment(padId: string): Promise<ReportAssessment | null>;
   /** A room host's second opinion on the code as it is now. Never shown to the candidate. */
   reviewSolution(padId: string, question?: string): Promise<ReviewResult>;
+  /**
+   * A quant room host's second opinion on question `index` (posed): what the candidate has said
+   * and written since it was posed, against its solution, the hints the host recorded included;
+   * `question` is something the host wants checked. Never shown to the candidate.
+   */
+  reviewQuantRoom(
+    padId: string,
+    opts: { index: number; question?: string },
+  ): Promise<QuantReviewResult>;
+  /**
+   * A quant room's assessment, written for its host when they ask, over the quant dimensions
+   * (`QUANT_REPORT_DIMENSIONS`): the questions posed, the transcript, the scratchpad, the host's
+   * notes and verdicts. It never gives or changes a verdict. Null as for `generateAssessment`.
+   */
+  generateQuantRoomAssessment(padId: string): Promise<ReportAssessment | null>;
   /**
    * Runs on `userId`'s key; null without a usable key or when the model failed. The question's
    * `hints` and `followUps` are read as `?? []`: a row stored before they existed has neither.
