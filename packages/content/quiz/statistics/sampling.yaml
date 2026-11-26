@@ -1,0 +1,332 @@
+# Sampling, the law of large numbers and the CLT: standard error against standard deviation, when averages settle down, and the samples that lie to you.
+- id: stat-sampling-001
+  topic: statistics
+  subtopic: Sampling, the law of large numbers and the CLT
+  type: numeric
+  difficulty: easy
+  tags: [standard-error, sample-mean]
+  prompt: |
+    A strategy's daily returns are independent and identically distributed with standard deviation
+    1%. What is the standard error of its average daily return measured over 400 days? Give it as a
+    decimal (0.01 is 1%) or with a percent sign.
+  answer: 0.0005
+  answerText: |-
+    $0.01/\sqrt{400} = 0.0005$, that is 0.05% a day
+  explanation: |
+    The variance of a mean of $n$ independent observations is $\sigma^2/n$, so its standard
+    deviation, the standard error, is
+
+    $$\operatorname{SE}(\bar r) = \frac{\sigma}{\sqrt n} = \frac{1\%}{\sqrt{400}} = \frac{1\%}{20} = 0.05\%.$$
+
+    The usual slips are to answer 1% (the standard deviation of one day, which does not shrink with
+    more data) or $1\%/400 = 0.0025\%$ (dividing by $n$ instead of $\sqrt n$). Nothing here needs
+    normality: only independence and a finite variance.
+
+    Put in trading terms: a good strategy might earn 0.05% a day on average, so after more than a
+    year and a half of data its mean return is only one standard error away from zero.
+  source: { name: "Standard result (e.g. Wasserman, All of Statistics)" }
+
+- id: stat-sampling-002
+  topic: statistics
+  subtopic: Sampling, the law of large numbers and the CLT
+  type: multiple
+  difficulty: easy
+  tags: [standard-error, standard-deviation, prediction-interval]
+  prompt: |
+    You have $n$ days of independent, identically distributed daily returns with finite variance.
+    As $n$ grows, which of these shrink towards zero? Select all that apply.
+  choices:
+    - { id: a, text: "The sample standard deviation of the daily returns" }
+    - { id: b, text: "The standard error of the sample mean" }
+    - { id: c, text: "The width of a 95% confidence interval for the mean daily return" }
+    - { id: d, text: "The width of a 95% prediction interval for tomorrow's return" }
+    - { id: e, text: "The standard error of the sample standard deviation" }
+  answer: [b, c, e]
+  explanation: |
+    Separate what describes the data from what describes your uncertainty about a parameter.
+
+    - **a, no.** The sample standard deviation estimates $\sigma$, the spread of a single day. It
+      converges to $\sigma$, not to 0.
+    - **b, yes.** $\operatorname{SE}(\bar r) = \sigma/\sqrt n$.
+    - **c, yes.** Its width is about $2 \times 1.96\,\sigma/\sqrt n$.
+    - **d, no.** Tomorrow's return has its own noise $\sigma$ however well you know the mean; the
+      interval tends to $\mu \pm 1.96\sigma$ (for normal returns), not to a point.
+    - **e, yes.** The estimate of $\sigma$ also gets more precise, roughly like $\sigma/\sqrt{2n}$
+      for normal data.
+
+    The common mistake is a or d: confusing "how noisy is one day" with "how well do I know the
+    average". More data never makes a single day's return more predictable.
+  source: { name: "Standard distinction between standard deviation and standard error" }
+
+- id: stat-sampling-003
+  topic: statistics
+  subtopic: Sampling, the law of large numbers and the CLT
+  type: short
+  difficulty: medium
+  tags: [mean-vs-median, skewness, tail-risk]
+  prompt: |
+    A strategy makes money on 95% of days and its median daily P&L is positive, but its mean daily
+    P&L is negative. What kind of strategy looks like this? Which statistic should decide whether
+    you run it, and why might a short backtest mislead you about that statistic?
+  reference: |
+    This is a negatively skewed, "picking up pennies in front of a steamroller" profile: selling
+    options or insurance, short volatility, carry trades, or market making that is occasionally run
+    over. Small gains on most days, rare large losses. For example, +1 on 95% of days and −25 on 5%
+    gives a median of +1 but a mean of $0.95 - 1.25 = -0.30$ a day.
+
+    Total P&L over many days is the sum of daily P&Ls, so it is the **mean** (together with the risk
+    it costs) that decides whether the strategy makes money; the median and the win rate ignore how
+    large the losses are.
+
+    A short backtest can easily contain none of the rare losses: with a 5% chance per day, a 20-day
+    sample has no losing day with probability $0.95^{20} \approx 0.36$. Then the sample mean is
+    positive and the strategy looks excellent (the "peso problem"). You need either a long history
+    including stress periods, or a model of the tail (stress tests, option-implied losses), not just
+    the sample mean.
+  keyPoints:
+    - Identifies a negatively skewed strategy with frequent small gains and rare large losses, e.g. selling options or insurance
+    - The mean, not the median or win rate, determines long-run total P&L
+    - Gives or implies a numerical example where median is positive and mean negative
+    - A short sample may contain no large loss, so the sample mean overstates the true mean
+    - Suggests checking stress periods or modelling the tail rather than trusting the backtest mean
+  hints:
+    - Think of a payoff that is small and positive most of the time.
+    - Over a year, what adds up to your total P&L, the typical day or the average day?
+    - How likely is it that a month of data contains none of the bad days?
+  followUps:
+    - How would you estimate the mean of such a strategy if your history contains only two of the bad days?
+    - Is the Sharpe ratio a good summary of this strategy? What would you report alongside it?
+  explanation: |
+    The first half is common sense; the second half is where candidates fall short. The sample mean
+    is unbiased, but for a rare large loss most short samples overstate it and a few understate it
+    badly, which is exactly the skewed sampling distribution that makes such strategies look better
+    in backtests than they are. Interviewers like to hear the candidate ask how many tail events the
+    data contain.
+  source: { name: "Common risk-management discussion question (negative skew and the peso problem)" }
+
+- id: stat-sampling-004
+  topic: statistics
+  subtopic: Sampling, the law of large numbers and the CLT
+  type: multiple
+  difficulty: hard
+  tags: [law-of-large-numbers, cauchy, heavy-tails, pareto]
+  prompt: |
+    Each sample below is i.i.d. Which statistics converge in probability to a finite constant as
+    the sample size grows? Select all that apply.
+  choices:
+    - { id: a, text: "The sample mean of standard Cauchy observations" }
+    - { id: b, text: "The sample median of standard Cauchy observations" }
+    - { id: c, text: 'The sample mean of Pareto observations with $P(X > x) = x^{-1.5}$ for $x \ge 1$' }
+    - { id: d, text: "The sample variance of the same Pareto observations" }
+    - { id: e, text: 'The sample mean of fair coin flips coded as $\pm 1$' }
+  answer: [b, c, e]
+  explanation: |
+    The weak law of large numbers needs only a finite mean, not a finite variance.
+
+    - **a, no.** The Cauchy distribution has no mean, and the average of $n$ standard Cauchy variables
+      is again standard Cauchy: averaging does not concentrate it at all.
+    - **b, yes.** The sample median converges to the population median, 0, for any distribution
+      with a positive density at its median. This is why medians are used for heavy-tailed data.
+    - **c, yes.** This Pareto has tail index 1.5, so its mean $\frac{1.5}{0.5} = 3$ is finite and the
+      sample mean converges to it. Its variance is infinite, so the central limit theorem fails and the
+      convergence is slow (the error shrinks like $n^{-1/3}$, not $n^{-1/2}$).
+    - **d, no.** $E[X^2] = \infty$, so the sample variance keeps growing as larger observations
+      arrive.
+    - **e, yes.** The plain case: it converges to 0.
+
+    The common mistakes are rejecting c ("infinite variance, so no law of large numbers") and
+    rejecting b by analogy with a. Return series with tail index between 2 and 4 are typical in
+    finance: means and variances exist, but sample kurtosis is unreliable for the same reason d fails.
+  source: { name: "Standard results (e.g. Wasserman, All of Statistics; Taleb on fat tails)" }
+
+- id: stat-sampling-005
+  topic: statistics
+  subtopic: Sampling, the law of large numbers and the CLT
+  type: numeric
+  difficulty: easy
+  tags: [luck-vs-skill, survivorship, multiple-testing]
+  prompt: |
+    1,000 fund managers have no skill: each year, each one beats the index with probability $1/2$,
+    independently of other years and other managers. What is the expected number of managers who
+    beat the index in each of 5 consecutive years?
+  answer: 125/4
+  answerText: |-
+    $1000/2^5 = 31.25$
+  unit: managers
+  explanation: |
+    Each manager has probability $(1/2)^5 = 1/32$ of five wins in a row, and expectation is
+    linear, so the expected count is $1000/32 = 31.25$.
+
+    So about thirty "five-year star" managers appear with no skill at all. A five-year record is
+    not evidence of skill when it is the best of a thousand; the right comparison is with how many
+    such records chance alone produces. The same arithmetic applies to the best strategy out of
+    many backtests.
+
+    A common slip is to answer $1000 \times 5/2$ or to compute the probability for a single
+    manager ($1/32$) instead of the expected count.
+  source: { name: "Luck-versus-skill argument (e.g. Taleb, Fooled by Randomness)" }
+
+- id: stat-sampling-006
+  topic: statistics
+  subtopic: Sampling, the law of large numbers and the CLT
+  type: short
+  difficulty: medium
+  tags: [survivorship-bias, selection-bias, backfill-bias]
+  prompt: |
+    A commercial database of hedge funds that report to it today shows an average annual return
+    of 9% over the past ten years, against 7% for a stock index. Why might this overstate what an
+    investor in hedge funds actually earned, and how would you get a fairer number?
+  reference: |
+    - **Survivorship bias:** funds that closed (usually after losses) drop out of a database of
+      funds reporting today, so the average covers only the survivors.
+    - **Backfill (instant history) bias:** funds start reporting voluntarily after a good start, and
+      their earlier, successful history is added when they join.
+    - **Self-selection:** reporting is voluntary, and funds with poor recent results stop reporting
+      before they close.
+
+    Each effect raises the average even if no fund has skill. To correct it, use a database that
+    keeps dead funds ("graveyard" data) and reconstruct the investable set at each date (point in
+    time); drop returns from before a fund's reporting start date; or look at the returns of funds
+    of funds or investable indices, which bear the losses. The comparison should also be
+    risk-adjusted, and net of fees.
+  keyPoints:
+    - Survivorship bias, because dead funds (mostly poor performers) are missing
+    - Backfill or instant-history bias, because funds join after good early returns and add their history
+    - The bias arises even with no skill, because selection depends on outcomes
+    - Corrects by including dead funds and using only point-in-time, post-inclusion returns
+    - Mentions risk adjustment, fees or investable fund-of-funds returns as a further check
+  hints:
+    - Which funds are not in a list of funds that report today?
+    - When does a new fund decide to start reporting, and what happens to its earlier returns?
+  followUps:
+    - Estimate the size of the bias if 5% of funds close each year with an average final-year return of -15%.
+    - Where does survivorship bias enter a backtest of a stock-selection strategy?
+  explanation: |
+    Most candidates find survivorship; fewer find backfill, which studies of hedge-fund databases
+    have estimated at the same order of magnitude (each worth a percentage point or more a year). The point to make is general: whenever whether a unit appears in the data
+    depends on how it performed, the sample average is biased. In equity backtests the same thing
+    happens when the universe is today's index constituents.
+  source: { name: "Hedge-fund database biases (e.g. Fung and Hsieh, 2000)" }
+
+- id: stat-sampling-007
+  topic: statistics
+  subtopic: Sampling, the law of large numbers and the CLT
+  type: numeric
+  difficulty: hard
+  tags: [length-biased-sampling, inspection-paradox, selection-bias]
+  prompt: |
+    A desk opens trades at a steady rate around the clock. Each trade, independently, is held for
+    either 1 minute or 59 minutes, with probability $1/2$ each. At a random instant, long after the
+    desk started, you look at the trades that are open and average their total holding times (from
+    opening to closing). Ignoring the noise from the finite number of open trades, what average do
+    you expect, in minutes?
+  answer: 1741/30
+  answerText: |-
+    $\frac{1^2 + 59^2}{1 + 59} = \frac{1741}{30} \approx 58.0$ minutes
+  unit: minutes
+  hints:
+    - The average holding time of all trades opened is 30 minutes. Are the trades open at a random instant a fair sample of them?
+    - A trade is open for a length of time proportional to its duration. How much more likely is a 59-minute trade to be caught open?
+  followUps:
+    - Where does the same bias appear when you sample the order book, or survey current employees about their tenure?
+    - How would you recover the average holding time of all trades from a snapshot of open ones?
+  explanation: |
+    A snapshot samples trades in proportion to how long they are open. Per unit of time the desk
+    opens equally many short and long trades, but a 59-minute trade is open 59 times as long, so
+    among open trades the fraction that are long is $\frac{59}{60}$. The expected average duration is
+
+    $$\frac{1}{60} \cdot 1 + \frac{59}{60} \cdot 59 = \frac{E[D^2]}{E[D]} = \frac{(1 + 3481)/2}{30} = \frac{1741}{30} \approx 58.0.$$
+
+    The common wrong answer is 30, the mean of all trades, which forgets that the sampling method
+    favours long trades (length-biased sampling, the inspection paradox). The fix, if you only have
+    snapshots, is to weight each open trade by $1/D$: the harmonic mean of the sampled durations
+    recovers the true mean of 30.
+  source: { name: "Length-biased sampling (e.g. Feller, vol. 2, on the inspection paradox)" }
+
+- id: stat-sampling-008
+  topic: statistics
+  subtopic: Sampling, the law of large numbers and the CLT
+  type: short
+  difficulty: hard
+  tags: [central-limit-theorem, heavy-tails, dependence]
+  prompt: |
+    The central limit theorem is often quoted as "averages are approximately normal". State what it
+    actually assumes, and describe the ways it fails or misleads when applied to financial returns.
+  reference: |
+    The classical CLT: for i.i.d. variables with finite variance $\sigma^2$, $\sqrt n(\bar X - \mu)/\sigma$
+    converges in distribution to a standard normal. It says nothing about how large $n$ must be, and it
+    is a statement about the centre of the distribution.
+
+    Ways it fails or misleads:
+
+    - **Infinite variance:** with tails like $x^{-\alpha}$, $\alpha < 2$ (Cauchy, some Pareto), the
+      normalised sum converges to a stable law instead, or (Cauchy) does not concentrate at all.
+    - **Slow convergence:** skewness and heavy (but finite-variance) tails make the normal
+      approximation poor for moderate $n$; the error shrinks only like $1/\sqrt n$ (Berry-Esseen),
+      and the skewness of a mean of $n$ i.i.d. terms is the original skewness divided by $\sqrt n$.
+    - **Tails:** even when the bulk is close to normal, probabilities several standard deviations out
+      can be wrong by orders of magnitude, which is what matters for risk.
+    - **Dependence:** volatility clustering and autocorrelation violate independence. Versions of the
+      CLT for weakly dependent data still hold, but with the long-run variance (including
+      autocovariances) in place of $\sigma^2$, and convergence is slower.
+    - **Non-identical, non-stationary data:** regime changes, or a sum dominated by a few large terms.
+  keyPoints:
+    - States the assumptions, i.i.d. with finite variance, and that the result is asymptotic
+    - Infinite variance (e.g. Cauchy or tail index below 2) breaks it
+    - Skewness or fat tails make convergence slow, especially in the tails of the distribution
+    - Dependence such as volatility clustering or autocorrelation changes the variance that appears in the limit
+    - Notes that tail probabilities can be badly wrong even when the centre looks normal
+  hints:
+    - What has to be finite for the standard CLT?
+    - The theorem is about a limit. What does it promise for $n = 20$?
+    - Daily returns are not independent. Which feature of their dependence is most obvious?
+  followUps:
+    - What is the skewness of the average of 25 i.i.d. variables with skewness 2?
+    - Why is a 5-sigma daily move far more common in markets than the normal distribution suggests?
+  explanation: |
+    Weak answers recite "$n \ge 30$". Strong ones separate three things: whether the limit exists
+    (finite variance), how fast it is reached (skew and kurtosis), and whether the independence
+    assumption holds (it does not, for returns). The tails point is the one risk managers care
+    about most.
+  source: { name: "Standard discussion (e.g. Wasserman, All of Statistics; Embrechts, Kluppelberg and Mikosch on heavy tails)" }
+
+- id: stat-sampling-009
+  topic: statistics
+  subtopic: Sampling, the law of large numbers and the CLT
+  type: short
+  difficulty: easy
+  tags: [win-rate, small-samples, selection-bias]
+  prompt: |
+    A trader tells you he made money on 9 of his last 10 trades. How much does that tell you about
+    whether he has an edge, and what would you want to know before drawing a conclusion?
+  reference: |
+    Very little on its own.
+
+    - **Win rate is not expectancy.** Nine small wins and one large loss can be a losing record.
+      You need the sizes of the gains and losses, not their count.
+    - **Small sample.** With no edge and a 50% win rate, 9 or more wins out of 10 has probability
+      $11/1024 \approx 1.1\%$: unusual for one pre-chosen trader, but not for the best of a hundred,
+      and many strategies have win rates well above 50% with no edge (selling options).
+    - **Selection.** Why these 10 trades? A streak picked after the fact, or the trader you happened
+      to hear from, is a selected sample.
+    - **Dependence.** The trades may be one bet repeated (the same position or the same market move).
+
+    Ask for the full P&L history, position sizes and risk taken, the number of trades in total, a
+    benchmark, and how the trades were selected.
+  keyPoints:
+    - Win rate ignores the size of wins and losses, so it is not expected profit
+    - Ten trades is a small sample; computes or estimates the chance of 9 or more wins by luck (about 1%)
+    - Mentions selection of the streak or of the trader
+    - Notes the trades may not be independent
+    - Asks for full P&L, sizes, risk and the total number of trades
+  hints:
+    - Is a high win rate the same as making money?
+    - If every trade were a fair coin flip, how unusual would 9 of 10 be?
+    - Who chose these ten trades?
+  followUps:
+    - How many trades would you need to distinguish a 55% win rate from 50% at two standard errors?
+    - Give an example of a strategy that wins 90% of the time and loses money on average.
+  explanation: |
+    The binomial calculation is the easy part. Interviewers are checking for the trader's instinct
+    to ask about sizes and selection before being impressed by a hit rate.
+  source: { name: "Common trading-interview discussion question" }
