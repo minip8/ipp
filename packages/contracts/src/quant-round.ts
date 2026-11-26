@@ -78,6 +78,15 @@ export function quantBudgetSec(a: {
 
 // ---------------------------------------------------------------- what the browser sees
 
+/**
+ *  interviewer  the interviewer judged the question done (answered, or given up on)
+ *  timeout      its budget and grace ran out
+ *  round_time   the round's clock ran out while it was open
+ *  ended        the pad was ended while it was open
+ */
+export const QuantClosedBy = z.enum(['interviewer', 'timeout', 'round_time', 'ended']);
+export type QuantClosedBy = z.infer<typeof QuantClosedBy>;
+
 export const QuantPhase = z.enum(['pending', 'asking', 'finished']);
 export type QuantPhase = z.infer<typeof QuantPhase>;
 
@@ -88,6 +97,8 @@ export type QuantPhase = z.infer<typeof QuantPhase>;
 export const QuantQuestionView = z.object({
   index: z.int().min(0),
   topic: Slug,
+  /** The topic's title when the round was assembled (the slug for a round stored before that). */
+  topicTitle: z.string(),
   difficulty: QuizDifficulty,
   /** The exact bank text (Markdown with LaTeX). */
   prompt: z.string(),
@@ -98,8 +109,18 @@ export const QuantQuestionView = z.object({
   budgetSec: z.int(),
   /** null while it is the current question. */
   closedAt: IsoDate.nullable(),
+  /**
+   * How it closed (null while open). Not sensitive: everyone in the pad saw it happen, and the
+   * pad says so ("timed out") rather than leaving it to the report.
+   */
+  closedBy: QuantClosedBy.nullable(),
   /** Hints given so far, the interviewer's own included. Never their text. */
   hintsGiven: z.int().min(0),
+  /**
+   * The `question` message that posed it: the chat numbers a question message by looking its id
+   * up here, not by counting messages (which breaks once a transcript is paged or capped).
+   */
+  posedMessageId: Id.nullable(),
 });
 export type QuantQuestionView = z.infer<typeof QuantQuestionView>;
 
@@ -128,15 +149,6 @@ export const QuantVerdict = z.object({
 export type QuantVerdict = z.infer<typeof QuantVerdict>;
 
 /**
- *  interviewer  the interviewer judged the question done (answered, or given up on)
- *  timeout      its budget and grace ran out
- *  round_time   the round's clock ran out while it was open
- *  ended        the pad was ended while it was open
- */
-export const QuantClosedBy = z.enum(['interviewer', 'timeout', 'round_time', 'ended']);
-export type QuantClosedBy = z.infer<typeof QuantClosedBy>;
-
-/**
  * One question of a round. SERVER-ONLY (`quant_rounds.state`): the id and the verdict never reach
  * the browser while the pad is active, and nothing about a question does until it is posed.
  */
@@ -144,6 +156,11 @@ export const QuantRoundQuestion = z.object({
   questionId: Slug,
   topic: Slug,
   difficulty: QuizDifficulty,
+  /**
+   * The topic's title. Snapshotted with the prompt; absent in rounds assembled before it was
+   * (`quant_rounds.state` is read without parsing), so readers fall back to `topic`.
+   */
+  topicTitle: z.string().optional(),
   /** Snapshot of the bank question when the round was assembled, so a reveal needs no lookup. */
   prompt: z.string(),
   unit: z.string().nullable(),
@@ -184,7 +201,7 @@ export type QuantRoundState = z.infer<typeof QuantRoundState>;
 export type QuantPick = Pick<
   QuantRoundQuestion,
   'questionId' | 'topic' | 'difficulty' | 'prompt' | 'unit' | 'hintsAvailable'
->;
+> & { topicTitle: string };
 
 /** A pending round over the assembled questions, in the order they will be asked. */
 export const createQuantRound = (
@@ -198,6 +215,7 @@ export const createQuantRound = (
   questions: picks.map((p) => ({
     questionId: p.questionId,
     topic: p.topic,
+    topicTitle: p.topicTitle,
     difficulty: p.difficulty,
     prompt: p.prompt,
     unit: p.unit,
@@ -219,8 +237,8 @@ export const quantPhase = (state: Pick<QuantRoundState, 'current' | 'questions'>
 
 /**
  * The browser's view of a round: the posed questions only, field by field, so nothing the view
- * does not name (ids, subtopics, verdicts, hint rungs, nudges, how a question was closed, the
- * prompts still to come) can reach it.
+ * does not name (question ids, subtopics, verdicts, hint rungs, nudges, the prompts still to
+ * come) can reach it. How a question closed is named: it happened in front of everyone.
  */
 export function publicRound(state: QuantRoundState, version: number): QuantRoundView {
   const questions: QuantQuestionView[] = [];
@@ -229,13 +247,16 @@ export function publicRound(state: QuantRoundState, version: number): QuantRound
     questions.push({
       index,
       topic: q.topic,
+      topicTitle: q.topicTitle ?? q.topic,
       difficulty: q.difficulty,
       prompt: q.prompt,
       unit: q.unit,
       posedAt: q.posedAt,
       budgetSec: q.budgetSec ?? 0,
       closedAt: q.closedAt,
+      closedBy: q.closedBy,
       hintsGiven: q.hintRungs.length,
+      posedMessageId: q.posedMessageId,
     });
   });
   return {
@@ -283,6 +304,8 @@ export const QuantQuestionReview = z.object({
   index: z.int().min(0),
   questionId: Slug,
   topic: Slug,
+  /** As in `QuantQuestionView`: the slug for a round stored before titles were snapshotted. */
+  topicTitle: z.string(),
   subtopic: z.string(),
   difficulty: QuizDifficulty,
   type: z.enum(['short', 'numeric']),
