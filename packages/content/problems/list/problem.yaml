@@ -1,0 +1,179 @@
+slug: list
+title: Implement list
+difficulty: medium
+category: data-structure
+languages: [cpp]
+tags: [design, linked-list, iterator, memory-management]
+signature:
+  className: ListHarness
+  kind: design
+  ctorParams: []
+  methods:
+    - name: create
+      params:
+        - { name: slot, type: int }
+      returns: void
+    - name: pushBack
+      params:
+        - { name: slot, type: int }
+        - { name: value, type: int }
+        - { name: move, type: bool }
+      returns: void
+    - name: pushFront
+      params:
+        - { name: slot, type: int }
+        - { name: value, type: int }
+        - { name: move, type: bool }
+      returns: void
+    - name: popBack
+      params:
+        - { name: slot, type: int }
+      returns: void
+    - name: popFront
+      params:
+        - { name: slot, type: int }
+      returns: void
+    - name: front
+      params:
+        - { name: slot, type: int }
+      returns: int
+    - name: back
+      params:
+        - { name: slot, type: int }
+      returns: int
+    - name: size
+      params:
+        - { name: slot, type: int }
+      returns: int
+    - name: contents
+      params:
+        - { name: slot, type: int }
+      returns: { list: int }
+    - name: contentsReversed
+      params:
+        - { name: slot, type: int }
+      returns: { list: int }
+    - name: clear
+      params:
+        - { name: slot, type: int }
+      returns: void
+    - name: reverse
+      params:
+        - { name: slot, type: int }
+      returns: void
+    - name: itBegin
+      params:
+        - { name: it, type: int }
+        - { name: slot, type: int }
+      returns: void
+    - name: itEnd
+      params:
+        - { name: it, type: int }
+        - { name: slot, type: int }
+      returns: void
+    - name: itNext
+      params:
+        - { name: it, type: int }
+      returns: void
+    - name: itPrev
+      params:
+        - { name: it, type: int }
+      returns: void
+    - name: itPostNext
+      params:
+        - { name: it, type: int }
+      returns: int
+    - name: itGet
+      params:
+        - { name: it, type: int }
+      returns: int
+    - name: itEq
+      params:
+        - { name: a, type: int }
+        - { name: b, type: int }
+      returns: bool
+    - name: itCopy
+      params:
+        - { name: from, type: int }
+        - { name: to, type: int }
+      returns: void
+    - name: insert
+      params:
+        - { name: slot, type: int }
+        - { name: pos, type: int }
+        - { name: value, type: int }
+        - { name: move, type: bool }
+        - { name: out, type: int }
+      returns: int
+    - name: emplace
+      params:
+        - { name: slot, type: int }
+        - { name: pos, type: int }
+        - { name: value, type: int }
+        - { name: out, type: int }
+      returns: int
+    - name: erase
+      params:
+        - { name: slot, type: int }
+        - { name: pos, type: int }
+        - { name: out, type: int }
+      returns: int
+    - name: splice
+      params:
+        - { name: slot, type: int }
+        - { name: pos, type: int }
+        - { name: other, type: int }
+      returns: void
+    - name: spliceOne
+      params:
+        - { name: slot, type: int }
+        - { name: pos, type: int }
+        - { name: other, type: int }
+        - { name: it, type: int }
+      returns: void
+    - name: copyConstruct
+      params:
+        - { name: from, type: int }
+        - { name: to, type: int }
+      returns: void
+    - name: copyAssign
+      params:
+        - { name: from, type: int }
+        - { name: to, type: int }
+      returns: void
+    - name: moveConstruct
+      params:
+        - { name: from, type: int }
+        - { name: to, type: int }
+      returns: void
+    - name: moveAssign
+      params:
+        - { name: from, type: int }
+        - { name: to, type: int }
+      returns: void
+    - name: destroy
+      params:
+        - { name: slot, type: int }
+      returns: void
+    - name: destroyAll
+      params: []
+      returns: void
+    - name: alive
+      params: []
+      returns: int
+    - name: copies
+      params: []
+      returns: int
+    - name: moves
+      params: []
+      returns: int
+    - name: heapBlocks
+      params: []
+      returns: int
+    - name: errors
+      params: []
+      returns: { list: string }
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic C++ systems interview question (implement std::list with a sentinel node and bidirectional iterators)
+  url: https://en.cppreference.com/w/cpp/container/list

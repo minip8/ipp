@@ -1,0 +1,137 @@
+slug: unordered-map
+title: Implement unordered_map
+difficulty: hard
+category: data-structure
+languages: [cpp]
+tags: [design, hash-table, memory-management, move-semantics]
+signature:
+  className: HashMapHarness
+  kind: design
+  ctorParams:
+    - { name: hashMode, type: int }
+  methods:
+    - name: create
+      params:
+        - { name: slot, type: int }
+      returns: void
+    - name: insert
+      params:
+        - { name: slot, type: int }
+        - { name: key, type: int }
+        - { name: value, type: int }
+      returns: bool
+    - name: tryEmplace
+      params:
+        - { name: slot, type: int }
+        - { name: key, type: int }
+        - { name: value, type: int }
+      returns: bool
+    - name: subscript
+      params:
+        - { name: slot, type: int }
+        - { name: key, type: int }
+        - { name: value, type: int }
+        - { name: rvalue, type: bool }
+      returns: int
+    - name: at
+      params:
+        - { name: slot, type: int }
+        - { name: key, type: int }
+      returns: int
+    - name: find
+      params:
+        - { name: slot, type: int }
+        - { name: key, type: int }
+      returns: int
+    - name: contains
+      params:
+        - { name: slot, type: int }
+        - { name: key, type: int }
+      returns: bool
+    - name: erase
+      params:
+        - { name: slot, type: int }
+        - { name: key, type: int }
+      returns: int
+    - name: size
+      params:
+        - { name: slot, type: int }
+      returns: int
+    - name: bucketCount
+      params:
+        - { name: slot, type: int }
+      returns: int
+    - name: bucketOf
+      params:
+        - { name: slot, type: int }
+        - { name: key, type: int }
+      returns: int
+    - name: bucketSize
+      params:
+        - { name: slot, type: int }
+        - { name: bucket, type: int }
+      returns: int
+    - name: rehash
+      params:
+        - { name: slot, type: int }
+        - { name: n, type: int }
+      returns: void
+    - name: reserve
+      params:
+        - { name: slot, type: int }
+        - { name: n, type: int }
+      returns: void
+    - name: clear
+      params:
+        - { name: slot, type: int }
+      returns: void
+    - name: contents
+      params:
+        - { name: slot, type: int }
+      returns: { list: string }
+    - name: copyConstruct
+      params:
+        - { name: from, type: int }
+        - { name: to, type: int }
+      returns: void
+    - name: copyAssign
+      params:
+        - { name: from, type: int }
+        - { name: to, type: int }
+      returns: void
+    - name: moveConstruct
+      params:
+        - { name: from, type: int }
+        - { name: to, type: int }
+      returns: void
+    - name: moveAssign
+      params:
+        - { name: from, type: int }
+        - { name: to, type: int }
+      returns: void
+    - name: destroy
+      params:
+        - { name: slot, type: int }
+      returns: void
+    - name: destroyAll
+      params: []
+      returns: void
+    - name: alive
+      params: []
+      returns: int
+    - name: copies
+      params: []
+      returns: int
+    - name: moves
+      params: []
+      returns: int
+    - name: heapBlocks
+      params: []
+      returns: int
+    - name: errors
+      params: []
+      returns: { list: string }
+limits: { timeMs: 1000, memoryMb: 256 }
+source:
+  name: Classic C++ systems interview question (implement std::unordered_map with separate chaining)
+  url: https://en.cppreference.com/w/cpp/container/unordered_map
