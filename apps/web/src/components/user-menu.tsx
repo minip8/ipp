@@ -95,6 +95,12 @@ export function UserMenu() {
             <ListChecksIcon /> Practice
           </Link>
         </MenuItem>
+        {phone && (
+          <>
+            <MenuSeparator />
+            <ThemeItems />
+          </>
+        )}
         <MenuSeparator />
         <MenuItem asChild>
           <Link href="/settings/ai-key">
@@ -133,12 +139,6 @@ export function UserMenu() {
         >
           <LogOutIcon /> Sign out
         </MenuItem>
-        {phone && (
-          <>
-            <MenuSeparator />
-            <ThemeItems />
-          </>
-        )}
       </MenuContent>
     </Menu>
   );
