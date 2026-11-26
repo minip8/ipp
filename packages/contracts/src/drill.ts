@@ -20,25 +20,13 @@ export const DRILL_CATEGORIES = [
 export const DrillCategory = z.enum(DRILL_CATEGORIES);
 export type DrillCategory = z.infer<typeof DrillCategory>;
 
-export const DRILL_CATEGORY_INFO: Record<DrillCategory, { label: string; description: string }> = {
-  'add-subtract': {
-    label: 'Addition & subtraction',
-    description: 'Whole numbers and decimals, with carries and negatives.',
-  },
-  multiply: { label: 'Multiplication', description: 'Two-digit products and decimals.' },
-  divide: { label: 'Division', description: 'Exact quotients and divisions by decimals.' },
-  fractions: {
-    label: 'Fractions',
-    description: 'Adding, multiplying and comparing fractions; converting to decimals.',
-  },
-  percentages: {
-    label: 'Percentages',
-    description: 'A percentage of a number, percentage change, and reversing one.',
-  },
-  estimation: {
-    label: 'Estimation',
-    description: 'Awkward products and quotients, answered to within a few percent.',
-  },
+export const DRILL_CATEGORY_INFO: Record<DrillCategory, { label: string }> = {
+  'add-subtract': { label: 'Addition & subtraction' },
+  multiply: { label: 'Multiplication' },
+  divide: { label: 'Division' },
+  fractions: { label: 'Fractions' },
+  percentages: { label: 'Percentages' },
+  estimation: { label: 'Estimation' },
 };
 
 export const DRILL_LEVELS = ['warmup', 'standard', 'hard'] as const;
@@ -56,7 +44,7 @@ export const DRILL_DURATIONS = [60, 120, 300] as const;
 export const DrillDuration = z.union([z.literal(60), z.literal(120), z.literal(300)]);
 export type DrillDuration = z.infer<typeof DrillDuration>;
 
-/** Nobody answers faster than this for a whole run; a result above it is refused. */
+/** Nobody answers (right or wrong) faster than this for a whole run; a result above it is refused. */
 export const DRILL_MAX_ANSWERS_PER_SEC = 3;
 /** How far past the clock a run may report (the last answer, a slow tab). */
 export const DRILL_GRACE_MS = 5_000;
@@ -102,13 +90,14 @@ export const RecordDrillRunRequest = z
   })
   .superRefine((r, ctx) => {
     const seen = new Set<string>();
+    // Skips are not held to the rate: a held key can pass over questions faster than anyone answers.
     let answers = 0;
     for (const c of r.byCategory) {
       if (seen.has(c.category)) ctx.addIssue({ code: 'custom', message: 'a category is repeated' });
       seen.add(c.category);
       if (!r.config.categories.includes(c.category))
         ctx.addIssue({ code: 'custom', message: `${c.category} was not part of this run` });
-      answers += c.correct + c.wrong + c.skipped;
+      answers += c.correct + c.wrong;
     }
     if (r.elapsedMs > r.config.durationSec * 1000 + DRILL_GRACE_MS)
       ctx.addIssue({ code: 'custom', message: 'the run is longer than its clock' });

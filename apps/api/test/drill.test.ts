@@ -128,7 +128,7 @@ describe('drill runs', () => {
     );
     // More answers than anyone gives in 60 s.
     await bad(
-      run(0, { byCategory: [{ category: 'multiply', correct: 150, wrong: 20, skipped: 20 }] }),
+      run(0, { byCategory: [{ category: 'multiply', correct: 150, wrong: 40, skipped: 0 }] }),
     );
     // Longer than its clock (past the grace).
     await bad({ ...run(5), elapsedMs: 66_000 });

@@ -75,6 +75,13 @@ describe('drill contracts', () => {
         byCategory: [{ category: 'multiply', correct: 18, wrong: 0, skipped: 0 }],
       }),
     ).toBe(true);
+    // Skips do not count towards the answer rate.
+    expect(
+      bad({
+        elapsedMs: 1_000,
+        byCategory: [{ category: 'multiply', correct: 2, wrong: 1, skipped: 400 }],
+      }),
+    ).toBe(true);
     expect(bad({ byCategory: [{ category: 'multiply', correct: -1, wrong: 0, skipped: 0 }] })).toBe(
       false,
     );

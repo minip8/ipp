@@ -524,7 +524,8 @@ keeps only the result of each finished run, for the user's own history and bests
 leaderboard and the result is the client's word. `RecordDrillRunRequest` checks that it is
 self-consistent and humanly possible: every category in `byCategory` is part of the config and
 listed once, `elapsedMs` is at most the duration plus `DRILL_GRACE_MS`, and there are at most
-`DRILL_MAX_ANSWERS_PER_SEC` answers per second of the duration. The API ignores any totals or score
+`DRILL_MAX_ANSWERS_PER_SEC` answers (right or wrong; skips are not counted) per second of the time
+played. The API ignores any totals or score
 the client sends: it adds up the categories, scores correct minus wrong (`drillScore`) and stamps
 `finished_at` with its own clock (`apps/api/src/drill/bests.ts`, unit-tested).
 
