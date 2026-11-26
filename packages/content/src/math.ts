@@ -3,13 +3,14 @@
  * and `$$...$$` (display) are LaTeX, typeset by KaTeX, and a dollar meant as a dollar is `\$`.
  *
  *   - fundamentals topics have no mathematics: a math node there is a stray pair of dollars.
- *   - quant topics may use it, and every math node must typeset with KaTeX.
+ *   - quant topics may use it: every pair of dollars must be one the site reads as a formula
+ *     (`isMathSpan`: `$x$`, never `$ x $`, and no digit straight after), and must typeset with KaTeX.
  *   - in either track a bare `$` left in the text is an error: it is either an unclosed formula or
  *     a dollar that the next `$` in the paragraph would turn into one.
  *
  * Not part of index.ts: it needs katex and remark, which only the checks (tests, `check`) load.
  */
-import type { QuizQuestion, QuizTrack } from '@ipp/contracts';
+import { isMathSpan, type QuizQuestion, type QuizTrack } from '@ipp/contracts';
 import katex from 'katex';
 import remarkMath from 'remark-math';
 import remarkParse from 'remark-parse';
@@ -77,6 +78,19 @@ export function markdownMathErrors(text: string, track: QuizTrack): string[] {
           `${excerpt(tex)} is read as mathematics; this topic has none, so write each dollar as \\$`,
         );
         return;
+      }
+      // The site typesets a `$…$` pair only when `isMathSpan` says it is one; any other pair is
+      // shown as written, dollars and all.
+      const from = node.position?.start.offset;
+      const to = node.position?.end.offset;
+      if (node.type === 'inlineMath' && from !== undefined && to !== undefined) {
+        const raw = text.slice(from, to);
+        if (!isMathSpan(raw, text.charAt(to))) {
+          errors.push(
+            `${excerpt(raw)} is shown as plain text, not as a formula: no space just inside the dollars, and no digit straight after the closing one`,
+          );
+          return;
+        }
       }
       try {
         // `strict: 'ignore'` as on the site: only a real error fails, not a style warning.

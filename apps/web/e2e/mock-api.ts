@@ -31,6 +31,7 @@ import {
   type PadSummary,
   QuizAttempt,
   type QuizRoadmapTopic,
+  type QuizTopicStats,
   ReviewRequest,
   type Run,
   ServerEvent,
@@ -70,6 +71,7 @@ import {
   USER,
   uuid,
 } from './fixtures';
+import { QUANT_FOLLOW_UP, QUANT_QUESTIONS, QUANT_TOPIC } from './fixtures-quiz-quant';
 import { QUIZ_ROADMAP } from './fixtures-quiz-roadmap';
 import { MockQuizBank } from './mock-quiz-bank';
 
@@ -119,6 +121,8 @@ export class MockBackend {
   quizBank = new MockQuizBank();
   /** GET /api/quiz/roadmap (QUIZ_ROADMAP_FRESH for a first visit). */
   quizRoadmap: QuizRoadmapTopic[] = QUIZ_ROADMAP;
+  /** GET /api/quiz/topics (QUIZ_TOPICS_FUNDAMENTALS for the site before any quant content). */
+  quizTopics: QuizTopicStats[] = QUIZ_TOPICS;
 
   constructor() {
     this.pads.set(ACTIVE_PAD_ID, makePadDetail());
@@ -630,9 +634,15 @@ export class MockBackend {
       return { ticket: `t_${Math.random().toString(36).slice(2)}`, expiresInSec: 30 };
 
     // quizzes
-    if (path === '/api/quiz/topics') return QUIZ_TOPICS;
+    if (path === '/api/quiz/topics') return this.quizTopics;
     if (path === '/api/quiz/roadmap') return this.quizRoadmap;
-    const bank = this.quizBank.handle(method, path, body, this.aiKey.state === 'active');
+    const bank = this.quizBank.handle(
+      method,
+      path,
+      body,
+      this.aiKey.state === 'active',
+      this.quizTopics,
+    );
     if (bank !== undefined) return bank;
     if (path === '/api/quiz/attempts' && method === 'GET') return QUIZ_HISTORY;
     if (path === '/api/quiz/attempts' && method === 'POST') {
@@ -645,12 +655,18 @@ export class MockBackend {
       );
       if (req.nodes?.some((id) => !onTopics.has(id)))
         return this.status(400, 'unknown_node', 'Unknown roadmap node for these topics');
+      // The fundamentals fixtures stand in for any fundamentals topics; the quant topic has its own.
+      const quant = req.topics.includes(QUANT_TOPIC);
+      const pool = [
+        ...(!quant || req.topics.length > 1 ? QUIZ_QUESTIONS : []),
+        ...(quant ? QUANT_QUESTIONS : []),
+      ];
       const a = makeAttempt({
         id: uuid(),
         mode: req.mode,
         topics: req.topics,
         // As on the server: open questions only in a discussion, never otherwise.
-        questions: QUIZ_QUESTIONS.filter(
+        questions: pool.filter(
           (q) => (q.type === 'short') === (req.mode === 'discussion'),
         ) as unknown as QuizAttempt['questions'],
       });
@@ -708,7 +724,12 @@ export class MockBackend {
         const said = turns.filter((t) => t.role === 'candidate');
         // One follow-up, then the question is closed and graded.
         const closed = said.length >= 2;
-        if (!closed) turns.push({ role: 'interviewer', text: DISCUSSION_FOLLOW_UP });
+        const topic = a.questions.find((qq) => qq.id === req.questionId)?.topic;
+        if (!closed)
+          turns.push({
+            role: 'interviewer',
+            text: topic === QUANT_TOPIC ? QUANT_FOLLOW_UP : DISCUSSION_FOLLOW_UP,
+          });
         a.discussion = { ...a.discussion, [req.questionId]: turns };
         if (!closed) return { turns, feedback: null };
         const response = { type: 'short' as const, text: said.map((t) => t.text).join('\n\n') };

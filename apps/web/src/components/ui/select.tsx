@@ -52,6 +52,19 @@ export function SelectContent({
     </S.Portal>
   );
 }
+/** A group's heading inside the list (lined up with the items' text, past the check mark). */
+export function SelectLabel({ className, ...props }: React.ComponentProps<typeof S.Label>) {
+  return (
+    <S.Label
+      className={cn(
+        'pt-2 pr-2 pb-1 pl-7 text-2xs font-medium tracking-wider text-fg-subtle uppercase',
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
 export function SelectItem({ className, children, ...props }: React.ComponentProps<typeof S.Item>) {
   return (
     <S.Item

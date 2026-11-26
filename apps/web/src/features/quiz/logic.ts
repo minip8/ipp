@@ -1,12 +1,17 @@
-/** Pure helpers for the quiz flow: drafts, responses, answer formatting, outcome. */
-import type {
-  AnswerFeedback,
-  Language,
-  OutputAnswer,
-  PublicQuizQuestion,
-  QuizMode,
-  QuizResponse,
+/** Pure helpers for the quiz flow: drafts, responses, answer formatting, outcome, tracks. */
+import {
+  type AnswerFeedback,
+  type Language,
+  type OutputAnswer,
+  type PublicQuizQuestion,
+  parseNumeric,
+  QUIZ_TRACK_INFO,
+  QUIZ_TRACKS,
+  type QuizMode,
+  type QuizResponse,
+  type QuizTrack,
 } from '@ipp/contracts';
+import { type Segment, splitMath } from '@/components/math-guard';
 
 export type OutputKind = OutputAnswer['kind'];
 
@@ -14,7 +19,9 @@ export type Draft =
   | { type: 'single'; choice: string | null }
   | { type: 'multiple'; choices: string[] }
   | { type: 'output'; kind: OutputKind | null; output: string }
-  | { type: 'short'; text: string };
+  | { type: 'short'; text: string }
+  /** `checked`: Submit was pressed, so a value that cannot be sent says why (until it can). */
+  | { type: 'numeric'; value: string; checked?: boolean };
 
 export const SHORT_MAX = 4000;
 
@@ -28,6 +35,8 @@ export function emptyDraft(q: PublicQuizQuestion): Draft {
       return { type: 'output', kind: null, output: '' };
     case 'short':
       return { type: 'short', text: '' };
+    case 'numeric':
+      return { type: 'numeric', value: '' };
   }
 }
 
@@ -46,10 +55,15 @@ export function draftFromResponse(q: PublicQuizQuestion, r: QuizResponse | undef
       };
     case 'short':
       return { type: 'short', text: r.text };
+    case 'numeric':
+      return { type: 'numeric', value: r.value };
   }
 }
 
-/** The response to send, or null while the draft is incomplete. */
+/**
+ * The response to send, or null while the draft is incomplete or, for a numeric answer, not a
+ * number (`numericProblem` says why).
+ */
 export function toResponse(d: Draft): QuizResponse | null {
   switch (d.type) {
     case 'single':
@@ -67,7 +81,43 @@ export function toResponse(d: Draft): QuizResponse | null {
       const text = d.text.trim();
       return text ? { type: 'short', text: text.slice(0, SHORT_MAX) } : null;
     }
+    case 'numeric': {
+      const value = d.value.trim();
+      return value && !numericProblem(value) ? { type: 'numeric', value } : null;
+    }
   }
+}
+
+// ---------------------------------------------------------------- numeric answers
+
+/** The accepted forms, under the input. */
+export const NUMERIC_HINT = 'A fraction, a decimal to 3 significant figures, or a percentage.';
+export const NUMERIC_PLACEHOLDER = 'e.g. 5/36 or 0.139';
+
+/**
+ * Why a typed numeric answer cannot be sent, or null when it can (or nothing is typed yet).
+ * Checked here so the user hears it at once rather than from the server.
+ */
+export function numericProblem(value: string): string | null {
+  const v = value.trim();
+  if (!v || parseNumeric(v) !== null) return null;
+  return 'Enter a number, like 5/36, 0.139 or 13.9%.';
+}
+
+/** Something is typed that Submit cannot send: it shows `numericProblem` instead. */
+export const isUnsendable = (d: Draft) => d.type === 'numeric' && numericProblem(d.value) !== null;
+
+/** A value with the question's unit (always a word, never `%`) after it: `6 rolls`. */
+export const withUnit = (value: string, unit: string | null) => (unit ? `${value} ${unit}` : value);
+
+/**
+ * The correct answer of a numeric question, as Markdown. The API sends the question's
+ * `answerText` when it has one (which says the unit itself if it needs to), else the bare
+ * number, which gets the unit here.
+ */
+export function numericCorrect(q: PublicQuizQuestion, f: AnswerFeedback): string {
+  const a = typeof f.correctAnswer === 'string' ? f.correctAnswer : '';
+  return parseNumeric(a) !== null ? withUnit(a, q.unit) : a;
 }
 
 /** Answer kinds offered for an output-prediction question, cppquiz style. */
@@ -140,11 +190,14 @@ export function formatResponse(q: PublicQuizQuestion, r: QuizResponse | undefine
       return r.answer.kind === 'output' ? r.answer.output : OUTPUT_KIND_LABEL[r.answer.kind];
     case 'short':
       return r.text;
+    case 'numeric':
+      return withUnit(r.value, q.unit);
   }
 }
 
-/** Human summary of the correct answer from feedback. */
+/** Human summary of the correct answer from feedback (Markdown for numeric and short ones). */
 export function formatCorrect(q: PublicQuizQuestion, f: AnswerFeedback): string {
+  if (q.type === 'numeric') return numericCorrect(q, f);
   const a = f.correctAnswer;
   if (typeof a === 'string') return q.type === 'single' ? choiceLabel(q, a) : a;
   if (Array.isArray(a)) return a.map((id) => choiceLabel(q, id)).join('\n');
@@ -180,6 +233,7 @@ export const TYPE_LABEL: Record<PublicQuizQuestion['type'], string> = {
   multiple: 'Select all that apply',
   output: 'What does this program do?',
   short: 'Open question',
+  numeric: 'Numeric answer',
 };
 
 export const GRADED_BY_LABEL: Record<AnswerFeedback['gradedBy'], string> = {
@@ -188,18 +242,65 @@ export const GRADED_BY_LABEL: Record<AnswerFeedback['gradedBy'], string> = {
   self: 'Self-graded',
 };
 
-/** First line of a markdown prompt as plain text, for compact lists. */
-export function promptSummary(md: string, max = 140): string {
-  const plain = md
-    .replace(/```[\s\S]*?```/g, ' ')
-    .replace(/`([^`]*)`/g, '$1')
+/** Markdown emphasis, headings, quotes and links as their text. */
+const stripMarkdown = (md: string) =>
+  md
     .replace(/\*\*([^*]*)\*\*/g, '$1')
     .replace(/(^|\s)[#>]+\s/g, '$1')
     .replace(/\*/g, '')
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return plain.length > max ? `${plain.slice(0, max - 1).trimEnd()}…` : plain;
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1');
+
+/**
+ * A markdown prompt as one line of plain text and inline math, for compact lists: code blocks
+ * dropped, code spans and emphasis as their text, cut to `max` characters but never inside a
+ * formula. The dollars of a code span stay text: a math segment is only ever real math.
+ */
+export function summarySegments(md: string, max = 140): Segment[] {
+  const parts: Segment[] = [];
+  const push = (kind: Segment['kind'], text: string) => {
+    const last = parts.at(-1);
+    if (kind === 'text' && last?.kind === 'text') last.text += text;
+    else parts.push({ kind, text });
+  };
+  for (const s of splitMath(md.replace(/```[\s\S]*?```/g, ' '))) {
+    if (s.kind === 'math') {
+      // Display math becomes inline: a summary is one line.
+      const tex = s.text.startsWith('$$') ? s.text.slice(2, -2) : s.text.slice(1, -1);
+      push('math', `$${tex.replace(/\s+/g, ' ').trim()}$`);
+    } else if (s.kind === 'code') push('text', s.text.replace(/^(`+)([\s\S]*)\1$/, '$2'));
+    else push('text', stripMarkdown(s.text));
+  }
+  for (const p of parts) if (p.kind === 'text') p.text = p.text.replace(/\s+/g, ' ');
+  const first = parts[0];
+  if (first?.kind === 'text') first.text = first.text.trimStart();
+  const last = parts.at(-1);
+  if (last?.kind === 'text') last.text = last.text.trimEnd();
+
+  const length = parts.reduce((n, p) => n + p.text.length, 0);
+  if (length <= max) return parts.filter((p) => p.text);
+  // max - 1 characters and an ellipsis; a formula that does not fit is left out whole.
+  const out: Segment[] = [];
+  let room = max - 1;
+  for (const p of parts) {
+    if (p.text.length <= room) {
+      out.push(p);
+      room -= p.text.length;
+      continue;
+    }
+    if (p.kind === 'text') out.push({ kind: 'text', text: p.text.slice(0, room) });
+    break;
+  }
+  const end = out.at(-1);
+  if (end?.kind === 'text') end.text = `${end.text.trimEnd()}…`;
+  else out.push({ kind: 'text', text: '…' });
+  return out.filter((p) => p.text);
+}
+
+/** First line of a markdown prompt as plain text, for compact lists (math left as `$…$`). */
+export function promptSummary(md: string, max = 140): string {
+  return summarySegments(md, max)
+    .map((s) => s.text)
+    .join('');
 }
 
 /** Map a key press to a choice index: 1-9 or A-Z (case-insensitive). */
@@ -313,4 +414,25 @@ export function questionsFor(
   mode: QuizMode,
 ): number {
   return mode === 'discussion' ? t.shortCount : t.questionCount - t.shortCount;
+}
+
+// ---------------------------------------------------------------- tracks
+
+export interface TrackGroup<T> {
+  track: QuizTrack;
+  label: string;
+  description: string;
+  items: T[];
+}
+
+/**
+ * Topics by track, in `QUIZ_TRACKS` order, each keeping the order it was given in (the server's
+ * study order). A track with no topic is left out, so one group means there is nothing to head.
+ */
+export function groupByTrack<T extends { track: QuizTrack }>(items: T[]): TrackGroup<T>[] {
+  return QUIZ_TRACKS.map((track) => ({
+    track,
+    ...QUIZ_TRACK_INFO[track],
+    items: items.filter((t) => t.track === track),
+  })).filter((g) => g.items.length > 0);
 }

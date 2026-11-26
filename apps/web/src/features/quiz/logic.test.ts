@@ -1,4 +1,4 @@
-import type { AnswerFeedback, PublicQuizQuestion } from '@ipp/contracts';
+import type { AnswerFeedback, PublicQuizQuestion, QuizTrack } from '@ipp/contracts';
 import { describe, expect, it } from 'vitest';
 import {
   choiceIndexForKey,
@@ -8,13 +8,20 @@ import {
   emptyDraft,
   formatCorrect,
   formatResponse,
+  groupByTrack,
+  isUnsendable,
+  NUMERIC_HINT,
+  numericProblem,
   outcomeOf,
   outputKindsFor,
   parseSetup,
   promptSummary,
   questionsFor,
   resumeIndex,
+  summarySegments,
+  TYPE_LABEL,
   toResponse,
+  withUnit,
 } from './logic';
 
 const single: PublicQuizQuestion = {
@@ -29,6 +36,7 @@ const single: PublicQuizQuestion = {
     { id: 'b', text: 'Beta' },
   ],
   code: null,
+  unit: null,
 };
 const multiple: PublicQuizQuestion = { ...single, id: 'q-multi', type: 'multiple' };
 const output: PublicQuizQuestion = {
@@ -202,5 +210,128 @@ describe('quiz setup', () => {
     expect(questionsFor(t, 'discussion')).toBe(20);
     expect(questionsFor(t, 'practice')).toBe(64);
     expect(questionsFor(t, 'exam')).toBe(64);
+  });
+});
+
+const numeric: PublicQuizQuestion = {
+  ...single,
+  id: 'q-num',
+  type: 'numeric',
+  prompt: 'Two dice: what is $P(\\text{sum} = 8)$?',
+  choices: null,
+};
+const rolls: PublicQuizQuestion = { ...numeric, id: 'q-rolls', unit: 'rolls' };
+
+describe('numeric answers', () => {
+  it('starts empty and restores what was typed', () => {
+    expect(emptyDraft(numeric)).toEqual({ type: 'numeric', value: '' });
+    expect(draftFromResponse(numeric, { type: 'numeric', value: '5/36' })).toEqual({
+      type: 'numeric',
+      value: '5/36',
+    });
+  });
+
+  it('sends a number in any accepted form, trimmed', () => {
+    for (const value of ['5/36', ' 0.139 ', '13.9%', '-7', '1,000', '1.5e-3'])
+      expect(toResponse({ type: 'numeric', value })).toEqual({
+        type: 'numeric',
+        value: value.trim(),
+      });
+  });
+
+  it('sends nothing while empty or not a number, and says why only for the latter', () => {
+    for (const value of ['', '   ']) {
+      expect(toResponse({ type: 'numeric', value })).toBeNull();
+      expect(numericProblem(value)).toBeNull();
+      expect(isUnsendable({ type: 'numeric', value })).toBe(false);
+    }
+    for (const value of ['abc', '5/', '1/0', '0.1.2', 'e5']) {
+      expect(toResponse({ type: 'numeric', value })).toBeNull();
+      expect(numericProblem(value)).toMatch(/^Enter a number/);
+      expect(isUnsendable({ type: 'numeric', value })).toBe(true);
+    }
+    expect(isUnsendable({ type: 'short', text: 'abc' })).toBe(false);
+  });
+
+  it('takes a percentage as the fraction it is', () => {
+    expect(toResponse({ type: 'numeric', value: '12.5%' })).toEqual({
+      type: 'numeric',
+      value: '12.5%',
+    });
+    expect(numericProblem('12.5 %')).toBeNull();
+    expect(NUMERIC_HINT).toBe('A fraction, a decimal to 3 significant figures, or a percentage.');
+  });
+
+  it('shows values with their unit', () => {
+    expect(withUnit('6', 'rolls')).toBe('6 rolls');
+    expect(withUnit('6', null)).toBe('6');
+    expect(formatResponse(rolls, { type: 'numeric', value: '6' })).toBe('6 rolls');
+  });
+
+  it('adds the unit to a bare correct number, not to answer text', () => {
+    expect(formatCorrect(rolls, fb({ correctAnswer: '6' }))).toBe('6 rolls');
+    expect(formatCorrect(numeric, fb({ correctAnswer: '$1/e \\approx 0.368$' }))).toBe(
+      '$1/e \\approx 0.368$',
+    );
+    expect(formatCorrect(rolls, fb({ correctAnswer: '$6$ on average' }))).toBe('$6$ on average');
+  });
+
+  it('labels the type and has no letter shortcuts', () => {
+    expect(TYPE_LABEL.numeric).toBe('Numeric answer');
+    expect(draftForKey(numeric, emptyDraft(numeric), '1')).toBeNull();
+    expect(draftForKey(numeric, emptyDraft(numeric), 'a')).toBeNull();
+  });
+});
+
+describe('summaries with math', () => {
+  it('keeps math as one inline segment and code dollars as text', () => {
+    expect(summarySegments('Find $\\mathbb{E}[N]$ when `echo $X` runs.')).toEqual([
+      { kind: 'text', text: 'Find ' },
+      { kind: 'math', text: '$\\mathbb{E}[N]$' },
+      { kind: 'text', text: ' when echo $X runs.' },
+    ]);
+  });
+
+  it('turns display math inline and collapses whitespace', () => {
+    expect(promptSummary('What is\n\n$$\n\\frac{5}{36}\n$$\n\nas a decimal?')).toBe(
+      'What is $\\frac{5}{36}$ as a decimal?',
+    );
+  });
+
+  it('never cuts inside a formula', () => {
+    const md = `${'a'.repeat(8)} $x^2 + y^2$ tail`;
+    expect(promptSummary(md, 12)).toBe('aaaaaaaa…');
+    expect(promptSummary(md, 21)).toBe('aaaaaaaa $x^2 + y^2$…');
+    // Text is still cut mid-word, as before.
+    expect(promptSummary('a'.repeat(200), 10)).toHaveLength(10);
+  });
+
+  it('leaves text without math as it was', () => {
+    expect(summarySegments('Costs $5 and $10, **really**')).toEqual([
+      { kind: 'text', text: 'Costs $5 and $10, really' },
+    ]);
+  });
+});
+
+describe('tracks', () => {
+  const t = (slug: string, track: QuizTrack) => ({ slug, track });
+
+  it('groups in track order and keeps the given order within a track', () => {
+    const groups = groupByTrack([
+      t('probability', 'quant'),
+      t('cpp', 'fundamentals'),
+      t('brainteasers', 'quant'),
+      t('python', 'fundamentals'),
+    ]);
+    expect(groups.map((g) => [g.track, g.label, g.items.map((i) => i.slug)])).toEqual([
+      ['fundamentals', 'Fundamentals', ['cpp', 'python']],
+      ['quant', 'Quant', ['probability', 'brainteasers']],
+    ]);
+    expect(groups[1]?.description).toMatch(/^Probability, statistics/);
+  });
+
+  it('is one group (nothing to head) when every topic is in one track', () => {
+    expect(groupByTrack([t('cpp', 'fundamentals'), t('python', 'fundamentals')])).toHaveLength(1);
+    expect(groupByTrack([])).toEqual([]);
   });
 });

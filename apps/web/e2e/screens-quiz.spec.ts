@@ -3,8 +3,15 @@
 import type { QuizAttempt } from '@ipp/contracts';
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
-import { aiKeyStatus, makeAttempt, QUIZ_ATTEMPT_ID, QUIZ_QUESTIONS } from './fixtures';
+import {
+  aiKeyStatus,
+  makeAttempt,
+  QUIZ_ATTEMPT_ID,
+  QUIZ_QUESTIONS,
+  QUIZ_TOPICS_FUNDAMENTALS,
+} from './fixtures';
 import { QUIZ_BANK_LONG, QUIZ_BANK_TOPIC } from './fixtures-quiz-bank';
+import { QUANT_TOPIC } from './fixtures-quiz-quant';
 import { shoot as rawShoot, setup } from './helpers';
 
 async function shoot(page: Page, name: string, opts?: { fullPage?: boolean }) {
@@ -27,6 +34,102 @@ for (const width of WIDTHS) {
       await page.getByRole('button', { name: /^Networking/ }).click();
       await page.waitForTimeout(300);
       await shoot(page, 'quiz-hub', { fullPage: true });
+    });
+
+    // Before any quant content: one track, so no headings (compare with quiz-hub of old).
+    test('hub fundamentals', async ({ page }) => {
+      await setup(page, (b) => {
+        b.quizTopics = QUIZ_TOPICS_FUNDAMENTALS;
+      });
+      await page.goto('/quiz');
+      await page.getByRole('button', { name: /^C\+\+/ }).click();
+      await page.getByRole('button', { name: /^Networking/ }).click();
+      await page.waitForTimeout(300);
+      await shoot(page, 'quiz-hub-fundamentals', { fullPage: true });
+    });
+
+    test('numeric and math', async ({ page }) => {
+      await setup(page);
+      const bank = `/quiz/topics/${QUANT_TOPIC}`;
+      await page.goto(bank);
+      await expect(page.getByTestId('bank-subtopics')).toBeVisible();
+      await page.getByRole('combobox', { name: 'Topic' }).click();
+      await page.getByRole('listbox').waitFor();
+      await shoot(page, 'quant-bank-topics');
+      await page.keyboard.press('Escape');
+
+      // Display math in the prompt, a value that cannot be sent, then a percentage.
+      await page.goto(`${bank}?question=prob-uniform-sum`);
+      const answer = page.getByLabel('Your answer');
+      await answer.fill('about 1/8');
+      await answer.press('Enter');
+      await page.getByText('Enter a number').waitFor();
+      await shoot(page, 'quant-numeric-problem', { fullPage: true });
+      await answer.fill('12.5%');
+      await answer.press('Enter');
+      await page.getByRole('region', { name: 'Feedback' }).waitFor();
+      await shoot(page, 'quant-numeric-correct', { fullPage: true });
+
+      // A long display equation in the explanation, and answer text with math.
+      await page.goto(`${bank}?question=prob-derangements`);
+      await answer.fill('0.5');
+      await shoot(page, 'quant-numeric-question', { fullPage: true });
+      await answer.press('Enter');
+      await page.getByRole('region', { name: 'Feedback' }).waitFor();
+      await shoot(page, 'quant-numeric-wrong', { fullPage: true });
+
+      // Math in the choices, and in the list beside the question.
+      await page.goto(`${bank}?question=prob-binomial-variance`);
+      await page
+        .getByRole('radiogroup', { name: 'Answer choices' })
+        .getByRole('radio')
+        .nth(1)
+        .locator('.katex')
+        .waitFor();
+      await shoot(page, 'quant-single-math', { fullPage: true });
+
+      // A practice attempt to its results.
+      await page.goto('/quiz');
+      await page.getByRole('button', { name: /^Probability/ }).click();
+      await page.getByRole('button', { name: 'Start quiz' }).click();
+      const primary = page.getByTestId('quiz-primary');
+      await answer.fill('0.368');
+      await answer.press('Enter');
+      await page.getByRole('region', { name: 'Feedback' }).waitFor();
+      await shoot(page, 'quant-attempt-feedback', { fullPage: true });
+      await primary.click();
+      await answer.fill('5/36');
+      await answer.press('Enter');
+      await primary.click();
+      await page.keyboard.press('b');
+      await primary.click();
+      await primary.click();
+      await answer.fill('1/8');
+      await answer.press('Enter');
+      await primary.click();
+      await answer.fill('5');
+      await answer.press('Enter');
+      await expect(primary).toHaveText(/See results/);
+      await shoot(page, 'quant-numeric-unit', { fullPage: true });
+      await primary.click();
+      await expect(page.getByTestId('quiz-score')).toBeVisible();
+      await page
+        .getByRole('region', { name: 'Review' })
+        .locator('button[aria-expanded]')
+        .first()
+        .click();
+      await shoot(page, 'quant-results', { fullPage: true });
+
+      // A discussion: math in the interviewer's turns.
+      await page.goto('/quiz');
+      await page.getByRole('radio', { name: 'Discussion' }).click();
+      await page.getByRole('button', { name: 'Start discussion' }).click();
+      await page
+        .getByLabel('Your reply')
+        .fill('Three families have a boy, and one of them has two.');
+      await page.getByRole('button', { name: 'Send' }).click();
+      await expect(page.getByText('Interviewer is thinking')).toBeHidden();
+      await shoot(page, 'quant-discussion', { fullPage: true });
     });
 
     test('hub history', async ({ page }) => {

@@ -24,14 +24,16 @@ import {
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Markdown } from '@/components/markdown';
+import { MathMarkdown } from '@/components/math-markdown';
 import { EmptyState, ErrorState, InlineError, useRetryCountdown } from '@/components/states';
 import { Button } from '@/components/ui/button';
 import { Kbd } from '@/components/ui/kbd';
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
@@ -71,7 +73,15 @@ import {
   subtopicNeighbours,
   summariseSubtopics,
 } from './bank-logic';
-import { type Draft, draftForKey, draftFromResponse, emptyDraft, toResponse } from './logic';
+import {
+  type Draft,
+  draftForKey,
+  draftFromResponse,
+  emptyDraft,
+  groupByTrack,
+  isUnsendable,
+  toResponse,
+} from './logic';
 import {
   ACTION_BAR,
   AnswerInput,
@@ -148,6 +158,8 @@ export function QuestionBank({ topic }: { topic: string }) {
   const subtopicParam = params.get('subtopic');
   const bank = useQuery({ queryKey: qk.quizBank(topic), queryFn: () => api.quizBank(topic) });
   const topics = useQuery({ queryKey: qk.quizTopics, queryFn: api.quizTopics, staleTime: 60_000 });
+  // The topic picker is headed by track once there is more than one.
+  const topicGroups = useMemo(() => groupByTrack(topics.data ?? []), [topics.data]);
   // Questions answered here stay in the filtered list until the filters change.
   const [keep, setKeep] = useState<Set<string>>(() => new Set(selected ? [selected] : []));
   const [session, setSession] = useState<Record<string, Local>>({});
@@ -369,11 +381,22 @@ export function QuestionBank({ topic }: { topic: string }) {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {topics.data.map((t) => (
-                      <SelectItem key={t.slug} value={t.slug}>
-                        {t.title}
-                      </SelectItem>
-                    ))}
+                    {topicGroups.length > 1
+                      ? topicGroups.map((g) => (
+                          <SelectGroup key={g.track}>
+                            <SelectLabel>{g.label}</SelectLabel>
+                            {g.items.map((t) => (
+                              <SelectItem key={t.slug} value={t.slug}>
+                                {t.title}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        ))
+                      : topics.data.map((t) => (
+                          <SelectItem key={t.slug} value={t.slug}>
+                            {t.title}
+                          </SelectItem>
+                        ))}
                   </SelectContent>
                 </Select>
               )}
@@ -645,6 +668,8 @@ function QuestionPane({
   const locked = Boolean(feedback);
   const settled = Boolean(feedback && !feedback.needsSelfGrade);
   const response = toResponse(draft);
+  // A typed number that cannot be sent: Submit explains why instead of sending it.
+  const unsendable = isUnsendable(draft);
 
   // Warm the neighbours so stepping through feels instant.
   useEffect(() => {
@@ -690,6 +715,7 @@ function QuestionPane({
     if (settled) return go(forward);
     if (locked) return; // waiting for a self-grade
     if (response) submit.mutate(response);
+    else if (unsendable && draft.type === 'numeric') setDraft({ ...draft, checked: true });
   };
 
   // Same keys as an attempt: 1-9 / A-Z choose, Enter submits or moves on, arrows and J/K step
@@ -742,7 +768,10 @@ function QuestionPane({
   if (settled) primaryLabel = next ? 'Next question' : practise ? 'Next open question' : 'All done';
   else if (locked) primaryLabel = 'Grade to continue';
   const primaryDisabled =
-    submit.isPending || wait > 0 || waitingForPrior || (settled ? !forward : locked || !response);
+    submit.isPending ||
+    wait > 0 ||
+    waitingForPrior ||
+    (settled ? !forward : locked || (!response && !unsendable));
 
   return (
     <article aria-labelledby={`bank-q-${q.id}`}>
@@ -790,7 +819,7 @@ function QuestionPane({
           {position >= 0 ? `Question ${position + 1} of ${total}` : 'Question'}
         </h2>
         <div id={`bank-q-${q.id}`} className="mt-2">
-          <Markdown className="text-md text-fg">{q.prompt}</Markdown>
+          <MathMarkdown className="text-md text-fg">{q.prompt}</MathMarkdown>
         </div>
         {q.code && (
           <div className="mt-4">
@@ -817,6 +846,7 @@ function QuestionPane({
               setDraft={setDraft}
               feedback={feedback}
               locked={locked}
+              onSubmit={primary}
             />
           )}
         </div>

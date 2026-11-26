@@ -1,7 +1,8 @@
 /**
  * Roadmap fixtures (GET /api/quiz/roadmap): the real topics and areas from
  * packages/content/quiz/roadmap.yaml with their question counts at the time of writing, and a
- * made-up mix of progress (C++ well under way, computer architecture and concurrency untouched).
+ * made-up mix of progress (C++ well under way, computer architecture and concurrency untouched),
+ * and a made-up quant topic (probability) to go with fixtures-quiz-quant.ts.
  */
 import { QuizRoadmapTopic } from '@ipp/contracts';
 
@@ -19,6 +20,7 @@ const n = (id: string, title: string, description: string, requires: string[], s
 const CONTENT = [
   {
     slug: "cpp",
+    track: "fundamentals",
     title: "C++",
     description: "Language rules, the standard library, object lifetime, templates, and what programs actually print.",
     nodes: [
@@ -41,6 +43,7 @@ const CONTENT = [
   },
   {
     slug: "python",
+    track: "fundamentals",
     title: "Python",
     description: "Language semantics, the data model, the standard library, and common gotchas.",
     nodes: [
@@ -62,6 +65,7 @@ const CONTENT = [
   },
   {
     slug: "computer-architecture",
+    track: "fundamentals",
     title: "Computer architecture",
     description: "CPUs, caches, memory hierarchy, pipelines, data representation, and performance.",
     nodes: [
@@ -81,6 +85,7 @@ const CONTENT = [
   },
   {
     slug: "operating-systems",
+    track: "fundamentals",
     title: "Operating systems",
     description: "Processes, threads, scheduling, virtual memory, file systems, and system calls.",
     nodes: [
@@ -100,6 +105,7 @@ const CONTENT = [
   },
   {
     slug: "concurrency",
+    track: "fundamentals",
     title: "Concurrency",
     description: "Threads, locks, atomics, memory models, lock-free structures, and classic bugs.",
     nodes: [
@@ -121,6 +127,7 @@ const CONTENT = [
   },
   {
     slug: "networking",
+    track: "fundamentals",
     title: "Networking",
     description: "TCP/IP, UDP, DNS, HTTP, TLS, sockets, and how packets get from A to B.",
     nodes: [
@@ -137,6 +144,19 @@ const CONTENT = [
       n("net-load-balancing", "Load balancers and CDNs", "Layer 4 and layer 7 load balancing, proxies and content delivery networks.", ["net-http"], [["Load balancing and proxies", 8, 3], ["CDNs", 2, 1]]),
       n("net-low-latency", "Multicast and low latency", "Multicast, market data feeds and kernel bypass.", ["net-sockets"], [["Multicast", 7, 2], ["Market data", 2, 2], ["Kernel bypass and low latency", 8, 3]]),
       n("net-debugging", "Debugging end to end", "What happens when you type a URL, and the tools that show each step.", ["net-http","net-sockets"], [["Debugging tools", 8, 3], ["What happens when you type a URL", 2, 1]]),
+    ],
+  },
+  // The quant track: made up to match fixtures-quiz-quant.ts, not content from roadmap.yaml.
+  {
+    slug: "probability",
+    track: "quant",
+    title: "Probability",
+    description: "Counting, conditioning, expectation and the classic puzzles.",
+    nodes: [
+      n("prob-counting", "Counting and dice", "Equally likely outcomes, and counting them without listing them.", [], [["Dice and counting", 1, 0]]),
+      n("prob-expectation", "Expectation", "Linearity, indicators and waiting times.", ["prob-counting"], [["Expectation", 1, 0]]),
+      n("prob-distributions", "Distributions", "Binomial, geometric and uniform, and what their moments are.", ["prob-counting"], [["Distributions", 2, 0]]),
+      n("prob-puzzles", "Classic puzzles", "Hats, boys and girls: the questions every desk asks.", ["prob-expectation"], [["Classic puzzles", 2, 1]]),
     ],
   },
 ];
@@ -219,6 +239,7 @@ function build(progress: Record<string, [number, number]>) {
       return {
         slug: t.slug,
         title: t.title,
+        track: t.track,
         description: t.description,
         questionCount: sum(nodes, (x) => x.questionCount),
         shortCount: sum(nodes, (x) => x.shortCount),
@@ -235,3 +256,5 @@ function build(progress: Record<string, [number, number]>) {
 export const QUIZ_ROADMAP = build(PROGRESS);
 /** A first visit: nothing answered anywhere. */
 export const QUIZ_ROADMAP_FRESH = build({});
+/** The roadmap before any quant content: one track, so no track headings. */
+export const QUIZ_ROADMAP_FUNDAMENTALS = QUIZ_ROADMAP.filter((t) => t.track === 'fundamentals');

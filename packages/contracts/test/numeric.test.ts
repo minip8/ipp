@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  isMathSpan,
   NUMERIC_INPUT_MAX,
   numericMatches,
   numericToNumber,
@@ -189,5 +190,23 @@ describe('numeric quiz contracts', () => {
       code: null,
     });
     expect(pub.unit).toBeNull();
+  });
+});
+
+describe('isMathSpan', () => {
+  it('takes a tight single-dollar span and any non-empty double-dollar span as math', () => {
+    expect(isMathSpan('$x$')).toBe(true);
+    expect(isMathSpan('$\\frac{1}{2}$', '.')).toBe(true);
+    expect(isMathSpan('$$ x^2 $$')).toBe(true);
+    expect(isMathSpan('$$x$$', '5')).toBe(true);
+  });
+
+  it('leaves money and loose dollars as text', () => {
+    expect(isMathSpan('$5 and $', '1')).toBe(false);
+    expect(isMathSpan('$ x $')).toBe(false);
+    expect(isMathSpan('$x $')).toBe(false);
+    expect(isMathSpan('$x$', '5')).toBe(false);
+    expect(isMathSpan('$$')).toBe(false);
+    expect(isMathSpan('$$$$')).toBe(false);
   });
 });

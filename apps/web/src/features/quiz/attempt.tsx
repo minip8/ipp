@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Markdown } from '@/components/markdown';
+import { MathMarkdown } from '@/components/math-markdown';
 import { ErrorState, InlineError, useRetryCountdown } from '@/components/states';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -38,6 +38,7 @@ import {
   type Draft,
   draftForKey,
   draftFromResponse,
+  isUnsendable,
   outcomeOf,
   resumeIndex,
   toResponse,
@@ -162,6 +163,8 @@ function QuizFlow({ attempt }: { attempt: QuizAttempt }) {
   const settled = !exam && Boolean(fb && !fb.needsSelfGrade);
   const locked = !exam && Boolean(fb);
   const response = toResponse(draft);
+  // A typed number that cannot be sent: Submit explains why instead of sending it.
+  const unsendable = isUnsendable(draft);
   const savedSame =
     exam && response !== null && JSON.stringify(responses[q.id]) === JSON.stringify(response);
 
@@ -258,6 +261,8 @@ function QuizFlow({ attempt }: { attempt: QuizAttempt }) {
     }
     if (locked) return; // waiting for a self-grade
     if (response) submit.mutate({ question: q, response });
+    else if (unsendable && draft.type === 'numeric')
+      setDrafts((all) => ({ ...all, [q.id]: { ...draft, checked: true } }));
     else if (exam && index === qs.length - 1) setConfirmOpen(true);
   }, [
     submit,
@@ -271,6 +276,8 @@ function QuizFlow({ attempt }: { attempt: QuizAttempt }) {
     feedback,
     locked,
     response,
+    unsendable,
+    draft,
     q,
     exam,
   ]);
@@ -332,7 +339,7 @@ function QuizFlow({ attempt }: { attempt: QuizAttempt }) {
     submit.isPending ||
     finish.isPending ||
     submitWait > 0 ||
-    (!settled && (locked || !response || (exam && savedSame && last)));
+    (!settled && (locked || (!response && !unsendable) || (exam && savedSame && last)));
 
   const topicLine = attempt.topics.map(titleOf).join(', ');
 
@@ -382,7 +389,7 @@ function QuizFlow({ attempt }: { attempt: QuizAttempt }) {
           Question {index + 1} of {qs.length}
         </h1>
         <div id={`q-${q.id}`} className="mt-2">
-          <Markdown className="text-md text-fg">{q.prompt}</Markdown>
+          <MathMarkdown className="text-md text-fg">{q.prompt}</MathMarkdown>
         </div>
         {q.code && (
           <div className="mt-4">
@@ -390,7 +397,14 @@ function QuizFlow({ attempt }: { attempt: QuizAttempt }) {
           </div>
         )}
         <div className="mt-5">
-          <AnswerInput q={q} draft={draft} setDraft={setDraft} feedback={fb} locked={locked} />
+          <AnswerInput
+            q={q}
+            draft={draft}
+            setDraft={setDraft}
+            feedback={fb}
+            locked={locked}
+            onSubmit={primary}
+          />
         </div>
         {q.type === 'short' && !locked && aiKey.data && aiKey.data.state !== 'active' && (
           <AiKeyPrompt

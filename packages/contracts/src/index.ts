@@ -3,6 +3,7 @@ export * from './common';
 export * from './harness';
 export * from './judge';
 export * from './limits';
+export * from './math';
 export * from './numeric';
 export * from './pad';
 export * from './problem';

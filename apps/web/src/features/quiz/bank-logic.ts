@@ -22,7 +22,7 @@ export interface BankFilters {
 export const DEFAULT_FILTERS: BankFilters = { difficulty: 'all', type: 'all', status: 'all' };
 
 const DIFFICULTIES = ['easy', 'medium', 'hard'] as const;
-const TYPES = ['single', 'multiple', 'output', 'short'] as const;
+const TYPES = ['single', 'multiple', 'output', 'short', 'numeric'] as const;
 const STATUSES = ['new', 'missed', 'correct'] as const;
 
 const oneOf = <T extends string>(xs: readonly T[], v: string | null): T | 'all' =>

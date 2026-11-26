@@ -409,6 +409,26 @@
   border-color: var(--border);
 }
 
+/*
+ * LaTeX on quiz surfaces (KaTeX, math-markdown.tsx). KaTeX's own 1.21em suits a serif body; next
+ * to Geist it would tower over the text. Display math scrolls inside the text column instead of
+ * widening the page (a long sum on a phone).
+ */
+.prose-ipp .katex,
+.math-text .katex {
+  font-size: 1.1em;
+}
+.prose-ipp .katex-display {
+  margin: 0;
+  padding: 0.125em 0 0.25em;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+}
+.prose-ipp > * + .katex-display {
+  margin-top: 0.75em;
+}
+
 /* Shiki dual themes: light colours inline, dark via CSS variables. */
 .dark .shiki,
 .dark .shiki span {

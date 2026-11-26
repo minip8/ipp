@@ -58,6 +58,12 @@ describe('markdownMathErrors', () => {
       expect.stringContaining('does not typeset'),
     ]);
   });
+  it('rejects a pair of dollars the site would show as plain text', () => {
+    expect(markdownMathErrors('Let $ x $ be the total.', 'quant').join()).toMatch(/plain text/);
+    expect(markdownMathErrors('Worth $x$5 more.', 'quant').join()).toMatch(/plain text/);
+    expect(markdownMathErrors('Let $x$ be the total, $$ x^2 $$ its square.', 'quant')).toEqual([]);
+  });
+
   it('rejects an unbalanced dollar in a quant topic', () => {
     expect(markdownMathErrors('The answer is $\\frac{1}{2} and no more.', 'quant')).toEqual([
       expect.stringContaining('unmatched $'),
