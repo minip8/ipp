@@ -110,6 +110,7 @@
   followUps:
     - What is the probability that the next card is the king of hearts?
     - These answers are equal. Why is that surprising, given that the next card is more often a non-ace?
+    - What is the probability that the card just before the first ace is a king? (The same insertion argument gives 1/13; the often-quoted 4/51 is wrong.)
   explanation: |
     Build the shuffled deck in two steps: shuffle the 51 cards other than the ace of spades, then
     insert the ace of spades into one of the 52 possible positions uniformly at random. The result
