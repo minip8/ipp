@@ -49,6 +49,7 @@ beforeAll(async () => {
     join(root, 'quiz', 'cpp', 'a.yaml'),
     `- { id: q-one, topic: cpp, subtopic: s, difficulty: easy, type: single, prompt: p, explanation: e, choices: [{id: a, text: A}, {id: b, text: B}], answer: a }
 - { id: q-two, topic: cpp, subtopic: s, difficulty: easy, type: short, prompt: p, explanation: e, reference: r, keyPoints: [k] }
+- { id: q-num, topic: cpp, subtopic: s, difficulty: easy, type: numeric, prompt: p, explanation: e, answer: 5/36 }
 - { id: q-bad, topic: cpp, subtopic: s, difficulty: easy, type: single, prompt: p, explanation: e, choices: [{id: a, text: A}], answer: z }
 `,
   );
@@ -63,7 +64,7 @@ describe('seed', () => {
   it('skips invalid content and is idempotent', async () => {
     const first = await seed(h.db, { root });
     expect(first.problems).toBe(1);
-    expect(first.questions).toBe(2);
+    expect(first.questions).toBe(3);
     expect(first.skipped.map((s) => s.where)).toEqual(
       expect.arrayContaining(['problems/broken', expect.stringContaining('q-bad')]),
     );
@@ -73,6 +74,9 @@ describe('seed', () => {
     expect(before.problems).toBe(1);
     const [row] = await h.db.select().from(problems).where(eq(problems.slug, 'two-sum'));
     expect(row?.category).toBe('dsa');
+    const [num] = await h.db.select().from(quizQuestions).where(eq(quizQuestions.id, 'q-num'));
+    expect(num?.type).toBe('numeric');
+    expect(num?.data).toMatchObject({ answer: '5/36', hints: [], followUps: [] });
   });
 
   it('writes languages, starter code and harness', async () => {
@@ -129,10 +133,10 @@ describe('seed', () => {
     expect(await h.db.select().from(quizAnswers)).toHaveLength(1);
   });
 
-  it('writes topic order and roadmaps; a broken roadmap keeps the stored one', async () => {
+  it('writes topic order, tracks and roadmaps; a broken roadmap keeps the stored one', async () => {
     writeFileSync(
       join(root, 'quiz', 'topics.yaml'),
-      '- { slug: cpp, title: C++, description: d }\n- { slug: py, title: Python, description: d }\n',
+      '- { slug: cpp, title: C++, description: d }\n- { slug: py, title: Python, description: d, track: quant }\n',
     );
     const file = join(root, 'quiz', 'roadmap.yaml');
     writeFileSync(file, 'cpp:\n  - { id: cpp-s, title: S, description: d, subtopics: [s] }\n');
@@ -143,6 +147,7 @@ describe('seed', () => {
         .select({
           slug: quizTopics.slug,
           position: quizTopics.position,
+          track: quizTopics.track,
           roadmap: quizTopics.roadmap,
         })
         .from(quizTopics)
@@ -151,6 +156,7 @@ describe('seed', () => {
         {
           slug: 'cpp',
           position: 0,
+          track: 'fundamentals',
           roadmap: [
             {
               id: 'cpp-s',
@@ -162,7 +168,7 @@ describe('seed', () => {
             },
           ],
         },
-        { slug: 'py', position: 1, roadmap: [] },
+        { slug: 'py', position: 1, track: 'quant', roadmap: [] },
       ]);
 
       // A cycle: reported, and the roadmap already stored stays.

@@ -690,6 +690,8 @@ describe('a chosen model the provider refuses', () => {
         type: 'short',
         reference: 'r',
         keyPoints: ['a'],
+        hints: [],
+        followUps: [],
       },
       'a',
     );

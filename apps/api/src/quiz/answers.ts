@@ -54,7 +54,7 @@ export function statusOf(a: Graded | undefined): QuizQuestionStatus {
 }
 
 /**
- * Grades a response: auto for single / multiple / output; short answers on the user's own key,
+ * Grades a response: auto for single / multiple / output / numeric; short answers on the user's own key,
  * falling back to their self-grade (or asking for one) without a key or when the model fails.
  */
 export async function gradeResponse(

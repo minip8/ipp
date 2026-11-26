@@ -180,7 +180,10 @@ export interface Interviewer {
   generateRoomAssessment(padId: string): Promise<ReportAssessment | null>;
   /** A room host's second opinion on the code as it is now. Never shown to the candidate. */
   reviewSolution(padId: string, question?: string): Promise<ReviewResult>;
-  /** Runs on `userId`'s key; null without a usable key or when the model failed. */
+  /**
+   * Runs on `userId`'s key; null without a usable key or when the model failed. The question's
+   * `hints` and `followUps` are read as `?? []`: a row stored before they existed has neither.
+   */
   gradeShortAnswer(
     userId: string,
     question: Extract<QuizQuestion, { type: 'short' }>,
@@ -188,7 +191,9 @@ export interface Interviewer {
   ): Promise<ShortAnswerGrade | null>;
   /**
    * Quiz discussion mode: judges what the candidate has said on one question so far and writes
-   * the next follow-up. `final` asks for no follow-up. Null as for `gradeShortAnswer`.
+   * the next follow-up. `final` asks for no follow-up. Null as for `gradeShortAnswer`. The
+   * follow-ups prefer the question's authored hints (when the candidate is stuck) and its authored
+   * follow-ups (once the key points are covered).
    */
   discussShortAnswer(
     userId: string,

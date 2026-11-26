@@ -190,8 +190,11 @@ export class FakeInterviewer implements Interviewer {
       },
     };
   };
-  gradeShortAnswer = async (userId: string) => {
+  /** The questions handed to `gradeShortAnswer`, in order. */
+  gradeCalls: unknown[] = [];
+  gradeShortAnswer = async (userId: string, question: unknown) => {
     if (!(await this.model({ userId }))) return null;
+    this.gradeCalls.push(question);
     await new Promise((r) => setTimeout(r, 5));
     return this.shortGrade;
   };
@@ -200,10 +203,10 @@ export class FakeInterviewer implements Interviewer {
     { score: 0.4, feedback: 'Partly there.', followUp: 'What happens under contention?' },
     { score: 0.9, feedback: 'Covered the key points.', followUp: '' },
   ];
-  discussionCalls: { turns: DiscussionTurn[]; final: boolean }[] = [];
+  discussionCalls: { question: unknown; turns: DiscussionTurn[]; final: boolean }[] = [];
   discussShortAnswer = async (
     userId: string,
-    _q: unknown,
+    question: unknown,
     turns: DiscussionTurn[],
     final: boolean,
   ) => {
@@ -211,7 +214,7 @@ export class FakeInterviewer implements Interviewer {
     const step = this.discussionSteps[
       Math.min(this.discussionCalls.length, this.discussionSteps.length - 1)
     ] as DiscussionStep | null;
-    this.discussionCalls.push({ turns: [...turns], final });
+    this.discussionCalls.push({ question, turns: [...turns], final });
     return step && final ? { ...step, followUp: '' } : step;
   };
 }

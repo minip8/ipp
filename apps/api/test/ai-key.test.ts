@@ -831,6 +831,8 @@ describe('no operator key', () => {
         type: 'short' as const,
         reference: 'r',
         keyPoints: ['a'],
+        hints: [],
+        followUps: [],
       };
       expect(await iv.gradeShortAnswer('u', q, 'a')).toBeNull();
       iv.handle('11111111-1111-4111-8111-111111111111', { type: 'session_started' });

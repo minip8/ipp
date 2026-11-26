@@ -70,7 +70,7 @@ Better Auth owns `user`, `session`, `account`, `verification` (text ids). App ta
 | `timeline_events` | id, pad_id, at, event jsonb |
 | `runs` | id, pad_id, user_id, problem_slug (the pad's problem when queued), mode, language, source, status, verdict, result jsonb (full `JudgeResult`), hidden_ids text[], created_at, finished_at |
 | `reports` | pad_id pk, status, stats jsonb, assessment jsonb, generated_at |
-| `quiz_topics` | slug pk, title, description, position (study order), roadmap jsonb (`QuizRoadmapNode[]`) |
+| `quiz_topics` | slug pk, title, description, track (`fundamentals` or `quant`), position (study order), roadmap jsonb (`QuizRoadmapNode[]`) |
 | `quiz_questions` | id pk (slug), topic, subtopic, difficulty, type, data jsonb (`QuizQuestion`) |
 | `quiz_attempts` | id, user_id, mode, topics, question_ids, transcript jsonb (discussion turns per question), status, score, started_at, finished_at |
 | `quiz_answers` | attempt_id, question_id, response jsonb, score, correct, feedback, graded_by, answered_at |
@@ -444,12 +444,42 @@ short conversational turns.
 ## 8. Quizzes
 
 Question types (`QuizQuestion`): single choice, multiple choice, output prediction
-(cppquiz-style: exact output / compile error / undefined / unspecified / runtime error), and short
-free-form answers graded by the model against key points, on the quiz taker's own API key
-(self-graded without one).
+(cppquiz-style: exact output / compile error / undefined / unspecified / runtime error), numeric
+(one number, graded automatically), and short free-form answers graded by the model against key
+points, on the quiz taker's own API key (self-graded without one).
+
+A numeric answer is typed as an integer (`42`, `1,000`), a fraction of integers (`5/36`), a
+decimal (`0.25`, `.5`, `1.5e-3`) or a percentage (`12.5%`); `parseNumeric` in
+`packages/contracts/src/numeric.ts` reads each as an exact rational, the browser uses it to refuse
+anything else before sending, and the API refuses it again with a 400. `numericMatches` grades:
+equal as rationals is always right; a question with a `tolerance` (`abs` and/or `rel`) accepts
+anything within it, however it is written; otherwise a decimal within 0.5% of a non-integer answer
+counts (three significant figures, so `0.333` for `1/3` but not `0.33`), a fraction or an integer
+must be exact, and a whole-number answer must be exact. The score is 1 or 0. The question's
+`answer` is kept as text so a fraction never goes through a float; the feedback shows
+`answerText` (Markdown, e.g. `$1/e \approx 0.368$`) or else the answer as written, and `unit` is
+shown beside the input.
+
+Short and numeric questions may carry `hints` (a ladder, gentlest first, none giving the answer)
+and `followUps` (what to ask once the answer is in). They are interviewer material: server-only
+like the reference answer, never in a response, not even after answering. In a discussion the
+interviewer bases a follow-up for a stuck candidate on the first hint it has not used yet, and once
+the key points are covered asks the first authored follow-up (at most one) before closing; with
+neither it behaves as before. The grader sees them as context and does not require them. Rows
+stored before these fields existed lack them (and `unit`), so the API and the interviewer read
+them as `?? []`.
+
+Every topic belongs to a track (`QUIZ_TRACKS`: `fundamentals`, the default, and `quant`), set in
+`quiz/topics.yaml` and stored on `quiz_topics.track`; every topic shape the API returns carries
+it, and the Quizzes page and the roadmap group topics by track. Quiz Markdown is rendered with
+remark-math and KaTeX, so `$...$` and `$$...$$` are LaTeX and a literal dollar is `\$`; the
+grading and discussion prompts tell the model the same. A content test enforces it: a
+fundamentals topic has no math at all and no bare `$`, and every formula in a quant topic must
+typeset with KaTeX (`packages/content/src/math.ts`, also run by `check`).
+
 There are three modes. Practice gives feedback after each answer and exam at the end; both draw
-only on the automatically graded types, never short answers. Discussion draws only on short
-answers and needs the user's key: each question is a conversation in which the candidate may speak
+only on the automatically graded types (numeric included), never short answers. Discussion draws
+only on short answers and needs the user's key: each question is a conversation in which the candidate may speak
 up to `DISCUSSION_MAX_TURNS` times. After each turn one model call judges everything said so far
 against the key points and either writes a follow-up (which must not give the answer away) or
 closes the question; closing records an ordinary AI-graded short answer whose text is everything

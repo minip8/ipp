@@ -94,7 +94,8 @@ browser ── /api/* (Next rewrite, same origin, cookie session) ──▶ apps
   and interviewer state are in memory. Routes are thin (`src/routes`), shaping for the browser is
   in `src/views.ts`.
 - **Server-only data never reaches the browser**: hidden tests, interviewer notes, reference
-  solutions, quiz answers and explanations before a response is recorded. Runs are stored
+  solutions, quiz answers and explanations before a response is recorded, and quiz `hints` and
+  `followUps` ever. Runs are stored
   unredacted and passed through `src/runs/redact.ts` on the way out; the interviewer gets the
   unredacted version.
 - **Running code**: the API inserts a run, queues a self-contained job on a Redis stream and
@@ -137,7 +138,16 @@ browser ── /api/* (Next rewrite, same origin, cookie session) ──▶ apps
   `packages/contracts/src/taxonomy.ts` or be listed in its excluded tags; a content test fails
   otherwise.
 - Quiz questions are YAML arrays under `packages/content/quiz/<topic>/`; topics are declared in
-  `quiz/topics.yaml` (in study order). `quiz/roadmap.yaml` groups each topic's subtopics into the
+  `quiz/topics.yaml` (in study order), each with a `track`: `fundamentals` (the default) or
+  `quant`. A `numeric` question's `answer` is an integer, a fraction (`5/36`), a decimal or a
+  percentage; without a `tolerance` a typed decimal to three significant figures counts for a
+  non-integer answer and everything else must be exact (`numericMatches` in
+  `packages/contracts/src/numeric.ts`), with a `tolerance` (`abs`/`rel`) anything within it counts.
+  `short` and `numeric` questions may add `hints` (gentlest first) and `followUps` for the
+  discussion interviewer; both are server-only.
+- Quiz Markdown renders `$...$` as KaTeX math. In a fundamentals topic write a dollar as `\$`
+  (the content test rejects any math and any bare `$` there); in a quant topic every formula must
+  typeset. `quiz/roadmap.yaml` groups each topic's subtopics into the
   roadmap's study areas, with prerequisites between areas of the same topic and a few `related`
   links to areas of other topics (written on one side, shown on both). Every subtopic a
   question uses must be on exactly one area of its topic (and every listed subtopic must have

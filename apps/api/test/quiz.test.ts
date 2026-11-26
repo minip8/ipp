@@ -154,6 +154,7 @@ describe('quiz', () => {
         slug: 'test-topic',
         title: 'Test topic',
         description: 'Questions for the API tests',
+        track: 'fundamentals',
         questionCount: 4,
         shortCount: 1,
         answered: 2,

@@ -73,7 +73,13 @@ const InterviewExtras = {
  * kept as text, so an exact fraction never goes through a float.
  */
 const NumericLiteral = z
-  .union([z.string(), z.number()])
+  .union([
+    z.string(),
+    // An unquoted YAML integer beyond 2^53 has already lost digits by the time it gets here.
+    z.number().refine((n) => !Number.isInteger(n) || Number.isSafeInteger(n), {
+      message: 'too large for a YAML number: quote it',
+    }),
+  ])
   .transform((v) => String(v).trim())
   .refine((v) => parseNumeric(v) !== null, {
     message: 'not a number: write an integer, a fraction like 5/36 or a decimal',
@@ -145,8 +151,18 @@ export const QuizQuestion = z.discriminatedUnion('type', [
      * (whole-number answers must be exact). Present: anything within it counts, for estimates.
      */
     tolerance: NumericToleranceSpec.optional(),
-    /** Shown after the input, e.g. "%" or "dollars". The answer is in this unit. */
-    unit: z.string().trim().min(1).max(24).optional(),
+    /**
+     * Shown after the input, e.g. "flips" or "dollars". The answer is in this unit. Never a
+     * percent sign: a typed `12.5%` is read as 0.125, so a percentage answer is authored as the
+     * fraction it is (`1/8`) and needs no unit.
+     */
+    unit: z
+      .string()
+      .trim()
+      .min(1)
+      .max(24)
+      .refine((u) => !u.includes('%'), { message: 'a unit cannot be a percent sign' })
+      .optional(),
     ...InterviewExtras,
   }),
 ]);

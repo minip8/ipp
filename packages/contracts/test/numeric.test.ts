@@ -143,6 +143,14 @@ describe('numeric quiz contracts', () => {
     ).toBe(false);
   });
 
+  it('refuses a percent unit and an unquoted integer too large for a YAML number', () => {
+    const q = { ...base, type: 'numeric', answer: '12.5' };
+    expect(QuizQuestion.safeParse({ ...q, unit: '%' }).success).toBe(false);
+    expect(QuizQuestion.safeParse({ ...q, unit: 'dollars' }).success).toBe(true);
+    expect(QuizQuestion.safeParse({ ...q, answer: 2 ** 60 }).success).toBe(false);
+    expect(QuizQuestion.safeParse({ ...q, answer: '1152921504606846976' }).success).toBe(true);
+  });
+
   it('short questions take hints and follow-ups', () => {
     const q = QuizQuestion.parse({
       ...base,
