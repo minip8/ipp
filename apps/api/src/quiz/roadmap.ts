@@ -72,7 +72,7 @@ export function progressOf(
 
 type TopicRow = Pick<
   typeof quizTopics.$inferSelect,
-  'slug' | 'title' | 'description' | 'track' | 'roadmap'
+  'slug' | 'title' | 'description' | 'track' | 'also' | 'roadmap'
 >;
 
 /** Topics (already in study order) with their nodes and progress. */
@@ -103,6 +103,7 @@ export function roadmapTopics(
       title: t.title,
       description: t.description,
       track: t.track,
+      also: t.also,
       // The whole topic, including any subtopic not (yet) on its roadmap.
       ...progressOf([...of.values()]),
       nodes,
@@ -117,6 +118,7 @@ export async function loadRoadmapTopics(db: Db, slugs?: string[]): Promise<Topic
       title: quizTopics.title,
       description: quizTopics.description,
       track: quizTopics.track,
+      also: quizTopics.also,
       roadmap: quizTopics.roadmap,
     })
     .from(quizTopics)

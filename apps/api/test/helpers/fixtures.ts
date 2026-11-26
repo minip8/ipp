@@ -3,6 +3,7 @@ export const QUIZ_TOPIC = {
   title: 'Test topic',
   description: 'Questions for the API tests',
   track: 'fundamentals' as const,
+  also: [],
 };
 
 const base = { topic: 'test-topic', subtopic: 'basics', difficulty: 'easy', tags: [] };

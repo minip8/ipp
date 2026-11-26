@@ -73,7 +73,7 @@ Better Auth owns `user`, `session`, `account`, `verification` (text ids). App ta
 | `timeline_events` | id, pad_id, at, event jsonb |
 | `runs` | id, pad_id, user_id, problem_slug (the pad's problem when queued), mode, language, source, status, verdict, result jsonb (full `JudgeResult`), hidden_ids text[], created_at, finished_at |
 | `reports` | pad_id pk, status, stats jsonb, assessment jsonb, generated_at |
-| `quiz_topics` | slug pk, title, description, track (`fundamentals` or `quant`), position (study order), roadmap jsonb (`QuizRoadmapNode[]`) |
+| `quiz_topics` | slug pk, title, description, track (the home: `fundamentals` or `quant`, §8), also text[] (other site tracks it shows in, `Track[]`, empty by default), position (study order), roadmap jsonb (`QuizRoadmapNode[]`) |
 | `quiz_questions` | id pk (slug), topic, subtopic, difficulty, type, data jsonb (`QuizQuestion`) |
 | `quant_games` | id pk (slug), topic, difficulty, data jsonb (`QuantGame`, server-only), active — market-making games for quant rounds (§8.3) |
 | `quiz_attempts` | id, user_id, mode, topics, question_ids, transcript jsonb (discussion turns per question), status, score, started_at, finished_at |
@@ -84,7 +84,9 @@ Better Auth owns `user`, `session`, `account`, `verification` (text ids). App ta
 | `ai_usage` | user_id, day, messages, input_tokens, output_tokens — spend guard |
 
 `user.is_anonymous` marks a guest (Better Auth's anonymous plugin): someone who joined a room by
-its link with just a name (§4.1).
+its link with just a name (§4.1). `user.track` is the site track the user chose in the header
+switch (`software` or `quant`; null until they choose, and always for a guest). It is ours, not
+declared to Better Auth, which neither writes nor returns it.
 
 Seeding is idempotent upsert from `packages/content`; removing a question from content does not delete answers.
 
@@ -98,7 +100,8 @@ Every body is validated with the contracts schema named below.
 | Method and path | Request | Response |
 |---|---|---|
 | `ALL /api/auth/*` | Better Auth (email+password; Google and GitHub when configured) | |
-| `GET /api/me` | | `{ user: { id, name, email, image, guest } }` |
+| `GET /api/me` | | `{ user: { id, name, email, image, guest, track } }` (`track`: `software`, `quant` or null, read from the row so a change shows at once; null for a guest) |
+| `PUT /api/me/track` | `SetTrackRequest` (`{ track }`) | `SetTrackResponse` (`{ track }`); account only (403 `account_required` for a guest); 429 (`limits.trackChanges`: 30 a minute) |
 | `GET /api/config` | | `{ githubAuth, googleAuth, ai: { requiresUserKey: true, model, keyTtlHours } }` (server facts only; `model` is the Anthropic default; AI availability is per user) |
 | `GET /api/ai-key` | | `AiKeyStatus` (`state` active / missing / rejected, `provider`, `last4`, `expiresAt`, `problem`, `model` = the provider's default model, `ttlHours`) |
 | `PUT /api/ai-key` | `SaveAiKeyRequest` (`{ provider?, apiKey }`, ≤ 2 KB body; provider inferred from the key shape when absent; a key that does not fit the provider is a 400 before any call) | `AiKeyStatus`; 422 `ai_key_rejected` when the provider refuses the key, 503 `ai_key_unverifiable` when it cannot be reached, 429 |
