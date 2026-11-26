@@ -1,7 +1,34 @@
 import { z } from 'zod';
 import { Id, IsoDate, Language, Slug } from './common';
+import { NUMERIC_INPUT_MAX, parseNumeric } from './numeric';
 
-export const QuizTopic = z.object({ slug: Slug, title: z.string(), description: z.string() });
+/**
+ * Which part of the site a quiz topic belongs to. The Quizzes page and the roadmap group topics
+ * by track, in this order; within a track topics keep the study order of `quiz/topics.yaml`.
+ */
+export const QUIZ_TRACKS = ['fundamentals', 'quant'] as const;
+export const QuizTrack = z.enum(QUIZ_TRACKS);
+export type QuizTrack = z.infer<typeof QuizTrack>;
+
+export const QUIZ_TRACK_INFO: Record<QuizTrack, { label: string; description: string }> = {
+  fundamentals: {
+    label: 'Fundamentals',
+    description:
+      'Languages and systems: what a developer interview asks beyond the coding problem.',
+  },
+  quant: {
+    label: 'Quant',
+    description:
+      'Probability, statistics, markets and puzzles for trading and research interviews.',
+  },
+};
+
+export const QuizTopic = z.object({
+  slug: Slug,
+  title: z.string(),
+  description: z.string(),
+  track: QuizTrack.default('fundamentals'),
+});
 export type QuizTopic = z.infer<typeof QuizTopic>;
 
 export const QuizDifficulty = z.enum(['easy', 'medium', 'hard']);
@@ -29,6 +56,35 @@ const QuestionBase = z.object({
   /** Where the idea came from. Wording is always our own unless the licence permits reuse. */
   source: ContentSource.optional(),
 });
+
+/**
+ * What an interviewer needs beyond the answer to run a question live. Server-only, like the
+ * reference answer: never sent to the browser, not even after answering.
+ */
+const InterviewExtras = {
+  /** A hint ladder, the gentlest first; each gives away a little more, none the answer. */
+  hints: z.array(z.string().trim().min(1)).max(8).default([]),
+  /** Questions to ask once the candidate has the answer: generalisations, variations, "why". */
+  followUps: z.array(z.string().trim().min(1)).max(8).default([]),
+};
+
+/**
+ * A number as `parseNumeric` reads it: `1/3`, `0.25`, `42`, `12.5%`. YAML numbers are accepted and
+ * kept as text, so an exact fraction never goes through a float.
+ */
+const NumericLiteral = z
+  .union([z.string(), z.number()])
+  .transform((v) => String(v).trim())
+  .refine((v) => parseNumeric(v) !== null, {
+    message: 'not a number: write an integer, a fraction like 5/36 or a decimal',
+  });
+
+export const NumericToleranceSpec = z
+  .object({ abs: z.number().positive().optional(), rel: z.number().positive().optional() })
+  .refine((t) => t.abs !== undefined || t.rel !== undefined, {
+    message: 'a tolerance needs abs, rel or both',
+  });
+export type NumericToleranceSpec = z.infer<typeof NumericToleranceSpec>;
 
 /** What a program does, in the style of cppquiz.org. */
 export const OutputAnswer = z.discriminatedUnion('kind', [
@@ -69,6 +125,29 @@ export const QuizQuestion = z.discriminatedUnion('type', [
     type: z.literal('short'),
     reference: z.string(),
     keyPoints: z.array(z.string()).min(1),
+    ...InterviewExtras,
+  }),
+  /**
+   * The answer is one number, typed as an integer, fraction, decimal or percentage and graded
+   * automatically by `numericMatches` (packages/contracts/src/numeric.ts).
+   */
+  QuestionBase.extend({
+    type: z.literal('numeric'),
+    /** The exact value where there is one (`5/36`), otherwise at least six significant figures. */
+    answer: NumericLiteral,
+    /**
+     * Markdown shown as the correct answer when the bare number is not the best way to say it,
+     * e.g. "$1/e \approx 0.368$". Defaults to `answer`.
+     */
+    answerText: z.string().trim().min(1).optional(),
+    /**
+     * Absent: an exact answer, where a decimal correct to three significant figures also counts
+     * (whole-number answers must be exact). Present: anything within it counts, for estimates.
+     */
+    tolerance: NumericToleranceSpec.optional(),
+    /** Shown after the input, e.g. "%" or "dollars". The answer is in this unit. */
+    unit: z.string().trim().min(1).max(24).optional(),
+    ...InterviewExtras,
   }),
 ]);
 export type QuizQuestion = z.infer<typeof QuizQuestion>;
@@ -78,17 +157,19 @@ export const PublicQuizQuestion = z.object({
   topic: Slug,
   subtopic: z.string(),
   difficulty: QuizDifficulty,
-  type: z.enum(['single', 'multiple', 'short', 'output']),
+  type: z.enum(['single', 'multiple', 'short', 'output', 'numeric']),
   prompt: z.string(),
   choices: z.array(Choice).nullable(),
   /** output questions only */
   code: z.object({ language: Language, standard: z.string(), source: z.string() }).nullable(),
+  /** numeric questions that have one: the unit the answer is in, shown beside the input */
+  unit: z.string().nullable().default(null),
 });
 export type PublicQuizQuestion = z.infer<typeof PublicQuizQuestion>;
 
 /**
  * practice = feedback after each answer; exam = feedback only after finishing. Both draw only on
- * questions that are graded automatically (never `short`).
+ * questions that are graded automatically (every type but `short`).
  * discussion = `short` questions only, each talked through with the AI interviewer, who asks
  * follow-ups before the answer is graded. It needs the user's own AI key.
  */
@@ -127,6 +208,16 @@ export const QuizResponse = z.discriminatedUnion('type', [
   z.object({ type: z.literal('single'), choice: z.string() }),
   z.object({ type: z.literal('multiple'), choices: z.array(z.string()) }),
   z.object({ type: z.literal('output'), answer: OutputAnswer }),
+  /** `value` is what the user typed; it must be a number `parseNumeric` can read. */
+  z.object({
+    type: z.literal('numeric'),
+    value: z
+      .string()
+      .trim()
+      .min(1)
+      .max(NUMERIC_INPUT_MAX)
+      .refine((v) => parseNumeric(v) !== null, { message: 'not a number' }),
+  }),
   z.object({
     type: z.literal('short'),
     text: z.string().max(4000),
@@ -142,7 +233,10 @@ export const AnswerFeedback = z.object({
   /** 0..1; partial credit for multiple-select and short answers */
   score: z.number(),
   correct: z.boolean(),
-  /** single: choice id; multiple: choice ids; short: reference answer; output: OutputAnswer */
+  /**
+   * single: choice id; multiple: choice ids; short: reference answer; output: OutputAnswer;
+   * numeric: the answer as Markdown (`answerText`, or the number itself)
+   */
   correctAnswer: z.union([z.string(), z.array(z.string()), OutputAnswer]),
   explanation: z.string(),
   /** short answers: which key points were covered or missed */
