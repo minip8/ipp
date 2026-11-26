@@ -700,3 +700,508 @@ def _():
         t = mean(r) / math.sqrt(var(r) / days)
         below += t < 1.96
     assert below / 2000 > 0.6
+
+
+# ---------------------------------------------------------------- Bayesian inference
+
+
+def poly_mul(a, b):
+    out = [Fraction(0)] * (len(a) + len(b) - 1)
+    for i, x in enumerate(a):
+        for j, y in enumerate(b):
+            out[i + j] += x * y
+    return out
+
+
+def poly_integral_01(c):
+    return sum(Fraction(x) / (k + 1) for k, x in enumerate(c))
+
+
+def beta_kernel(a, b):
+    """Coefficients of p^(a-1) (1-p)^(b-1), integer a, b >= 1."""
+    c = [Fraction(0)] * (a - 1) + [Fraction(1)]
+    for _ in range(b - 1):
+        c = poly_mul(c, [Fraction(1), Fraction(-1)])
+    return c
+
+
+@check("stat-bayesian-001")
+def _():
+    # prior Beta(2, 2) times the likelihood p^7 (1-p)^3, integrated exactly as polynomials
+    post = poly_mul(beta_kernel(2, 2), beta_kernel(8, 4))
+    return poly_integral_01(poly_mul(post, [Fraction(0), Fraction(1)])) / poly_integral_01(post)
+
+
+@check("stat-bayesian-002")
+def _():
+    def post(s):
+        return math.exp(-0.5 * (s / 0.5) ** 2) * math.exp(-0.5 * ((1.5 - s) * 3) ** 2)
+
+    z = simpson(post, -4, 5, 20_000)
+    m = simpson(lambda s: s * post(s), -4, 5, 20_000) / z
+    sd_one_year = simpson(lambda s: s * math.exp(-0.5 * (s / 0.5) ** 2 - 0.5 * (1.5 - s) ** 2), -5, 6, 20_000)
+    sd_one_year /= simpson(lambda s: math.exp(-0.5 * (s / 0.5) ** 2 - 0.5 * (1.5 - s) ** 2), -5, 6, 20_000)
+    assert abs(sd_one_year - 0.3) < 1e-6
+    return m
+
+
+@check("stat-bayesian-003")
+def _():
+    def post(lam):
+        return lam * math.exp(-lam) * lam**10 * math.exp(-4 * lam)
+
+    z = simpson(post, 0, 20, 20_000)
+    m = simpson(lambda x: x * post(x), 0, 20, 20_000) / z
+    mode = argmax_unimodal(post, 0.01, 10)
+    assert abs(mode - 2.2) < 1e-6
+    options = {"a": 12 / 5, "b": 10 / 4, "c": 11 / 5, "d": 3.0, "e": 2.0}
+    return min(options, key=lambda k: abs(options[k] - m))
+
+
+@check("stat-bayesian-004")
+def _():
+    def like(p):
+        return math.comb(100, 60) * p**60 * (1 - p) ** 40
+
+    a = Fraction(1, 10) * like(Fraction(55, 100))
+    b = Fraction(9, 10) * like(Fraction(1, 2))
+    post = a / (a + b)
+    # 60 wins: two sds above 50, one sd above 55
+    assert abs((60 - 50) / 5 - 2) < 1e-12 and abs((60 - 55) / math.sqrt(100 * 0.55 * 0.45) - 1.005) < 0.01
+    return float(post)
+
+
+@check("stat-bayesian-005")
+def _():
+    rng = random.Random(55)
+    xs = [rng.gauss(0.8, 1) for _ in range(30)]
+    # a: flat prior -> MAP = MLE = sample mean (grid search on the log posterior)
+    mle = argmax_unimodal(lambda m: -sum((x - m) ** 2 for x in xs), -5, 5)
+    assert abs(mle - mean(xs)) < 1e-6
+    # b: prior N(0, 1/4) and n = 30 unit-variance observations: precision weights 4 and 30
+    def post(m):
+        return math.exp(-2 * m * m - sum((x - m) ** 2 for x in xs) / 2)
+
+    pm = simpson(lambda m: m * post(m), -3, 4, 8000) / simpson(post, -3, 4, 8000)
+    assert abs(pm - 30 * mean(xs) / 34) < 1e-6
+    # d: the posterior mean is biased towards zero: E[30/34 * xbar] = (30/34) mu
+    sims = [30 / 34 * mean([rng.gauss(0.8, 1) for _ in range(30)]) for _ in range(5000)]
+    assert mean(sims) < 0.8 - 0.06
+    # f: the binomial (n = 12) and negative-binomial (stop at the 3rd tail) likelihoods of 9 heads
+    # and 3 tails have a constant ratio in p, so they give the same posterior
+    def binom_lik(p):
+        return math.comb(12, 9) * p**9 * (1 - p) ** 3
+
+    def negbin_lik(p):  # 9 heads and 2 tails in any order, then a tail
+        return math.comb(11, 2) * p**9 * (1 - p) ** 2 * (1 - p)
+
+    ratios = {binom_lik(Fraction(k, 10)) / negbin_lik(Fraction(k, 10)) for k in range(1, 10)}
+    assert len(ratios) == 1
+    return {"a", "b", "e"}
+
+
+@check("stat-bayesian-006")
+def _():
+    rng = random.Random(56)
+    err_raw = err_shrunk = 0.0
+    for _ in range(50):
+        years = [1 if i % 2 else 10 for i in range(200)]
+        true = [rng.gauss(0.3, 0.3) for _ in range(200)]
+        est = [s + rng.gauss(0, 1 / math.sqrt(t)) for s, t in zip(true, years)]
+        m = mean(est)
+        tau2 = max(var(est) - mean([1 / t for t in years]), 1e-6)
+        shrunk = [m + tau2 / (tau2 + 1 / t) * (e - m) for e, t in zip(est, years)]
+        err_raw += sum((e - s) ** 2 for e, s in zip(est, true))
+        err_shrunk += sum((e - s) ** 2 for e, s in zip(shrunk, true))
+        # the top-ranked raw estimate overstates its true value
+    assert err_shrunk < 0.5 * err_raw
+    assert abs((0.5 - 0.4) / 0.5 - 0.2) < 1e-12
+
+
+@check("stat-bayesian-007")
+def _():
+    binom_p = Fraction(sum(math.comb(12, k) for k in range(9, 13)), 2**12)
+    # negative binomial: at least 9 heads before the 3rd tail = at most 2 tails in the first 11
+    negbin_p = Fraction(sum(math.comb(11, k) for k in range(3)), 2**11)
+    # cross-check the negative binomial tail by summing P(exactly h heads before the 3rd tail)
+    direct = sum(Fraction(math.comb(h + 2, 2), 2 ** (h + 3)) for h in range(9, 400))
+    assert abs(float(direct - negbin_p)) < 1e-12
+    assert binom_p == Fraction(299, 4096) and negbin_p == Fraction(67, 2048)
+    assert binom_p > Fraction(1, 20) > negbin_p
+    # Lindley: Bayes factor for H0: mu = 0 against mu ~ N(0, 1) at fixed z = 2 grows like sqrt(n)
+    def bf01(n, z=2.0):
+        xbar = z / math.sqrt(n)
+        l0 = math.exp(-0.5 * n * xbar**2)
+        # densities of xbar, both divided by sqrt(n): N(0, 1/n) under H0, N(0, 1 + 1/n) under H1
+        v1 = 1 + 1 / n
+        l1 = math.exp(-0.5 * xbar**2 / v1) / math.sqrt(v1 * n)
+        return l0 / l1
+
+    assert bf01(10_000) > 10 > 1 > bf01(10)
+
+
+# ---------------------------------------------------------------- linear regression
+
+
+def centred(v):
+    m = mean(v)
+    return [x - m for x in v]
+
+
+@check("stat-regression-001")
+def _():
+    rng = random.Random(61)
+    x = [rng.gauss(0, 1) for _ in range(200)]
+    y = [0.5 * xi + rng.gauss(0, 1) for xi in x]
+    a, b = ols([[1.0] * 200, x], y)
+
+    def vertical(a_, b_):
+        return sum((yi - a_ - b_ * xi) ** 2 for xi, yi in zip(x, y))
+
+    for da, db in ((0.01, 0), (0, 0.01), (0, -0.01), (-0.01, 0)):
+        assert vertical(a + da, b + db) > vertical(a, b)
+    # the x-on-y line and the perpendicular (first principal component) line are different
+    reverse = 1 / slope(y, x)
+    cx, cy = centred(x), centred(y)
+    sxx, syy, sxy = sum(u * u for u in cx), sum(v * v for v in cy), sum(u * v for u, v in zip(cx, cy))
+    tls = (syy - sxx + math.sqrt((syy - sxx) ** 2 + 4 * sxy * sxy)) / (2 * sxy)
+    assert b < tls < reverse
+    return "a"
+
+
+@check("stat-regression-002")
+def _():
+    # an exact data set: x = (1, -1, 1, -1), y = 1.2 x + 1.6 (1, 1, -1, -1)
+    x = [Fraction(v) for v in (1, -1, 1, -1)]
+    e = [Fraction(16, 10) * v for v in (1, 1, -1, -1)]
+    y = [Fraction(12, 10) * a + b for a, b in zip(x, e)]
+    vx = sum(a * a for a in x) / 4
+    vy = sum(b * b for b in y) / 4 - (sum(y) / 4) ** 2
+    cov = sum(a * b for a, b in zip(x, y)) / 4
+    assert vy == 4 * vx and cov * cov / (vx * vy) == Fraction(36, 100) and cov > 0
+    return ols([[Fraction(1)] * 4, x], y)[1]
+
+
+@check("stat-regression-003")
+def _():
+    rng = random.Random(63)
+    x = [rng.gauss(0, 1) for _ in range(500)]
+    y = [0.7 * a + rng.gauss(0, 1) for a in x]
+    b_yx, b_xy, r = slope(x, y), slope(y, x), corr(x, y)
+    assert abs(b_yx * b_xy - r * r) < 1e-9
+    answer = 0.36 / 0.8
+    options = {"a": 1.25, "b": 0.45, "c": 0.8}
+    return min(options, key=lambda k: abs(options[k] - answer))
+
+
+@check("stat-regression-004")
+def _():
+    rng = random.Random(64)
+    n = 40
+    x = [rng.gauss(0, 1) for _ in range(n)]
+    y = [1 + 0.3 * a + rng.gauss(0, 1) for a in x]
+    b1, se1, _, r2_1 = ols_fit([[1.0] * n, x], y)
+    b2, se2, _, r2_2 = ols_fit([[1.0] * (2 * n), x + x], y + y)
+    assert all(abs(u - v) < 1e-9 for u, v in zip(b1, b2)) and abs(r2_1 - r2_2) < 1e-9
+    ratio = (se2[1] / se1[1]) ** 2
+    assert abs(ratio - (n - 2) / (2 * n - 2)) < 1e-9
+
+
+@check("stat-regression-005")
+def _():
+    rng = random.Random(65)
+    n = 100
+    x1 = [rng.gauss(0, 1) for _ in range(n)]
+    # exact copy: singular X'X
+    cols = [[1.0] * n, x1, list(x1)]
+    xtx = [[sum(a * b for a, b in zip(c1, c2)) for c2 in cols] for c1 in cols]
+    assert abs(det(xtx)) < 1e-6 * max(abs(v) for row in xtx for v in row) ** 3
+    # near copy: individual coefficients swing, their sum and R^2 are stable
+    singles, sums, r2s = [], [], []
+    for _ in range(200):
+        x1 = [rng.gauss(0, 1) for _ in range(n)]
+        x2 = [a + rng.gauss(0, 0.01) for a in x1]
+        y = [a + rng.gauss(0, 1) for a in x1]
+        b, se, _, r2 = ols_fit([[1.0] * n, x1, x2], y)
+        singles.append(b[1])
+        sums.append(b[1] + b[2])
+        r2s.append(r2)
+    assert math.sqrt(var(singles)) > 20 * math.sqrt(var(sums))
+    assert abs(mean(sums) - 1) < 0.05 and abs(mean(singles) - 0.5) < 2  # unbiased, just noisy
+    # ridge splits the weight between identical columns
+    x1 = [rng.gauss(0, 1) for _ in range(n)]
+    y = [a + rng.gauss(0, 0.5) for a in x1]
+    _, r1, r2 = ols([[1.0] * n, x1, list(x1)], y, ridge=1.0)
+    assert abs(r1 - r2) < 1e-9
+
+
+@check("stat-regression-006")
+def _():
+    rng = random.Random(66)
+    slopes = []
+    for _ in range(1600):
+        x1, y = [], []
+        for _ in range(1000):
+            a = rng.gauss(0, 1)
+            b = 0.6 * a + 0.8 * rng.gauss(0, 1)
+            x1.append(a)
+            y.append(a - 2 * b + rng.gauss(0, 1))
+        slopes.append(slope(x1, y))
+    return batch_estimate(slopes)
+
+
+@check("stat-regression-007")
+def _():
+    # orthonormal centred vectors u, v, w built from random data
+    rng = random.Random(67)
+    n = 50
+    raw = [[rng.gauss(0, 1) for _ in range(n)] for _ in range(3)]
+    u, v, w = orthonormal_columns([[1.0] * n] + raw)[1:]
+    r1, r2 = math.sqrt(0.1), math.sqrt(0.2)
+    # upper end: x1 and x2 in the plane of y = u, so y is an exact combination of them
+    x1 = [r1 * a + math.sqrt(1 - r1 * r1) * b for a, b in zip(u, v)]
+    x2 = [r2 * a - math.sqrt(1 - r2 * r2) * b for a, b in zip(u, v)]
+    y = list(u)
+    assert abs(corr(x1, y) ** 2 - 0.1) < 1e-9 and abs(corr(x2, y) ** 2 - 0.2) < 1e-9
+    top = ols_fit([[1.0] * n, x1, x2], y)[3]
+    # lower end: x2 = r2 u + s v; x1 = (r1/r2) x2 + noise orthogonal to everything
+    s2 = math.sqrt(1 - r2 * r2)
+    x2 = [r2 * a + s2 * b for a, b in zip(u, v)]
+    k = r1 / r2
+    x1 = [k * a + math.sqrt(1 - k * k) * c for a, c in zip(x2, w)]
+    assert abs(corr(x1, y) ** 2 - 0.1) < 1e-9 and abs(corr(x2, y) ** 2 - 0.2) < 1e-9
+    bottom = ols_fit([[1.0] * n, x1, x2], y)[3]
+    assert abs(top - 1) < 1e-9 and abs(bottom - 0.2) < 1e-9
+    return "c"
+
+
+@check("stat-regression-008")
+def _():
+    rng = random.Random(68)
+    n = 20_000
+    skill = [rng.gauss(0, 1) for _ in range(n)]
+    last = [s + rng.gauss(0, 1) for s in skill]
+    this = [s + rng.gauss(0, 1) for s in skill]
+    cut = sorted(last)[int(0.9 * n)]
+    top = [i for i in range(n) if last[i] >= cut]
+    kept = mean([this[i] for i in top]) / mean([last[i] for i in top])
+    assert abs(kept - 0.5) < 0.03  # half the variance is luck: half the excess is kept
+    low = sorted(last)[int(0.1 * n)]
+    bottom = [i for i in range(n) if last[i] <= low]
+    assert mean([this[i] for i in bottom]) > mean([last[i] for i in bottom]) + 0.5
+
+
+@check("stat-regression-009")
+def _():
+    rho = 0.1
+    sim = simulate(
+        lambda r: (lambda f: f * (rho * f + math.sqrt(1 - rho * rho) * r.gauss(0, 1)))(r.gauss(0, 1)),
+        n=200_000,
+        seed=69,
+    )
+    second = simulate(
+        lambda r: (lambda f: (f * (rho * f + math.sqrt(1 - rho * rho) * r.gauss(0, 1))) ** 2)(r.gauss(0, 1)),
+        n=200_000,
+        seed=69,
+    )
+    daily_sharpe = sim.mean / math.sqrt(second.mean - sim.mean**2)
+    assert abs(daily_sharpe - rho / math.sqrt(1 + rho * rho)) < 0.006
+    assert abs(rho / math.sqrt(1 + rho * rho) * math.sqrt(252) - 1.58) < 0.01
+    # spurious R^2 between two independent random walks (price levels)
+    rng = random.Random(70)
+    big = 0
+    for _ in range(200):
+        a, b = random_walk(rng, 250), random_walk(rng, 250)
+        big += corr(a, b) ** 2 > 0.3
+    assert big / 200 > 0.2
+
+
+@check("stat-regression-010")
+def _():
+    rng = random.Random(71)
+    n, reps = 50, 1500
+    hetero, collinear, attenuated, autocorr = [], [], [], []
+    for _ in range(reps):
+        x = [rng.gauss(0, 1) for _ in range(n)]
+        # heteroskedastic errors with sd proportional to |x|
+        hetero.append(slope(x, [2 * a + abs(a) * rng.gauss(0, 1) for a in x]))
+        # collinear regressors (correlation 0.98), true coefficients 1 and 1
+        z = [0.98 * a + math.sqrt(1 - 0.98**2) * rng.gauss(0, 1) for a in x]
+        y = [a + b + rng.gauss(0, 1) for a, b in zip(x, z)]
+        collinear.append(ols([[1.0] * n, x, z], y)[1])
+        # x observed with noise of variance 1: slope halves
+        attenuated.append(slope([a + rng.gauss(0, 1) for a in x], [2 * a + rng.gauss(0, 1) for a in x]))
+        # AR(1) errors independent of x
+        e, errs = 0.0, []
+        for _ in range(n):
+            e = 0.8 * e + rng.gauss(0, 1)
+            errs.append(e)
+        autocorr.append(slope(x, [2 * a + b for a, b in zip(x, errs)]))
+    assert abs(mean(hetero) - 2) < 0.03 and abs(mean(autocorr) - 2) < 0.06
+    assert abs(mean(collinear) - 1) < 0.1 and math.sqrt(var(collinear)) > 0.5
+    assert abs(mean(attenuated) - 1) < 0.05
+    # non-normal (uniform) errors: still unbiased
+    nonnormal = [slope(x, [2 * a + rng.uniform(-2, 2) for a in x]) for x in ([rng.gauss(0, 1) for _ in range(n)] for _ in range(reps))]
+    assert abs(mean(nonnormal) - 2) < 0.03
+    return {"a", "c", "e", "f"}
+
+
+@check("stat-regression-011")
+def _():
+    rng = random.Random(72)
+    slopes = []
+    for _ in range(300):
+        xs, ys = [], []
+        for _ in range(1000):
+            true = rng.gauss(0, 1)
+            xs.append(true + rng.gauss(0, 0.5))
+            ys.append(true + rng.gauss(0, 1))
+        slopes.append(slope(xs, ys))
+    return batch_estimate(slopes)
+
+
+@check("stat-regression-012")
+def _():
+    rng = random.Random(73)
+    n = 200
+    x1 = [rng.gauss(0, 1) for _ in range(n)]
+    x2 = [0.5 * a + rng.gauss(0, 1) for a in x1]
+    y = [a + 0.7 * b + rng.gauss(0, 1) for a, b in zip(x1, x2)]
+    short = ols([[1.0] * n, x1], y)[1]
+    _, l1, l2 = ols([[1.0] * n, x1, x2], y)
+    delta = slope(x1, x2)
+    assert abs(short - (l1 + l2 * delta)) < 1e-9
+    # FWL: the long coefficient is the slope of y on x1 residualised on x2
+    a, b = ols([[1.0] * n, x2], x1)
+    resid = [u - a - b * v for u, v in zip(x1, x2)]
+    assert abs(slope(resid, y) - l1) < 1e-9
+    # x2 orthogonal to x1 in the sample: coefficient unchanged, standard error falls
+    z = orthonormal_columns([[1.0] * n, x1, [rng.gauss(0, 1) for _ in range(n)]])[2]
+    y2 = [a + 3 * b + rng.gauss(0, 1) for a, b in zip(x1, z)]
+    b_s, se_s, _, _ = ols_fit([[1.0] * n, x1], y2)
+    b_l, se_l, _, _ = ols_fit([[1.0] * n, x1, z], y2)
+    assert abs(b_s[1] - b_l[1]) < 1e-9 and se_l[1] < se_s[1]
+    # a redundant regressor highly correlated with x1: standard error rises
+    w = [a + rng.gauss(0, 0.1) for a in x1]
+    y3 = [a + rng.gauss(0, 1) for a in x1]
+    _, se_a, _, _ = ols_fit([[1.0] * n, x1], y3)
+    _, se_b, _, _ = ols_fit([[1.0] * n, x1, w], y3)
+    assert se_b[1] > 3 * se_a[1]
+
+
+# ---------------------------------------------------------------- correlation and the Sharpe ratio
+
+
+@check("stat-correlation-001")
+def _():
+    rng = random.Random(81)
+    rs = [corr(random_walk(rng, 1000), random_walk(rng, 1000)) for _ in range(300)]
+    wide = sum(abs(r) > 0.5 for r in rs) / len(rs)
+    assert wide > 0.2 and abs(mean(rs)) < 0.1 and 0.35 < math.sqrt(var(rs)) < 0.65
+    # the steps themselves are within 2/sqrt(1000) about 95% of the time
+    steps = sum(abs(corr([rng.gauss(0, 1) for _ in range(1000)], [rng.gauss(0, 1) for _ in range(1000)])) < 2 / math.sqrt(1000) for _ in range(300))
+    assert steps / 300 > 0.9
+    return "b"
+
+
+@check("stat-correlation-002")
+def _():
+    # exact null density of r for n = 100 is proportional to (1 - r^2)^((n - 4)/2)
+    n = 100
+
+    def dens(r):
+        return (1 - r * r) ** ((n - 4) / 2)
+
+    total = simpson(dens, -1, 1, 20_000)
+
+    def tail(c):
+        return 2 * simpson(dens, c, 1, 20_000) / total - 0.05
+
+    crit = bisect(tail, 0.05, 0.5, iters=60)
+    assert abs(crit - 0.1966) < 0.001
+    return crit
+
+
+@check("stat-correlation-003")
+def _():
+    rng = random.Random(83)
+    rs, rhos = [], []
+    for _ in range(200):
+        x = [rng.gauss(0, 1) for _ in range(49)] + [10.0]
+        y = [rng.gauss(0, 1) for _ in range(49)] + [10.0]
+        rs.append(corr(x, y))
+        rhos.append(corr(ranks(x), ranks(y)))
+    assert 0.6 < mean(rs) < 0.72 and mean(rhos) < 0.1
+    assert abs(2 / math.sqrt(50) - 0.28) < 0.005
+
+
+@check("stat-correlation-004")
+def _():
+    # simulate years of 252 daily returns; annual mean over annual sd
+    rng = random.Random(84)
+    years = [sum(rng.gauss(0.0005, 0.01) for _ in range(252)) for _ in range(4000)]
+    sr = mean(years) / math.sqrt(var(years))
+    assert abs(sr - 0.79) < 0.05
+    options = {"a": 0.05, "b": 0.79, "c": 0.95, "d": 12.6}
+    return min(options, key=lambda k: abs(options[k] - sr))
+
+
+@check("stat-correlation-005")
+def _():
+    daily_mu, daily_sd = 4 / 256, 1 / math.sqrt(256)  # annual Sharpe 4 with unit annual vol
+    threshold = STD.cdf(-2)
+    n = next(k for k in range(1, 10_000) if NormalDist(k * daily_mu, math.sqrt(k) * daily_sd).cdf(0) <= threshold + 1e-15)
+    month = NormalDist(21 * daily_mu, math.sqrt(21) * daily_sd).cdf(0)
+    assert abs(month - 0.126) < 0.002
+    return n
+
+
+@check("stat-correlation-006")
+def _():
+    # a four-point joint distribution: A = 1 + U, B = 1 + U/2 + (sqrt 3 / 2) V, U, V = +-1
+    pts = []
+    for u in (-1, 1):
+        for v in (-1, 1):
+            pts.append((1 + u, 1 + u / 2 + math.sqrt(3) / 2 * v))
+    ma, mb = mean([a for a, _ in pts]), mean([b for _, b in pts])
+    va = mean([(a - ma) ** 2 for a, _ in pts])
+    vb = mean([(b - mb) ** 2 for _, b in pts])
+    cab = mean([(a - ma) * (b - mb) for a, b in pts])
+    assert abs(ma / math.sqrt(va) - 1) < 1e-12 and abs(mb / math.sqrt(vb) - 1) < 1e-12 and abs(cab / math.sqrt(va * vb) - 0.5) < 1e-12
+    s = [a + b for a, b in pts]
+    return mean(s) / math.sqrt(mean([(x - mean(s)) ** 2 for x in s]))
+
+
+@check("stat-correlation-007")
+def _():
+    rng = random.Random(87)
+    xs, ys = [], []
+    for _ in range(100_000):
+        if rng.random() < 0.05:  # crisis day: both fall
+            xs.append(-3 + rng.gauss(0, 1))
+            ys.append(-3 + rng.gauss(0, 1))
+        else:  # ordinary day: a mild hedge
+            a = rng.gauss(0, 1)
+            xs.append(a)
+            ys.append(-0.6 * a + 0.8 * rng.gauss(0, 1))
+    r = corr(xs, ys)
+    assert abs(r) < 0.1, r
+    qx, qy = sorted(xs)[5000], sorted(ys)[5000]
+    joint = sum(1 for a, b in zip(xs, ys) if a <= qx and b <= qy) / 100_000
+    assert joint / 0.05 > 0.5  # P(Y in worst 5% | X in worst 5%) far above 5%
+
+
+@check("stat-correlation-008")
+def _():
+    rng = random.Random(88)
+    years, sr = 4, 1.0
+    mu, sd = sr / 252, 1 / math.sqrt(252)
+    daily, monthly = [], []
+    for _ in range(1500):
+        r = [rng.gauss(mu, sd) for _ in range(252 * years)]
+        daily.append(mean(r) / math.sqrt(var(r)) * math.sqrt(252))
+        m = [sum(r[i : i + 21]) for i in range(0, len(r), 21)]
+        monthly.append(mean(m) / math.sqrt(var(m)) * math.sqrt(12))
+    se_d, se_m = math.sqrt(var(daily)), math.sqrt(var(monthly))
+    assert abs(se_d - 0.5) < 0.04 and abs(se_m - 0.5 * math.sqrt(1 + (sr / math.sqrt(12)) ** 2 / 2)) < 0.05
+    assert se_m / se_d < 1.15  # monthly sampling is barely worse

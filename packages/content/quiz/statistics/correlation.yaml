@@ -1,0 +1,292 @@
+# Correlation and the Sharpe ratio in practice: spurious and fragile correlations, small samples, outliers, and the arithmetic and precision of Sharpe ratios.
+- id: stat-correlation-001
+  topic: statistics
+  subtopic: Correlation and the Sharpe ratio
+  type: single
+  difficulty: medium
+  tags: [spurious-correlation, random-walk, non-stationarity]
+  prompt: |
+    You simulate two independent random walks of 1,000 steps each (independent standard normal
+    steps) and compute the sample correlation of their *levels*. Repeating this many times, what do
+    you see?
+  choices:
+    - { id: a, text: 'Correlations close to 0, almost always within about $\pm 0.06$ (that is, $2/\sqrt{1000}$)' }
+    - { id: b, text: "Correlations spread widely: values beyond ±0.5 are common, although they average about 0" }
+    - { id: c, text: "Correlations close to +1, because both series trend" }
+    - { id: d, text: "Exactly 0 every time, because the walks are independent" }
+  answer: b
+  explanation: |
+    Random walks wander far from their starting point and stay there for long stretches, so over any
+    finite window each walk looks like a trend, and two unrelated trends line up (positively or
+    negatively) by chance. The sample correlation of the levels does not settle down as the length
+    grows: its distribution stays wide, with a standard deviation of roughly 0.5 whatever the
+    number of steps.
+
+    - **a** is the right answer for the *steps* (returns), which are i.i.d. The $1/\sqrt n$ rule
+      assumes independent observations, and levels are anything but.
+    - **c**: the trends are equally likely to go in opposite directions, so the correlation is
+      symmetric around 0.
+    - **d** confuses the population (zero dependence) with a sample statistic.
+
+    This is Granger and Newbold's spurious regression: regressing one price level on another produces
+    high $R^2$ and huge t-statistics with no relationship at all. Correlate returns, or test for
+    cointegration, instead.
+  source: { name: "Spurious regression (Granger and Newbold, 1974; Yule, 1926)" }
+
+- id: stat-correlation-002
+  topic: statistics
+  subtopic: Correlation and the Sharpe ratio
+  type: numeric
+  difficulty: easy
+  tags: [correlation, significance, small-samples]
+  prompt: |
+    You have 100 independent pairs of observations from a bivariate normal distribution whose true
+    correlation is 0. Roughly how large must the sample correlation $|r|$ be to be significant at the
+    two-sided 5% level? Use 2 for the $z$-value; answers within 0.01 of the exact value are accepted.
+  answer: 0.2
+  answerText: |-
+    $2/\sqrt{100} = 0.2$ (the exact critical value is about 0.197)
+  tolerance: { abs: 0.01 }
+  explanation: |
+    Under zero correlation the sample correlation has standard deviation of about $1/\sqrt n$ (exactly,
+    $r\sqrt{n-2}/\sqrt{1 - r^2}$ has a $t$ distribution with $n - 2$ degrees of freedom), so the 5%
+    threshold is about
+
+    $$|r| > \frac{2}{\sqrt{100}} = 0.2.$$
+
+    The exact value is about 0.197. Memorising $2/\sqrt n$ is worth it: with 12 monthly observations a
+    correlation must exceed about 0.58 to be significant, and with 5 years of daily data (about 1,260
+    points) anything above 0.06 is.
+
+    The common slip is to use $1/n$ (giving 0.01), or to think that a correlation of 0.15 between two
+    series over 100 days is clearly real.
+  source: { name: "Standard result (e.g. Wasserman, All of Statistics)" }
+
+- id: stat-correlation-003
+  topic: statistics
+  subtopic: Correlation and the Sharpe ratio
+  type: short
+  difficulty: medium
+  tags: [outliers, robust-statistics, rank-correlation]
+  prompt: |
+    The correlation between a signal and next-day returns over 50 days is 0.6. A scatter plot shows a
+    shapeless cloud of 49 points and one day that lies far from the rest in both variables. What is
+    going on, and what would you report instead?
+  reference: |
+    The correlation is driven by the single outlier. Pearson correlation uses squared deviations, so
+    one point far from the centre in both coordinates can dominate both the covariance and the
+    variances: with 49 independent standard normal pairs plus one point at $(10, 10)$, the sample
+    correlation is around two-thirds although the other 49 points have none. Its breakdown point is zero:
+    one observation can move it anywhere.
+
+    What to do:
+
+    - Investigate the day: a data error, a stock split, an earnings or index event? If it is an error,
+      fix it; if it is real, ask whether the signal would have predicted it in real time.
+    - Report the correlation without the point, and a robust measure: Spearman's rank correlation or
+      Kendall's tau, or the correlation after winsorising both variables.
+    - Recognise that a strategy relying on one event is a bet on that event recurring, and that 50 days
+      is a small sample anyway (the 5% threshold for $|r|$ is about $2/\sqrt{50} \approx 0.28$).
+  keyPoints:
+    - A single influential point drives the correlation; Pearson correlation is not robust
+    - Explains why, through squared deviations dominating both covariance and variances
+    - Checks the point for data errors or a special event
+    - Reports the correlation without it and a robust alternative such as Spearman, Kendall or winsorised correlation
+    - Notes the small sample or the reliance on one event
+  hints:
+    - What would the correlation be without that day?
+    - Pearson correlation is built from squared deviations. What does one large deviation do?
+    - Which correlation measures depend only on the ranks of the data?
+  followUps:
+    - Could a single outlier make the correlation of otherwise strongly related data close to zero?
+    - When is the outlier the most important point in the data set rather than noise?
+  explanation: |
+    Interviewers look for two instincts: suspect the data before believing the result, and know a
+    robust alternative. Rank correlation is the standard answer for the second; winsorising is what
+    many quant shops do with cross-sectional signals.
+  source: { name: "Standard robust-statistics discussion (e.g. Huber, Robust Statistics)" }
+
+- id: stat-correlation-004
+  topic: statistics
+  subtopic: Correlation and the Sharpe ratio
+  type: single
+  difficulty: easy
+  tags: [sharpe-ratio, annualisation]
+  prompt: |
+    A strategy's daily returns are i.i.d. with mean 0.05% and standard deviation 1%. With 252 trading
+    days a year, what is its annualised Sharpe ratio (taking the risk-free rate as zero)?
+  choices:
+    - { id: a, text: "0.05" }
+    - { id: b, text: "0.79" }
+    - { id: c, text: "0.95" }
+    - { id: d, text: "12.6" }
+  answer: b
+  explanation: |
+    Over a year the mean scales with time and the standard deviation with its square root:
+
+    $$\text{SR}_{\text{annual}} = \frac{252 \times 0.05\%}{\sqrt{252} \times 1\%} = 0.05\sqrt{252} \approx 0.79.$$
+
+    - **a** is the daily Sharpe ratio, not annualised.
+    - **c** uses $\sqrt{365}$, but returns accrue only on trading days.
+    - **d** annualises the mean but not the volatility (or scales the daily ratio by 252).
+
+    The rule $\text{SR}_{\text{annual}} = \sqrt{252}\,\text{SR}_{\text{daily}}$ assumes independent
+    daily returns; with autocorrelation the scaling factor changes (Lo, 2002).
+  source: { name: "Standard Sharpe-ratio arithmetic" }
+
+- id: stat-correlation-005
+  topic: statistics
+  subtopic: Correlation and the Sharpe ratio
+  type: numeric
+  difficulty: hard
+  tags: [sharpe-ratio, hypothesis-testing, drawdown]
+  prompt: |
+    A trader claims an annualised Sharpe ratio of 4. Assume daily returns are i.i.d. normal and a year
+    has 256 trading days. After $n$ days the strategy's cumulative P&L is negative. You will reject the
+    claim if, were it true, a loss after $n$ days would have had probability at most
+    $\Phi(-2) \approx 2.3\%$. What is the smallest $n$ for which a cumulative loss leads you to reject
+    the claim?
+  answer: 64
+  unit: days
+  hints:
+    - Convert the annual Sharpe ratio to a daily one.
+    - Over $n$ days the cumulative return has mean $n\mu$ and standard deviation $\sqrt n\,\sigma$. When is it negative with probability $\Phi(-2)$?
+  followUps:
+    - The same strategy is down after 20 days. What do you tell the risk manager?
+    - How would fat tails or autocorrelated returns change the answer?
+  explanation: |
+    The daily Sharpe ratio is $4/\sqrt{256} = 0.25$. The cumulative return after $n$ days has mean
+    $n\mu$ and standard deviation $\sqrt n\,\sigma$, so
+
+    $$P(\text{loss after } n \text{ days}) = \Phi\left(-\frac{n\mu}{\sqrt n\,\sigma}\right) = \Phi\left(-0.25\sqrt n\right).$$
+
+    This is at most $\Phi(-2)$ when $0.25\sqrt n \ge 2$, that is $n \ge 64$ days, about three months.
+
+    The common mistakes are to use the annual Sharpe ratio directly ($4\sqrt n \ge 2$, so a loss after
+    one day would refute it), or to use $\sqrt{252}$ or $\sqrt{365}$ inconsistently. The useful lesson:
+    even a Sharpe-4 strategy loses money over a month with probability $\Phi(-0.25\sqrt{21}) \approx 13\%$,
+    so a losing month is weak evidence against it.
+  source: { name: "Quant, FM and Data Science Interview Compilation (LSU)", url: "https://www.math.lsu.edu/~smolinsk/Quant_Interview_Prep.pdf" }
+
+- id: stat-correlation-006
+  topic: statistics
+  subtopic: Correlation and the Sharpe ratio
+  type: numeric
+  difficulty: medium
+  tags: [sharpe-ratio, diversification, portfolio]
+  prompt: |
+    Two strategies each have an annualised Sharpe ratio of 1, and their returns have correlation 0.5.
+    You run both at the same volatility, with equal capital at risk in each. What is the Sharpe ratio
+    of the combination?
+  answer: 1.15470
+  answerText: |-
+    $\frac{1 + 1}{\sqrt{1 + 1 + 2 \cdot 0.5}} = \frac{2}{\sqrt3} \approx 1.155$
+  hints:
+    - Scale both strategies to volatility 1. What are the mean and the variance of their sum?
+  followUps:
+    - What is the combined Sharpe ratio if the correlation is 0? If it is $-0.5$?
+    - With $n$ such strategies, all pairwise correlated at 0.5, what is the limit as $n$ grows?
+  explanation: |
+    Scale each to volatility $\sigma$; each then has mean $\sigma$ (Sharpe 1). The sum has mean
+    $2\sigma$ and variance $\sigma^2 + \sigma^2 + 2(0.5)\sigma^2 = 3\sigma^2$, so
+
+    $$\text{SR} = \frac{2\sigma}{\sqrt3\,\sigma} = \frac{2}{\sqrt3} \approx 1.155.$$
+
+    The general formula for equal-risk combinations of $n$ strategies with Sharpe $S$ and common
+    correlation $\rho$ is $S\sqrt{\frac{n}{1 + (n - 1)\rho}}$, which tends to $S/\sqrt\rho$: a correlation
+    of 0.5 caps the benefit at a factor of $\sqrt2$. The common wrong answers are 2 (adding the Sharpe
+    ratios, which forgets that the risks add too), 1 (the perfectly correlated case) and
+    $\sqrt2 \approx 1.41$ (the uncorrelated case).
+  source: { name: "Standard portfolio arithmetic (e.g. Grinold and Kahn, Active Portfolio Management)" }
+
+- id: stat-correlation-007
+  topic: statistics
+  subtopic: Correlation and the Sharpe ratio
+  type: short
+  difficulty: hard
+  tags: [tail-dependence, correlation-vs-dependence, regime]
+  prompt: |
+    Two assets have a daily-return correlation close to zero over ten years, yet risk managers say they
+    "crash together". How can both be true, and how would you measure the relationship that matters?
+  reference: |
+    Correlation is one number summarising linear co-movement over the whole sample, dominated by the
+    many ordinary days. It can be near zero while the assets are strongly dependent in the tails. For
+    example, on 95% of days the two might be slightly negatively correlated (a hedge in normal times),
+    and on the 5% of crisis days both fall sharply: the two effects can cancel in the overall
+    correlation, while the probability of a joint large loss is far higher than independence would
+    give. Correlation also changes with the regime: correlations typically rise in sell-offs.
+
+    Better measures:
+
+    - Conditional or exceedance correlation: the correlation on days when one asset falls more than,
+      say, two standard deviations, or on the worst 5% of market days.
+    - Tail dependence: $P(Y \text{ in its worst } q \mid X \text{ in its worst } q)$, compared with $q$
+      under independence; or the empirical copula.
+    - Joint loss scenarios and stress tests, and rolling or regime-dependent correlations.
+
+    Zero correlation implies independence only under joint normality, which daily returns are not.
+  keyPoints:
+    - Correlation averages over all days and is dominated by ordinary days, so it can hide tail co-movement
+    - Gives a mechanism, such as negative correlation normally plus joint crashes, that nets out to near zero
+    - Zero correlation does not imply independence without joint normality
+    - Suggests conditional or exceedance correlations, tail-dependence coefficients, copulas or stress tests
+    - Notes that correlations change with the regime and rise in crises
+  hints:
+    - What does correlation weight most, the ordinary days or the extreme ones?
+    - Can two effects of opposite sign cancel in one number?
+    - How would you look only at the bad days?
+  followUps:
+    - Why is the correlation measured only on days when both assets fall misleading as a measure of tail dependence?
+    - What does a Gaussian copula assume about joint crashes, and why did that matter in 2007?
+  explanation: |
+    This is "uncorrelated is not independent" in a form that matters for risk. The trap in the first
+    follow-up is selection: conditioning on both falling biases the correlation (conditioning on one
+    variable's tail lowers correlation even for a bivariate normal), so tail-dependence measures are
+    usually defined by conditioning on one variable and counting how often the other is also extreme.
+  source: { name: "Tail dependence and correlation breakdown (e.g. Embrechts, McNeil and Straumann, 2002)" }
+
+- id: stat-correlation-008
+  topic: statistics
+  subtopic: Correlation and the Sharpe ratio
+  type: short
+  difficulty: hard
+  tags: [sharpe-ratio, standard-error, sampling-frequency]
+  prompt: |
+    What is the standard error of an annualised Sharpe ratio estimated from $T$ years of i.i.d. normal
+    returns? Does sampling the returns daily instead of monthly make the estimate much more precise?
+    What changes when returns are skewed, fat-tailed or autocorrelated?
+  reference: |
+    For i.i.d. normal returns the per-period Sharpe ratio estimated from $n$ observations has standard
+    error about $\sqrt{(1 + \text{SR}_p^2/2)/n}$ (Lo, 2002). Annualising with $q$ periods a year
+    ($n = qT$, $\text{SR} = \sqrt q\,\text{SR}_p$) gives
+
+    $$\operatorname{SE}(\widehat{\text{SR}}) \approx \sqrt{\frac{1 + \text{SR}_p^2/2}{T}} \approx \frac{1}{\sqrt T}.$$
+
+    So the precision depends on the length of the history in years, not on the number of
+    observations. Daily data barely help: the mean return is estimated from the total return over the
+    period, whatever the sampling frequency; only the small $\text{SR}_p^2/2$ term (the noise in the
+    volatility estimate) shrinks. A Sharpe ratio of 1 needs about 4 years for a t-statistic of 2.
+
+    Non-normal returns change the formula: with skewness $\gamma_3$ and kurtosis $\gamma_4$,
+    the per-period variance becomes about $(1 + \text{SR}_p^2/2 - \gamma_3\text{SR}_p + \frac{\gamma_4 - 3}{4}\text{SR}_p^2)/n$
+    (Mertens, 2002): negative skew and fat tails make the estimate noisier. Positive autocorrelation
+    makes the $\sqrt q$ annualisation overstate the Sharpe ratio and the naive standard error too
+    small; Lo gives the corrected scaling.
+  keyPoints:
+    - "SE of the annualised Sharpe is about 1/sqrt(T), with T in years (more precisely sqrt((1 + SR_p^2/2)/T))"
+    - Precision depends on the calendar length of the history, not the sampling frequency
+    - Explains why, since the mean is pinned down only by the total return over the period
+    - Skewness and kurtosis enlarge the standard error, negative skew in particular
+    - Autocorrelation changes the annualisation factor and the standard error
+  hints:
+    - Start from the standard error of a sample mean, measured in units of the standard deviation.
+    - How does the standard error of the mean return over a year depend on how often you sample within the year?
+  followUps:
+    - A backtest shows a Sharpe ratio of 2 over 18 months. What is the t-statistic?
+    - Why do short-horizon strategies (seconds to minutes) have much more precisely estimated Sharpe ratios?
+  explanation: |
+    The frequency point is the heart of the question, and many candidates get it wrong by computing
+    $1/\sqrt{252T}$. The follow-up about high-frequency strategies has a subtle answer: what helps them
+    is not frequent sampling but a high per-period Sharpe ratio from many independent bets, so the edge
+    shows up quickly in calendar time.
+  source: { name: "Lo (2002), The Statistics of Sharpe Ratios; Mertens (2002)" }
