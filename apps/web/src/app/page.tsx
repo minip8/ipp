@@ -31,12 +31,12 @@ const FEATURES = [
   {
     icon: SigmaIcon,
     title: 'Quant question banks',
-    body: 'Probability, brainteasers, betting and market making, options, statistics, and linear algebra and calculus, in order for trader and researcher interviews. Numeric answers are marked as you submit them.',
+    body: 'Probability, brainteasers, betting and market making, options, statistics, and linear algebra and calculus, in order for trader and researcher interviews. Numeric answers are marked as you submit them, and a timed mental math drill keeps your arithmetic quick.',
   },
   {
     icon: MessagesSquareIcon,
     title: 'Talk it through',
-    body: 'Open questions are a conversation: explain your reasoning, and the interviewer follows up before it grades you. In a pad, turn on voice and think out loud; you can interrupt it.',
+    body: 'Open questions are a conversation: explain your reasoning, and the interviewer follows up before it grades you. Or sit a live quant round: timed questions asked one at a time, by voice if you like, with a market-making game in which it trades against your quotes.',
   },
   {
     icon: ListChecksIcon,
@@ -62,8 +62,8 @@ export default function LandingPage() {
             <p className="mt-4 max-w-2xl text-md text-fg-muted">
               Solve coding problems in C++, Python or Java while an AI interviewer watches, asks
               follow-ups and speaks up when you go quiet. Work through probability, markets and
-              statistics with your answers checked, and talk the open questions through with the
-              same interviewer.
+              statistics with your answers checked, talk the open questions through with the same
+              interviewer, or sit a timed quant round with it.
             </p>
             <LandingActions />
           </div>
