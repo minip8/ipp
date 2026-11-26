@@ -6,14 +6,18 @@
  * This is a deterrent, not a control. A second account, a guest session in one browser and an
  * account in another, or someone else's device defeats it; the real control is the host, who is
  * watching. It never affects the host (the owner of the room), and it lifts as soon as the room
- * ends or the candidate leaves it (`DELETE /api/pads/:id` removes their membership). A guest
- * cannot reach the quiz at all (`requireAccount`), so this matters for candidates signed in with
- * an account.
+ * ends or the candidate leaves it (`DELETE /api/pads/:id` removes their membership), and in any
+ * case `QUANT_INTERVIEW_GUARD_HOURS` after the room started: a host who never ends a room must
+ * not keep a candidate out of their own quizzes for good. A guest cannot reach the quiz at all
+ * (`requireAccount`), so this matters for candidates signed in with an account.
  */
 import { padMembers, pads } from '@ipp/db';
-import { and, eq, ne } from '@ipp/db/orm';
+import { and, eq, gt, ne } from '@ipp/db/orm';
 import type { Ctx } from '../context';
 import { conflict } from '../http/errors';
+
+/** A room older than this no longer holds its candidates out of the quiz, ended or not. */
+export const QUANT_INTERVIEW_GUARD_HOURS = 8;
 
 /** The error code a client can recognise. */
 export const IN_QUANT_INTERVIEW = 'in_quant_interview';
@@ -31,6 +35,7 @@ export async function inQuantInterview(ctx: Ctx, userId: string): Promise<boolea
         eq(pads.kind, 'room'),
         eq(pads.format, 'quant'),
         eq(pads.status, 'active'),
+        gt(pads.startedAt, new Date(Date.now() - QUANT_INTERVIEW_GUARD_HOURS * 3_600_000)),
       ),
     )
     .limit(1);
@@ -42,6 +47,6 @@ export async function refuseDuringQuantInterview(ctx: Ctx, userId: string): Prom
   if (await inQuantInterview(ctx, userId))
     throw conflict(
       IN_QUANT_INTERVIEW,
-      'You are a candidate in a quant interview that is still going: answers and explanations are unavailable until it ends.',
+      'You are a candidate in a quant interview that is still going: answers and explanations are unavailable until it ends or you leave it.',
     );
 }

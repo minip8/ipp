@@ -19,6 +19,7 @@ import {
 } from '@ipp/contracts';
 import {
   padMembers,
+  pads,
   quantRoundAnswers,
   quantRounds,
   quizQuestions,
@@ -29,6 +30,7 @@ import { eq, inArray } from '@ipp/db/orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { DEFAULT_LIMITS } from '../src/config';
 import { recentlyPosed } from '../src/quant/assemble';
+import { QUANT_INTERVIEW_GUARD_HOURS } from '../src/quant/guard';
 import { sweepQuantRounds } from '../src/quant/sweeper';
 import {
   Client,
@@ -801,6 +803,16 @@ describe('the quiz while a candidate is in a quant room', () => {
     expect((await c.get('/api/quiz/questions/qroom-1')).status).toBe(409);
     expect((await c.del(`/api/pads/${id}`)).json.removed).toBe('membership');
     expect((await c.get('/api/quiz/questions/qroom-1')).status).toBe(200);
+
+    // A room its host never ended stops holding the candidate after a working day.
+    const { pad: old, id: oldId } = await quantRoom();
+    const { c: late } = await accountCandidate(old.shareToken);
+    expect((await late.get('/api/quiz/questions/qroom-1')).status).toBe(409);
+    await h.api.ctx.db
+      .update(pads)
+      .set({ startedAt: new Date(Date.now() - (QUANT_INTERVIEW_GUARD_HOURS + 1) * 3_600_000) })
+      .where(eq(pads.id, oldId));
+    expect((await late.get('/api/quiz/questions/qroom-1')).status).toBe(200);
 
     const coder = new Client(h.base, nextIp());
     await coder.signUp('Coder');

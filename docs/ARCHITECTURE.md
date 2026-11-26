@@ -1280,10 +1280,12 @@ by the quiz routes that reveal answers or explanations: `GET /api/quiz/questions
 `POST /api/quiz/questions/:id/answers`, `GET /api/quiz/attempts/:id`,
 `POST /api/quiz/attempts/:id/answers`, `…/discussion` and `…/finish` answer 409
 `in_quant_interview` ("You are a candidate in a quant interview that is still going: answers and
-explanations are unavailable until it ends."). One check, `refuseDuringQuantInterview`
+explanations are unavailable until it ends or you leave it."). One check, `refuseDuringQuantInterview`
 (`apps/api/src/quant/guard.ts`), called first in each. Browsing topics, the roadmap, a topic's
 bank (prompts only) and starting an attempt stay open. It lifts the moment the room ends or the
-candidate leaves it (`DELETE /api/pads/:id`), and never applies to the host. It is a
+candidate leaves it (`DELETE /api/pads/:id`), and in any case `QUANT_INTERVIEW_GUARD_HOURS` (8)
+after the room started, so a host who never ends a room cannot keep a candidate out of their own
+quizzes; it never applies to the host. It is a
 **deterrent, not a control**: a second account, another browser or another device defeats it;
 the real control is the host, who is watching.
 
