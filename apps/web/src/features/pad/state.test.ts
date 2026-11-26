@@ -15,6 +15,7 @@ const detail: PadDetail = {
     ownerId: 'me',
     title: 'T',
     kind: 'practice',
+    format: 'coding',
     problemSlug: 'two-sum',
     language: 'cpp',
     status: 'active',
@@ -45,6 +46,7 @@ const detail: PadDetail = {
   interviewerAvailable: true,
   interviewerKey: 'active',
   interviewerModel: null,
+  round: null,
 };
 const msg = (over: Partial<Message>): Message => ({
   id: '00000000-0000-4000-8000-0000000000aa',

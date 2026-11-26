@@ -404,9 +404,10 @@ export function Assessment({
   }
   const a = report.assessment;
   if (!a) return <NoAssessment report={report} pad={pad} />;
-  const scores = REPORT_DIMENSIONS.map((d) => a.scores.find((s) => s.dimension === d)).filter(
-    (s): s is NonNullable<typeof s> => Boolean(s),
-  );
+  const scores = REPORT_DIMENSIONS.flatMap((d) => {
+    const s = a.scores.find((x) => x.dimension === d);
+    return s ? [{ ...s, dimension: d }] : [];
+  });
   return (
     <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
       <Card aria-labelledby="assessment-heading">

@@ -200,6 +200,7 @@ export function padRoutes(ctx: Ctx) {
       id: pad.id,
       title: pad.title,
       kind: pad.kind,
+      format: pad.format,
       problemSlug: pad.problemSlug,
       language: pad.language,
       status: pad.status,
@@ -322,6 +323,8 @@ export function padRoutes(ctx: Ctx) {
       interviewerAvailable: key.key === 'active',
       interviewerKey: key.key,
       interviewerModel: key.model,
+      // TODO(quant-round): API. A quant pad's `publicRound(state, version)` from quant_rounds.
+      round: null,
     };
     return c.json(detail);
   });
@@ -527,6 +530,8 @@ export function padRoutes(ctx: Ctx) {
       assessmentUnavailable: unavailable,
       // Only a room's host gets this far (assertMayReview).
       hostNotes: pad.kind === 'room' ? pad.hostNotes : null,
+      // TODO(quant-round): API. A quant pad's questions (`QuantReport`), built from quant_rounds.
+      quant: null,
     };
   }
 

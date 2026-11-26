@@ -29,7 +29,8 @@ export const QUIZ_TRACK_INFO: Record<QuizTrack, { label: string; description: st
  * content is loaded.
  */
 export const QUANT_PATHS = ['trader', 'researcher'] as const;
-export type QuantPath = (typeof QUANT_PATHS)[number];
+export const QuantPath = z.enum(QUANT_PATHS);
+export type QuantPath = z.infer<typeof QuantPath>;
 
 export const QUANT_PATH_INFO: Record<
   QuantPath,
@@ -58,6 +59,7 @@ export const QuizTopic = z.object({
 export type QuizTopic = z.infer<typeof QuizTopic>;
 
 export const QuizDifficulty = z.enum(['easy', 'medium', 'hard']);
+export type QuizDifficulty = z.infer<typeof QuizDifficulty>;
 
 export const ContentSource = z.object({
   name: z.string(),

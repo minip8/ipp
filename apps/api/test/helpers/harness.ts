@@ -162,6 +162,10 @@ export class FakeInterviewer implements Interviewer {
   /** What the room adviser was shown, per call (host notes and all). */
   roomContexts: RoomContext[] = [];
   reviewQuestions: (string | undefined)[] = [];
+  // TODO(quant-round): API. Stub for step 0: returns the canned assessment like
+  // `generateAssessment`; extend it (e.g. record the quant contexts) with the API's quant tests.
+  generateQuantAssessment = async (padId: string) =>
+    (await this.model({ padId })) ? this.assessment : null;
   generateRoomAssessment = async (padId: string) => {
     if (!(await this.model({ padId }))) return null;
     if (this.deps.loadRoomContext) this.roomContexts.push(await this.deps.loadRoomContext(padId));

@@ -299,6 +299,9 @@ function applyEvent(state: PadState, ev: ServerEvent): PadState {
     }
     case 'pong':
       return state;
+    // TODO(quant-round): web. Keep the round view with the highest version in the state.
+    case 'round.updated':
+      return state;
   }
 }
 

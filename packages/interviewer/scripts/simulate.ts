@@ -83,6 +83,7 @@ const pad: Pad = {
   ownerId: 'user-1',
   title: 'Two Sum practice',
   kind: 'practice',
+  format: 'coding',
   problemSlug: 'two-sum',
   language: 'python',
   status: 'active',

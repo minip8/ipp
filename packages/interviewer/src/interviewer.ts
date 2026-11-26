@@ -62,7 +62,8 @@ type UsableKey = Extract<ResolvedKey, { ok: true }>;
 export const DecisionSchema = z.object({
   reason: z.string(),
   speak: z.boolean(),
-  intent: MessageIntent,
+  /** `question` is posed by the server in a quant round, never chosen by a decision. */
+  intent: MessageIntent.exclude(['question']),
   message: z.string(),
   note: z.string(),
 });
@@ -978,6 +979,14 @@ export function createInterviewer(
     });
   }
 
+  // ------------------------------------------------------------ quant rounds
+
+  // TODO(quant-round): interviewer package. Judge the closed questions without a verdict
+  // (`verdict` steps), then one assessment call over QUANT_REPORT_DIMENSIONS (design §5).
+  async function generateQuantAssessment(_padId: string): Promise<ReportAssessment | null> {
+    return null;
+  }
+
   // ------------------------------------------------------------ rooms (the host interviews)
 
   async function generateRoomAssessment(padId: string): Promise<ReportAssessment | null> {
@@ -1138,6 +1147,7 @@ export function createInterviewer(
     },
     generateAssessment,
     generateRoomAssessment,
+    generateQuantAssessment,
     reviewSolution,
     gradeShortAnswer,
     discussShortAnswer,

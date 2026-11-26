@@ -13,6 +13,12 @@ import type {
   MessageIntent,
   Pad,
   ProblemContent,
+  QuantClock,
+  QuantPhase,
+  QuantStep,
+  QuantStepResult,
+  QuantVerdict,
+  QuizDifficulty,
   QuizQuestion,
   Report,
   ReportAssessment,
@@ -27,6 +33,11 @@ export type Trigger =
   | { type: 'candidate_message'; text: string; via: 'text' | 'voice'; userId: string }
   /** The editor document changed. Sent at most once per second; debouncing is the interviewer's job. */
   | { type: 'code_changed' }
+  /**
+   * A quant pad's scratchpad or whiteboard changed: what `code_changed` is for a coding pad
+   * (typing activity), with no code to check. Same rate.
+   */
+  | { type: 'scratch_changed' }
   /** Full, unredacted run (the interviewer may reason about hidden-test outcomes but must not leak inputs). */
   | { type: 'run_finished'; run: Run; hiddenFailures: number }
   | { type: 'telemetry'; kind: 'paste' | 'blur'; chars?: number; ms?: number }
@@ -74,6 +85,56 @@ export interface RoomContext {
   recentRuns: Run[];
   now: Date;
 }
+
+/** A question of a quant round with everything the interviewer may use to run it. */
+export type QuantQuestion = Extract<QuizQuestion, { type: 'short' | 'numeric' }>;
+
+/**
+ * A quant pad as the interviewer sees it (`InterviewerDeps.loadQuantContext`). Unlike
+ * `InterviewContext` there is no problem and no code: the round's questions, the scratchpad and
+ * the transcript. Later questions are never in it, in any form, until they are posed.
+ */
+export interface QuantContext {
+  pad: Pad;
+  round: {
+    /** `quant_rounds.version`: every `QuantStep` names the version it was decided on. */
+    version: number;
+    total: number;
+    phase: QuantPhase;
+    /** The current question's clock; null unless asking. */
+    clock: QuantClock | null;
+    /** The questions already closed, oldest first: a code-built summary, no prompts. */
+    closed: {
+      index: number;
+      topic: string;
+      difficulty: QuizDifficulty;
+      hints: number;
+      timeSec: number;
+      verdict: QuantVerdict | null;
+    }[];
+  };
+  /**
+   * scope `current`: only the current question (empty unless asking), in full. scope `all` (the
+   * assessment): every posed question. Includes the answer, key points, explanation, hints and
+   * follow-ups (server-only fields).
+   */
+  questions: {
+    index: number;
+    question: QuantQuestion;
+    /** As in `QuantRoundQuestion.hintRungs`. */
+    hintRungs: number[];
+    followUpAsked: boolean;
+  }[];
+  /** scope `current`: the messages since the current question was posed; `all`: the last 200. */
+  transcript: Message[];
+  /** The scratchpad (`YDOC.notes`). */
+  scratch: string;
+  /** Notes the interviewer wrote to itself earlier in this session. */
+  privateNotes: string[];
+  now: Date;
+}
+
+export type { QuantClock, QuantStep, QuantStepResult };
 
 export type ReviewResult =
   | { ok: true; review: SolutionReview }
@@ -124,6 +185,18 @@ export interface InterviewerDeps {
   loadContext(padId: string): Promise<InterviewContext>;
   /** Rooms only (optional so hosts without rooms need not provide it). */
   loadRoomContext?(padId: string): Promise<RoomContext>;
+  /**
+   * Quant pads (optional, like `loadRoomContext`). Null for a pad that is not a quant pad, which
+   * is how the interviewer learns a pad's format. `scope` defaults to `current`.
+   */
+  loadQuantContext?(padId: string, scope?: 'current' | 'all'): Promise<QuantContext | null>;
+  /**
+   * Applies one step to a quant pad's round (`advanceRound` from @ipp/contracts, behind a
+   * compare-and-swap on the version) and posts what it says: the interviewer's `say`, then the
+   * question it reveals. Refused steps change nothing and post nothing; the interviewer drops
+   * their message. Messages posted here do not go through `saveMessage`.
+   */
+  applyQuantStep?(padId: string, step: QuantStep): Promise<QuantStepResult>;
   /** Persists an interviewer message and broadcasts message.created. */
   saveMessage(padId: string, message: NewMessage): Promise<Message>;
   appendPrivateNote(padId: string, note: string): Promise<void>;
@@ -141,7 +214,8 @@ export interface InterviewerDeps {
 }
 
 export interface ModelUsage {
-  purpose: 'reply' | 'decision' | 'assessment' | 'grade' | 'review';
+  /** `turn`: a quant round's reply or proactive moment (one structured call each). */
+  purpose: 'reply' | 'decision' | 'assessment' | 'grade' | 'review' | 'turn';
   model: string;
   inputTokens: number;
   outputTokens: number;
@@ -178,6 +252,12 @@ export interface Interviewer {
    * host's key. Null under the same conditions as `generateAssessment`.
    */
   generateRoomAssessment(padId: string): Promise<ReportAssessment | null>;
+  /**
+   * A quant pad's assessment, over the quant dimensions (`QUANT_REPORT_DIMENSIONS`). First judges
+   * every closed question that has no verdict (each written back with a `verdict` step). Null
+   * under the same conditions as `generateAssessment`.
+   */
+  generateQuantAssessment(padId: string): Promise<ReportAssessment | null>;
   /** A room host's second opinion on the code as it is now. Never shown to the candidate. */
   reviewSolution(padId: string, question?: string): Promise<ReviewResult>;
   /**

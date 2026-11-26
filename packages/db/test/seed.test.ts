@@ -2,13 +2,16 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } f
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CONTENT_ROOT } from '@ipp/content';
+import { createQuantRound, type InterviewerSettings } from '@ipp/contracts';
 import { count, eq, inArray } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createDb, type DbHandle, ensureDatabase, runMigrations } from '../src/client';
 import {
   drillRuns,
+  pads,
   problems,
   problemTests,
+  quantRounds,
   quizAnswers,
   quizAttempts,
   quizQuestions,
@@ -240,5 +243,59 @@ describe('drill_runs', () => {
     expect(run?.categories).toEqual(['multiply']);
     await h.db.delete(user).where(eq(user.id, 'u-drill'));
     expect(await h.db.select().from(drillRuns).where(eq(drillRuns.userId, 'u-drill'))).toEqual([]);
+  });
+});
+
+describe('quant_rounds', () => {
+  it("stores a round beside its pad and goes with the pad; old pads are 'coding'", async () => {
+    await h.db.insert(user).values({ id: 'u-quant', name: 'n', email: 'quant@example.com' });
+    const settings: InterviewerSettings = {
+      enabled: true,
+      style: 'neutral',
+      proactivity: 'normal',
+      voice: false,
+    };
+    const [coding] = await h.db
+      .insert(pads)
+      .values({
+        ownerId: 'u-quant',
+        title: 'Coding',
+        language: 'python',
+        interviewer: settings,
+        shareToken: 'tok-coding',
+      })
+      .returning();
+    expect(coding?.format).toBe('coding');
+
+    const [pad] = await h.db
+      .insert(pads)
+      .values({
+        ownerId: 'u-quant',
+        title: 'Quant round',
+        format: 'quant',
+        language: 'python',
+        interviewer: settings,
+        shareToken: 'tok-quant',
+      })
+      .returning();
+    if (!pad) throw new Error('no pad');
+    const state = createQuantRound('trader', 30, [
+      {
+        questionId: 'q-num',
+        topic: 'cpp',
+        difficulty: 'easy',
+        prompt: 'p',
+        unit: null,
+        hintsAvailable: 0,
+      },
+    ]);
+    await h.db.insert(quantRounds).values({ padId: pad.id, state });
+    const [row] = await h.db.select().from(quantRounds).where(eq(quantRounds.padId, pad.id));
+    expect(row?.version).toBe(0);
+    expect(row?.state).toEqual(state);
+
+    await h.db.delete(pads).where(eq(pads.id, pad.id));
+    expect(await h.db.select().from(quantRounds).where(eq(quantRounds.padId, pad.id))).toEqual([]);
+    await h.db.delete(user).where(eq(user.id, 'u-quant'));
   });
 });
