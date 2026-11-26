@@ -464,7 +464,11 @@ coding pad, which then behaves exactly as before) and hands the pad to
 `packages/interviewer/src/quant/round.ts`. The server keeps every book of the round; the
 interviewer only decides what to say and which step to ask for, and each trigger ends in at most
 one model call and at most one `applyQuantStep`. It keeps a mirror of the round's version, phase
-and clock, refreshed from every context load and step result.
+and clock, refreshed from every context load and step result, so a round that moved on without it
+(closed by the API's sweeper while nobody was connected, §8.2) is picked up as it now is when
+someone returns: a clock action due on the old mirror finds nothing due in the context it loads
+and does nothing, a reply is decided on the current question, and a question posed meanwhile is
+a fresh start for stalls and the unanswered count, as after a step of its own.
 
 - **Each pass of the pump**, in order: a queued candidate message (a `turn` or a `close`; before
   the first question the opening and `start`; after the round a plain message through
@@ -667,6 +671,20 @@ joining by the link, as on any practice pad) see exactly what the owner sees.
   does. Ending the pad (`endPad`) closes the open question as `ended` before `session_ended`, and
   the assessment (`generateQuantAssessment`, quant dimensions) first judges questions closed
   without a verdict.
+- **Nobody there** (`apps/api/src/quant/sweeper.ts`): the interviewer applies the clock on its
+  ticks, which reach only pads someone is connected to, so the API also sweeps every
+  `timing.quantSweepMs` (15 s; 0 turns it off, as the tests do): in each active quant pad nobody
+  is connected to (by event socket or collab document, the set the ticks reach, checked again
+  just before acting) whose open question is past its budget and grace, or whose round's clock
+  has run out, it applies the close the interviewer's failure path would (`timeout` or
+  `round_time`, the same canned line from `cannedCloseLine`, no verdict) on the database's clock,
+  with no model call, so nobody's key is spent while nobody is there; it never nudges. A pad
+  someone is on is left to its interviewer, so a turn in flight there is never pre-empted, and
+  the compare-and-swap makes a double close impossible anyway. An unattended round therefore runs
+  to its end question by question (each close poses the next with a fresh budget, closed in turn);
+  a round never started stays pending until someone comes. The sweeper starts and stops with the
+  server (`createApi` / `stop`, which waits for a pass in progress) and its timer is unref'd. One
+  sweeper sees every live pad because the API is a single instance.
 - **What the browser sees**: `PadDetail.round` and `round.updated` carry `publicRound(state,
   version)`, the posed questions only (topic, difficulty, prompt, unit, times, hints given as a
   count); never a question id, a subtopic, a verdict, how a question closed or a question still to
@@ -753,7 +771,9 @@ a regression test.
 - A rejected key is not re-checked: after topping up credit the user saves the key again.
 - CSP styles still allow `'unsafe-inline'` (Monaco and React inline styles).
 - The queue-depth check is not atomic and can overshoot under concurrent submissions.
-- Pads do not end automatically when the timer reaches zero; the interviewer calls time. (A pad
+- Pads do not end automatically when the timer reaches zero; the interviewer calls time (in a
+  quant round the API's sweeper also closes overdue questions nobody is there for, §8.2, but the
+  pad still waits for its owner to end it). (A pad
   created with `durationMin: null` has no time limit: its clock shows the time elapsed, and the
   interviewer raises no clock checkpoints and is told not to bring up the time.)
 

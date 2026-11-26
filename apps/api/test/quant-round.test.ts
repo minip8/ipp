@@ -21,11 +21,14 @@ import {
   timelineEvents,
 } from '@ipp/db';
 import { and, asc, eq, inArray, like, sql } from '@ipp/db/orm';
+import { QUANT_MESSAGES } from '@ipp/interviewer';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { WebSocket } from 'ws';
 import * as Y from 'yjs';
+import { loadConfig } from '../src/config';
 import { QUANT_SCRATCH_CHARS, quantTrigger } from '../src/interviewer/host';
 import { finishRound } from '../src/quant/round';
+import { startQuantSweeper, sweepQuantRounds } from '../src/quant/sweeper';
 import {
   Client,
   EventSocket,
@@ -1091,6 +1094,189 @@ describe('the round’s clock', () => {
       });
     });
   }
+});
+
+// ---------------------------------------------------------------- nobody there
+
+describe('a round nobody is on', () => {
+  /** Started, with nobody connected; the pad's question `index` is overdue by `sec`. */
+  async function unattended(name: string, durationMin = 20) {
+    const owner = await account(name);
+    const pad = await createRound(owner, { path: 'trader', durationMin });
+    await manual(async () => {
+      const s = await openEvents(owner, pad.id);
+      await s.waitFor('round.updated');
+      await fake.deps.applyQuantStep?.(pad.id, { type: 'start', version: 0, say: 'Hi.' });
+      s.close();
+      await until(() => h.api.ctx.rooms.count(pad.id) === 0);
+    });
+    return { owner, pad, id: pad.id };
+  }
+  /** Moves question `index` back so that its budget and grace ran out `sec` ago. */
+  const overdue = (padId: string, index: number, sec = 1) =>
+    setState(padId, (st) => {
+      const q = st.questions[index];
+      if (!q?.posedAt || !q.budgetSec) throw new Error('not posed');
+      const grace = Math.min(90, Math.floor(q.budgetSec / 4));
+      q.posedAt = new Date(Date.now() - (q.budgetSec + grace + sec) * 1000).toISOString();
+    });
+  /** Connected as the API sees it; every other pad counts as attended, so the sweep is ours. */
+  const onlyThese =
+    (...ids: string[]) =>
+    (padId: string) =>
+      !ids.includes(padId) ||
+      h.api.ctx.rooms.count(padId) > 0 ||
+      h.api.ctx.collab.connectionCount(padId) > 0;
+
+  it('closes an overdue question with the canned line and no verdict, and nothing early', async () => {
+    const { id } = await unattended('Alone');
+    const keys = fake.keysUsed.length;
+    const steps = fake.quantSteps.length;
+    expect(await sweepQuantRounds(h.api.ctx, onlyThese(id))).toBe(0);
+    // Inside the grace: still nothing (and never a nudge: nobody would hear it).
+    await setState(id, (st) => {
+      const q = st.questions[0];
+      if (q?.posedAt && q.budgetSec)
+        q.posedAt = new Date(Date.now() - (q.budgetSec + 10) * 1000).toISOString();
+    });
+    expect(await sweepQuantRounds(h.api.ctx, onlyThese(id))).toBe(0);
+    expect((await roundRow(id)).version).toBe(1);
+
+    await overdue(id, 0);
+    expect(await sweepQuantRounds(h.api.ctx, onlyThese(id))).toBe(1);
+    let row = await roundRow(id);
+    expect(row.version).toBe(2);
+    expect(row.state.questions[0]).toMatchObject({
+      closedBy: 'timeout',
+      verdict: null,
+      nudgedAt: null,
+    });
+    expect(row.state.current).toBe(1);
+    const said = await db()
+      .select({ intent: messages.intent, text: messages.text, kind: messages.kind })
+      .from(messages)
+      .where(eq(messages.padId, id))
+      .orderBy(asc(messages.createdAt));
+    expect(said.slice(-2)).toEqual([
+      { intent: 'feedback', text: QUANT_MESSAGES.timeout, kind: 'proactive' },
+      { intent: 'question', text: row.state.questions[1]?.prompt, kind: 'proactive' },
+    ]);
+    // The next question has a fresh budget: the next sweep leaves it.
+    expect(await sweepQuantRounds(h.api.ctx, onlyThese(id))).toBe(0);
+
+    // Question by question: the second runs out too, then the round's clock, with the third open.
+    await overdue(id, 1);
+    expect(await sweepQuantRounds(h.api.ctx, onlyThese(id))).toBe(1);
+    await db()
+      .update(pads)
+      .set({ startedAt: new Date(Date.now() - 21 * 60_000) })
+      .where(eq(pads.id, id));
+    expect(await sweepQuantRounds(h.api.ctx, onlyThese(id))).toBe(1);
+    row = await roundRow(id);
+    expect(row.state.questions.map((q) => q.closedBy)).toEqual([
+      'timeout',
+      'timeout',
+      'round_time',
+    ]);
+    expect(row.state.questions.every((q) => q.verdict === null)).toBe(true);
+    expect(row.state.current).toBe(3);
+    const last = await db()
+      .select({ text: messages.text })
+      .from(messages)
+      .where(eq(messages.padId, id))
+      .orderBy(asc(messages.createdAt));
+    expect(last.at(-1)?.text).toBe(QUANT_MESSAGES.roundTime);
+    // Finished: nothing more to do. The pad stays open until its owner ends it.
+    expect(await sweepQuantRounds(h.api.ctx, onlyThese(id))).toBe(0);
+    expect((await db().select().from(pads).where(eq(pads.id, id)))[0]?.status).toBe('active');
+    // No model, no interviewer: nobody's key was used.
+    expect(fake.keysUsed.length).toBe(keys);
+    expect(fake.quantSteps.length).toBe(steps);
+  });
+
+  it('says the last question’s line when closing it ends the round', async () => {
+    const { id } = await unattended('LastOne');
+    await overdue(id, 0);
+    await sweepQuantRounds(h.api.ctx, onlyThese(id));
+    await overdue(id, 1);
+    await sweepQuantRounds(h.api.ctx, onlyThese(id));
+    await overdue(id, 2);
+    expect(await sweepQuantRounds(h.api.ctx, onlyThese(id))).toBe(1);
+    const row = await roundRow(id);
+    expect(row.state.questions.map((q) => q.closedBy)).toEqual(['timeout', 'timeout', 'timeout']);
+    const said = await db()
+      .select({ text: messages.text })
+      .from(messages)
+      .where(eq(messages.padId, id))
+      .orderBy(asc(messages.createdAt));
+    expect(said.at(-1)?.text).toBe(QUANT_MESSAGES.timeoutLast);
+  });
+
+  it('leaves a pad someone is on to its interviewer, an ended pad, and a round not started', async () => {
+    const owner = await account('Present');
+    const pad = await createRound(owner, { path: 'trader', durationMin: 20 });
+    const s = await manual(async () => {
+      const s = await openEvents(owner, pad.id);
+      await s.waitFor('round.updated');
+      await fake.deps.applyQuantStep?.(pad.id, { type: 'start', version: 0, say: 'Hi.' });
+      return s;
+    });
+    await overdue(pad.id, 0);
+    expect(await sweepQuantRounds(h.api.ctx, onlyThese(pad.id))).toBe(0);
+    s.close();
+    await until(() => h.api.ctx.rooms.count(pad.id) === 0);
+    expect(await sweepQuantRounds(h.api.ctx, onlyThese(pad.id))).toBe(1);
+
+    const ended = await unattended('Gone');
+    await overdue(ended.id, 0);
+    expect((await ended.owner.post(`/api/pads/${ended.id}/end`)).status).toBe(200);
+    const pending = await account('NeverStarted');
+    const notStarted = await createRound(pending, { path: 'trader', durationMin: 20 });
+    await db()
+      .update(pads)
+      .set({ startedAt: new Date(Date.now() - 21 * 60_000) })
+      .where(eq(pads.id, notStarted.id));
+    const before = [(await roundRow(ended.id)).version, (await roundRow(notStarted.id)).version];
+    expect(await sweepQuantRounds(h.api.ctx, onlyThese(ended.id, notStarted.id))).toBe(0);
+    expect([(await roundRow(ended.id)).version, (await roundRow(notStarted.id)).version]).toEqual(
+      before,
+    );
+  });
+
+  it('runs on its interval once started, and stops', async () => {
+    const { id } = await unattended('Timer');
+    await overdue(id, 0);
+    const sweeper = startQuantSweeper(h.api.ctx, onlyThese(id), 20);
+    try {
+      await until(async () => (await roundRow(id)).version === 2, 5_000);
+    } finally {
+      await sweeper.stop();
+    }
+    await overdue(id, 1);
+    await sleep(100);
+    expect((await roundRow(id)).version).toBe(2);
+  });
+
+  it('is started with the server when configured, and stopped with it', async () => {
+    const { id } = await unattended('Server');
+    await overdue(id, 0);
+    const timing = { ...h.api.ctx.config.timing, quantSweepMs: 20 };
+    const other = await startApi({ config: { timing } });
+    let stopped = false;
+    try {
+      await until(async () => (await roundRow(id)).version === 2, 5_000);
+    } finally {
+      await other.stop();
+      stopped = true;
+    }
+    expect(stopped).toBe(true);
+    await overdue(id, 1);
+    await sleep(100);
+    expect((await roundRow(id)).version).toBe(2);
+    // The default runs every 15 s; the tests turn it off and sweep themselves.
+    expect(loadConfig({ env: 'test' }).timing.quantSweepMs).toBe(15_000);
+    expect(h.api.ctx.config.timing.quantSweepMs).toBe(0);
+  });
 });
 
 // ---------------------------------------------------------------- ending and the report

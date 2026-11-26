@@ -20,7 +20,7 @@ import {
   repairLatexEscapes,
 } from '../src/quant/latex';
 import { QUANT_CORE, questionBlock } from '../src/quant/prompts';
-import { QUANT_CALLS } from '../src/quant/round';
+import { cannedCloseLine, QUANT_CALLS, QUANT_MESSAGES } from '../src/quant/round';
 import {
   hintRungFor,
   normaliseTurn,
@@ -269,6 +269,17 @@ describe('the clock', () => {
     expect(closingEndsRound({ ...c, index: 3 }, 4, c.posedAt + 1000)).toBe(true);
     expect(closingEndsRound(c, 4, c.roundEndsAt - 119_000)).toBe(true);
     expect(closingEndsRound(null, 4, 0)).toBe(true);
+  });
+  it('a close nobody worded says the round’s end, the last question, or moving on', () => {
+    const mid = c.posedAt + 1000;
+    expect(cannedCloseLine('round_time', c, 4, c.roundEndsAt)).toBe(QUANT_MESSAGES.roundTime);
+    expect(cannedCloseLine('timeout', c, 4, mid)).toBe(QUANT_MESSAGES.timeout);
+    expect(cannedCloseLine('timeout', { ...c, index: 3 }, 4, mid)).toBe(QUANT_MESSAGES.timeoutLast);
+    expect(cannedCloseLine('timeout', c, 4, c.roundEndsAt - 119_000)).toBe(
+      QUANT_MESSAGES.timeoutLast,
+    );
+    expect(cannedCloseLine('interviewer', c, 4, mid)).toBe(QUANT_MESSAGES.moveOn);
+    expect(cannedCloseLine('interviewer', { ...c, index: 3 }, 4, mid)).toBe(QUANT_MESSAGES.wrapUp);
   });
 });
 

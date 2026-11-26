@@ -15,4 +15,6 @@ export {
   PROVIDERS,
   verifyProviderKey,
 } from './providers';
+export { type QuantDue, quantDue } from './quant/clock';
+export { cannedCloseLine, QUANT_MESSAGES } from './quant/round';
 export * from './types';

@@ -43,6 +43,8 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
     limits: structuredClone(DEFAULT_LIMITS),
     timing: {
       tickMs: 200,
+      // Off: a sweep would race the tests that move a round's clock; they call it themselves.
+      quantSweepMs: 0,
       watchdogMs: 200,
       runGraceMs: 30_000,
       collabDebounceMs: 100,
