@@ -8,10 +8,12 @@ import {
   type AiProvider,
   AnswerFeedback,
   ApiError,
+  ClearQuizHistoryResponse,
   type CreateAttemptRequest,
   type CreatePadRequest,
   type CreateQuantPadRequest,
   type CreateRunRequest,
+  DeleteAttemptResponse,
   DeletePadResponse,
   type DiscussionReplyRequest,
   DiscussionReplyResponse,
@@ -212,6 +214,11 @@ export const api = {
     request('/quiz/attempts', QuizAttempt, { method: 'POST', body }),
   attempts: () => request('/quiz/attempts', z.array(QuizAttemptSummary)),
   attempt: (id: string) => request(`/quiz/attempts/${id}`, QuizAttempt),
+  /** One of the user's own attempts, any mode, running or finished, with its answers. */
+  deleteAttempt: (id: string) =>
+    request(`/quiz/attempts/${id}`, DeleteAttemptResponse, { method: 'DELETE' }),
+  /** Every attempt and every question-bank answer of the user's. */
+  clearQuizHistory: () => request('/quiz/history', ClearQuizHistoryResponse, { method: 'DELETE' }),
   submitAnswer: (id: string, body: { questionId: string; response: QuizResponse }) =>
     request(`/quiz/attempts/${id}/answers`, z.union([AnswerFeedback, RecordedResponse]), {
       method: 'POST',
@@ -235,6 +242,9 @@ export const api = {
   drillRuns: () => request('/drill/runs', DrillHistory),
   recordDrillRun: (body: RecordDrillRunRequest) =>
     request('/drill/runs', RecordDrillRunResponse, { method: 'POST', body }),
+  /** Deleting one run, or all of them: the history left comes back, bests recomputed. */
+  deleteDrillRun: (id: string) => request(`/drill/runs/${id}`, DrillHistory, { method: 'DELETE' }),
+  clearDrillHistory: () => request('/drill/runs', DrillHistory, { method: 'DELETE' }),
 };
 
 /** Human message for any error, with rate-limit timing when known. */

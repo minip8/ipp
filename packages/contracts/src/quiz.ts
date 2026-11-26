@@ -333,8 +333,28 @@ export const QuizAttemptSummary = QuizAttempt.pick({
   finishedAt: true,
 }).extend({
   questionCount: z.int(),
+  /** Questions with a recorded answer (in a running exam too, though those do not count yet). */
+  answeredCount: z.int().default(0),
 });
 export type QuizAttemptSummary = z.infer<typeof QuizAttemptSummary>;
+
+/**
+ * `DELETE /api/quiz/attempts/:id`: one of the caller's attempts, of any mode, running or
+ * finished, is gone with its answers. Everything that reads the latest countable answer per
+ * question (stats, the roadmap, question status, "focus weak") falls back to what is left.
+ */
+export const DeleteAttemptResponse = z.object({ attemptId: Id });
+export type DeleteAttemptResponse = z.infer<typeof DeleteAttemptResponse>;
+
+/**
+ * `DELETE /api/quiz/history`: every attempt of the caller's (with its answers) and every answer
+ * they gave in the question bank, counted. Judged questions of quant rounds are not touched.
+ */
+export const ClearQuizHistoryResponse = z.object({
+  attempts: z.int().min(0),
+  bankAnswers: z.int().min(0),
+});
+export type ClearQuizHistoryResponse = z.infer<typeof ClearQuizHistoryResponse>;
 
 export const QuizTopicStats = QuizTopic.extend({
   questionCount: z.int(),

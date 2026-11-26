@@ -1325,6 +1325,7 @@ export const QUIZ_HISTORY = QuizAttemptSummary.array().parse([
     startedAt: iso(-86400),
     finishedAt: iso(-86400 + 900),
     questionCount: 10,
+    answeredCount: 10,
   },
   {
     id: uuid(9003),
@@ -1335,6 +1336,7 @@ export const QUIZ_HISTORY = QuizAttemptSummary.array().parse([
     startedAt: iso(-86400 * 3),
     finishedAt: iso(-86400 * 3 + 700),
     questionCount: 8,
+    answeredCount: 8,
   },
   {
     id: uuid(9004),
@@ -1345,6 +1347,7 @@ export const QUIZ_HISTORY = QuizAttemptSummary.array().parse([
     startedAt: iso(-86400 * 4),
     finishedAt: null,
     questionCount: 10,
+    answeredCount: 3,
   },
 ]);
 

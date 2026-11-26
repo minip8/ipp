@@ -1,6 +1,8 @@
 import {
   type AnswerFeedback,
+  type ClearQuizHistoryResponse,
   CreateAttemptRequest,
+  type DeleteAttemptResponse,
   DISCUSSION_MAX_TURNS,
   DiscussionReplyRequest,
   type DiscussionReplyResponse,
@@ -12,12 +14,19 @@ import {
   type QuizTopicStats,
   SubmitAnswerRequest,
 } from '@ipp/contracts';
-import { quizAnswers, quizAttempts, quizQuestions, quizTopics } from '@ipp/db';
-import { and, desc, eq, inArray, ne, sql } from '@ipp/db/orm';
+import {
+  quizAnswers,
+  quizAttempts,
+  quizQuestions,
+  quizStandaloneAnswers,
+  quizTopics,
+} from '@ipp/db';
+import { and, count, desc, eq, inArray, ne, sql } from '@ipp/db/orm';
 import { Hono } from 'hono';
 import type { Ctx } from '../context';
 import { type Env, parseBody, requireAccount } from '../http/app';
 import { badRequest, conflict, HttpError, notFound, rateLimited } from '../http/errors';
+import { isForeignKeyViolation } from '../pg';
 import {
   type AnswerRow,
   applySelfGrade,
@@ -48,6 +57,24 @@ export function quizRoutes(ctx: Ctx) {
       .where(and(eq(quizAttempts.id, id), eq(quizAttempts.userId, userId)));
     if (!row) throw notFound('Attempt');
     return row;
+  }
+
+  /** Deleting from one's own history: generous, but not a loop that hammers the database. */
+  async function deleteLimit(userId: string) {
+    const wait = await ctx.limiter.hit([
+      { key: `histdel:u:${userId}`, ...ctx.config.limits.historyDeletes.userBurst },
+    ]);
+    if (wait > 0) throw rateLimited(wait);
+  }
+
+  /** An answer written after its attempt was deleted (a reply in flight): the attempt is gone. */
+  async function unlessDeleted<T>(write: Promise<T>): Promise<T> {
+    try {
+      return await write;
+    } catch (err) {
+      if (isForeignKeyViolation(err)) throw notFound('Attempt');
+      throw err;
+    }
   }
 
   async function questionsOf(ids: string[]): Promise<Map<string, QuizQuestion>> {
@@ -196,13 +223,19 @@ export function quizRoutes(ctx: Ctx) {
 
   r.get('/quiz/attempts', async (c) => {
     const user = requireAccount(c);
+    const answered = db
+      .select({ attemptId: quizAnswers.attemptId, n: count().as('n') })
+      .from(quizAnswers)
+      .groupBy(quizAnswers.attemptId)
+      .as('answered');
     const rows = await db
-      .select()
+      .select({ a: quizAttempts, answered: answered.n })
       .from(quizAttempts)
+      .leftJoin(answered, eq(answered.attemptId, quizAttempts.id))
       .where(eq(quizAttempts.userId, user.id))
       .orderBy(desc(quizAttempts.startedAt))
       .limit(200);
-    const out: QuizAttemptSummary[] = rows.map((a) => ({
+    const out: QuizAttemptSummary[] = rows.map(({ a, answered }) => ({
       id: a.id,
       mode: a.mode,
       topics: a.topics,
@@ -211,7 +244,48 @@ export function quizRoutes(ctx: Ctx) {
       startedAt: a.startedAt.toISOString(),
       finishedAt: a.finishedAt?.toISOString() ?? null,
       questionCount: a.questionIds.length,
+      answeredCount: Number(answered ?? 0),
     }));
+    return c.json(out);
+  });
+
+  /**
+   * Deletes one of the caller's attempts, running or finished, with its answers (they cascade).
+   * Stats, the roadmap, question status and "focus weak" read the latest countable answer per
+   * question, so they fall back to whatever answer is left. Someone else's id is a 404.
+   */
+  r.delete('/quiz/attempts/:id', async (c) => {
+    const user = requireAccount(c);
+    await deleteLimit(user.id);
+    const id = c.req.param('id');
+    if (!/^[0-9a-f-]{36}$/i.test(id)) throw notFound('Attempt');
+    const [row] = await db
+      .delete(quizAttempts)
+      .where(and(eq(quizAttempts.id, id), eq(quizAttempts.userId, user.id)))
+      .returning({ id: quizAttempts.id });
+    if (!row) throw notFound('Attempt');
+    const out: DeleteAttemptResponse = { attemptId: row.id };
+    return c.json(out);
+  });
+
+  /**
+   * Clears the caller's quiz history: every attempt with its answers and every question-bank
+   * answer. The judged questions of quant rounds stay: they belong to those interviews.
+   */
+  r.delete('/quiz/history', async (c) => {
+    const user = requireAccount(c);
+    await deleteLimit(user.id);
+    const out: ClearQuizHistoryResponse = await db.transaction(async (tx) => {
+      const attempts = await tx
+        .delete(quizAttempts)
+        .where(eq(quizAttempts.userId, user.id))
+        .returning({ id: quizAttempts.id });
+      const bank = await tx
+        .delete(quizStandaloneAnswers)
+        .where(eq(quizStandaloneAnswers.userId, user.id))
+        .returning({ id: quizStandaloneAnswers.questionId });
+      return { attempts: attempts.length, bankAnswers: bank.length };
+    });
     return c.json(out);
   });
 
@@ -259,11 +333,16 @@ export function quizRoutes(ctx: Ctx) {
       ...graded,
       answeredAt: new Date(),
     };
-    const [saved] = await db
-      .insert(quizAnswers)
-      .values(values)
-      .onConflictDoUpdate({ target: [quizAnswers.attemptId, quizAnswers.questionId], set: values })
-      .returning();
+    const [saved] = await unlessDeleted(
+      db
+        .insert(quizAnswers)
+        .values(values)
+        .onConflictDoUpdate({
+          target: [quizAnswers.attemptId, quizAnswers.questionId],
+          set: values,
+        })
+        .returning(),
+    );
     if (attempt.status === 'finished') {
       await db
         .update(quizAttempts)
@@ -324,20 +403,22 @@ export function quizRoutes(ctx: Ctx) {
     const out: DiscussionReplyResponse = { turns, feedback: null };
     if (closed) {
       const score = Math.max(0, Math.min(1, step.score));
-      const [saved] = await db
-        .insert(quizAnswers)
-        .values({
-          attemptId: attempt.id,
-          questionId: q.id,
-          // Everything the candidate said, so results and the question bank read like any answer.
-          response: { type: 'short', text: said.map((t) => t.text).join('\n\n') },
-          score,
-          correct: score >= CORRECT_THRESHOLD,
-          feedback: step.feedback,
-          gradedBy: 'ai',
-          needsSelfGrade: false,
-        })
-        .returning();
+      const [saved] = await unlessDeleted(
+        db
+          .insert(quizAnswers)
+          .values({
+            attemptId: attempt.id,
+            questionId: q.id,
+            // Everything the candidate said, so results and the question bank read like any answer.
+            response: { type: 'short', text: said.map((t) => t.text).join('\n\n') },
+            score,
+            correct: score >= CORRECT_THRESHOLD,
+            feedback: step.feedback,
+            gradedBy: 'ai',
+            needsSelfGrade: false,
+          })
+          .returning(),
+      );
       out.feedback = feedbackOf(q, saved);
     }
     return c.json(out);

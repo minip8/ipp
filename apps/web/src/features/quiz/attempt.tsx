@@ -29,6 +29,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
 import { AiKeyPrompt } from '@/features/ai-key/ai-key-prompt';
 import { rejectedTitle } from '@/features/ai-key/logic';
+import { DeleteAttemptButton } from '@/features/delete-history/delete-attempt-button';
 import { ApiRequestError, api } from '@/lib/api';
 import { humanize, plural } from '@/lib/format';
 import { qk, useAiKey } from '@/lib/queries';
@@ -353,10 +354,16 @@ function QuizFlow({ attempt }: { attempt: QuizAttempt }) {
           <ArrowLeftIcon className="size-3.5" /> Quizzes
         </Link>
         <span className="text-xs text-fg-subtle">Progress is saved</span>
+        <DeleteAttemptButton
+          attempt={attempt}
+          topics={topicLine}
+          answered={counts.answered}
+          className="ml-auto"
+        />
         <Button
           variant={exam && unanswered === 0 ? 'primary' : 'ghost'}
           size="sm"
-          className="ml-auto max-sm:h-10"
+          className="max-sm:h-10"
           onClick={() => setConfirmOpen(true)}
         >
           <FlagIcon /> Finish quiz

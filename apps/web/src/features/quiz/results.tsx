@@ -18,6 +18,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Spinner } from '@/components/ui/spinner';
+import { DeleteAttemptButton } from '@/features/delete-history/delete-attempt-button';
 import { api } from '@/lib/api';
 import { formatDuration, formatPercent, humanize, plural } from '@/lib/format';
 import { qk } from '@/lib/queries';
@@ -269,12 +270,19 @@ export function QuizResults({ attempt }: { attempt: QuizAttempt }) {
 
   return (
     <div className={cn('mx-auto max-w-3xl px-4 py-6 sm:px-6 max-sm:pt-3', PHONE_FIT)}>
-      <Link
-        href="/quiz"
-        className="inline-flex items-center gap-1 text-sm text-fg-muted hover:text-fg max-sm:min-h-10"
-      >
-        <ArrowLeftIcon className="size-3.5" /> Quizzes
-      </Link>
+      <div className="flex items-center gap-3">
+        <Link
+          href="/quiz"
+          className="inline-flex items-center gap-1 text-sm text-fg-muted hover:text-fg max-sm:min-h-10"
+        >
+          <ArrowLeftIcon className="size-3.5" /> Quizzes
+        </Link>
+        <DeleteAttemptButton
+          attempt={attempt}
+          topics={attempt.topics.map(titleOf).join(', ')}
+          className="ml-auto"
+        />
+      </div>
 
       <section
         aria-labelledby="results-heading"

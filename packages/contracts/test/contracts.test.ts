@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
+  ClearQuizHistoryResponse,
+  DeleteAttemptResponse,
   generateScaffold,
   JudgeJob,
   JudgeProgress,
@@ -8,6 +10,7 @@ import {
   limitsForTests,
   ProblemContent,
   ProblemProgress,
+  QuizAttemptSummary,
 } from '../src';
 
 const fixture = (name: string) =>
@@ -45,6 +48,34 @@ describe('problem progress', () => {
       ProblemProgress.safeParse([{ slug: 'Two Sum', status: 'solved', lastActivityAt: at }])
         .success,
     ).toBe(false);
+  });
+});
+
+describe('deleting history', () => {
+  it('attempt summaries count their answers, 0 when an older API leaves it out', () => {
+    const base = {
+      id: '00000000-0000-4000-8000-000000000001',
+      mode: 'exam',
+      topics: ['cpp'],
+      status: 'active',
+      score: null,
+      startedAt: '2026-11-20T10:00:00.000Z',
+      finishedAt: null,
+      questionCount: 10,
+    };
+    expect(QuizAttemptSummary.parse(base).answeredCount).toBe(0);
+    expect(QuizAttemptSummary.parse({ ...base, answeredCount: 4 }).answeredCount).toBe(4);
+  });
+
+  it('delete responses', () => {
+    expect(DeleteAttemptResponse.safeParse({ attemptId: 'nope' }).success).toBe(false);
+    expect(ClearQuizHistoryResponse.parse({ attempts: 2, bankAnswers: 0 })).toEqual({
+      attempts: 2,
+      bankAnswers: 0,
+    });
+    expect(ClearQuizHistoryResponse.safeParse({ attempts: -1, bankAnswers: 0 }).success).toBe(
+      false,
+    );
   });
 });
 
