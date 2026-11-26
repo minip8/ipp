@@ -85,6 +85,11 @@ export function markdownMathErrors(text: string, track: QuizTrack): string[] {
       const to = node.position?.end.offset;
       if (node.type === 'inlineMath' && from !== undefined && to !== undefined) {
         const raw = text.slice(from, to);
+        if (raw.includes('\n')) {
+          // One-line summaries (the bank's rows) cut a prompt at its first line break.
+          errors.push(`${excerpt(raw)} runs over a line break: keep an inline formula on one line`);
+          return;
+        }
         if (!isMathSpan(raw, text.charAt(to))) {
           errors.push(
             `${excerpt(raw)} is shown as plain text, not as a formula: no space just inside the dollars, and no digit straight after the closing one`,

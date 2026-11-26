@@ -1,0 +1,313 @@
+# Odds, margins and arbitrage: implied probabilities, the bookmaker's overround, value bets, and sure-win books.
+- id: bmm-odds-001
+  topic: betting-market-making
+  subtopic: Odds, margins and arbitrage
+  type: multiple
+  difficulty: easy
+  tags: [odds, implied-probability, value-bet]
+  prompt: |
+    You believe a horse wins with probability $0.3$. Bookmakers offer the fractional odds below
+    ("$a/b$" means a winning stake of $b$ returns the stake plus a profit of $a$). At which prices does
+    a bet on the horse have **positive** expected profit? Select all that apply.
+  choices:
+    - { id: a, text: "2/1" }
+    - { id: b, text: "9/4" }
+    - { id: c, text: "7/3" }
+    - { id: d, text: "5/2" }
+    - { id: e, text: "11/4" }
+  answer: [d, e]
+  explanation: |
+    At odds $a/b$, \$1 staked wins $a/b$ or loses 1, so the expected profit is
+    $0.3 \cdot \tfrac{a}{b} - 0.7$, positive exactly when $\tfrac ab > \tfrac73$. Equivalently, the odds
+    imply a probability of $\tfrac{b}{a + b}$, and you want that below your $0.3$:
+
+    - 2/1 implies $\tfrac13$, 9/4 implies $\tfrac{4}{13} \approx 0.308$: both above 0.3, negative.
+    - 7/3 implies exactly $0.3$: zero expected profit, not positive.
+    - 5/2 implies $\tfrac27 \approx 0.286$ and 11/4 implies $\tfrac{4}{15} \approx 0.267$: value bets.
+
+    The usual mistakes are reading $a/b$ itself as a probability, or forgetting that the stake comes
+    back on a win (using $\tfrac{b}{a}$ instead of $\tfrac{b}{a+b}$). Including 7/3 confuses "fair"
+    with "favourable".
+  source: { name: "Fractional odds and value bets (e.g. Wikipedia, Mathematics of bookmaking)", url: "https://en.wikipedia.org/wiki/Mathematics_of_bookmaking" }
+
+- id: bmm-odds-002
+  topic: betting-market-making
+  subtopic: Odds, margins and arbitrage
+  type: numeric
+  difficulty: medium
+  tags: [odds, overround, implied-probability]
+  prompt: |
+    A bookmaker prices a two-outcome match (no draw) at decimal odds of $1.80$ on team A and $2.10$ on
+    team B (decimal odds are the total return per unit staked, stake included). Removing the
+    bookmaker's margin by scaling both implied probabilities by the same factor so that they add up to
+    1, what probability does the price give team A?
+  answer: 7/13
+  answerText: |-
+    $7/13 \approx 0.538$
+  hints:
+    - The implied probability of decimal odds $d$ is $1/d$.
+    - Add the two implied probabilities. Why is the total more than 1?
+  followUps:
+    - What is the bookmaker's overround here, and what does it earn on a balanced book?
+    - Bookmakers often shade longshots more than favourites. How would that change your estimate of A's probability?
+  explanation: |
+    The implied probabilities are $\tfrac{1}{1.8} = \tfrac59$ and $\tfrac{1}{2.1} = \tfrac{10}{21}$. They add
+    up to $\tfrac{65}{63} \approx 1.032$: the extra 3.2% is the overround, the bookmaker's margin.
+    Scaling down proportionally,
+
+    $$P(A) = \frac{5/9}{5/9 + 10/21} = \frac{35}{65} = \frac{7}{13} \approx 0.538.$$
+
+    The common wrong answer is $0.556$, the raw implied probability, which still contains the margin.
+    Proportional scaling is the simplest convention; in practice margins are often loaded more on the
+    longshot (the favourite-longshot bias), so other methods give slightly different answers, and an
+    interviewer will accept any method you state.
+  source: { name: "Bookmaker margin (e.g. Wikipedia, Mathematics of bookmaking)", url: "https://en.wikipedia.org/wiki/Mathematics_of_bookmaking" }
+
+- id: bmm-odds-003
+  topic: betting-market-making
+  subtopic: Odds, margins and arbitrage
+  type: numeric
+  difficulty: easy
+  tags: [arbitrage, odds, dutching]
+  prompt: |
+    A tennis match has two possible outcomes. Bookmaker 1 offers decimal odds of $2.20$ on player A,
+    and bookmaker 2 offers $2.00$ on player B (decimal odds are the total return per unit staked). You
+    have \$2,100 to stake in total and split it between the two bets so that you receive the same
+    amount whoever wins. What is your guaranteed profit?
+  answer: 100
+  unit: dollars
+  explanation: |
+    Stake on each outcome in proportion to its implied probability, $\tfrac{1}{2.2} = \tfrac{5}{11}$ and
+    $\tfrac12$. These add up to $\tfrac{21}{22} < 1$, which is what makes the arbitrage possible. The
+    equal return is the total stake divided by that sum:
+
+    $$\text{return} = \frac{2100}{21/22} = 2200, \qquad \text{profit} = 100.$$
+
+    Concretely: \$1,000 on A returns $1000 \times 2.2 = 2200$, and \$1,100 on B returns
+    $1100 \times 2 = 2200$.
+
+    A common slip is to split the stake equally, \$1,050 each, which returns \$2,310 or \$2,100: a profit
+    of \$210 or nothing, not a guaranteed profit. In real betting, arbitrages are small and short-lived,
+    and bookmakers limit accounts that take them.
+  source: { name: "Arbitrage across bookmakers (e.g. Wikipedia, Mathematics of bookmaking)", url: "https://en.wikipedia.org/wiki/Mathematics_of_bookmaking" }
+
+- id: bmm-odds-004
+  topic: betting-market-making
+  subtopic: Odds, margins and arbitrage
+  type: numeric
+  difficulty: medium
+  tags: [arbitrage, dutching, odds]
+  prompt: |
+    For a football match (home win, draw, away win), the best decimal odds available, each from a
+    different bookmaker, are $2.50$ on the home win, $3.60$ on the draw and $4.00$ on the away win
+    (decimal odds are the total return per unit staked). You stake \$1,000 in total, split across the
+    three outcomes so that you receive the same amount whatever the result. What is your guaranteed
+    profit?
+  answer: 13000/167
+  answerText: |-
+    $13000/167 \approx 77.84$ dollars
+  unit: dollars
+  hints:
+    - What return do you get on each bet per dollar staked, and how must the stakes compare for the returns to be equal?
+    - Add up the implied probabilities $1/d$ of the three prices.
+  followUps:
+    - How much do you stake on the draw?
+    - One bookmaker cancels your bet after the others are placed. What is your risk now, and what would you do?
+  explanation: |
+    Equal returns $R$ need a stake of $R/d_i$ on outcome $i$, so the total stake is
+    $R \sum_i 1/d_i$. Here
+
+    $$\sum_i \frac{1}{d_i} = \frac{1}{2.5} + \frac{1}{3.6} + \frac{1}{4} = 0.4 + 0.2\overline{7} + 0.25 = \frac{167}{180} < 1,$$
+
+    so $R = 1000 \cdot \tfrac{180}{167} \approx 1077.84$ and the profit is $\tfrac{13000}{167} \approx 77.84$.
+    The stakes are about \$431.14, \$299.40 and \$269.46.
+
+    The common slip is to compute the profit as $1000 \times (1 - \tfrac{167}{180}) \approx 72.22$, which
+    measures the gap against the payout instead of against the stake. Dutching like this is only riskless
+    if every bet stands; a voided leg leaves you with an open position.
+  source: { name: "Dutching a three-way market (e.g. Wikipedia, Mathematics of bookmaking)", url: "https://en.wikipedia.org/wiki/Mathematics_of_bookmaking" }
+
+- id: bmm-odds-005
+  topic: betting-market-making
+  subtopic: Odds, margins and arbitrage
+  type: numeric
+  difficulty: medium
+  tags: [arbitrage, lay-betting, exchange]
+  prompt: |
+    A bookmaker lets you **back** a horse at decimal odds of $3.0$ (a \$100 stake returns \$300 if it
+    wins). On a betting exchange you can **lay** the same horse at $2.8$: laying with a stake $L$ means
+    you collect $L$ if the horse loses and pay $1.8L$ if it wins. There is no commission. You back for
+    \$100 and choose the lay stake so that your profit is the same either way. What is that profit?
+  answer: 50/7
+  answerText: |-
+    $50/7 \approx 7.14$ dollars
+  unit: dollars
+  hints:
+    - Write your total profit if the horse wins and if it loses, as functions of $L$.
+    - Set them equal.
+  followUps:
+    - What lay stake did you use?
+    - With a 5% commission on net exchange winnings, is it still an arbitrage?
+  explanation: |
+    If the horse wins you gain 200 on the back bet and pay $1.8L$ on the lay; if it loses you lose 100
+    and collect $L$. Equalising,
+
+    $$200 - 1.8L = L - 100 \quad\Longrightarrow\quad L = \frac{300}{2.8} = \frac{750}{7} \approx 107.14,$$
+
+    and the profit is $L - 100 = \tfrac{50}{7} \approx 7.14$ either way. In general backing at $b$ and
+    laying at $\ell < b$ locks in $100\,(b/\ell - 1)$ per \$100 backed.
+
+    The common mistake is to lay \$100, the same stake, which wins \$200 or \$0 rather than a sure profit;
+    another is to think a lay at a *lower* price than you backed at must lose money, when laying is the
+    mirror image of backing and a lower lay price is exactly what you want.
+  source: { name: "Back-and-lay arbitrage on betting exchanges (common betting example)" }
+
+- id: bmm-odds-006
+  topic: betting-market-making
+  subtopic: Odds, margins and arbitrage
+  type: numeric
+  difficulty: easy
+  tags: [arbitrage, binary-contract, prediction-market]
+  prompt: |
+    Two exchanges list contracts that pay \$100 at expiry if the event happens, and nothing otherwise.
+    Exchange X shows **"Team wins"** at 55 bid, 60 offered. Exchange Y shows **"Team does not win"** at
+    47 bid, 50 offered. Prices are in dollars per contract and the two events are complementary. Per
+    pair of contracts, what riskless profit can you lock in?
+  answer: 2
+  unit: dollars
+  explanation: |
+    Exactly one of the two contracts pays \$100. Selling one of each collects the two bids,
+    $55 + 47 = 102$, and you will pay out exactly 100, so you keep \$2 per pair whatever happens.
+
+    Buying one of each would cost the two offers, $60 + 50 = 110$, for a sure 100: a loss of 10. The
+    pair of markets is consistent only if the "wins" bid plus the "does not win" bid is at most 100
+    and the two offers add up to at least 100. The common mistake is to compare mids
+    ($57.5 + 48.5 = 106$) and conclude there is an arbitrage worth 6; you trade at the bid or the offer,
+    not at the mid.
+  source: { name: "Arbitrage between complementary binary contracts (common trading-interview idea)" }
+
+- id: bmm-odds-007
+  topic: betting-market-making
+  subtopic: Odds, margins and arbitrage
+  type: multiple
+  difficulty: hard
+  tags: [dutch-book, arbitrage, coherence]
+  prompt: |
+    In each case a counterparty quotes a single price for contracts that pay \$1 if the stated event
+    happens, and will buy or sell any number of each contract at that price. In which cases can you
+    make a guaranteed profit? Select all that apply.
+  choices:
+    - { id: a, text: "Exactly one of A and B will happen. A is priced at 0.45 and B at 0.50." }
+    - { id: b, text: "Exactly one of A, B and C will happen. They are priced at 0.40, 0.35 and 0.30." }
+    - { id: c, text: "'Rain tomorrow' is priced at 0.30 and 'rain and wind tomorrow' at 0.40." }
+    - { id: d, text: "A and B may both happen. A is priced at 0.30, B at 0.40 and 'A or B' at 0.60." }
+    - { id: e, text: "'A' is priced at 0.60 and 'not A' at 0.40." }
+  answer: [a, b, c]
+  explanation: |
+    A set of prices can be exploited exactly when no single probability distribution reproduces them
+    all (de Finetti's Dutch book argument).
+
+    - **a:** buy both for 0.95; exactly one pays 1. Profit 0.05.
+    - **b:** the prices add up to 1.05; sell all three, collect 1.05, pay out exactly 1. Profit 0.05.
+    - **c:** "rain and wind" is a subset of "rain", so it cannot be worth more. Sell "rain and wind" at
+      0.40 and buy "rain" at 0.30: you collect 0.10 now, and whenever you owe on the first contract the
+      second pays you. Profit at least 0.10.
+    - **d:** consistent: with $P(A \text{ and } B) = 0.10$, inclusion-exclusion gives
+      $0.3 + 0.4 - 0.1 = 0.6$. No arbitrage.
+    - **e:** the prices add up to exactly 1, which is consistent; trading them makes nothing.
+
+    The usual mistakes are calling d an arbitrage because $0.3 + 0.4 \ne 0.6$ (that equality only
+    holds for exclusive events) and missing c, which does not look like a sum at all.
+  source: { name: "Dutch book argument (de Finetti); common interview framing of coherent prices" }
+
+- id: bmm-odds-008
+  topic: betting-market-making
+  subtopic: Odds, margins and arbitrage
+  type: short
+  difficulty: medium
+  tags: [bookmaking, overround, risk-management]
+  prompt: |
+    A bookmaker offers decimal odds of $1.91$ on each side of a match that is, in truth, a 50/50
+    contest. Explain how the bookmaker makes money. Then suppose \$2,000 has been staked in total,
+    \$1,600 on side A and \$400 on side B. What is the bookmaker's position, and what might they do
+    about it?
+  reference: |
+    Each side's implied probability is $1/1.91 \approx 0.5236$, so the book adds up to about 1.047: an
+    overround of about 4.7%. On a balanced book, say \$1,000 a side, the bookmaker pays out
+    $1000 \times 1.91 = 1910$ whichever side wins and keeps \$90, 4.5% of the money taken, without
+    caring about the result.
+
+    With \$1,600 on A and \$400 on B: if A wins they pay $1600 \times 1.91 = 3056$, a loss of \$1,056; if B
+    wins they pay \$764 and keep \$1,236. At a true 50/50 the expectation is still $+90$, but the
+    outcome now swings by more than \$2,000; the book is a bet on B.
+
+    What to do: shorten A's odds and lengthen B's to attract money on B and slow it on A (move the
+    line); lay off part of the A exposure with another bookmaker or on an exchange; or, if they
+    believe the A money is uninformed, keep some of the risk for the extra expected value. If the A
+    money comes from sharp bettors, it is information that the 50/50 is wrong, and the price should
+    move for that reason too.
+  keyPoints:
+    - The implied probabilities add up to more than 1 (about 1.047), and that overround is the margin
+    - A balanced book earns a fixed amount (about \$90 on \$2,000, 4.5%) whatever the result
+    - Computes the unbalanced outcomes, about a \$1,056 loss if A wins and a \$1,236 gain if B wins
+    - Proposes moving the odds and/or laying off the exposure
+    - Distinguishes uninformed flow (risk to manage) from informed flow (a signal to move the price)
+  hints:
+    - What probability does 1.91 imply? What do the two sides add up to?
+    - Work out what the bookmaker pays out if A wins and if B wins.
+  followUps:
+    - At what odds on each side would the current book be balanced, assuming no more bets arrive?
+    - Why might a bookmaker deliberately let a book stay unbalanced?
+    - How is this like a market maker's position after being lifted many times?
+  explanation: |
+    Candidates usually get the margin but stop there. The interviewer wants the second half: a
+    bookmaker is a market maker whose risk comes from unbalanced flow, and the tools are the same
+    ones a trader uses (move the price, hedge elsewhere, decide whether the flow is informed). Real
+    bookmakers rarely balance perfectly; they manage exposure and limit the stakes of bettors who
+    look informed.
+  source: { name: "Bookmaking and the overround (e.g. Wikipedia, Mathematics of bookmaking)", url: "https://en.wikipedia.org/wiki/Mathematics_of_bookmaking" }
+
+- id: bmm-odds-009
+  topic: betting-market-making
+  subtopic: Odds, margins and arbitrage
+  type: short
+  difficulty: medium
+  tags: [parlay, overround, expectation]
+  prompt: |
+    A bookmaker prices many independent 50/50 events at decimal odds of $1.90$ on each side. A
+    **parlay** (accumulator) on several events pays the product of their odds if every leg wins, and
+    nothing otherwise. Compare a bettor's expected return per dollar on a single bet, a two-leg parlay
+    and a five-leg parlay, and explain why bookmakers like parlays. Is there a case where a bettor
+    should prefer them?
+  reference: |
+    A single bet returns $0.5 \times 1.90 = 0.95$ per dollar: an expected loss of 5%.
+
+    A two-leg parlay pays $1.90^2 = 3.61$ with probability $\tfrac14$: expected return $0.9025$, a loss
+    of 9.75%. A five-leg parlay pays $1.90^5 \approx 24.76$ with probability $\tfrac{1}{32}$: expected
+    return $0.95^5 \approx 0.774$, a loss of about 22.6%. In general the expected return is $0.95^n$:
+    the margin compounds leg by leg, because the parlay is the same as rolling the whole return of one
+    bet into the next.
+
+    So bookmakers earn a much bigger margin per dollar on parlays, and the big headline payout attracts
+    bettors. The compounding cuts both ways: a bettor who truly has an edge on each leg (say each leg
+    wins with probability 0.55, worth $1.045$ per dollar) gets $1.045^n$ from a parlay. Bookmakers also
+    refuse or reprice parlays whose legs are correlated (for example a team to win and its star player
+    to score), because the product of the odds would then underprice the joint event.
+  keyPoints:
+    - Single bet expected return 0.95 (5% loss)
+    - Two-leg parlay 0.9025 and five-leg about 0.774, so expected return is 0.95 to the power n
+    - The margin compounds because each leg's whole return is staked on the next
+    - A bettor with a genuine edge on every leg compounds that edge instead
+    - Correlated legs break the product formula, so bookmakers restrict them
+  hints:
+    - What is the probability that all $n$ legs win, and what does the parlay pay then?
+    - Write the expected return as a product, one factor per leg.
+  followUps:
+    - Two legs are positively correlated, each 50/50 on its own, and win together with probability 0.3. What is a two-leg parlay at 3.61 worth to the bettor?
+    - How should a Kelly bettor size a parlay compared with the single bets?
+  explanation: |
+    The quick insight is that a parlay is a sequence of bets with everything let ride, so the expected
+    return multiplies. Candidates often add the margins (5% per leg, so 10% and 25%) instead of
+    multiplying, which is close but misses why it works. The correlated-legs point is what a trading
+    interviewer pushes on, since it is the same as pricing a basket from its pieces.
+  source: { name: "Accumulator bets and compounding margin (common betting example)" }

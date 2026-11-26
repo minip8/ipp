@@ -1,0 +1,255 @@
+# Regularisation and model complexity: the bias-variance trade-off, ridge and lasso, regularisation as a prior, optimism of the training error, and why simple models often win on noisy financial data.
+- id: stat-ml-001
+  topic: statistics
+  subtopic: Regularisation and model complexity
+  type: short
+  difficulty: medium
+  tags: [bias-variance, overfitting, model-complexity]
+  prompt: |
+    Explain the bias-variance trade-off. Write down the decomposition of expected prediction error
+    under squared loss, and say how each term moves as a model becomes more flexible.
+  reference: |
+    For $y = f(x) + \varepsilon$ with $E[\varepsilon] = 0$, $\operatorname{Var}(\varepsilon) = \sigma^2$, and a
+    fitted model $\hat f$ that depends on a random training set, the expected squared error at a new
+    point $x$ is
+
+    $$E\left[(y - \hat f(x))^2\right] = \underbrace{\left(f(x) - E[\hat f(x)]\right)^2}_{\text{bias}^2} + \underbrace{\operatorname{Var}\left(\hat f(x)\right)}_{\text{variance}} + \underbrace{\sigma^2}_{\text{irreducible}}.$$
+
+    More flexibility (more features, deeper trees, smaller $k$ in nearest neighbours, weaker
+    regularisation) lowers the bias, since the model can follow $f$ more closely, but raises the
+    variance, since the fit follows the noise in the particular training set. Test error is therefore
+    U-shaped in complexity while training error keeps falling. The best complexity depends on the
+    amount of data and on the signal-to-noise ratio: with little data or a lot of noise, the variance
+    term dominates and simpler or more regularised models win. Regularisation, bagging and early
+    stopping all trade a little bias for a large reduction in variance.
+  keyPoints:
+    - "Expected error = bias squared + variance + irreducible noise"
+    - Defines bias and variance with respect to the randomness of the training set
+    - More flexibility lowers bias and raises variance, so test error is U-shaped while training error falls
+    - The optimum depends on sample size and noise level
+    - Names a way to control variance, such as regularisation, bagging or early stopping
+  hints:
+    - Add and subtract $E[\hat f(x)]$ inside the square.
+    - What is random in $\hat f(x)$?
+    - What happens to training error and to test error as you add parameters?
+  followUps:
+    - How does the trade-off look for $k$-nearest neighbours as $k$ varies?
+    - What is "double descent", and does it contradict the U-shape?
+  explanation: |
+    Most candidates can draw the U-curve. The decomposition and the statement that bias and variance
+    are taken over the random training set separate a precise answer from a slogan, and linking the
+    optimum to the signal-to-noise ratio sets up why finance favours simple models.
+  source: { name: "Standard (Hastie, Tibshirani and Friedman, The Elements of Statistical Learning)" }
+
+- id: stat-ml-002
+  topic: statistics
+  subtopic: Regularisation and model complexity
+  type: single
+  difficulty: easy
+  tags: [lasso, ridge, sparsity]
+  prompt: |
+    Which penalty can set some regression coefficients exactly to zero, and why?
+  choices:
+    - { id: a, text: "The lasso (L1) penalty, because the L1 constraint region has corners on the axes, where the optimum often lands" }
+    - { id: b, text: "The ridge (L2) penalty, because squaring makes small coefficients even smaller" }
+    - { id: c, text: "Both, as long as the penalty weight is large enough" }
+    - { id: d, text: "Neither; only best-subset selection gives exact zeros" }
+  answer: a
+  explanation: |
+    Written as a constraint, the lasso restricts $\sum_j |\beta_j| \le t$, a diamond (a cross-polytope)
+    whose corners lie on the axes; the elliptical contours of the squared error usually first touch it at
+    a corner or an edge, where some coefficients are 0. Algebraically, with an orthonormal design the
+    lasso soft-thresholds each OLS coefficient, $\operatorname{sign}(b)\max(|b| - \lambda, 0)$, which is
+    exactly zero for small $|b|$.
+
+    - **b**: ridge shrinks every coefficient proportionally ($b/(1 + \lambda)$ for an orthonormal design);
+      the gradient of $\beta^2$ vanishes at 0, so nothing is pushed all the way to zero.
+    - **c**: ridge coefficients tend to zero as $\lambda \to \infty$ but are never exactly zero.
+    - **d**: the lasso is the standard convex alternative to best-subset selection precisely because
+      it gives exact zeros.
+  source: { name: "Tibshirani (1996), the lasso" }
+
+- id: stat-ml-003
+  topic: statistics
+  subtopic: Regularisation and model complexity
+  type: multiple
+  difficulty: medium
+  tags: [ridge, lasso, map, standardisation]
+  prompt: |
+    For a linear regression with ridge penalty $\lambda\|\beta\|_2^2$ or lasso penalty $\lambda\|\beta\|_1$
+    (intercept not penalised), which statements are true? Select all that apply.
+  choices:
+    - { id: a, text: "Ridge regression is the MAP estimate under independent zero-mean normal priors on the coefficients and normal errors" }
+    - { id: b, text: "The lasso is the MAP estimate under independent zero-mean Laplace (double-exponential) priors and normal errors" }
+    - { id: c, text: "Ridge results do not depend on the units in which the features are measured" }
+    - { id: d, text: "With two identical features, ridge gives them equal coefficients" }
+    - { id: e, text: "Increasing the penalty weight always lowers out-of-sample error" }
+    - { id: f, text: "Ridge coefficient estimates are biased towards zero" }
+  answer: [a, b, d, f]
+  explanation: |
+    - **a, b, true.** The negative log posterior is $\frac{1}{2\sigma^2}\|y - X\beta\|^2$ plus
+      $\frac{1}{2\tau^2}\|\beta\|_2^2$ for a normal prior or $\frac1b\|\beta\|_1$ for a Laplace prior, so
+      $\lambda$ is the ratio of noise to prior scale.
+    - **c, false.** The penalty treats a coefficient of 1 per dollar the same as 1 per cent, so features
+      are standardised first; scaling a feature up makes its coefficient smaller and less penalised.
+    - **d, true.** By symmetry and strict convexity the ridge solution splits the weight equally between
+      identical columns; their sum equals the ridge coefficient of a single copy with penalty
+      $\lambda/2$. (The lasso has no unique split: any division with the same sum and signs is optimal.)
+    - **e, false.** Too much penalty removes signal: test error is U-shaped in $\lambda$, which is why it
+      is chosen by validation.
+    - **f, true.** Shrinkage is a deliberate bias, accepted for lower variance.
+
+    The usual mistakes are c (forgetting to standardise) and e (treating regularisation as free).
+  source: { name: "Standard (Hastie, Tibshirani and Friedman, The Elements of Statistical Learning)" }
+
+- id: stat-ml-004
+  topic: statistics
+  subtopic: Regularisation and model complexity
+  type: numeric
+  difficulty: easy
+  tags: [ridge, shrinkage, orthonormal-design]
+  prompt: |
+    The columns of the design matrix are orthonormal ($X^\top X = I$), and the OLS coefficient on one
+    feature is 2.0. Ridge regression minimises $\|y - X\beta\|^2 + \lambda\|\beta\|^2$ with
+    $\lambda = 0.25$. What is the ridge coefficient on that feature?
+  answer: 8/5
+  answerText: |-
+    $\frac{2.0}{1 + 0.25} = 1.6$
+  explanation: |
+    The ridge solution is $(X^\top X + \lambda I)^{-1}X^\top y$. With $X^\top X = I$ and
+    $X^\top y = \hat\beta_{\text{OLS}}$, this is
+
+    $$\hat\beta_{\text{ridge}} = \frac{\hat\beta_{\text{OLS}}}{1 + \lambda} = \frac{2.0}{1.25} = 1.6.$$
+
+    Every coefficient shrinks by the same factor and none becomes zero. The lasso with the same
+    $\lambda$ (and objective $\frac12\|y - X\beta\|^2 + \lambda\|\beta\|_1$) would instead subtract:
+    $2.0 - 0.25 = 1.75$. The common slips are 1.75 (lasso arithmetic), 1.5 (subtracting
+    $\lambda \times 2$), and $2/(1 + 0.25^2)$ (squaring the penalty weight).
+  source: { name: "Standard (Hastie, Tibshirani and Friedman, The Elements of Statistical Learning)" }
+
+- id: stat-ml-005
+  topic: statistics
+  subtopic: Regularisation and model complexity
+  type: short
+  difficulty: hard
+  tags: [overfitting, signal-to-noise, non-stationarity, simple-models]
+  prompt: |
+    Why does a simple, heavily regularised model (say, a linear model on a few standardised signals)
+    often beat a flexible one (a deep network or a large boosted tree ensemble) when predicting
+    financial returns, even though the flexible model can represent the simple one?
+  reference: |
+    - **Low signal-to-noise:** return predictability is tiny (out-of-sample $R^2$ of a fraction of a
+      per cent is good), so the variance of a flexible fit swamps its lower bias. Flexible models fit
+      noise easily and the noise does not repeat.
+    - **Small effective sample:** daily data over 20 years is 5,000 rows, strongly dependent across
+      assets and time; overlapping labels and correlated stocks reduce the independent information
+      further.
+    - **Non-stationarity:** relationships change with regimes, crowding and market structure. A complex
+      model fits the idiosyncrasies of the training period, which become wrong; simple models with
+      economically motivated signals degrade more gracefully.
+    - **Selection and validation:** flexible models have many hyperparameters, so validation sets are
+      reused and overfitted; honest time-series validation is short and noisy.
+    - **Costs and robustness:** complex models often trade more and react to noise, and they are harder
+      to monitor and debug.
+
+    Flexible models do win where data are plentiful and signal is richer: high-frequency order-book
+    data, alternative data with real nonlinearity, or very large cross-sections, especially with strong
+    regularisation, ensembling and careful validation.
+  keyPoints:
+    - Low signal-to-noise means the variance of a flexible fit dominates the bias it removes
+    - The effective sample size is small because of dependence across time and assets
+    - Non-stationarity means fitted details do not persist
+    - Hyperparameter search overfits short, noisy validation sets
+    - Notes where flexible models do help, e.g. high-frequency data or large data sets with real nonlinearity
+  hints:
+    - In the bias-variance trade-off, which term dominates when the noise is large?
+    - How many independent observations does 20 years of daily data really give you?
+    - Do the relationships you fit stay the same over time?
+  followUps:
+    - How would you regularise a gradient-boosted model for return prediction?
+    - What evidence would convince you that a complex model's extra performance is real?
+  explanation: |
+    This tests judgement more than knowledge. The bias-variance argument with low signal-to-noise is
+    the core; non-stationarity is the finance-specific point that many candidates from machine learning
+    miss. A balanced answer says where flexible models do pay off.
+  source: { name: "Common quant-research interview discussion (e.g. Israel, Kelly and Moskowitz, Can Machines Learn Finance?, 2020)" }
+
+- id: stat-ml-006
+  topic: statistics
+  subtopic: Regularisation and model complexity
+  type: numeric
+  difficulty: hard
+  tags: [optimism, training-error, degrees-of-freedom]
+  prompt: |
+    You fit OLS with 10 parameters (including the intercept) to 50 observations. The true model is
+    linear in the same regressors, with i.i.d. noise of variance 1, and the regressors are held fixed.
+    What is the expected difference between the mean squared error on fresh noise at the same regressor
+    values and the in-sample mean squared residual?
+  answer: 2/5
+  answerText: |-
+    $\frac{2p\sigma^2}{n} = \frac{2 \cdot 10}{50} = 0.4$
+  hints:
+    - The in-sample mean squared residual is the residual sum of squares over $n$. What is its expectation?
+    - The fitted values at the same points are noisy too. What is their average variance?
+  followUps:
+    - What are the two expected errors separately?
+    - How does this optimism relate to Mallows' $C_p$ and AIC?
+  explanation: |
+    Let $H$ be the hat matrix, a projection of rank $p = 10$. The residuals are $(I - H)\varepsilon$, so
+    the expected in-sample mean squared residual is $\frac{(n - p)\sigma^2}{n} = \frac{40}{50} = 0.8$.
+
+    At the same regressor values with fresh noise $\varepsilon'$, the error is $\varepsilon' - H\varepsilon$, with
+    expected mean square $\sigma^2 + \frac{p\sigma^2}{n} = 1.2$, since the fitted values have total variance
+    $\operatorname{tr}(H)\sigma^2 = p\sigma^2$. The difference, the "optimism" of the training error, is
+
+    $$\frac{2p\sigma^2}{n} = \frac{2 \cdot 10 \cdot 1}{50} = 0.4.$$
+
+    Training error understates fresh-sample error twice over: the fit absorbs $p\sigma^2/n$ of the noise,
+    and the fitted values carry $p\sigma^2/n$ of estimation noise of their own. The usual partial answers
+    are 0.2 (only one of the two effects) and 0 (assuming OLS is unbiased so there is no gap). Mallows'
+    $C_p$ and AIC add exactly this $2p\sigma^2/n$ to the training error.
+  source: { name: "Optimism of the training error (Hastie, Tibshirani and Friedman, The Elements of Statistical Learning)" }
+
+- id: stat-ml-007
+  topic: statistics
+  subtopic: Regularisation and model complexity
+  type: short
+  difficulty: medium
+  tags: [lasso, ridge, elastic-net, correlated-features]
+  prompt: |
+    You have 30 momentum signals built with overlapping look-back windows, so they are highly
+    correlated with each other. Would you combine them with ridge regression or with the lasso, and
+    why?
+  reference: |
+    Ridge, or an elastic net leaning towards ridge.
+
+    - **Lasso with correlated features** tends to pick one or a few of a correlated group more or less
+      arbitrarily and set the rest to zero. Which ones it picks changes from sample to sample, so the
+      model is unstable, and the selection reflects noise rather than which window is "right".
+    - **Ridge** spreads the weight across correlated features (identical features get equal weight),
+      averaging their noise. That is what you want when the signals are noisy measurements of one
+      underlying effect: the result is close to using their average.
+    - **Elastic net** combines the two: the L2 part keeps correlated groups together, the L1 part can
+      still drop irrelevant groups.
+
+    Alternatives with the same spirit: average the signals or take their first principal component
+    first, then fit. In all cases standardise the signals and choose the penalty by time-series
+    (walk-forward or purged) validation. Lasso is the better choice when you believe only a few of many
+    roughly independent features matter.
+  keyPoints:
+    - Lasso picks arbitrarily among correlated features and is unstable across samples
+    - Ridge spreads weight across correlated features and averages their noise
+    - Elastic net as a compromise that keeps groups together
+    - Mentions averaging or principal components as an alternative
+    - Standardise and choose the penalty by time-aware validation
+  hints:
+    - If two features are nearly identical, how does each penalty divide the weight between them?
+    - Would the lasso pick the same signals if you refitted on a different five years?
+  followUps:
+    - When would you prefer the lasso?
+    - How would you check whether the 30 signals really contain more than one independent idea?
+  explanation: |
+    The behaviour of the lasso in correlated groups is the key fact (Zou and Hastie's motivation for the
+    elastic net). Strong candidates also suggest reducing the 30 signals to a few principal components or
+    an average before any regression, which is what many practitioners do.
+  source: { name: "Zou and Hastie (2005), the elastic net" }

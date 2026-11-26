@@ -1,0 +1,294 @@
+# Optimisation, convexity and inequalities: first- and second-order conditions, Lagrange multipliers, AM-GM, Cauchy-Schwarz.
+- id: lac-optim-001
+  topic: algebra-calculus
+  subtopic: Optimisation, convexity and inequalities
+  type: single
+  difficulty: easy
+  tags: [inequalities, exponential, monotonicity]
+  prompt: |
+    Without a calculator: which is larger, $e^\pi$ or $\pi^e$?
+  choices:
+    - { id: a, text: '$e^\pi$' }
+    - { id: b, text: '$\pi^e$' }
+    - { id: c, text: 'They are equal' }
+  answer: a
+  explanation: |
+    Take logarithms and divide by $e\pi$: comparing $e^\pi$ with $\pi^e$ is comparing $\frac{\ln e}{e}$
+    with $\frac{\ln \pi}{\pi}$. The function $f(x) = \frac{\ln x}{x}$ has $f'(x) = \frac{1 - \ln x}{x^2}$, so
+    it increases up to $x = e$ and decreases after; its maximum is at $e$. Hence
+    $\frac{\ln\pi}{\pi} < \frac1e$, i.e. $e\ln\pi < \pi$, i.e. $\pi^e < e^\pi$.
+
+    A one-line alternative: $e^x > 1 + x$ for $x \ne 0$; with $x = \pi/e - 1$ this gives $e^{\pi/e - 1} > \pi/e$,
+    so $e^{\pi/e} > \pi$, and raising to the power $e$ gives $e^\pi > \pi^e$. (The values are about 23.14
+    and 22.46.)
+
+    b comes from a rule of thumb such as "the larger base wins", which fails near $e$. The same
+    argument shows that $a^b > b^a$ whenever $e \le a < b$.
+  source: { name: "Zhou, A Practical Guide to Quantitative Finance Interviews (calculus chapter)" }
+
+- id: lac-optim-002
+  topic: algebra-calculus
+  subtopic: Optimisation, convexity and inequalities
+  type: numeric
+  difficulty: easy
+  tags: [minimum-variance, two-assets, first-order-condition]
+  prompt: |
+    Two assets have uncorrelated returns with volatilities 20% and 30%. You invest a fraction $w$ of
+    your capital in the first and $1 - w$ in the second. What value of $w$ minimises the variance of
+    the portfolio's return?
+  answer: 9/13
+  answerText: |-
+    $9/13 \approx 0.692$
+  explanation: |
+    With $\sigma_1 = 0.2$ and $\sigma_2 = 0.3$, the variance is $V(w) = w^2\sigma_1^2 + (1 - w)^2\sigma_2^2$.
+    Setting $V'(w) = 2w\sigma_1^2 - 2(1 - w)\sigma_2^2 = 0$:
+
+    $$w = \frac{\sigma_2^2}{\sigma_1^2 + \sigma_2^2} = \frac{0.09}{0.13} = \frac{9}{13} \approx 0.692.$$
+
+    $V$ is a convex quadratic, so this is the minimum. Uncorrelated assets are weighted in proportion
+    to the inverse of their *variances*. The minimum volatility is
+    $\sigma_1\sigma_2/\sqrt{\sigma_1^2 + \sigma_2^2} \approx 16.6\%$, lower than either asset alone.
+
+    Common wrong answers: $0.6$, inverse-*volatility* weighting ($0.3/0.5$), and 1, putting everything in
+    the less volatile asset, which ignores diversification.
+  source: { name: "Standard two-asset minimum-variance portfolio" }
+
+- id: lac-optim-003
+  topic: algebra-calculus
+  subtopic: Optimisation, convexity and inequalities
+  type: short
+  difficulty: hard
+  tags: [lagrange-multipliers, minimum-variance, convexity]
+  prompt: |
+    Derive the weights of the fully invested minimum-variance portfolio: minimise $w^\top\Sigma w$ subject
+    to $\mathbf{1}^\top w = 1$, where $\Sigma$ is an $n \times n$ positive definite covariance matrix. What
+    is the minimum variance, why is the stationary point a minimum, and what are the weights when
+    $n = 2$ and the assets are uncorrelated?
+  reference: |
+    Lagrangian: $\mathcal{L} = w^\top\Sigma w - \lambda(\mathbf{1}^\top w - 1)$. Setting the gradient to zero,
+
+    $$2\Sigma w = \lambda\mathbf{1} \quad\Longrightarrow\quad w = \tfrac{\lambda}{2}\Sigma^{-1}\mathbf{1}.$$
+
+    The constraint fixes $\tfrac{\lambda}{2} = 1/(\mathbf{1}^\top\Sigma^{-1}\mathbf{1})$, so
+
+    $$w^* = \frac{\Sigma^{-1}\mathbf{1}}{\mathbf{1}^\top\Sigma^{-1}\mathbf{1}}, \qquad w^{*\top}\Sigma w^* = \frac{1}{\mathbf{1}^\top\Sigma^{-1}\mathbf{1}}.$$
+
+    It is the global minimum because the objective is strictly convex (its Hessian $2\Sigma$ is positive
+    definite) and the constraint set is affine: a strictly convex function has at most one stationary
+    point on it, and that point is the minimum. Note $\mathbf{1}^\top\Sigma^{-1}\mathbf{1} > 0$ because
+    $\Sigma^{-1}$ is positive definite too.
+
+    For two uncorrelated assets, $\Sigma^{-1}\mathbf{1} = (1/\sigma_1^2, 1/\sigma_2^2)$: weights proportional
+    to inverse variances, $w_1 = \sigma_2^2/(\sigma_1^2 + \sigma_2^2)$, with minimum variance
+    $1/(1/\sigma_1^2 + 1/\sigma_2^2)$. In practice one solves $\Sigma x = \mathbf{1}$ (by Cholesky) rather
+    than inverting $\Sigma$, and the weights can be negative.
+  keyPoints:
+    - Sets up the Lagrangian and gets 2Σw = λ1, so w is proportional to Σ⁻¹1
+    - Normalises with the constraint, w = Σ⁻¹1 / (1ᵀΣ⁻¹1)
+    - Minimum variance 1/(1ᵀΣ⁻¹1)
+    - Justifies a global minimum by convexity (Hessian 2Σ positive definite) over the affine constraint set
+    - Two uncorrelated assets give weights proportional to 1/σᵢ², the inverse-variance portfolio
+  hints:
+    - Write the Lagrangian with one multiplier for the budget constraint.
+    - 'The gradient of $w^\top\Sigma w$ is $2\Sigma w$.'
+    - Use the constraint to find the multiplier.
+  followUps:
+    - 'What goes wrong if $\Sigma$ is singular?'
+    - 'Add a target-return constraint $\mu^\top w = m$. How does the minimum variance depend on $m$?'
+    - Can the weights be negative? Give two assets for which the minimum-variance portfolio shorts one of them.
+  explanation: |
+    The derivation is routine; the interviewer is checking that you know the closed form, can say why
+    it is a minimum (convexity, not just "the second derivative is positive") and know its practical
+    caveats. On the follow-ups: a singular $\Sigma$ means a zero-variance combination exists; with a
+    return target the minimum variance is a quadratic in $m$ (the efficient frontier is a parabola in
+    mean-variance space); and with $\sigma_1 = 10\%$, $\sigma_2 = 20\%$, $\rho = 0.9$, the weight
+    $w_1 = \frac{\sigma_2^2 - \rho\sigma_1\sigma_2}{\sigma_1^2 + \sigma_2^2 - 2\rho\sigma_1\sigma_2} = \frac{11}{7} > 1$,
+    so the second asset is shorted to hedge the first.
+  source: { name: "Minimum-variance Markowitz portfolio (e.g. Quantt, Linear Algebra for Quant Interviews)", url: "https://www.quantt.co.uk/resources/linear-algebra-quant-interview" }
+
+- id: lac-optim-004
+  topic: algebra-calculus
+  subtopic: Optimisation, convexity and inequalities
+  type: numeric
+  difficulty: medium
+  tags: [lagrange-multipliers, distance-to-plane, cauchy-schwarz]
+  prompt: |
+    What is the shortest distance from the origin to the plane $2x + 3y + 4z = 12$ in $\mathbb{R}^3$?
+    Give your answer to three significant figures.
+  answer: 2.22834
+  answerText: |-
+    $12/\sqrt{29} \approx 2.23$
+  hints:
+    - Minimise $x^2 + y^2 + z^2$ subject to the constraint with one Lagrange multiplier.
+    - The gradient of the constraint is the normal vector $(2, 3, 4)$. In which direction from the origin is the nearest point?
+  followUps:
+    - Prove the bound with the Cauchy–Schwarz inequality instead.
+    - 'What is the distance from a general point $p$ to the plane $n^\top x = c$?'
+  explanation: |
+    With $\mathcal{L} = x^2 + y^2 + z^2 - \lambda(2x + 3y + 4z - 12)$, the stationarity conditions give
+    $(x, y, z) = \tfrac{\lambda}{2}(2, 3, 4)$: the nearest point lies along the normal. Substituting into
+    the constraint, $\tfrac{\lambda}{2} \cdot 29 = 12$, so the point is $\tfrac{12}{29}(2, 3, 4)$ and its
+    distance from the origin is
+
+    $$\frac{12}{29}\sqrt{29} = \frac{12}{\sqrt{29}} \approx 2.228.$$
+
+    Cauchy–Schwarz gives the same in one line: $12 = (2, 3, 4)\cdot(x, y, z) \le \sqrt{29}\,\lVert(x, y, z)\rVert$,
+    with equality along the normal. In general the distance from the origin to $n^\top x = c$ is
+    $|c|/\lVert n \rVert$.
+
+    Common wrong answers: $12/29 \approx 0.414$ (dividing by $\lVert n \rVert^2$ instead of $\lVert n \rVert$)
+    and $3$ (the smallest intercept, $12/4$, which is the distance along an axis, not the shortest one).
+  source: { name: "Zhou, A Practical Guide to Quantitative Finance Interviews (calculus chapter)" }
+
+- id: lac-optim-005
+  topic: algebra-calculus
+  subtopic: Optimisation, convexity and inequalities
+  type: multiple
+  difficulty: medium
+  tags: [convexity, am-gm, jensen]
+  prompt: |
+    $f$ and $g$ are real functions on $\mathbb{R}$. Which statements are **always** true? Select all that
+    apply.
+  choices:
+    - { id: a, text: 'For positive numbers, the geometric mean never exceeds the arithmetic mean.' }
+    - { id: b, text: 'If $f$ and $g$ are convex, then $f + g$ is convex.' }
+    - { id: c, text: 'If $f$ and $g$ are convex, then the product $fg$ is convex.' }
+    - { id: d, text: 'If $f$ and $g$ are convex, then $\max(f, g)$ is convex.' }
+    - { id: e, text: 'If $f$ and $g$ are convex, then the composition $f(g(x))$ is convex.' }
+    - { id: f, text: 'Every local minimum of a convex function is a global minimum.' }
+  answer: [a, b, d, f]
+  explanation: |
+    - **a, true.** This is Jensen's inequality for the concave logarithm:
+      $\frac1n\sum\ln x_i \le \ln\left(\frac1n\sum x_i\right)$. In finance: the geometric (compound) average
+      return never exceeds the arithmetic average.
+    - **b, true.** Add the two convexity inequalities.
+    - **c, false.** $f(x) = x$ and $g(x) = x^2$ are convex, but $x^3$ is not. Products of convex functions
+      are convex only under extra conditions (both non-negative and monotone in the same direction, for
+      example).
+    - **d, true.** The epigraph of $\max(f, g)$ is the intersection of two convex epigraphs. This is why
+      a worst-case loss over scenarios is convex.
+    - **e, false.** $f(x) = -x$ (linear, hence convex) and $g(x) = x^2$ give $-x^2$. Composition needs the
+      outer function to be convex **and non-decreasing**, as with $e^{g(x)}$.
+    - **f, true.** If $x$ were a local but not global minimum, with $f(y) < f(x)$, convexity would give
+      $f$ below $f(x)$ on the whole segment from $x$ towards $y$, including points arbitrarily close to
+      $x$. This is why a portfolio variance (a convex quadratic) has no spurious local minima.
+
+    c and e are the usual mistakes: closure under sums and maxima does not extend to products or to
+    arbitrary compositions.
+  source: { name: "Standard convexity facts (e.g. Boyd and Vandenberghe, Convex Optimization)" }
+
+- id: lac-optim-006
+  topic: algebra-calculus
+  subtopic: Optimisation, convexity and inequalities
+  type: numeric
+  difficulty: medium
+  tags: [am-gm, constrained-maximum, calculus]
+  prompt: |
+    $x$ and $y$ are non-negative with $x + y = 3$. What is the largest possible value of $x^2 y$?
+  answer: 4
+  hints:
+    - Try AM–GM, but split $x$ into equal parts first so that equality can actually be reached.
+    - Or substitute $y = 3 - x$ and maximise a cubic on $[0, 3]$.
+  followUps:
+    - What is the maximum of $x^a y^b$ subject to $x + y = 1$, for positive $a$ and $b$?
+    - Where does this kind of problem appear in utility maximisation?
+  explanation: |
+    AM–GM on the three numbers $\tfrac x2, \tfrac x2, y$, whose sum is $x + y = 3$:
+
+    $$\frac{x}{2}\cdot\frac{x}{2}\cdot y \le \left(\frac{x/2 + x/2 + y}{3}\right)^3 = 1 \quad\Longrightarrow\quad x^2 y \le 4,$$
+
+    with equality when $\tfrac x2 = y$, i.e. $x = 2$, $y = 1$. Calculus agrees: $h(x) = x^2(3 - x)$ has
+    $h'(x) = 6x - 3x^2 = 0$ at $x = 2$, and $h(2) = 4$, while $h(0) = h(3) = 0$.
+
+    The common wrong answer is $3.375$ from the symmetric guess $x = y = 1.5$: the expression is not
+    symmetric in $x$ and $y$, so the optimum is not either. In general, $x^a y^b$ with $x + y$ fixed is
+    maximised by splitting in the ratio $a : b$ (Cobb–Douglas utility).
+  source: { name: "Standard AM–GM optimisation" }
+
+- id: lac-optim-007
+  topic: algebra-calculus
+  subtopic: Optimisation, convexity and inequalities
+  type: short
+  difficulty: easy
+  tags: [cauchy-schwarz, correlation, inequalities]
+  prompt: |
+    State the Cauchy–Schwarz inequality and use it to prove that a correlation always lies in
+    $[-1, 1]$. When is the correlation exactly $\pm 1$?
+  reference: |
+    Cauchy–Schwarz: for random variables with finite second moments,
+    $\lvert E[UV] \rvert \le \sqrt{E[U^2]\,E[V^2]}$ (for vectors, $\lvert u\cdot v \rvert \le \lVert u \rVert\,\lVert v \rVert$).
+
+    Proof: for every real $t$, $0 \le E[(U - tV)^2] = E[U^2] - 2tE[UV] + t^2E[V^2]$. A quadratic in $t$
+    that is never negative has discriminant $\le 0$: $4E[UV]^2 \le 4E[U^2]E[V^2]$.
+
+    Apply it to the centred variables $U = X - E[X]$, $V = Y - E[Y]$:
+    $\lvert\operatorname{Cov}(X, Y)\rvert \le \sigma_X\sigma_Y$, so $\lvert\rho\rvert \le 1$.
+
+    Equality holds exactly when the discriminant is 0, i.e. $E[(U - tV)^2] = 0$ for some $t$, so
+    $U = tV$ almost surely: $Y$ is an affine function of $X$, $Y = a + bX$ with $b \ne 0$, and
+    $\rho = \operatorname{sign}(b)$. Geometrically, $\rho$ is the cosine of the angle between the centred
+    variables viewed as vectors.
+  keyPoints:
+    - States Cauchy–Schwarz, e.g. |E[UV]| ≤ √(E[U²] E[V²])
+    - Applies it to the centred variables to get |Cov(X, Y)| ≤ σ_X σ_Y
+    - Proves the inequality, e.g. via E[(U − tV)²] ≥ 0 and the discriminant, or explains it as the angle between vectors
+    - Equality exactly when Y is an affine function of X almost surely, the sign of ρ being the sign of the slope
+  hints:
+    - Look at $E[(U - tV)^2]$ as a function of $t$.
+    - What does a quadratic that is never negative say about its discriminant?
+  followUps:
+    - In what sense is a correlation the cosine of an angle? Which vectors?
+    - 'Use Cauchy–Schwarz to show $E\lvert X \rvert \le \sqrt{E[X^2]}$.'
+    - Regress $y$ on $x$ and $x$ on $y$. What does Cauchy–Schwarz say about the product of the two slopes?
+  explanation: |
+    Most candidates can state the inequality; the discriminant proof is short and worth having ready.
+    The equality case is often stated loosely as "$X$ and $Y$ are linearly related", which misses that
+    an intercept is allowed and that the sign of the slope gives the sign of $\rho$. On the last
+    follow-up: the product of the slopes is $\rho^2 \le 1$.
+  source: { name: "Standard result (e.g. Blitzstein and Hwang, Introduction to Probability)" }
+
+- id: lac-optim-008
+  topic: algebra-calculus
+  subtopic: Optimisation, convexity and inequalities
+  type: short
+  difficulty: medium
+  tags: [second-order-conditions, hessian, saddle-point]
+  prompt: |
+    For a smooth function $f(x, y)$, how do you decide whether a critical point is a local minimum, a
+    local maximum or a saddle point? Apply this to $f(x, y) = x^3 - 3xy + y^3$, and say when a local
+    minimum is guaranteed to be the global minimum.
+  reference: |
+    Critical points solve $\nabla f = 0$. Classify each by the Hessian $\nabla^2 f$ there: positive definite
+    means a local minimum, negative definite a local maximum, indefinite (eigenvalues of both signs) a
+    saddle; if it is singular the test is inconclusive. In two variables: $\det > 0$ with positive trace
+    is a minimum, $\det > 0$ with negative trace a maximum, $\det < 0$ a saddle.
+
+    Here $f_x = 3x^2 - 3y$ and $f_y = 3y^2 - 3x$. Both vanish when $y = x^2$ and $x = y^2$, so $x = x^4$:
+    the critical points are $(0, 0)$ and $(1, 1)$. The Hessian is
+    $\begin{pmatrix} 6x & -3 \\ -3 & 6y \end{pmatrix}$:
+    - at $(0, 0)$ it has determinant $-9 < 0$: a saddle;
+    - at $(1, 1)$ it has determinant $27 > 0$ and trace $12 > 0$: a local minimum, $f(1, 1) = -1$.
+
+    It is not the global minimum: $f(x, 0) = x^3 \to -\infty$ as $x \to -\infty$. A local minimum is
+    guaranteed to be global when $f$ is convex (Hessian positive semidefinite everywhere), as for a
+    portfolio variance $w^\top\Sigma w$; here the Hessian is indefinite wherever $36xy < 9$.
+  keyPoints:
+    - Finds critical points from ∇f = 0 and classifies them with the Hessian
+    - Positive definite Hessian gives a local min, negative definite a local max, indefinite a saddle, singular inconclusive
+    - For this f, (0, 0) is a saddle and (1, 1) a local minimum with value −1
+    - The local minimum is not global, since f(x, 0) = x³ is unbounded below
+    - A local minimum is global when f is convex (Hessian PSD everywhere)
+  hints:
+    - Solve $f_x = 0$ and $f_y = 0$ together.
+    - In two dimensions the determinant and the trace of the Hessian decide the type.
+    - Is $f$ bounded below?
+  followUps:
+    - The Hessian is singular at the origin for both $x^4 + y^4$ and $x^4 - y^4$. What are these critical points?
+    - How do the second-order conditions change when there is an equality constraint?
+  explanation: |
+    The usual slips are missing a critical point (solving $x = x^4$ only for $x = 1$), testing only
+    $f_{xx} > 0$ without the determinant, and calling the local minimum global without checking the
+    behaviour at infinity. On the first follow-up: $x^4 + y^4$ has a minimum and $x^4 - y^4$ a saddle at
+    the origin, which is why a singular Hessian decides nothing. With a constraint, the Hessian of the
+    Lagrangian is tested only on the tangent space of the constraint (the bordered Hessian).
+  source: { name: "Standard second-derivative test (e.g. Stewart, Calculus)" }

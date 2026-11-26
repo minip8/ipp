@@ -1,0 +1,401 @@
+# Estimators and maximum likelihood: bias, variance and mean squared error, why n - 1, the MLE of the standard families, the method of moments and the German tank problem.
+- id: stat-estimation-001
+  topic: statistics
+  subtopic: Estimators and maximum likelihood
+  type: short
+  difficulty: medium
+  tags: [bessel-correction, sample-variance, bias]
+  prompt: |
+    Why does the usual sample variance divide by $n - 1$ rather than $n$? Is the resulting sample
+    standard deviation an unbiased estimate of $\sigma$, and is $n - 1$ the "best" divisor?
+  reference: |
+    Deviations are measured from the sample mean $\bar x$, which is fitted to the same data and so
+    is closer to them than the true mean $\mu$ is:
+
+    $$\sum_i (x_i - \bar x)^2 = \sum_i (x_i - \mu)^2 - n(\bar x - \mu)^2.$$
+
+    Taking expectations for i.i.d. data, $E\left[\sum (x_i - \bar x)^2\right] = n\sigma^2 - n \cdot \frac{\sigma^2}{n} = (n - 1)\sigma^2$. So dividing by $n - 1$ makes $s^2$ unbiased for $\sigma^2$,
+    for any distribution with finite variance. One degree of freedom has been used up estimating the
+    mean.
+
+    But $s = \sqrt{s^2}$ is biased **low** for $\sigma$: the square root is concave, so by Jensen's
+    inequality $E[s] < \sqrt{E[s^2]} = \sigma$.
+
+    And unbiased is not the same as best. For normal data the divisor that minimises the mean
+    squared error of the variance estimate is $n + 1$; the MLE divides by $n$. For large $n$ none of
+    this matters.
+  keyPoints:
+    - The deviations are taken from the sample mean, which is fitted to the data, so they are too small on average
+    - "E[sum of squared deviations] = (n - 1) sigma squared, so dividing by n - 1 gives an unbiased variance"
+    - The sample standard deviation is still biased low for sigma, by Jensen's inequality
+    - Unbiased is not minimum mean squared error; for normal data dividing by n + 1 gives lower MSE (the MLE divides by n)
+  hints:
+    - Compare $\sum (x_i - \bar x)^2$ with $\sum (x_i - \mu)^2$. Which is smaller, and by how much?
+    - What is $E[(\bar x - \mu)^2]$?
+    - Is the square root of an unbiased estimate unbiased?
+  followUps:
+    - In a regression with $p$ coefficients, what do you divide the residual sum of squares by, and why?
+    - Why does the bias of $s$ hardly matter in practice, while the choice between daily and weekly data does?
+  explanation: |
+    Most candidates can say "degrees of freedom"; the follow-up on whether $s$ is unbiased catches
+    many of them, and the MSE point separates those who know that unbiasedness is a choice, not a
+    virtue in itself. A clean answer writes the decomposition above, which makes the missing
+    $\sigma^2$ visible.
+  source: { name: "Bessel's correction (standard; e.g. Casella and Berger, Statistical Inference)" }
+
+- id: stat-estimation-002
+  topic: statistics
+  subtopic: Estimators and maximum likelihood
+  type: numeric
+  difficulty: easy
+  tags: [maximum-likelihood, exponential]
+  prompt: |
+    The gaps between trades in a quiet stock are modelled as independent exponential variables with
+    rate $\lambda$ per minute. You observe gaps of 2, 3, 5 and 10 minutes. What is the
+    maximum-likelihood estimate of $\lambda$, per minute?
+  answer: 1/5
+  answerText: |-
+    $\hat\lambda = 4/20 = 0.2$ per minute
+  explanation: |
+    The log-likelihood is
+
+    $$\ell(\lambda) = \sum_i \left(\log\lambda - \lambda x_i\right) = n\log\lambda - \lambda\sum_i x_i,$$
+
+    and setting $\ell'(\lambda) = n/\lambda - \sum x_i = 0$ gives $\hat\lambda = n / \sum x_i = 1/\bar x = 4/20 = 0.2$ per minute.
+
+    The usual slip is to answer 5, the estimated *mean* gap, rather than the rate. Two further
+    points interviewers like: by invariance the MLE of the mean gap is $1/\hat\lambda = 5$, and
+    $\hat\lambda$ is biased upwards in small samples ($E[\hat\lambda] = \frac{n}{n-1}\lambda$), so the
+    unbiased estimate here would be $3/20$.
+  source: { name: "Standard result (e.g. Wasserman, All of Statistics)" }
+
+- id: stat-estimation-003
+  topic: statistics
+  subtopic: Estimators and maximum likelihood
+  type: numeric
+  difficulty: medium
+  tags: [german-tank, unbiased-estimator, order-statistics]
+  prompt: |
+    Tanks carry serial numbers $1, 2, \dots, N$ with $N$ unknown. You capture four, uniformly at
+    random without replacement, with serial numbers 19, 40, 42 and 60. What estimate of $N$ does the
+    unbiased estimator based on the largest serial number give (the minimum-variance unbiased
+    estimator)?
+  answer: 74
+  hints:
+    - The largest serial seen, $m = 60$, can never exceed $N$, so on average it falls short. By how much?
+    - Four numbers split $1, \dots, N$ into five gaps. How long is a typical gap?
+  followUps:
+    - What is the maximum-likelihood estimate of $N$, and why is it a poor one?
+    - What would the estimate be from twice the sample mean, and why is it worse?
+  explanation: |
+    With $k$ serials sampled and largest value $m$, the minimum-variance unbiased estimator is
+
+    $$\hat N = m + \frac{m}{k} - 1 = 60 + \frac{60}{4} - 1 = 74.$$
+
+    The intuition: the $k$ observed numbers split the range into $k + 1$ gaps of equal expected size,
+    and the average gap below the sample maximum is about $m/k$ (precisely, $E[m] = \frac{k}{k+1}(N + 1)$, which inverts to the formula). So you add one average gap beyond the largest serial.
+
+    The common wrong answers are 60 (the maximum-likelihood estimate, which is biased low because the
+    maximum can never exceed $N$) and $2\bar x - 1 = 79.5$ (unbiased, but much noisier because it
+    uses all the observations rather than the most informative one).
+  source: { name: "The German tank problem (Ruggles and Brodie, 1947)" }
+
+- id: stat-estimation-004
+  topic: statistics
+  subtopic: Estimators and maximum likelihood
+  type: single
+  difficulty: easy
+  tags: [maximum-likelihood, uniform, bias]
+  prompt: |
+    $X_1, \dots, X_n$ are i.i.d. Uniform$(0, \theta)$, and the maximum-likelihood estimate of $\theta$
+    is the sample maximum. Which statement is correct?
+  choices:
+    - { id: a, text: "It is unbiased, because maximum-likelihood estimates are unbiased" }
+    - { id: b, text: 'It is biased downwards: its expectation is $\frac{n}{n+1}\theta$' }
+    - { id: c, text: "It is biased upwards, because it picks the most extreme observation" }
+    - { id: d, text: "The maximum-likelihood estimate does not exist, because the likelihood is not differentiable at its maximum" }
+  answer: b
+  explanation: |
+    The likelihood is $\theta^{-n}$ for $\theta \ge \max_i X_i$ and 0 otherwise, so it is largest at
+    $\hat\theta = \max_i X_i$. That can never exceed $\theta$, so it is biased low. The maximum of $n$
+    uniforms on $(0, \theta)$ has $P(\max \le t) = (t/\theta)^n$, and
+
+    $$E[\max] = \int_0^\theta \left(1 - (t/\theta)^n\right) dt = \frac{n}{n+1}\theta.$$
+
+    Multiplying by $\frac{n+1}{n}$ removes the bias.
+
+    - a: MLEs are consistent under regularity conditions, but not unbiased in general.
+    - c: the maximum is the largest observation, but all observations lie below $\theta$.
+    - d: a maximum need not be found by setting a derivative to zero; here it sits at the boundary
+      of the allowed region.
+  source: { name: "Standard result (e.g. Casella and Berger, Statistical Inference)" }
+
+- id: stat-estimation-005
+  topic: statistics
+  subtopic: Estimators and maximum likelihood
+  type: single
+  difficulty: medium
+  tags: [method-of-moments, uniform, unbiased-estimator]
+  prompt: |
+    Three observations from Uniform$(0, \theta)$ are 1, 2 and 9. The method-of-moments estimate
+    $2\bar x$ is 8. Which statement is correct?
+  choices:
+    - { id: a, text: "8 is a sensible estimate, since the method-of-moments estimator is unbiased" }
+    - { id: b, text: 'The estimator $2\bar X$ is unbiased, yet this estimate is impossible, since $\theta$ must be at least 9' }
+    - { id: c, text: 'The estimate is below 9 because $2\bar X$ is biased downwards' }
+    - { id: d, text: 'The data cannot come from Uniform$(0, \theta)$, since the estimate contradicts them' }
+  answer: b
+  explanation: |
+    $E[X] = \theta/2$, so $E[2\bar X] = \theta$: the estimator is unbiased. Unbiasedness is a property
+    of the average over repeated samples, though, and says nothing about whether a particular estimate
+    is consistent with the data. Here the observation 9 proves $\theta \ge 9$, so 8 is impossible.
+
+    - a confuses an unbiased estimator with a sensible estimate.
+    - c: the estimator is unbiased; the low value is bad luck with one small and one large
+      observation.
+    - d: the data are perfectly possible for any $\theta \ge 9$; it is the estimate that is wrong.
+
+    Better estimators use the maximum, the sufficient statistic here: $\frac{n+1}{n}\max = 12$ is
+    unbiased and can never fall below the largest observation. Method of moments is quick and
+    consistent but can ignore information the likelihood uses.
+  source: { name: "Standard example (e.g. Wasserman, All of Statistics)" }
+
+- id: stat-estimation-006
+  topic: statistics
+  subtopic: Estimators and maximum likelihood
+  type: numeric
+  difficulty: medium
+  tags: [inverse-variance-weighting, combining-estimates]
+  prompt: |
+    Two independent, unbiased estimates of the same quantity are 10.0, with standard deviation 0.3,
+    and 10.4, with standard deviation 0.4. You combine them as $w \cdot 10.0 + (1 - w) \cdot 10.4$,
+    with $w$ chosen to make the combination's variance as small as possible. What is the combined
+    estimate?
+  answer: 10.144
+  answerText: |-
+    $w = 0.64$, giving $0.64 \cdot 10.0 + 0.36 \cdot 10.4 = 10.144$
+  hints:
+    - Write the variance of the combination as a function of $w$.
+    - The weights come out proportional to something about each estimate.
+  followUps:
+    - What is the standard deviation of the combined estimate?
+    - How does the answer change if the two estimates have correlation 0.5?
+  explanation: |
+    The variance of the combination is $w^2 \cdot 0.09 + (1 - w)^2 \cdot 0.16$. Setting its
+    derivative to zero gives weights proportional to the inverse variances:
+
+    $$w = \frac{1/0.09}{1/0.09 + 1/0.16} = \frac{0.16}{0.25} = 0.64, \qquad 0.64 \cdot 10.0 + 0.36 \cdot 10.4 = 10.144.$$
+
+    The combined variance is $1/(1/0.09 + 1/0.16) = 0.0576$, a standard deviation of 0.24, better than
+    either estimate alone.
+
+    The common wrong answers are 10.2 (equal weights) and weights proportional to the inverse
+    standard deviations ($w = 4/7$, giving about 10.171). Inverse-variance weighting is how signals,
+    forecasts or analysts' estimates are combined when their errors are independent.
+  source: { name: "Inverse-variance weighting (standard; a common interview question about two scales)" }
+
+- id: stat-estimation-007
+  topic: statistics
+  subtopic: Estimators and maximum likelihood
+  type: short
+  difficulty: medium
+  tags: [ols, maximum-likelihood, map, least-absolute-deviations]
+  prompt: |
+    How are ordinary least squares, maximum likelihood and maximum a posteriori (MAP) estimation
+    related for a linear regression $y = X\beta + \varepsilon$? When does OLS stop being the
+    maximum-likelihood estimator, and what does maximum likelihood give instead?
+  reference: |
+    If the errors are i.i.d. $N(0, \sigma^2)$, the log-likelihood is
+
+    $$\ell(\beta, \sigma^2) = -\frac{n}{2}\log(2\pi\sigma^2) - \frac{1}{2\sigma^2}\|y - X\beta\|^2,$$
+
+    so maximising it over $\beta$ is exactly minimising the residual sum of squares: OLS is the MLE.
+    The MLE of $\sigma^2$ is $\text{RSS}/n$ (biased; the usual estimate divides by $n - p$).
+
+    With other error distributions the MLE changes: Laplace (double-exponential) errors give least
+    absolute deviations (median regression), Student-$t$ errors give a robust fit that down-weights
+    outliers, and normal errors with known unequal variances give weighted least squares. OLS is still
+    the best *linear* unbiased estimator under the Gauss-Markov assumptions, whatever the error
+    distribution, but it is no longer the MLE and can be far from efficient with heavy tails.
+
+    MAP adds the log prior to the log-likelihood: an independent normal prior $\beta_j \sim N(0, \tau^2)$ gives ridge regression with penalty $\lambda = \sigma^2/\tau^2$, and a Laplace prior gives
+    the lasso. With a flat prior MAP equals the MLE.
+  keyPoints:
+    - With i.i.d. normal errors, maximising the likelihood is minimising squared residuals, so OLS is the MLE
+    - Other error distributions give other estimators, e.g. Laplace errors give least absolute deviations
+    - OLS remains the best linear unbiased estimator under Gauss-Markov even without normality
+    - MAP adds a log prior; a normal prior gives ridge and a Laplace prior gives lasso
+    - The MLE of the error variance divides by n, not n - p
+  hints:
+    - Write down the normal log-likelihood of the residuals.
+    - What loss would a double-exponential density lead to?
+    - What does a prior on $\beta$ add to the objective?
+  followUps:
+    - Why might you prefer median regression for predicting returns?
+    - What is the penalty $\lambda$ in ridge regression in terms of the prior and noise variances?
+  explanation: |
+    The three ideas are one idea with different ingredients: a loss is a negative log density.
+    Candidates who see that can derive ridge, lasso and robust regression on the spot. A frequent gap
+    is thinking OLS needs normal errors to be unbiased: it does not; normality matters for exact
+    small-sample inference and for OLS being the MLE.
+  source: { name: "Quant, FM and Data Science Interview Compilation (LSU)", url: "https://www.math.lsu.edu/~smolinsk/Quant_Interview_Prep.pdf" }
+
+- id: stat-estimation-008
+  topic: statistics
+  subtopic: Estimators and maximum likelihood
+  type: multiple
+  difficulty: hard
+  tags: [maximum-likelihood, consistency, asymptotic-normality, invariance]
+  prompt: |
+    Under the usual regularity conditions (i.i.d. data from a smooth model with an identifiable
+    parameter in the interior of the parameter space), which statements about the maximum-likelihood
+    estimator $\hat\theta$ are true? Select all that apply.
+  choices:
+    - { id: a, text: 'It is consistent: $\hat\theta \to \theta$ in probability' }
+    - { id: b, text: "It is unbiased for every sample size" }
+    - { id: c, text: 'For large $n$ it is approximately normal with variance $1/(n I(\theta))$, where $I$ is the Fisher information of one observation' }
+    - { id: d, text: 'The maximum-likelihood estimate of $g(\theta)$ is $g(\hat\theta)$' }
+    - { id: e, text: 'For normal data with unknown mean, the maximum-likelihood estimate of the variance divides by $n - 1$' }
+    - { id: f, text: "In small samples it has the smallest mean squared error of all estimators" }
+  answer: [a, c, d]
+  explanation: |
+    - **a, true**, and **c, true:** the two main asymptotic results. The MLE reaches the Cramér-Rao
+      bound asymptotically, which is why it is the default estimator.
+    - **b, false.** The normal variance MLE has expectation $\frac{n-1}{n}\sigma^2$, and the MLE of an
+      exponential rate is biased upwards.
+    - **d, true.** Invariance: maximising over $\theta$ or over a one-to-one $g(\theta)$ picks the same
+      point. (It is the reason the MLE of $\sigma$ is $\sqrt{\hat\sigma^2}$, which is biased even if
+      $\hat\sigma^2$ were not.)
+    - **e, false.** The MLE divides by $n$; $n - 1$ is the unbiased correction.
+    - **f, false.** The guarantees are asymptotic. In small samples shrinkage estimators can beat it
+      (James-Stein dominates the MLE of three or more normal means).
+
+    The usual mistakes are b and e, assuming that the most "principled" estimator is unbiased.
+  source: { name: "Standard asymptotic theory (e.g. Casella and Berger, Statistical Inference)" }
+
+- id: stat-estimation-009
+  topic: statistics
+  subtopic: Estimators and maximum likelihood
+  type: short
+  difficulty: medium
+  tags: [volatility, sample-variance, risk]
+  prompt: |
+    Risk models often estimate daily volatility as $\sqrt{\frac{1}{n}\sum_t r_t^2}$, without
+    subtracting the sample mean return. Is that a mistake? Use rough numbers for a typical stock:
+    daily mean about 0.04%, daily volatility about 1%, one year of data.
+  reference: |
+    It is a deliberate choice, and usually a good one.
+
+    - Ignoring the mean adds a bias: $E[r^2] = \sigma^2 + \mu^2$. With $\mu = 0.04\%$ and $\sigma = 1\%$,
+      $\mu^2/\sigma^2 = 0.0016$, so the variance is overstated by 0.16% and the volatility by about
+      0.08%: negligible.
+    - Estimating the mean is expensive by comparison: from 250 days its standard error is
+      $1\%/\sqrt{250} \approx 0.063\%$, larger than the mean itself. Subtracting a mean you cannot
+      estimate adds noise and costs a degree of freedom, while removing a bias of almost nothing.
+    - The two estimators have nearly identical mean squared error, and the zero-mean version is
+      slightly better here; it is also more stable over short windows, and it is what exponentially
+      weighted (RiskMetrics-style) estimators do.
+    - For risk, the second moment about zero is often the quantity wanted anyway: a loss is a loss
+      whether or not the stock has positive drift.
+
+    It does become a mistake at long horizons or for assets with large drift relative to volatility
+    (for example, annual returns, or a strategy with a high Sharpe ratio measured on daily data over
+    years).
+  keyPoints:
+    - "The bias from ignoring the mean is mu squared, tiny relative to sigma squared at daily frequency"
+    - The sample mean is so noisy (standard error comparable to or larger than the mean) that subtracting it helps little
+    - The mean squared errors of the two estimators are almost the same
+    - Second moment about zero is often what risk cares about
+    - Notes when it would matter, e.g. long horizons or high drift relative to volatility
+  hints:
+    - What is $E[r_t^2]$ in terms of the mean and the variance?
+    - How precisely can you estimate a daily mean of 0.04% from 250 days?
+  followUps:
+    - At what Sharpe ratio would the mean start to matter for a one-year daily volatility estimate?
+    - Why do risk models weight recent observations more heavily?
+  explanation: |
+    Candidates trained on the $n - 1$ rule sometimes call the zero-mean estimator wrong. The point is
+    to compare the size of the bias with the noise of the correction: at daily frequency the mean is
+    swamped by volatility, so dropping it costs essentially nothing.
+  source: { name: "Common practice in risk modelling (e.g. RiskMetrics technical document)" }
+
+- id: stat-estimation-010
+  topic: statistics
+  subtopic: Estimators and maximum likelihood
+  type: numeric
+  difficulty: medium
+  tags: [maximum-likelihood, capture-recapture, hypergeometric]
+  prompt: |
+    You catch, tag and release 50 fish from a lake. Later you catch 40 fish, uniformly at random
+    without replacement from the whole population, and 7 of them are tagged. The population $N$ has
+    not changed. Which whole number $N$ maximises the likelihood of what you saw?
+  answer: 285
+  unit: fish
+  hints:
+    - The proportion tagged in the second catch estimates $50/N$. What does that suggest?
+    - The likelihood is a hypergeometric probability. Compare $L(N)$ with $L(N - 1)$.
+  followUps:
+    - What if 8 of the 40 had been tagged? Is the maximum unique?
+    - What assumptions of this method fail for real fish, and for real traders?
+  explanation: |
+    The likelihood of 7 tagged fish among 40 drawn from $N$ fish, 50 of them tagged, is
+
+    $$L(N) = \frac{\binom{50}{7}\binom{N - 50}{33}}{\binom{N}{40}}.$$
+
+    The ratio of successive values simplifies to
+
+    $$\frac{L(N)}{L(N - 1)} = \frac{(N - 50)(N - 40)}{N(N - 83)},$$
+
+    which is above 1 exactly when $7N < 50 \cdot 40 = 2000$, that is when $N < 285.7$. So $L$ rises up to
+    $N = 285$ and falls after it: the MLE is $\lfloor 2000/7 \rfloor = 285$.
+
+    The common answers 285.7 (the Lincoln-Petersen estimate $50 \cdot 40 / 7$, which is not a whole
+    number) and 286 (rounding it) miss that the likelihood is only defined at whole numbers and that
+    its maximum is the floor. The idea is the same as matching the tagged fraction, $7/40 \approx 50/N$.
+  source: { name: "Capture-recapture estimation (Lincoln-Petersen; e.g. Feller, vol. 1)" }
+
+- id: stat-estimation-011
+  topic: statistics
+  subtopic: Estimators and maximum likelihood
+  type: short
+  difficulty: hard
+  tags: [bias-variance, mean-squared-error, shrinkage, unbiased-estimator]
+  prompt: |
+    Is an unbiased estimator always preferable to a biased one? Answer with the mean squared error,
+    and give an example where the only unbiased estimator is absurd.
+  reference: |
+    No. What matters is usually the mean squared error,
+
+    $$\operatorname{MSE}(\hat\theta) = E\left[(\hat\theta - \theta)^2\right] = \operatorname{Bias}^2 + \operatorname{Var}(\hat\theta),$$
+
+    and a little bias can buy a large reduction in variance. Shrinking a sample mean towards 0,
+    $c\bar X$ with $0 < c < 1$, has MSE $(1 - c)^2\mu^2 + c^2\sigma^2/n$, which beats $\bar X$ whenever
+    $\mu^2$ is small compared with $\sigma^2/n$: exactly the situation of a noisy estimate of a small
+    expected return. Ridge regression, James-Stein and Bayesian posterior means are all deliberate
+    biases of this kind.
+
+    An absurd unbiased estimator: from one observation $X \sim \text{Poisson}(\lambda)$, the only
+    unbiased estimator of $e^{-2\lambda}$ is $(-1)^X$, since
+
+    $$E\left[(-1)^X\right] = \sum_k (-1)^k \frac{e^{-\lambda}\lambda^k}{k!} = e^{-\lambda}e^{-\lambda} = e^{-2\lambda}.$$
+
+    It estimates a number in $(0, 1)$ by $+1$ or $-1$. The biased estimator $e^{-2X}$ is far better.
+    Unbiased estimators may also fail to exist (for $1/p$ from a binomial count).
+  keyPoints:
+    - "MSE = bias squared + variance, so a biased estimator can have lower MSE"
+    - Gives a shrinkage example (shrinking a noisy mean, ridge, James-Stein or a posterior mean)
+    - Explains when shrinkage helps, when the signal is small relative to the noise
+    - Gives an absurd or non-existent unbiased estimator, such as (-1)^X for e^(-2 lambda), or another valid example
+  hints:
+    - Decompose the expected squared error into two parts.
+    - Try estimating $\mu$ by $c\bar X$ for some $c < 1$.
+    - For the second part, think of a Poisson observation and an alternating sign.
+  followUps:
+    - For what values of $\mu$ does $\bar X/2$ have lower MSE than $\bar X$?
+    - Why does unbiasedness matter more when you average many independent estimates?
+  explanation: |
+    The first half is standard; the Poisson example is a well-known curiosity that shows unbiasedness
+    can be a bad criterion on its own. The follow-up on averaging is a good test: bias does not
+    average away while variance does, which is why unbiasedness matters for estimates that will be
+    pooled.
+  source: { name: "Standard example (e.g. Lehmann and Casella, Theory of Point Estimation)" }

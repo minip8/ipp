@@ -1,0 +1,260 @@
+# Fair value and expected value: what a game or contract is worth, who holds the choices, and what information is worth.
+- id: bmm-fair-value-001
+  topic: betting-market-making
+  subtopic: Fair value and expected value
+  type: numeric
+  difficulty: easy
+  tags: [dice, expectation, fair-value]
+  prompt: |
+    Two fair dice are rolled and you are paid the **product** of the two numbers, in dollars. If you
+    are risk-neutral, what is the most you should pay to play once?
+  answer: 49/4
+  answerText: |-
+    $49/4 = 12.25$ dollars
+  unit: dollars
+  explanation: |
+    The two dice are independent, so the expectation of the product is the product of the
+    expectations:
+
+    $$E[XY] = E[X]\,E[Y] = 3.5 \times 3.5 = 12.25.$$
+
+    A risk-neutral player pays up to the expected payout, \$12.25.
+
+    The usual slips are to average the possible products (1 to 36) as if they were equally likely,
+    or to expect the square of a single die, $E[X^2] = 91/6 \approx 15.17$, which is larger because
+    one die multiplied by itself is more spread out. $E[XY] = E[X]E[Y]$ needs independence; for $X$
+    times itself it fails.
+  source: { name: "Common trading-interview warm-up (e.g. Jane Street, Probability and Markets)", url: "https://www.janestreet.com/static/pdfs/trading-interview.pdf" }
+
+- id: bmm-fair-value-002
+  topic: betting-market-making
+  subtopic: Fair value and expected value
+  type: numeric
+  difficulty: medium
+  tags: [dice, expectation, recursion]
+  prompt: |
+    A fair die is rolled and you are paid its face value in dollars. Whenever it shows a 6, you are
+    paid the \$6 and the die is rolled again, with that roll paid the same way (and another 6 rolls
+    again, with no limit). What is the expected total payout?
+  answer: 21/5
+  answerText: |-
+    $21/5 = 4.20$ dollars
+  unit: dollars
+  hints:
+    - After a 6 you are paid \$6 and then face exactly the same game again.
+    - Write the value $V$ of the game in terms of itself.
+  followUps:
+    - What is the expected number of rolls, and how does that give the answer another way?
+    - What would you pay if a 1 also triggered a reroll, but paid nothing?
+  explanation: |
+    Condition on the first roll. With $V$ the value of the game, a roll of 1 to 5 pays its face and
+    stops; a 6 pays 6 and restarts the game:
+
+    $$V = \frac{1 + 2 + 3 + 4 + 5}{6} + \frac16(6 + V) \quad\Longrightarrow\quad \frac56 V = \frac{21}{6} \quad\Longrightarrow\quad V = \frac{21}{5}.$$
+
+    A second route: the number of rolls is geometric with mean $\tfrac65$, each roll pays $3.5$ on
+    average, and (by Wald's identity, since stopping depends only on rolls already made)
+    $V = \tfrac65 \times 3.5 = 4.2$.
+
+    The common wrong answer is 3.5, which ignores the rerolls, or $3.5 + 1 = 4.5$ from "a 6 gives one
+    extra roll" without noticing that the extra roll is a 6 only one time in six.
+  source: { name: "Common dice game in trading interviews (Glassdoor reports)" }
+
+- id: bmm-fair-value-003
+  topic: betting-market-making
+  subtopic: Fair value and expected value
+  type: numeric
+  difficulty: hard
+  tags: [dice, optimal-stopping, fair-value]
+  prompt: |
+    You roll a fair die for free. You may take its face value in dollars, or pay \$1 to roll again,
+    and you may keep paying \$1 for another roll as many times as you like; you are paid the last
+    roll you choose to keep. Played to maximise it, what is the game worth, net of the reroll fees?
+  answer: 4
+  unit: dollars
+  hints:
+    - Let $V$ be the value of the game when you are about to roll. After seeing a roll $x$, what is the choice?
+    - You reroll exactly when $x$ is worth less than paying \$1 for a fresh game worth $V$.
+    - Guess which faces you keep, write $V$ in terms of itself, and check the guess.
+  followUps:
+    - How does the answer change if each reroll costs \$0.50?
+    - Compare with the game where you get exactly one free reroll. Why is that one worth more?
+  explanation: |
+    Let $V$ be the value of the game just before a roll. After rolling $x$ you either keep $x$ or
+    pay 1 for a fresh game worth $V$, so you reroll exactly when $x < V - 1$, and
+
+    $$V = E\big[\max(X,\ V - 1)\big].$$
+
+    Try "keep 3 or more". Then $V = \frac{3 + 4 + 5 + 6}{6} + \frac26 (V - 1)$, so $\frac23 V = \frac{18 - 2}{6}$
+    and $V = 4$. The guess is consistent: the reroll threshold is $V - 1 = 3$, so 1 and 2 are rerolled
+    and a 3 is exactly break-even. The game is worth \$4.
+
+    Common wrong answers: 3.5 (no rerolls; or keeping only 5 and 6, which also comes to 3.5 because
+    the fees eat the gain), and 4.25, the value of one *free* reroll. The trap is to set the threshold
+    against the die's average 3.5 rather than against the value of the game itself.
+  source: { name: "Variant of the reroll game asked in trading interviews (e.g. SIG, Optiver; Glassdoor)" }
+
+- id: bmm-fair-value-004
+  topic: betting-market-making
+  subtopic: Fair value and expected value
+  type: numeric
+  difficulty: medium
+  tags: [cards, expectation, tail-sum]
+  prompt: |
+    Two cards are dealt from a well-shuffled standard 52-card deck. You are paid the **higher** of the
+    two ranks in dollars, counting an ace as 1, number cards at face value, and jack, queen and king as
+    11, 12 and 13 (if the ranks are equal, you are paid that rank). What is the fair price of this
+    game?
+  answer: 469/51
+  answerText: |-
+    $469/51 \approx 9.20$ dollars
+  unit: dollars
+  hints:
+    - For a variable taking values $1, \dots, 13$, $E[M] = \sum_{k=1}^{13} P(M \ge k)$.
+    - The maximum is at most $k$ exactly when both cards come from the $4k$ cards of rank at most $k$.
+    - The cards are dealt without replacement, so count pairs.
+  followUps:
+    - How much would the answer change if the second card were drawn after replacing the first? Which is larger and why?
+    - Make me a market on this game for one lot.
+  explanation: |
+    Use the tail sum $E[M] = \sum_{k=1}^{13} P(M \ge k) = 13 - \sum_{k=1}^{12} P(M \le k)$. Both cards
+    have rank at most $k$ with probability $\binom{4k}{2} / \binom{52}{2}$, and
+
+    $$\sum_{k=1}^{12} \binom{4k}{2} = \sum_{k=1}^{12} (8k^2 - 2k) = 5200 - 156 = 5044,$$
+
+    so $E[M] = 13 - \frac{5044}{1326} = \frac{469}{51} \approx 9.20$.
+
+    Common wrong answers: 7, the value of one card; and about 9.15, the answer with replacement.
+    Without replacement the second card is slightly less likely to repeat a low rank, so the maximum
+    is a little higher.
+  source: { name: "Card game asked in trading interviews (e.g. SIG; techinterview.org)", url: "https://www.techinterview.org/post/3233476306/market-making-interview-trading-games/" }
+
+- id: bmm-fair-value-005
+  topic: betting-market-making
+  subtopic: Fair value and expected value
+  type: numeric
+  difficulty: medium
+  tags: [dice, value-of-information, optionality]
+  prompt: |
+    A contract pays the sum of two fair dice, in dollars, and you may buy one at \$7 or not trade at
+    all. Before you decide, you are allowed to look at the first die (the second stays hidden). What is
+    this right to look worth to you in expected profit, if you then decide optimally?
+  answer: 3/4
+  answerText: |-
+    $3/4 = 0.75$ dollars
+  unit: dollars
+  hints:
+    - Without looking, buying at \$7 has zero expected profit.
+    - After seeing the first die $d$, what is the contract worth to you, and when do you buy?
+  followUps:
+    - What would it be worth to see both dice before deciding?
+    - If you could also sell at \$7, what would looking at the first die be worth?
+  explanation: |
+    After seeing the first die $d$, the contract is worth $d + 3.5$, so buying at 7 has expected profit
+    $d - 3.5$. You buy only when that is positive ($d = 4, 5, 6$):
+
+    $$E[\text{profit}] = \frac16\big(0.5 + 1.5 + 2.5\big) = 0.75.$$
+
+    Information is worth something because it lets you trade only when the trade is good: an option
+    to walk away. The common wrong answer is 0 ("the price is fair, so looking changes nothing"); the
+    price is fair on average, but you no longer have to take the average. Seeing both dice would be
+    worth $E[(S - 7)^+] = 35/36 \approx 0.97$.
+  source: { name: "Value-of-information question in the style of trading interviews" }
+
+- id: bmm-fair-value-006
+  topic: betting-market-making
+  subtopic: Fair value and expected value
+  type: single
+  difficulty: easy
+  tags: [dice, jensen, expectation]
+  prompt: |
+    Which contract has the higher fair value?
+
+    - **A:** one fair die is rolled and you are paid the **square** of the number, in dollars.
+    - **B:** two fair dice are rolled and you are paid the **product** of the two numbers, in dollars.
+  choices:
+    - { id: a, text: "A" }
+    - { id: b, text: "B" }
+    - { id: c, text: "They are worth the same, since each multiplies two die rolls" }
+  answer: a
+  explanation: |
+    A is worth $E[X^2] = \frac{1 + 4 + 9 + 16 + 25 + 36}{6} = \frac{91}{6} \approx 15.17$. B is worth
+    $E[X]E[Y] = 3.5^2 = 12.25$ by independence.
+
+    The gap is the variance: $E[X^2] = (E[X])^2 + \operatorname{Var}(X) = 12.25 + \tfrac{35}{12}$.
+    Squaring one roll makes the big outcomes (36) more likely than multiplying two independent rolls,
+    where a high roll is usually paired with an average one. Choice c is the mistake of treating
+    "a die times a die" the same whether or not it is the same die.
+  source: { name: "Common expected-value comparison in trading interviews" }
+
+- id: bmm-fair-value-007
+  topic: betting-market-making
+  subtopic: Fair value and expected value
+  type: single
+  difficulty: medium
+  tags: [dice, house-edge, expectation]
+  prompt: |
+    In a carnival game you pick a number from 1 to 6 and three fair dice are rolled. You win \$1 for
+    each die that shows your number (so \$3 if all three do), and if none shows it you lose \$1. Which
+    is true?
+  choices:
+    - { id: a, text: "The game is fair: each die matches with probability 1/6, so three dice give an even chance" }
+    - { id: b, text: "The game favours the player" }
+    - { id: c, text: "The game favours the house by about 8 cents per game" }
+    - { id: d, text: "The game favours the house by about 50 cents per game" }
+  answer: c
+  explanation: |
+    The number of matches is binomial with $n = 3$, $p = \tfrac16$:
+    $P(0) = \tfrac{125}{216}$, $P(1) = \tfrac{75}{216}$, $P(2) = \tfrac{15}{216}$, $P(3) = \tfrac{1}{216}$.
+    The expected profit is
+
+    $$\frac{1 \cdot 75 + 2 \cdot 15 + 3 \cdot 1 - 125}{216} = -\frac{17}{216} \approx -0.079.$$
+
+    Choice a adds the three probabilities to get $\tfrac12$ and concludes it is a coin flip, but the
+    events overlap: when two or three dice match you are paid extra on outcomes already counted, and
+    the chance of at least one match is $1 - (5/6)^3 = 91/216 < \tfrac12$. Choice d confuses the
+    probability of losing (about 58%) with the expected loss.
+  source: { name: "Chuck-a-luck (crown and anchor), a classic house-edge question" }
+
+- id: bmm-fair-value-008
+  topic: betting-market-making
+  subtopic: Fair value and expected value
+  type: short
+  difficulty: medium
+  tags: [dice, optionality, making-markets]
+  prompt: |
+    A contract pays the final roll of a fair die, in dollars. The die is rolled once, and may then be
+    rerolled once (the second roll is final). The rule is that **I**, the interviewer, decide whether
+    to reroll, whichever side of the contract I end up on. Make me a two-sided market for one contract
+    and explain it.
+  reference: |
+    Who holds the reroll decides the value, and here it is always my counterparty.
+
+    - If I buy from you, I hold the contract and want a high roll: I reroll a 1, 2 or 3 (worth 3.5 on
+      average) and keep 4, 5 or 6. The contract is then worth
+      $\tfrac12 \cdot 5 + \tfrac12 \cdot 3.5 = 4.25$ to me, so your offer must be at least 4.25.
+    - If I sell to you, I am short and want a low roll: I reroll a 4, 5 or 6 and keep 1, 2 or 3,
+      giving $\tfrac12 \cdot 2 + \tfrac12 \cdot 3.5 = 2.75$, so your bid must be at most 2.75.
+
+    A sensible market is **2.5 at 4.5**: wider than the 3 at 4 you might show on a plain die,
+    because the option always goes to the other side. If the reroll were never used, or decided by a
+    coin flip, the fair value would be 3.5 and a market like 3 at 4 would do.
+  keyPoints:
+    - Values the contract at 4.25 when the holder (buyer) controls the reroll
+    - Values it at 2.75 when the seller controls the reroll
+    - Realises the interviewer holds the option on whichever side they trade, so the bid must be at most 2.75 and the offer at least 4.25
+    - Gives a concrete market such as 2.5 at 4.5 and contrasts it with a plain die's market around 3.5
+  hints:
+    - Who wants a high roll if I buy from you? Who wants a low roll if I sell to you?
+    - With one reroll, a player who wants a high number keeps a roll when it beats the average of a fresh roll.
+    - Price each side separately.
+  followUps:
+    - Now suppose **you** decide whether to reroll, whatever side you are on. What is your market?
+    - I lift your offer at 4.5. The first roll is a 3. What do I do, and what is your expected P&L?
+    - What if the contract allowed two rerolls, still decided by me?
+  explanation: |
+    Jane Street's guide asks for a market on this contract with the hint "who decides to reroll?". Most
+    candidates price 4.25 (the holder's option) and quote around it, forgetting that a counterparty who
+    controls the decision will use it against them on *either* side. A choice embedded in a contract is
+    an option, and you have to know who owns it before you can price it.
+  source: { name: "Jane Street, Probability and Markets (making markets exercises)", url: "https://www.janestreet.com/static/pdfs/trading-interview.pdf" }

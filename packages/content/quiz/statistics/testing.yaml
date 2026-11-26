@@ -1,0 +1,415 @@
+# Confidence intervals and hypothesis tests: what a p-value and a confidence level mean, power and sample size, multiple testing and peeking.
+- id: stat-testing-001
+  topic: statistics
+  subtopic: Confidence intervals and hypothesis tests
+  type: single
+  difficulty: easy
+  tags: [p-value, hypothesis-testing]
+  prompt: |
+    A backtest of a signal gives a p-value of 0.03 for the null hypothesis that its mean return is
+    zero. What is that p-value?
+  choices:
+    - { id: a, text: "The probability that the null hypothesis is true, given the data" }
+    - { id: b, text: "The probability, computed assuming the null hypothesis is true, of a test statistic at least as extreme as the one observed" }
+    - { id: c, text: "The probability that the signal's apparent edge is due to chance" }
+    - { id: d, text: "The probability that a repeat of the backtest on new data would not be significant" }
+    - { id: e, text: "One minus the probability that the signal has a real edge" }
+  answer: b
+  explanation: |
+    A p-value is a statement about the data under the null: $P(T \ge t_{\text{obs}} \mid H_0)$ (or
+    $|T|$ for a two-sided test). It is not a probability about the hypothesis.
+
+    - **a, c and e** are all the same mistake, turning $P(\text{data} \mid H_0)$ into $P(H_0 \mid \text{data})$. That needs a prior: if only 1 signal in 100 that you test is real, most signals
+      with $p = 0.03$ are still noise.
+    - **d** describes a replication probability, which depends on the true effect size and the power
+      of the repeat, not just on the p-value.
+
+    In research practice the gap between b and a is why a single significant backtest out of many
+    tries means little.
+  source: { name: "Standard (e.g. the ASA statement on p-values, Wasserstein and Lazar, 2016)" }
+
+- id: stat-testing-002
+  topic: statistics
+  subtopic: Confidence intervals and hypothesis tests
+  type: single
+  difficulty: easy
+  tags: [confidence-interval, coverage]
+  prompt: |
+    From one sample you compute a 95% confidence interval $[a, b]$ for a mean $\mu$, using the usual
+    $t$ interval. What does "95%" refer to?
+  choices:
+    - { id: a, text: 'There is a 95% probability that $\mu$ lies in $[a, b]$' }
+    - { id: b, text: 'If the sampling were repeated many times, 95% of the intervals built this way would contain $\mu$' }
+    - { id: c, text: 'About 95% of the observations lie in $[a, b]$' }
+    - { id: d, text: 'If the sampling were repeated many times, 95% of the new sample means would fall in $[a, b]$' }
+  answer: b
+  explanation: |
+    The confidence level is a property of the procedure: before the data are drawn, the random
+    interval covers the fixed $\mu$ with probability 95%.
+
+    - **a** treats $\mu$ as random. Once the interval is computed it either contains $\mu$ or does
+      not; a probability statement about $\mu$ needs a prior (a Bayesian credible interval), though
+      with a flat prior the numbers often coincide.
+    - **c** confuses a confidence interval for the mean with a range for individual observations,
+      which is far wider.
+    - **d** is a common subtle error. A new sample mean differs from $\mu$, and so does this
+      interval's centre, so the two errors add: for a known variance only about 83% of new sample
+      means fall inside this particular interval on average.
+  source: { name: "Standard (e.g. Wasserman, All of Statistics)" }
+
+- id: stat-testing-003
+  topic: statistics
+  subtopic: Confidence intervals and hypothesis tests
+  type: numeric
+  difficulty: easy
+  tags: [binomial-test, p-value]
+  prompt: |
+    A friend claims to be able to tell the five colours of a sweet apart by taste alone. Each sweet
+    is equally likely to be any of the five colours, independently. You give them 3 sweets and they
+    name 2 colours correctly. If they were only guessing, what is the probability of getting at
+    least 2 of 3 right (the one-sided p-value)?
+  answer: 13/125
+  answerText: |-
+    $3 \cdot 0.2^2 \cdot 0.8 + 0.2^3 = 0.104$
+  explanation: |
+    Under the null each answer is right with probability $p = 0.2$, independently, so the number
+    right is Binomial$(3, 0.2)$:
+
+    $$P(X \ge 2) = \binom32 (0.2)^2 (0.8) + (0.2)^3 = 0.096 + 0.008 = 0.104.$$
+
+    That is not significant at 5%: two out of three is quite likely by guessing. The common slip is
+    to compute only $P(X = 2) = 0.096$; the p-value includes every outcome at least as extreme.
+
+    With 100 sweets and 40 right, by contrast, the count under the null has mean 20 and standard
+    deviation 4, so 40 is five standard deviations out: overwhelming evidence. Small samples cannot
+    distinguish skill from luck even when the hit rate looks impressive.
+  source: { name: "Quant, FM and Data Science Interview Compilation (LSU)", url: "https://www.math.lsu.edu/~smolinsk/Quant_Interview_Prep.pdf" }
+
+- id: stat-testing-004
+  topic: statistics
+  subtopic: Confidence intervals and hypothesis tests
+  type: numeric
+  difficulty: medium
+  tags: [power, sample-size, z-test]
+  prompt: |
+    A strategy's daily returns are i.i.d. with known standard deviation $\sigma$, and its true mean
+    is $0.1\sigma$ per day. You will test $H_0: \mu = 0$ against $\mu > 0$ with a one-sided $z$-test at
+    the 5% level. What is the smallest number of days for which the test has at least 80% power?
+    (The quantiles you need are $z_{0.95} = 1.6449$ and $z_{0.80} = 0.8416$; answers within 2 days are
+    accepted.)
+  answer: 619
+  tolerance: { abs: 2 }
+  unit: days
+  hints:
+    - The test rejects when $\bar r > 1.6449\,\sigma/\sqrt n$. What is the distribution of $\bar r$ under the alternative?
+    - For 80% power the rejection threshold must sit 0.8416 standard errors below the true mean.
+  followUps:
+    - How many days for 80% power if the true mean is $0.05\sigma$?
+    - Translate a daily mean of $0.1\sigma$ into an annualised Sharpe ratio. Is that realistic?
+  explanation: |
+    Under the alternative, $\bar r \sim N(0.1\sigma, \sigma^2/n)$. The test rejects when $\bar r$ exceeds
+    $1.6449\,\sigma/\sqrt n$, and that happens with probability at least 0.8 when the threshold is at
+    least $0.8416$ standard errors below the true mean:
+
+    $$0.1\sqrt n \ge 1.6449 + 0.8416 = 2.4865 \quad\Longrightarrow\quad n \ge 24.865^2 = 618.3,$$
+
+    so 619 days. The general rule is $n = \left(\frac{z_{1-\alpha} + z_{1-\beta}}{\delta}\right)^2$ with
+    $\delta$ the effect in standard deviations: halving the effect quadruples the sample.
+
+    The usual mistakes are to forget the power term and answer $16.449^2 \approx 271$ (which gives
+    only 50% power), or to use the two-sided 1.96. A daily mean of $0.1\sigma$ is an annualised
+    Sharpe ratio of about $0.1\sqrt{252} \approx 1.6$, so even a very good strategy needs two and a
+    half years of data for this test.
+  source: { name: "Standard sample-size calculation (e.g. Wasserman, All of Statistics)" }
+
+- id: stat-testing-005
+  topic: statistics
+  subtopic: Confidence intervals and hypothesis tests
+  type: numeric
+  difficulty: easy
+  tags: [multiple-testing, family-wise-error]
+  prompt: |
+    You backtest 20 independent strategies, none of which has any edge, and test each at the 5%
+    level. What is the probability that at least one of them comes out significant? Give a decimal.
+  answer: 0.641514
+  answerText: |-
+    $1 - 0.95^{20} \approx 0.642$
+  explanation: |
+    Each test avoids a false positive with probability 0.95, and the tests are independent, so
+
+    $$P(\text{at least one}) = 1 - 0.95^{20} \approx 0.642.$$
+
+    The expected number of false positives is $20 \times 0.05 = 1$. To keep the family-wise error rate
+    at 5% you need a much stricter threshold per test: Bonferroni uses $0.05/20 = 0.0025$ (the exact
+    value for independent tests, Šidák's $1 - 0.95^{1/20}$, is almost the same).
+
+    The common wrong answer is 0.05 ("each test has a 5% error rate") or 1 ("20 tests at 5% is
+    100%"). Twenty variations of one idea is a modest research afternoon, which is why a single
+    significant backtest is weak evidence.
+  source: { name: "Standard multiple-testing calculation" }
+
+- id: stat-testing-006
+  topic: statistics
+  subtopic: Confidence intervals and hypothesis tests
+  type: numeric
+  difficulty: medium
+  tags: [false-discovery-rate, multiple-testing, power]
+  prompt: |
+    You test 1,000 candidate signals. In truth 100 of them have a real effect and 900 have none.
+    Each test uses a 5% significance level and has 50% power against the real effects. What fraction
+    of the signals that come out significant are false discoveries, in expectation (the ratio of the
+    expected counts)?
+  answer: 9/19
+  answerText: |-
+    $45/(45 + 50) = 9/19 \approx 0.474$
+  hints:
+    - How many of the 900 null signals do you expect to pass?
+    - How many of the 100 real ones?
+  followUps:
+    - What significance level would bring the false-discovery fraction down to 10%, if power stayed at 50%?
+    - How does the Benjamini-Hochberg procedure decide which signals to keep?
+  explanation: |
+    Expected false positives: $900 \times 0.05 = 45$. Expected true positives: $100 \times 0.5 = 50$. So
+    of the 95 significant signals, the expected false fraction is
+
+    $$\frac{45}{45 + 50} = \frac{9}{19} \approx 47\%.$$
+
+    Almost half the "discoveries" are noise, even though every test had a 5% error rate. The 5% is
+    $P(\text{significant} \mid \text{null})$; the question asks for $P(\text{null} \mid \text{significant})$,
+    which depends on how rare real effects are and on power. The common wrong answer is 5%.
+
+    This is the base-rate problem of medical testing applied to research, and the reason firms care
+    about the prior plausibility of a signal, not just its t-statistic.
+  source: { name: "False discovery rate (Benjamini and Hochberg, 1995; Ioannidis, 2005)" }
+
+- id: stat-testing-007
+  topic: statistics
+  subtopic: Confidence intervals and hypothesis tests
+  type: short
+  difficulty: medium
+  tags: [multiple-testing, data-snooping, bonferroni]
+  prompt: |
+    A colleague backtested 1,000 variations of a strategy, and 60 of them have p-values below 0.05.
+    They propose trading the 60. What do you conclude, and what would you do instead?
+  reference: |
+    If none of the 1,000 had an edge, you would expect about 50 significant results, with a standard
+    deviation of about $\sqrt{1000 \cdot 0.05 \cdot 0.95} \approx 6.9$. Sixty is about 1.5 standard
+    deviations above that, so the count is consistent with no real strategies at all; at best a
+    handful are real and you cannot tell which. Worse, variations of one strategy are strongly
+    correlated, which makes the number of false positives far more variable than the binomial
+    suggests (it is all or nothing for a family of near-identical tests).
+
+    Instead:
+
+    - Control the error rate for the whole family: Bonferroni ($p < 0.00005$) or Holm for the
+      family-wise rate, or Benjamini-Hochberg for the false-discovery rate.
+    - Compare the best t-statistics with what the maximum of 1,000 null t-statistics looks like
+      (the expected largest of 1,000 independent standard normals is about 3.2), or use a reality check or permutation test that keeps the
+      dependence between strategies.
+    - Confirm on data not used in the search (a true hold-out or live paper trading), and prefer
+      variations with an economic rationale and stable performance over neighbouring parameters.
+  keyPoints:
+    - About 50 false positives are expected under the null, so 60 is barely above chance
+    - Computes or estimates the spread (about 7) to judge whether 60 is unusual
+    - Variations are correlated, so the tests are not independent
+    - Proposes a multiple-testing correction such as Bonferroni, Holm or Benjamini-Hochberg
+    - Validates on untouched out-of-sample data
+  hints:
+    - How many would pass the 5% threshold if none of them worked?
+    - How much would that number vary from one batch of 1,000 useless strategies to another?
+    - Are variations of one strategy independent tests?
+  followUps:
+    - What Bonferroni threshold would you use, and what does it do to power?
+    - How would you estimate the expected maximum t-statistic among 1,000 correlated strategies?
+  explanation: |
+    The baseline of 50 is what interviewers want first. Strong candidates then raise dependence
+    between the tests and propose out-of-sample confirmation rather than only a correction formula,
+    since in practice the number of variations tried is often unknown even to the researcher.
+  source: { name: "Common quant-research interview question (data snooping; White, 2000)" }
+
+- id: stat-testing-008
+  topic: statistics
+  subtopic: Confidence intervals and hypothesis tests
+  type: multiple
+  difficulty: easy
+  tags: [power, significance-level]
+  prompt: |
+    A two-sided one-sample test of whether a mean is 0, when the true mean is 0.2. Holding
+    everything else fixed, which changes increase the test's power? Select all that apply.
+  choices:
+    - { id: a, text: "More observations" }
+    - { id: b, text: "A smaller significance level (1% instead of 5%)" }
+    - { id: c, text: "Less noisy observations (a smaller standard deviation)" }
+    - { id: d, text: "A larger significance level (10% instead of 5%)" }
+    - { id: e, text: "A one-sided test in the direction of the true effect instead of a two-sided test" }
+    - { id: f, text: "Reporting the p-value to more decimal places" }
+  answer: [a, c, d, e]
+  explanation: |
+    Power is $P(\text{reject} \mid \text{alternative})$, and it rises with the standardised effect
+    $\frac{\mu\sqrt n}{\sigma}$ and with the size of the rejection region.
+
+    - **a, c:** both raise $\mu\sqrt n/\sigma$.
+    - **b:** a stricter level shrinks the rejection region, so power falls. That is the trade-off
+      between type I and type II errors.
+    - **d:** a looser level raises power, at the price of more false positives.
+    - **e:** a one-sided test puts the whole 5% in the right tail (critical value 1.645 instead of
+      1.96), so power rises if the effect really is in that direction; it is worthless for an effect
+      in the other direction, and choosing the side after seeing the data is cheating.
+    - **f:** presentation changes nothing.
+
+    The usual mistake is to pick b, thinking a stricter test is a "better" test.
+  source: { name: "Standard (e.g. Casella and Berger, Statistical Inference)" }
+
+- id: stat-testing-009
+  topic: statistics
+  subtopic: Confidence intervals and hypothesis tests
+  type: short
+  difficulty: medium
+  tags: [optional-stopping, peeking, sequential-testing]
+  prompt: |
+    A researcher starts paper trading a new signal whose daily volatility is known. At the end of
+    every trading day she computes the $z$-statistic of its average daily P&L so far, planning to
+    declare success the first day it exceeds 1.96 in absolute value and to give up after a month (20
+    checks). What is wrong with this procedure, and how would you fix it?
+  reference: |
+    Each daily check is a 5% test, and the researcher stops at the first success, so the chance of a
+    false positive is the chance that the path of $z$-statistics crosses $\pm 1.96$ at *any* of 20 looks. The
+    looks are correlated (each adds one day to the same sample) but far from identical, so this is
+    well above 5%: for 20 equally spaced looks at a two-sided 5% test it is roughly a quarter. With
+    unlimited looks it tends to 1 (law of the iterated logarithm): a pure noise signal eventually
+    crosses any fixed threshold.
+
+    Fixes:
+
+    - Fix the sample size in advance and test once.
+    - Use a sequential design that accounts for the looks: group-sequential boundaries (Pocock,
+      O'Brien-Fleming), alpha spending, or Wald's sequential probability ratio test.
+    - A Bayesian analysis is not affected by the stopping rule in the same way, but its posterior
+      still needs a sensible prior to avoid the same over-optimism.
+  keyPoints:
+    - Repeated looks with stopping at the first significant one inflate the false-positive rate well above 5%
+    - Gives an estimate of the inflation for 20 looks (roughly 20 to 30%), or explains it qualitatively
+    - With unlimited looks a null signal eventually crosses any fixed threshold
+    - Fix by committing to the sample size in advance, or using a sequential design or alpha-spending with adjusted boundaries
+  hints:
+    - What is the probability of a false positive on a single day?
+    - The researcher wins if the statistic crosses 1.96 on any of the 20 days. Are those 20 events the same event?
+  followUps:
+    - Why is the inflation smaller than $1 - 0.95^{20} \approx 64\%$?
+    - What threshold per look would keep the overall false-positive rate at 5%?
+  explanation: |
+    "Peeking" is the classic error in A/B testing and in early live trading. A good answer explains
+    why the error rate lies between 5% and the independent-test figure of 64%: consecutive
+    statistics share most of their data. A constant boundary that keeps the overall rate at 5% over
+    these 20 looks (Pocock's approach) is about 2.7 rather than 1.96.
+  source: { name: "Optional stopping in sequential testing (e.g. Armitage, McPherson and Rowe, 1969)" }
+
+- id: stat-testing-010
+  topic: statistics
+  subtopic: Confidence intervals and hypothesis tests
+  type: single
+  difficulty: medium
+  tags: [binomial-test, hit-rate, standard-error]
+  prompt: |
+    A signal's trades are independent, and 485 of 900 trades made money. Test whether its hit rate
+    differs from 50%, two-sided, at the 5% level, with the normal approximation. Which is right?
+  choices:
+    - { id: a, text: "z ≈ 2.3: reject the null; the hit rate is significantly above 50%" }
+    - { id: b, text: "z ≈ 1.2: do not reject" }
+    - { id: c, text: "z ≈ 0.16: do not reject" }
+    - { id: d, text: "No test is possible without the P&L of each trade" }
+  answer: a
+  explanation: |
+    Under the null the number of winners is Binomial$(900, 1/2)$, with mean 450 and standard deviation
+    $\sqrt{900 \cdot \tfrac12 \cdot \tfrac12} = 15$. So
+
+    $$z = \frac{485 - 450}{15} \approx 2.33 > 1.96.$$
+
+    Equivalently, the hit rate 53.9% has standard error $\sqrt{0.25/900} = 1.67\%$.
+
+    - **b** uses $\sqrt{900} = 30$ as the standard deviation of the count, dropping the factor
+      $\sqrt{p(1-p)} = \tfrac12$.
+    - **c** divides by the variance (225) instead of the standard deviation.
+    - **d:** the question is about the hit rate, which the counts answer. Whether the strategy makes
+      money is a different question, and does need the P&L: a significant hit rate says nothing about
+      the size of wins and losses.
+  source: { name: "Standard binomial test (a common hit-rate interview question)" }
+
+- id: stat-testing-011
+  topic: statistics
+  subtopic: Confidence intervals and hypothesis tests
+  type: numeric
+  difficulty: hard
+  tags: [rule-of-three, confidence-bound, rare-events]
+  prompt: |
+    Over 300 independent trading days a strategy never breached its daily loss limit. Assume each day
+    breaches with the same unknown probability $p$. What is the exact upper end of the one-sided 95%
+    confidence bound for $p$, that is, the largest $p$ for which seeing no breach in 300 days still has
+    probability at least 5%? Give a decimal; answers within 2% of the exact value are accepted, so a
+    good rule-of-thumb approximation counts.
+  answer: 0.00993608
+  answerText: |-
+    $1 - 0.05^{1/300} \approx 0.00994$, close to the rule of three, $3/300 = 0.01$
+  tolerance: { rel: 0.02 }
+  hints:
+    - What is the probability of no breach in 300 days as a function of $p$?
+    - Set that probability equal to 0.05 and solve for $p$.
+    - Take logarithms, and remember that $-\ln 0.05 \approx 3$.
+  followUps:
+    - What does a Bayesian with a uniform prior on $p$ conclude from the same data?
+    - The risk manager says "zero breaches, so the probability is zero." How do you respond?
+  explanation: |
+    No breaches has probability $(1 - p)^{300}$. The bound is the $p$ at which this equals 0.05:
+
+    $$(1 - p)^{300} = 0.05 \quad\Longrightarrow\quad p = 1 - 0.05^{1/300} \approx 0.00994.$$
+
+    Since $\ln(1 - p) \approx -p$ and $-\ln 0.05 = 2.996 \approx 3$, the bound is about $3/n$: the
+    "rule of three". So zero events in 300 days is consistent with a breach rate of up to about once
+    in 100 days.
+
+    The common wrong answers are 0 (the point estimate, which is not a confidence bound) and
+    $1.96\sqrt{\hat p(1 - \hat p)/n} = 0$ from the normal approximation, which collapses when
+    $\hat p = 0$. That failure of the usual interval is the reason to know this rule.
+  source: { name: "The rule of three (Hanley and Lippman-Hand, 1983)" }
+
+- id: stat-testing-012
+  topic: statistics
+  subtopic: Confidence intervals and hypothesis tests
+  type: short
+  difficulty: easy
+  tags: [power, statistical-significance, confidence-interval, sharpe-ratio]
+  prompt: |
+    A signal has two years of daily history, and the t-statistic of its mean return is 1.5. Your
+    manager says: "Not significant, so it has no edge. Drop it." How do you respond?
+  reference: |
+    Failing to reject the null is not evidence that the null is true; it may just mean the test has
+    little power.
+
+    - A t-statistic of $t$ over $T$ years corresponds to an estimated annualised Sharpe ratio of about
+      $t/\sqrt T = 1.5/\sqrt 2 \approx 1.06$, with a standard error of about $1/\sqrt T \approx 0.71$.
+      A 95% interval runs from about $-0.3$ to $2.5$: consistent with no edge, and also with a very
+      good strategy.
+    - Even a genuine Sharpe-1 strategy would have an expected t-statistic of only $1 \cdot \sqrt 2 \approx 1.4$ after two years, so it would usually fail this test. The test cannot tell.
+    - The decision should weigh the prior plausibility and economic rationale of the signal, its
+      correlation with existing strategies, and the cost of waiting; options include collecting more
+      data, running it at small size, or combining it with related evidence.
+
+    Equally, the manager is right that the evidence for an edge is weak: "not significant" means
+    "not shown", not "shown to be zero".
+  keyPoints:
+    - Absence of evidence is not evidence of absence; failing to reject does not show the mean is zero
+    - Low power, since even a good strategy has a small expected t-statistic over two years
+    - Converts to an estimated Sharpe and gives a confidence interval that includes both zero and large values
+    - Suggests a sensible decision, such as more data, small size, or using prior and economic rationale
+  hints:
+    - What does "not significant" actually establish?
+    - What t-statistic would a genuinely good strategy have after two years?
+    - Turn the t-statistic into a Sharpe ratio and an interval.
+  followUps:
+    - How many years until a true Sharpe of 1 has an expected t-statistic of 3?
+    - When is a one-sided test justified here?
+  explanation: |
+    The trap is binary thinking about significance. The interval is the informative summary, and the
+    power calculation shows that the test was never likely to detect a realistic edge in two years.
+    Annualising uses $t = \text{SR}_{\text{annual}}\sqrt{T}$ for i.i.d. returns, with $T$ in years.
+  source: { name: "Common quant-research interview discussion (power and significance)" }

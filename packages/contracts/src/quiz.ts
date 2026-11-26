@@ -147,8 +147,8 @@ export const QuizQuestion = z.discriminatedUnion('type', [
      */
     answerText: z.string().trim().min(1).optional(),
     /**
-     * Absent: an exact answer, where a decimal correct to three significant figures also counts
-     * (whole-number answers must be exact). Present: anything within it counts, for estimates.
+     * Absent: an exact answer, where a decimal or whole number correct to three significant
+     * figures also counts (whole-number answers must be exact). Present: anything within it counts, for estimates.
      */
     tolerance: NumericToleranceSpec.optional(),
     /**

@@ -1,0 +1,183 @@
+# Determinants: what they measure, and quick determinants of structured matrices.
+- id: lac-det-001
+  topic: algebra-calculus
+  subtopic: Determinants
+  type: single
+  difficulty: easy
+  tags: [skew-symmetric, determinant, transpose]
+  prompt: |
+    $A$ is a real $5 \times 5$ matrix with $A^\top = -A$ (skew-symmetric). What can you say about
+    $\det A$?
+  choices:
+    - { id: a, text: '$\det A = 0$ for every such $A$' }
+    - { id: b, text: '$\det A \ge 0$, and it can be positive' }
+    - { id: c, text: '$\det A < 0$ for every non-zero such $A$' }
+    - { id: d, text: '$\det A$ can be any real number' }
+  answer: a
+  explanation: |
+    Use $\det A^\top = \det A$ and $\det(cA) = c^n \det A$ for an $n \times n$ matrix:
+
+    $$\det A = \det A^\top = \det(-A) = (-1)^5 \det A = -\det A \quad\Longrightarrow\quad \det A = 0.$$
+
+    So every odd-sized real skew-symmetric matrix is singular: it always has a non-zero null vector.
+    (Its eigenvalues are purely imaginary and come in conjugate pairs $\pm i\mu$, so an odd count
+    forces a zero.)
+
+    - b is the right answer for **even** sizes, where the determinant is the square of a polynomial in
+      the entries (the Pfaffian) and so is non-negative; remembering that fact without the size is the
+      usual mistake.
+    - c comes from reading $(-1)^5 = -1$ as "the determinant is negative" instead of solving
+      $\det A = -\det A$.
+    - d ignores the structure altogether.
+  source: { name: "Quant job interview problem collection (Kent State)", url: "https://www.math.kent.edu/~oana/math60070/InterviewProblems.pdf" }
+
+- id: lac-det-002
+  topic: algebra-calculus
+  subtopic: Determinants
+  type: numeric
+  difficulty: medium
+  tags: [equicorrelation, rank-one-update, determinant]
+  prompt: |
+    What is the determinant of the $5 \times 5$ matrix with every diagonal entry equal to 3 and every
+    off-diagonal entry equal to 1?
+  answer: 112
+  hints:
+    - Write the matrix as a multiple of the identity plus a multiple of the all-ones matrix $J$.
+    - What are the eigenvalues of $J$, and what does adding $cI$ do to them?
+  followUps:
+    - 'What is the determinant of the $n \times n$ matrix with $a$ on the diagonal and $b$ elsewhere? For which $b$ is it singular?'
+    - 'Read the result for a correlation matrix with every off-diagonal entry $\rho$. What lower bound on $\rho$ follows?'
+  explanation: |
+    Write the matrix as $M = 2I + J$, where $J$ is the all-ones matrix. $J = \mathbf{1}\mathbf{1}^\top$
+    has rank one, with eigenvalue $5$ (eigenvector $\mathbf{1}$) and eigenvalue $0$ four times
+    (vectors whose entries sum to zero). Adding $2I$ adds 2 to each eigenvalue, so $M$ has eigenvalues
+    $7$ and $2, 2, 2, 2$, and
+
+    $$\det M = 7 \cdot 2^4 = 112.$$
+
+    In general the $n \times n$ matrix with $a$ on the diagonal and $b$ elsewhere has determinant
+    $(a - b)^{n-1}\,\big(a + (n-1)b\big)$. For a correlation matrix ($a = 1$, $b = \rho$) the
+    eigenvalue $1 + (n-1)\rho$ must be non-negative, which is the familiar bound $\rho \ge -\frac{1}{n-1}$.
+
+    Common wrong answers: $3^5 = 243$ (multiplying the diagonal, as if the matrix were triangular) and
+    $2^5 = 32$ (giving every eigenvalue the value $a - b$ and missing the one along $\mathbf{1}$).
+  source: { name: "Quant, FM and Data Science Interview Compilation (LSU)", url: "https://www.math.lsu.edu/~smolinsk/Quant_Interview_Prep.pdf" }
+
+- id: lac-det-003
+  topic: algebra-calculus
+  subtopic: Determinants
+  type: numeric
+  difficulty: medium
+  tags: [tridiagonal, recurrence, finite-differences]
+  prompt: |
+    $T_n$ is the $n \times n$ tridiagonal matrix with 2 on the diagonal, $-1$ just above and just below
+    the diagonal, and 0 elsewhere. For example,
+
+    $$T_4 = \begin{pmatrix} 2 & -1 & 0 & 0 \\ -1 & 2 & -1 & 0 \\ 0 & -1 & 2 & -1 \\ 0 & 0 & -1 & 2 \end{pmatrix}.$$
+
+    What is $\det T_{10}$?
+  answer: 11
+  hints:
+    - 'Expand along the first row and express $\det T_n$ through $\det T_{n-1}$ and $\det T_{n-2}$.'
+    - 'Compute $\det T_1$ and $\det T_2$ and look for the pattern.'
+  followUps:
+    - Where does this matrix come from in numerical finance?
+    - 'The eigenvalues of $T_n$ are $2 - 2\cos\frac{k\pi}{n+1}$. What happens to its condition number as $n$ grows?'
+  explanation: |
+    Expanding along the first row, the $(1,1)$ minor is $T_{n-1}$ and the $(1,2)$ cofactor reduces to
+    $T_{n-2}$, giving
+
+    $$D_n = 2D_{n-1} - D_{n-2}, \qquad D_1 = 2,\ D_2 = 3.$$
+
+    The differences $D_n - D_{n-1}$ are constant, equal to 1, so $D_n = n + 1$ and $D_{10} = 11$.
+
+    $T_n$ is the second-difference matrix: it discretises $-u''$ on a grid, and it appears in
+    finite-difference solvers for the heat equation and the Black–Scholes PDE. Its determinant grows
+    only linearly while its smallest eigenvalue shrinks like $\pi^2/(n+1)^2$, so it becomes badly
+    conditioned on fine grids.
+
+    The common wrong answer is $2^{10} = 1024$, the product of the diagonal, which is the determinant
+    only of a triangular matrix.
+  source: { name: "Standard result (e.g. Strang, Introduction to Linear Algebra)" }
+
+- id: lac-det-004
+  topic: algebra-calculus
+  subtopic: Determinants
+  type: numeric
+  difficulty: hard
+  tags: [cholesky, brownian-motion, covariance-matrix]
+  prompt: |
+    $M$ is the $5 \times 5$ matrix with entries $M_{ij} = \min(i, j)$:
+
+    $$M = \begin{pmatrix} 1 & 1 & 1 & 1 & 1 \\ 1 & 2 & 2 & 2 & 2 \\ 1 & 2 & 3 & 3 & 3 \\ 1 & 2 & 3 & 4 & 4 \\ 1 & 2 & 3 & 4 & 5 \end{pmatrix}.$$
+
+    What is $\det M$?
+  answer: 1
+  hints:
+    - Subtract each row from the row below it, starting from the bottom.
+    - 'Alternatively, $M_{ij} = \min(i, j)$ is the covariance of a random walk (or Brownian motion) at times $i$ and $j$. Write the walk as a sum of independent steps.'
+  followUps:
+    - 'What is the determinant when the entries are $\min(t_i, t_j)$ for times $0 < t_1 < \dots < t_n$?'
+    - What does the inverse of $M$ look like, and why is it so sparse?
+  explanation: |
+    Write $M = LL^\top$ where $L$ is the lower-triangular matrix of ones ($L_{ik} = 1$ for $k \le i$):
+    $(LL^\top)_{ij} = \#\{k : k \le i,\ k \le j\} = \min(i, j)$. Hence
+
+    $$\det M = (\det L)^2 = 1.$$
+
+    The probabilistic reading: if $W_i = Z_1 + \dots + Z_i$ with independent unit-variance steps, then
+    $\operatorname{Cov}(W_i, W_j) = \min(i, j)$, and $L$ is exactly the Cholesky factor that turns the
+    independent steps into the walk. The determinant of a covariance matrix is the product of the
+    successive conditional variances, here the variances of the steps, all equal to 1. Row operations
+    give the same thing: subtracting each row from the next leaves an upper-triangular matrix of ones.
+
+    Common wrong answers: $5! = 120$ (the product of the diagonal) and 0 (the rows "look" nearly
+    dependent). For times $t_1 < \dots < t_n$ the same argument gives $t_1 (t_2 - t_1) \cdots (t_n - t_{n-1})$.
+  source: { name: "Standard result on the covariance of Brownian motion (e.g. Glasserman, Monte Carlo Methods in Financial Engineering)" }
+
+- id: lac-det-005
+  topic: algebra-calculus
+  subtopic: Determinants
+  type: short
+  difficulty: medium
+  tags: [determinant, volume, orientation]
+  prompt: |
+    What does the determinant of a real $n \times n$ matrix measure geometrically? Using that picture
+    rather than a formula, explain why $\det(AB) = \det(A)\det(B)$, why $A$ is invertible exactly when
+    $\det A \ne 0$, and what a negative determinant means.
+  reference: |
+    $|\det A|$ is the factor by which the linear map $x \mapsto Ax$ scales $n$-dimensional volume:
+    the unit cube is sent to the parallelepiped spanned by the columns of $A$, whose volume is
+    $|\det A|$, and every region's volume is multiplied by the same factor. The sign records
+    orientation: positive if the map preserves handedness, negative if it reverses it (a reflection
+    is involved, as for $\operatorname{diag}(1, -1)$ with determinant $-1$).
+
+    - Applying $B$ and then $A$ scales volume first by $|\det B|$ and then by $|\det A|$, and the
+      orientation flips compose, so $\det(AB) = \det A \det B$.
+    - $\det A = 0$ means the image of the cube has zero volume: $A$ squashes $\mathbb{R}^n$ into a
+      lower-dimensional subspace, its columns are dependent, and distinct points are sent to the same
+      point, so there is no inverse. If $\det A \ne 0$ nothing is flattened and $A$ is invertible, with
+      $\det(A^{-1}) = 1/\det A$ since $AA^{-1} = I$ has determinant 1.
+
+    It is also the product of the eigenvalues. For a covariance matrix $\Sigma$ (the "generalised
+    variance"), $\det \Sigma$ near zero says the variables are close to linearly dependent.
+  keyPoints:
+    - The absolute value of the determinant is the factor by which the map scales volume (the volume of the parallelepiped spanned by the columns)
+    - The sign says whether orientation is preserved or reversed
+    - Composing maps multiplies the volume factors and the signs, giving det(AB) = det A det B
+    - det A = 0 exactly when the map flattens space into a lower-dimensional subspace, so it cannot be inverted
+    - Mentions det(A⁻¹) = 1/det A, or that the determinant is the product of the eigenvalues
+  hints:
+    - Apply $A$ to the unit square or cube. What is the area or volume of the image?
+    - What happens to volumes when you apply two maps one after the other?
+  followUps:
+    - Derive $ad - bc$ as the signed area of the parallelogram spanned by $(a, c)$ and $(b, d)$.
+    - Why is the determinant of a rotation 1 and of a reflection $-1$?
+    - What does a determinant close to zero tell you about a covariance matrix, and is it a good test of near-singularity?
+  explanation: |
+    Most candidates can state "volume scaling factor"; fewer can use it to explain the product rule
+    and the invertibility criterion without falling back on cofactor expansion. A good answer also
+    handles the sign. On the last follow-up: the determinant is a poor test of near-singularity
+    because it scales with the size of the entries ($\det(0.1 I_{100}) = 10^{-100}$ for a perfectly
+    conditioned matrix); the condition number is the right measure.
+  source: { name: "Standard result (e.g. Strang, Introduction to Linear Algebra)" }

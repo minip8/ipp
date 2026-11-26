@@ -17,3 +17,27 @@
 - slug: networking
   title: Networking
   description: TCP/IP, UDP, DNS, HTTP, TLS, sockets, and how packets get from A to B.
+- slug: probability
+  title: Probability
+  track: quant
+  description: Counting, conditioning, expectation, distributions, random walks and the classic interview problems.
+- slug: brainteasers
+  title: Brainteasers
+  track: quant
+  description: Logic puzzles, strategy games, invariants and estimation, where the reasoning is what gets marked.
+- slug: betting-market-making
+  title: Betting & market making
+  track: quant
+  description: Fair value, bet sizing, quoting two-sided markets, adverse selection and trading games.
+- slug: options
+  title: Options & finance
+  track: quant
+  description: Payoffs, put-call parity, arbitrage bounds, the Greeks, volatility and pricing under no arbitrage.
+- slug: statistics
+  title: Statistics
+  track: quant
+  description: Estimation, testing, regression, time series and the ways a backtest fools you.
+- slug: algebra-calculus
+  title: Linear algebra & calculus
+  track: quant
+  description: Matrices, eigenvalues, covariance and projections, plus the calculus and series research interviews lean on.

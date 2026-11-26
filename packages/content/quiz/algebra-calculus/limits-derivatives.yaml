@@ -1,0 +1,198 @@
+# Limits, derivatives and approximations: standard limits, logarithmic differentiation, Taylor coefficients, Leibniz's rule.
+- id: lac-limits-001
+  topic: algebra-calculus
+  subtopic: Limits, derivatives and approximations
+  type: single
+  difficulty: easy
+  tags: [limits, exponential, compounding]
+  prompt: |
+    What is $\displaystyle\lim_{n \to \infty} \left(1 - \frac{2}{n}\right)^{3n}$?
+  choices:
+    - { id: a, text: '$1$, since the base tends to 1' }
+    - { id: b, text: '$e^{-6}$' }
+    - { id: c, text: '$e^{-2/3}$' }
+    - { id: d, text: '$0$' }
+  answer: b
+  explanation: |
+    Take logarithms and use $\ln(1 + x) = x + O(x^2)$:
+
+    $$3n \ln\!\left(1 - \frac2n\right) = 3n\left(-\frac2n + O\!\left(\frac{1}{n^2}\right)\right) \to -6,$$
+
+    so the limit is $e^{-6} \approx 0.00248$. In general $(1 + a/n)^{bn} \to e^{ab}$; with $a = r$ and
+    $b = t$ this is continuous compounding, $(1 + r/n)^{nt} \to e^{rt}$.
+
+    - a is the "$1^\infty = 1$" mistake: the base tends to 1 while the exponent blows up, and the
+      product $3n \cdot (-2/n)$ stays finite.
+    - c divides the constants instead of multiplying them.
+    - d is what you would get with exponent $n^2$, which grows faster than the base approaches 1.
+  source: { name: "Standard limit (e.g. Zhou, A Practical Guide to Quantitative Finance Interviews)" }
+
+- id: lac-limits-002
+  topic: algebra-calculus
+  subtopic: Limits, derivatives and approximations
+  type: numeric
+  difficulty: medium
+  tags: [logarithmic-differentiation, derivatives, variable-exponent]
+  prompt: |
+    Let $f(x) = (\ln x)^{\ln x}$ for $x > 1$. What is $f'(e^e)$?
+  answer: 2
+  hints:
+    - Take logarithms first, or write $f(x) = e^{g(x)}$ for a suitable $g$.
+    - 'What are $\ln x$ and $\ln \ln x$ at $x = e^e$?'
+  followUps:
+    - 'What is the derivative of $x^x$, and where on $(0, \infty)$ is $x^x$ smallest?'
+    - 'What is $\lim_{x \to 0^+} x^x$?'
+  explanation: |
+    Write $\ln f(x) = \ln x \cdot \ln\ln x$ and differentiate:
+
+    $$\frac{f'(x)}{f(x)} = \frac{\ln\ln x}{x} + \ln x \cdot \frac{1}{x \ln x} = \frac{\ln\ln x + 1}{x}.$$
+
+    At $x = e^e$: $\ln x = e$, $\ln\ln x = 1$ and $f(e^e) = e^e$, so
+
+    $$f'(e^e) = e^e \cdot \frac{1 + 1}{e^e} = 2.$$
+
+    The common wrong answer is 1, from the power rule $\ln x \cdot (\ln x)^{\ln x - 1} \cdot \frac1x$,
+    which treats the exponent as a constant. When both base and exponent vary, logarithmic
+    differentiation adds the two contributions, and here each contributes 1.
+  source: { name: "Zhou, A Practical Guide to Quantitative Finance Interviews (calculus chapter)" }
+
+- id: lac-limits-003
+  topic: algebra-calculus
+  subtopic: Limits, derivatives and approximations
+  type: numeric
+  difficulty: medium
+  tags: [taylor-series, higher-derivatives, power-series]
+  prompt: |
+    Let $f(x) = x e^{x^2}$. What is the seventh derivative $f^{(7)}(0)$?
+  answer: 840
+  hints:
+    - Do not differentiate seven times. Write down the Taylor series of $e^{x^2}$.
+    - How is the coefficient of $x^7$ in the Taylor series related to $f^{(7)}(0)$?
+  followUps:
+    - What is $f^{(100)}(0)$? And $f^{(101)}(0)$?
+    - What is the tenth derivative of $e^{x^2}$ at 0?
+  explanation: |
+    Expand: $x e^{x^2} = \sum_{k \ge 0} \dfrac{x^{2k+1}}{k!} = x + x^3 + \dfrac{x^5}{2} + \dfrac{x^7}{6} + \cdots$
+
+    The Taylor coefficient of $x^7$ is $f^{(7)}(0)/7!$, so
+
+    $$f^{(7)}(0) = 7! \cdot \frac{1}{3!} = \frac{5040}{6} = 840.$$
+
+    The same idea answers the interview favourite "the 100th derivative at 0": $f$ is odd, so every even
+    derivative vanishes at 0, while $f^{(101)}(0) = 101!/50!$.
+
+    Common wrong answers: $\tfrac16$ (the Taylor coefficient, forgetting the $7!$), and 0 (thinking all
+    high derivatives vanish at 0; only the even ones do, because $f$ is odd).
+  source: { name: "Widely reported interview question on high-order derivatives of x·exp(x²) (Glassdoor)" }
+
+- id: lac-limits-004
+  topic: algebra-calculus
+  subtopic: Limits, derivatives and approximations
+  type: numeric
+  difficulty: hard
+  tags: [leibniz-rule, differentiation-under-integral, normal-cdf]
+  prompt: |
+    $\Phi$ is the standard normal cumulative distribution function. For $x > 0$ let
+
+    $$g(x) = \int_{\ln x}^{x^2} \Phi(t + x)\, dt.$$
+
+    What is $g'(1)$? Give your answer to three significant figures.
+  answer: 1.24906
+  answerText: |-
+    $3\Phi(2) - 2\Phi(1) \approx 1.249$
+  hints:
+    - Leibniz's rule has three terms here, because both limits and the integrand depend on $x$.
+    - 'The derivative of the integrand with respect to $x$ is $\varphi(t + x)$, the normal density, and you can integrate that in $t$ directly.'
+  followUps:
+    - 'What is $\frac{d}{dx}\int_0^x \Phi(t)\, dt$, and what is the integral itself in closed form?'
+    - Where does differentiating under the integral sign show up in option pricing?
+  explanation: |
+    Leibniz's rule for $g(x) = \int_{a(x)}^{b(x)} h(t, x)\, dt$:
+
+    $$g'(x) = h(b(x), x)\, b'(x) - h(a(x), x)\, a'(x) + \int_{a(x)}^{b(x)} \frac{\partial h}{\partial x}(t, x)\, dt.$$
+
+    At $x = 1$: $b = 1$, $b' = 2$, $a = 0$, $a' = 1$, and $\partial h/\partial x = \varphi(t + x)$. So
+
+    $$g'(1) = 2\Phi(2) - \Phi(1) + \int_0^1 \varphi(t + 1)\, dt = 2\Phi(2) - \Phi(1) + \Phi(2) - \Phi(1) = 3\Phi(2) - 2\Phi(1).$$
+
+    With $\Phi(2) \approx 0.97725$ and $\Phi(1) \approx 0.84134$, $g'(1) \approx 1.249$.
+
+    The usual mistake is to use only the two boundary terms (giving $2\Phi(2) - \Phi(1) \approx 1.113$),
+    forgetting that the integrand itself depends on $x$. In option pricing, the same rule is how the
+    Greeks are computed from an integral of the payoff against a density.
+  source: { name: "Quant job interview problem collection (Kent State)", url: "https://www.math.kent.edu/~oana/math60070/InterviewProblems.pdf" }
+
+- id: lac-limits-005
+  topic: algebra-calculus
+  subtopic: Limits, derivatives and approximations
+  type: single
+  difficulty: hard
+  tags: [power-tower, fixed-point, convergence]
+  prompt: |
+    For $x > 0$ let $T(x)$ be the limit of the sequence $x,\ x^x,\ x^{x^x},\ \dots$ (each term is $x$
+    raised to the previous term), when the limit exists. Which statement about the equation $T(x) = 4$
+    is correct?
+  choices:
+    - { id: a, text: '$x = \sqrt{2}$, since $(\sqrt2)^4 = 4$' }
+    - { id: b, text: 'No $x > 0$ satisfies it' }
+    - { id: c, text: '$x = e^{1/e}$, the largest $x$ for which the sequence converges' }
+  answer: b
+  explanation: |
+    If the limit exists and equals $T$, then $T = x^T$, so $x = T^{1/T}$. For $T = 4$ the only candidate
+    is $4^{1/4} = \sqrt2$. But for $x = \sqrt2$ the sequence increases and stays below 2 (if
+    $a_n < 2$ then $a_{n+1} = \sqrt2^{\,a_n} < \sqrt2^{\,2} = 2$), so $T(\sqrt2) = 2$, not 4. Both 2 and 4
+    solve $T = \sqrt2^{\,T}$; the iteration converges to the smaller fixed point, which is the attracting
+    one. So no $x$ gives 4.
+
+    In general the sequence converges exactly for $e^{-e} \le x \le e^{1/e}$, and there
+    $T(x) \le e \approx 2.718$; no value above $e$ is reached.
+
+    - a is the classic trap: $T = x^T$ is a necessary condition, not a sufficient one. The same
+      algebra applied to $T(x) = 2$ gives the correct answer $\sqrt2$, which is why the trap works.
+    - c: at $x = e^{1/e}$ the limit is $e$, not 4.
+  source: { name: "Infinite power tower problem (QuantNet interview questions thread)", url: "https://quantnet.com/threads/quantitative-interview-questions-and-answers.437/" }
+
+- id: lac-limits-006
+  topic: algebra-calculus
+  subtopic: Limits, derivatives and approximations
+  type: short
+  difficulty: easy
+  tags: [taylor-expansion, log-returns, volatility-drag]
+  prompt: |
+    Use the expansion of $\ln(1 + r)$ for small $r$ to relate a stock's arithmetic and logarithmic
+    returns. If daily arithmetic returns have mean $\mu$ and standard deviation $\sigma$, roughly what is
+    the mean daily log return? Why does this matter for a strategy's long-run growth?
+  reference: |
+    $\ln(1 + r) = r - \dfrac{r^2}{2} + \dfrac{r^3}{3} - \cdots \approx r - \dfrac{r^2}{2}$ for small $r$.
+    Taking expectations and using $E[R^2] = \mu^2 + \sigma^2$,
+
+    $$E[\ln(1 + R)] \approx \mu - \frac{\mu^2 + \sigma^2}{2} \approx \mu - \frac{\sigma^2}{2},$$
+
+    since daily $\mu^2$ is negligible next to $\sigma^2$.
+
+    Wealth after $n$ periods is $\prod (1 + R_i) = \exp\left(\sum \ln(1 + R_i)\right)$, so the long-run
+    compound growth rate is the mean *log* return, $\mu - \sigma^2/2$, not $\mu$. Volatility lowers
+    growth for the same arithmetic mean ("volatility drag"): $+50\%$ then $-50\%$ has arithmetic mean
+    0 but leaves 75% of the money. It is Jensen's inequality for the concave logarithm, and it is why
+    leverage $L$ gives growth of roughly $L\mu - L^2\sigma^2/2$, which is maximised at $L = \mu/\sigma^2$
+    (the Kelly leverage) and turns negative if you lever too much.
+  keyPoints:
+    - ln(1 + r) ≈ r − r²/2 for small r
+    - Mean log return ≈ μ − σ²/2, using E[R²] = μ² + σ² and dropping μ²
+    - Long-run compound growth is set by the mean log return, not the arithmetic mean
+    - Volatility drag, with an example such as +50% then −50%
+    - Links to Jensen's inequality (concave log) or to leverage and Kelly sizing
+  hints:
+    - 'Expand to second order. What is $E[R^2]$ in terms of $\mu$ and $\sigma$?'
+    - Wealth after many periods is a product of growth factors. Take its logarithm.
+  followUps:
+    - A stock rises 10% and then falls 10%. What is the net return, and how does the approximation predict it?
+    - How does leverage change the growth rate, and which leverage maximises it?
+    - How large is the error of the second-order approximation for a 20% move?
+  explanation: |
+    This is the calculus behind the $-\sigma^2/2$ in geometric Brownian motion and behind Kelly
+    sizing. Weak answers stop at $\ln(1 + r) \approx r$, which loses the whole point. On the follow-ups:
+    $1.1 \times 0.9 = 0.99$, a 1% loss, matching $-\sigma^2 \approx -0.01$ over the two periods; and for
+    $r = 0.2$, $\ln 1.2 \approx 0.1823$ against $0.2 - 0.02 = 0.18$, so the third-order term already
+    matters.
+  source: { name: "Standard approximation for log returns (e.g. Hull, Options, Futures, and Other Derivatives)" }

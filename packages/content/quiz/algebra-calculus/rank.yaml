@@ -1,0 +1,188 @@
+# Rank and linear systems: rank and nullity, when Ax = b is solvable, ranks of sums and products.
+- id: lac-rank-001
+  topic: algebra-calculus
+  subtopic: Rank and linear systems
+  type: numeric
+  difficulty: easy
+  tags: [rank-nullity, null-space]
+  prompt: |
+    $A$ is a real $6 \times 9$ matrix whose rows span a 4-dimensional subspace of $\mathbb{R}^9$. What
+    is the dimension of its null space $\{x \in \mathbb{R}^9 : Ax = 0\}$?
+  answer: 5
+  explanation: |
+    Row rank equals column rank, so $\operatorname{rank} A = 4$. The rank–nullity theorem counts the
+    columns, because $x$ lives in $\mathbb{R}^9$:
+
+    $$\dim \ker A = n - \operatorname{rank} A = 9 - 4 = 5.$$
+
+    Geometrically, $Ax = 0$ says $x$ is orthogonal to every row, so the null space is the orthogonal
+    complement of the 4-dimensional row space inside $\mathbb{R}^9$.
+
+    The common wrong answer is 2, from subtracting the rank from the number of rows: $6 - 4 = 2$ is
+    the dimension of the left null space $\{y : y^\top A = 0\}$, not of the null space.
+  source: { name: "Standard result (e.g. Strang, Introduction to Linear Algebra)" }
+
+- id: lac-rank-002
+  topic: algebra-calculus
+  subtopic: Rank and linear systems
+  type: numeric
+  difficulty: easy
+  tags: [linear-systems, consistency, determinant]
+  prompt: |
+    For which real value of $k$ does the system below have **no** solution?
+
+    $$\begin{aligned} x + y + z &= 1 \\ x + 2y + 3z &= 2 \\ 2x + 3y + kz &= 4 \end{aligned}$$
+  answer: 4
+  explanation: |
+    The left-hand side of the third equation is the sum of the first two exactly when $k = 4$. Then
+    subtracting the first two equations from the third leaves $0 = 4 - 1 - 2 = 1$, a contradiction,
+    so there is no solution.
+
+    For every other $k$ the coefficient matrix is invertible: its determinant is
+
+    $$\det\begin{pmatrix} 1 & 1 & 1 \\ 1 & 2 & 3 \\ 2 & 3 & k \end{pmatrix} = k - 4,$$
+
+    so the solution exists and is unique.
+
+    A zero determinant alone does not decide between "no solution" and "infinitely many": that
+    depends on the right-hand side. Had the third right-hand side been 3, $k = 4$ would give
+    infinitely many solutions instead. Answering "infinitely many at $k = 4$, so no value gives
+    none" is the usual slip.
+  source: { name: "Standard exercise on consistency of linear systems (e.g. Strang, Introduction to Linear Algebra)" }
+
+- id: lac-rank-003
+  topic: algebra-calculus
+  subtopic: Rank and linear systems
+  type: numeric
+  difficulty: hard
+  tags: [rank, outer-product, low-rank]
+  prompt: |
+    $A$ is the $100 \times 100$ matrix with entries $a_{ij} = (i + j)^2$ for $i, j = 1, \dots, 100$.
+    What is the rank of $A$?
+  answer: 3
+  hints:
+    - Expand $(i + j)^2$.
+    - Each term of the expansion is (a function of $i$) times (a function of $j$). What is the rank of such a matrix?
+  followUps:
+    - What is the rank of the matrix with entries $(i + j)^k$?
+    - 'What is the rank of the matrix with entries $\sin(i + j)$?'
+  explanation: |
+    Expand: $(i + j)^2 = i^2 \cdot 1 + 2\, i \cdot j + 1 \cdot j^2$. Each term is an outer product
+    $u v^\top$ of a vector indexed by $i$ with one indexed by $j$, and each outer product has rank one:
+
+    $$A = s\,\mathbf{1}^\top + 2\, t\, t^\top + \mathbf{1}\, s^\top, \qquad t = (1, 2, \dots, 100)^\top, \quad s = (1, 4, \dots, 100^2)^\top.$$
+
+    So every column lies in the span of $s$, $t$ and $\mathbf{1}$, and the rank is at most 3. It is
+    exactly 3: $A = [\,s \ t \ \mathbf{1}\,]\,C\,[\,\mathbf{1} \ t \ s\,]^\top$ with
+    $C = \operatorname{diag}(1, 2, 1)$ invertible, and both $100 \times 3$ factors have independent
+    columns (the vectors with entries $1$, $i$, $i^2$ are independent as soon as there are three
+    distinct values of $i$), so the product has rank 3.
+
+    The common wrong answers are 100 (assuming a "generic" matrix is invertible), 2 (by analogy with
+    $a_{ij} = i + j$, which is rank 2) and 1. The idea worth remembering: a matrix whose entries are a
+    sum of $r$ separable terms $f(i)g(j)$ has rank at most $r$.
+  source: { name: "Standard rank exercise (e.g. Strang, Introduction to Linear Algebra)" }
+
+- id: lac-rank-004
+  topic: algebra-calculus
+  subtopic: Rank and linear systems
+  type: multiple
+  difficulty: easy
+  tags: [linear-systems, rank, existence-uniqueness]
+  prompt: |
+    $A$ is a real $m \times n$ matrix and $b \in \mathbb{R}^m$. Which statements are **always** true?
+    Select all that apply.
+  choices:
+    - { id: a, text: 'If $m < n$, then $Ax = 0$ has a non-zero solution.' }
+    - { id: b, text: 'If $m < n$, then $Ax = b$ has a solution for every $b$.' }
+    - { id: c, text: 'If the columns of $A$ are linearly independent, then $Ax = b$ has at most one solution.' }
+    - { id: d, text: 'If $m > n$, then there is some $b$ for which $Ax = b$ has no solution.' }
+    - { id: e, text: 'If $Ax = b$ has two different solutions, then it has infinitely many.' }
+    - { id: f, text: 'If $m = n$ and $Ax = b$ has a solution, then $A$ is invertible.' }
+  answer: [a, c, d, e]
+  explanation: |
+    - **a, true.** The rank is at most $m < n$, so the null space has dimension $n - \operatorname{rank} A \ge 1$.
+    - **b, false.** More unknowns than equations does not make the rows independent. With
+      $A = \begin{pmatrix} 1 & 1 & 1 \\ 2 & 2 & 2 \end{pmatrix}$ and $b = (1, 0)^\top$ there is no solution.
+      This is the mistake of counting equations instead of computing the rank.
+    - **c, true.** If $Ax_1 = Ax_2 = b$ then $A(x_1 - x_2) = 0$, and independent columns force $x_1 = x_2$.
+    - **d, true.** The column space has dimension at most $n < m$, so it is a proper subspace of
+      $\mathbb{R}^m$; any $b$ outside it has no solution (this is why least squares exists).
+    - **e, true.** If $x_1 \ne x_2$ both solve it, so does $x_1 + t(x_2 - x_1)$ for every real $t$.
+    - **f, false.** $A = 0$ and $b = 0$: a solution exists but $A$ is not invertible. Existence for
+      one $b$ says nothing; existence for *every* $b$ (or uniqueness) is what forces invertibility
+      of a square matrix.
+
+    The two false statements are the classic over-readings of "enough equations" and "a solution exists".
+  source: { name: "Standard result (e.g. Strang, Introduction to Linear Algebra)" }
+
+- id: lac-rank-005
+  topic: algebra-calculus
+  subtopic: Rank and linear systems
+  type: numeric
+  difficulty: hard
+  tags: [nilpotent, rank-nullity, image-kernel]
+  prompt: |
+    $A$ is a real $3 \times 3$ matrix with $A^2 = 0$ but $A \ne 0$. What is the rank of $A$?
+  answer: 1
+  hints:
+    - $A^2 = 0$ means $A(Ax) = 0$ for every $x$. Where does every column of $A$ lie?
+    - Compare the dimension of the column space with the dimension of the null space.
+  followUps:
+    - 'For an $n \times n$ matrix with $A^2 = 0$, what is the largest possible rank?'
+    - 'If instead $A^3 = 0$ (a $3 \times 3$ matrix), which ranks are possible?'
+  explanation: |
+    $A^2 = 0$ says $A$ kills everything it produces: the column space (image) of $A$ lies inside its
+    null space. With $r = \operatorname{rank} A$, the null space has dimension $3 - r$, so
+
+    $$r \le 3 - r \quad\Longrightarrow\quad r \le \tfrac32 \quad\Longrightarrow\quad r \le 1,$$
+
+    and $A \ne 0$ gives $r = 1$. An example is the matrix with a single 1 in the top-right corner. In
+    general an $n \times n$ matrix with $A^2 = 0$ has rank at most $\lfloor n/2 \rfloor$.
+
+    The common wrong answer is 2, by analogy with the $3 \times 3$ shift matrix (ones just above the
+    diagonal), which has rank 2; but that matrix satisfies $A^3 = 0$, not $A^2 = 0$.
+  source: { name: "Standard linear algebra exercise (image contained in kernel)" }
+
+- id: lac-rank-006
+  topic: algebra-calculus
+  subtopic: Rank and linear systems
+  type: short
+  difficulty: medium
+  tags: [gram-matrix, rank, regression]
+  prompt: |
+    Show that for any real $n \times p$ matrix $X$, $\operatorname{rank}(X^\top X) = \operatorname{rank}(X)$.
+    What does this tell you about when $X^\top X$ is invertible, and where does the argument use the
+    fact that $X$ is real?
+  reference: |
+    It is enough to show that $X$ and $X^\top X$ have the same null space in $\mathbb{R}^p$: both have
+    $p$ columns, so by rank–nullity they then have the same rank.
+
+    - If $Xv = 0$ then $X^\top X v = 0$.
+    - If $X^\top X v = 0$ then $0 = v^\top X^\top X v = (Xv)^\top (Xv) = \lVert Xv \rVert^2$, so $Xv = 0$.
+
+    Consequently the $p \times p$ matrix $X^\top X$ is invertible exactly when $X$ has rank $p$, that
+    is, when its columns are linearly independent. In regression, the normal equations have a unique
+    solution exactly when no regressor is an exact linear combination of the others, which needs at
+    least $p$ observations.
+
+    The step $\lVert Xv \rVert^2 = 0 \Rightarrow Xv = 0$ is where realness is used: over the complex
+    numbers a non-zero vector can have $z^\top z = 0$. For $X = (1, i)^\top$, $X^\top X = 1 + i^2 = 0$
+    has rank 0 while $X$ has rank 1. With the conjugate transpose, $X^* X = 2$ and the result holds again.
+  keyPoints:
+    - Reduces the claim to showing X and XᵀX have the same null space, then uses rank–nullity (both have p columns)
+    - From XᵀXv = 0 multiplies by vᵀ to get ‖Xv‖² = 0, hence Xv = 0
+    - Concludes XᵀX is invertible exactly when X has independent columns (full column rank)
+    - Realness is needed for ‖Xv‖² = 0 to force Xv = 0; over ℂ the conjugate transpose is required
+  hints:
+    - 'Compare the null spaces of $X$ and $X^\top X$.'
+    - 'If $X^\top X v = 0$, multiply on the left by $v^\top$.'
+  followUps:
+    - 'Show that $\operatorname{rank}(XX^\top) = \operatorname{rank}(X)$ as well. What does that say about a sample covariance matrix computed from fewer days than stocks?'
+    - A regression has 50 observations and 100 regressors. What goes wrong, and what are the usual fixes?
+  explanation: |
+    The inclusion $\ker X \subseteq \ker X^\top X$ is immediate; candidates who stop there have not
+    proved anything. The reverse inclusion needs the trick of multiplying by $v^\top$ to turn a vector
+    equation into a squared length. Saying where the proof needs real numbers is what separates a
+    strong answer: it is the reason statisticians write $X^* X$ for complex data.
+  source: { name: "Standard result (e.g. Strang, Introduction to Linear Algebra)" }

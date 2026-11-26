@@ -1,0 +1,201 @@
+# Bonds, yields and duration: price against yield, duration and convexity, forward rates, and callable bonds.
+- id: opt-fixed-income-001
+  topic: options
+  subtopic: Bonds, yields and duration
+  type: single
+  difficulty: easy
+  tags: [bond-price, yield, par]
+  prompt: |
+    A bond with several years to maturity pays an annual coupon of 6% of its face value. Its yield to
+    maturity is 7%. How does its price compare with its face value?
+  choices:
+    - { id: a, text: "Above face value (at a premium)" }
+    - { id: b, text: "Equal to face value (at par)" }
+    - { id: c, text: "Below face value (at a discount)" }
+    - { id: d, text: "It cannot be told without knowing the maturity" }
+  answer: c
+  explanation: |
+    A bond priced at par yields exactly its coupon rate. Discounting the same cash flows at a higher
+    yield, 7% instead of 6%, gives a lower price, so the bond trades below face value. Buyers are
+    compensated for the low coupon by buying it cheap and gaining as it rises to par at maturity.
+
+    Choice a reverses the inverse relationship between price and yield. Choice d is partly right
+    that the maturity sets **how far** below par it trades, but not the direction.
+  source: { name: "Standard bond pricing (e.g. Hull, Options, Futures, and Other Derivatives)" }
+
+- id: opt-fixed-income-002
+  topic: options
+  subtopic: Bonds, yields and duration
+  type: numeric
+  difficulty: medium
+  tags: [duration, convexity, zero-coupon-bond]
+  prompt: |
+    A 10-year zero-coupon bond has a yield of 5%, continuously compounded. The yield rises to 6%. By what
+    fraction does the bond's price change? Give it as a decimal or a percentage, negative for a fall.
+    An answer within 0.1 percentage points of the exact change is accepted, so a good duration-convexity
+    estimate counts.
+  answer: -0.0951626
+  answerText: |-
+    $e^{-0.1} - 1 \approx -9.52\%$; duration and convexity give $-10\% + 0.5\% = -9.5\%$
+  tolerance: { abs: 0.001 }
+  hints:
+    - With continuous compounding the price is $e^{-yT}$. How does it change when $y$ rises by $\Delta y$?
+    - What are the duration and the convexity of a zero-coupon bond?
+  followUps:
+    - Why does the duration-only estimate overstate the fall?
+    - Would a 10-year coupon bond at the same yield fall by more or less?
+  explanation: |
+    The price is $P = e^{-yT}$, so the exact change is
+
+    $$\frac{P_{\text{new}}}{P_{\text{old}}} - 1 = e^{-T\Delta y} - 1 = e^{-0.1} - 1 \approx -0.0952.$$
+
+    The quick estimate uses duration and convexity. For a zero-coupon bond with continuous compounding,
+    duration is the maturity, $D = 10$, and convexity is $D^2 = 100$, so
+
+    $$\frac{\Delta P}{P} \approx -D\,\Delta y + \tfrac12 C\,(\Delta y)^2 = -0.10 + 0.005 = -0.095.$$
+
+    The common wrong answer is $-10\%$, duration alone, which ignores convexity: the price-yield curve
+    bends upwards, so a linear estimate overstates the loss from a rise in yields (and understates the
+    gain from a fall).
+  source: { name: "Standard duration and convexity (e.g. Hull, Options, Futures, and Other Derivatives)" }
+
+- id: opt-fixed-income-003
+  topic: options
+  subtopic: Bonds, yields and duration
+  type: short
+  difficulty: easy
+  tags: [duration, convexity, interest-rate-risk]
+  prompt: |
+    In one or two sentences each, what do a bond's duration and convexity measure? Why is positive
+    convexity valuable to a bondholder?
+  reference: |
+    **Duration** measures the sensitivity of the bond's price to its yield: to first order
+    $\Delta P/P \approx -D\,\Delta y$. (Macaulay duration is also the present-value-weighted average
+    time of the cash flows, which is why a zero-coupon bond's duration is its maturity.)
+
+    **Convexity** is the second-order term, the curvature of the price-yield curve:
+    $\Delta P/P \approx -D\,\Delta y + \tfrac12 C\,(\Delta y)^2$.
+
+    Positive convexity means that for a move in yields either way, the bond does better than the
+    duration estimate: it gains more when yields fall than it loses when they rise by the same amount.
+    So, for the same duration and yield, the more convex bond is more valuable when rates are volatile;
+    it is like being long gamma.
+  keyPoints:
+    - Duration is the first-order sensitivity of the price to the yield, ΔP/P ≈ −D Δy
+    - Mentions duration as a weighted average time of the cash flows (or that a zero's duration is its maturity)
+    - Convexity is the second-order term, the curvature of the price-yield relationship
+    - With positive convexity, gains from falling yields exceed losses from rising yields of the same size
+    - Convexity is worth more when rates are more volatile, like long gamma in options
+  hints:
+    - Think of the bond's price as a function of its yield. What are its first and second derivatives?
+    - If yields move up or down by 1%, which move changes the price more?
+  followUps:
+    - Which has the higher duration, a 10-year zero or a 10-year coupon bond? Why?
+    - Can a bond have negative convexity? Give an example.
+  explanation: |
+    Generalist interviews ask this to check that the candidate understands rate risk as a derivative.
+    Duration as "the time until you get your money back on average" is fine as a supplement, but the
+    sensitivity definition is what is used. The link from convexity to volatility (and to gamma in
+    options) is what separates a good answer.
+  source: { name: "Standard fixed-income definitions (e.g. Hull, Options, Futures, and Other Derivatives)" }
+
+- id: opt-fixed-income-004
+  topic: options
+  subtopic: Bonds, yields and duration
+  type: numeric
+  difficulty: medium
+  tags: [forward-rate, zero-coupon-bond, no-arbitrage]
+  prompt: |
+    A zero-coupon bond paying \$1 in one year costs \$0.95 and one paying \$1 in two years costs \$0.90.
+    What one-year interest rate, compounded annually, can you lock in today for borrowing or lending
+    from year one to year two? Give it as a decimal or a percentage.
+  answer: 1/18
+  answerText: |-
+    $0.95/0.90 - 1 = 1/18 \approx 5.56\%$
+  hints:
+    - How many one-year bonds can you sell to pay for one two-year bond today?
+    - Write down the cash flows of that position at years one and two.
+  followUps:
+    - What are the one-year and two-year spot rates? Is the forward rate above or below both?
+    - What trade would you do if a bank offered to lend to you from year one to year two at 5%?
+  explanation: |
+    Buy one two-year bond (cost 0.90) and sell $0.90/0.95$ one-year bonds (raising 0.90). The position
+    costs nothing today; at year one you pay $0.90/0.95 = 0.947$; at year two you receive 1. That is a
+    loan agreed today for the second year, at
+
+    $$\frac{1}{0.90/0.95} - 1 = \frac{0.95}{0.90} - 1 = \frac{1}{18} \approx 5.56\%.$$
+
+    In general the forward discount factor is $P(0, T_2)/P(0, T_1)$. The common wrong answer is 5%,
+    from the difference in bond prices; another is the two-year spot rate, about 5.41%, which averages
+    the first year in.
+  source: { name: "Quant job interview problem collection (Kent State)", url: "https://www.math.kent.edu/~oana/math60070/InterviewProblems.pdf" }
+
+- id: opt-fixed-income-005
+  topic: options
+  subtopic: Bonds, yields and duration
+  type: single
+  difficulty: easy
+  tags: [duration, coupon, zero-coupon-bond]
+  prompt: |
+    Two bonds have the same 10-year maturity and the same yield. One is a zero-coupon bond; the other pays
+    an 8% annual coupon. Which has the higher duration?
+  choices:
+    - { id: a, text: "The zero-coupon bond" }
+    - { id: b, text: "The coupon bond" }
+    - { id: c, text: "They are equal, since the maturities are equal" }
+    - { id: d, text: "It depends on the level of the yield" }
+  answer: a
+  explanation: |
+    Duration is the present-value-weighted average time of the cash flows. The zero pays everything at
+    year 10, so its duration is 10 years. The coupon bond pays part of its value earlier, which pulls
+    the average below 10, so its price is less sensitive to the yield.
+
+    Choice c confuses maturity with duration. Choice d is true of the coupon bond's exact duration
+    (it changes with the yield) but not of the comparison: the zero's duration is 10 at any yield and
+    the coupon bond's is always below 10.
+  source: { name: "Standard duration comparison (e.g. Hull, Options, Futures, and Other Derivatives)" }
+
+- id: opt-fixed-income-006
+  topic: options
+  subtopic: Bonds, yields and duration
+  type: short
+  difficulty: hard
+  tags: [callable-bond, negative-convexity, embedded-option]
+  prompt: |
+    A callable bond lets the issuer buy it back at a fixed price (say par) on certain dates. Explain why
+    its price-yield curve has **negative convexity** at low yields, and describe the bondholder's position
+    in terms of options.
+  reference: |
+    The holder of a callable bond is long a straight (non-callable) bond and **short a call** on that
+    bond, sold to the issuer:
+
+    $$P_{\text{callable}} = P_{\text{straight}} - C_{\text{issuer's call}}.$$
+
+    When yields are high, the call is far out of the money and the bond behaves like a straight bond,
+    with positive convexity. As yields fall, the straight bond's price rises above the call price, the
+    issuer becomes likely to call and refinance more cheaply, and the callable bond's price is capped
+    near the call price. The curve flattens and bends downwards: the price rises less and less as
+    yields fall, which is negative convexity. In option terms, the short call has negative gamma that
+    outweighs the straight bond's positive convexity.
+
+    So the holder is short volatility: higher rate volatility makes the issuer's call more valuable and
+    the callable bond cheaper. They are paid for this through a higher yield than a comparable
+    straight bond. Mortgage-backed securities behave the same way because homeowners can prepay.
+  keyPoints:
+    - The callable bond is a straight bond minus a call option held by the issuer
+    - At low yields the issuer is likely to call, so the price is capped near the call price
+    - The price rises less and less as yields fall, giving negative convexity
+    - The holder is short an option, so short volatility and short gamma
+    - The holder is compensated by a higher yield; mortgage-backed securities are a common example
+  hints:
+    - Who holds the option, and what is the option on?
+    - What will the issuer do if yields fall a long way below the coupon?
+    - What does the price-yield curve look like near the call price?
+  followUps:
+    - How does an increase in rate volatility affect the price of a callable bond?
+    - Why do mortgage investors hedge by buying options or receiving in swaptions?
+  explanation: |
+    Candidates often know the phrase "negative convexity" without the mechanism. The answer the
+    interviewer wants decomposes the bond into a straight bond and a short call, explains the price
+    cap, and translates it into option language: short gamma and short vega.
+  source: { name: "Callable bonds and negative convexity (e.g. Fabozzi, Bond Markets, Analysis and Strategies)" }

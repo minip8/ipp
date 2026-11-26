@@ -1,0 +1,229 @@
+# Projections and least squares: orthogonal projection, the normal equations, the hat matrix, collinearity.
+- id: lac-ls-001
+  topic: algebra-calculus
+  subtopic: Projections and least squares
+  type: numeric
+  difficulty: easy
+  tags: [orthogonal-projection, demeaning, pythagoras]
+  prompt: |
+    Let $b = (1, 2, 6)$. Project $b$ orthogonally onto the plane $x + y + z = 0$ in $\mathbb{R}^3$. What
+    is the squared length of the projection?
+  answer: 14
+  explanation: |
+    The plane is the orthogonal complement of $\mathbf{1} = (1, 1, 1)$, so projecting onto it removes
+    the component of $b$ along $\mathbf{1}$:
+
+    $$p = b - \frac{b^\top \mathbf{1}}{\mathbf{1}^\top \mathbf{1}}\,\mathbf{1} = b - 3\cdot\mathbf{1} = (-2, -1, 3), \qquad \lVert p \rVert^2 = 4 + 1 + 9 = 14.$$
+
+    Subtracting the mean *is* this projection, and $\lVert p \rVert^2$ is the sum of squared deviations
+    from the mean. Pythagoras splits the total: $\lVert b \rVert^2 = 41 = 27 + 14$, the part along
+    $\mathbf{1}$ plus the part in the plane. Cross-sectionally demeaning a trading signal, or
+    neutralising it against a factor, is the same operation with $\mathbf{1}$ replaced by the factor
+    exposures.
+
+    Common wrong answers: 41 (no projection), 27 (the squared length of the component along
+    $\mathbf{1}$, i.e. projecting onto the normal instead of the plane).
+  source: { name: "Industry-neutralised signals via projection (e.g. QuantVault linear algebra question bank)", url: "https://quantvault.org/linear-algebra-interview-questions.html" }
+
+- id: lac-ls-002
+  topic: algebra-calculus
+  subtopic: Projections and least squares
+  type: multiple
+  difficulty: medium
+  tags: [hat-matrix, projection-matrix, leverage]
+  prompt: |
+    $X$ is a real $n \times p$ matrix with $n > p$ and linearly independent columns, and
+    $H = X(X^\top X)^{-1}X^\top$ is the hat matrix of least squares. Which statements hold for **every**
+    such $X$? Select all that apply.
+  choices:
+    - { id: a, text: '$H$ is symmetric and $H^2 = H$.' }
+    - { id: b, text: 'Every eigenvalue of $H$ is 0 or 1.' }
+    - { id: c, text: '$\operatorname{tr} H = p$.' }
+    - { id: d, text: '$H$ is invertible.' }
+    - { id: e, text: 'Every entry of $H$ lies between 0 and 1.' }
+    - { id: f, text: 'For any $y$, the residual $(I - H)y$ is orthogonal to every column of $X$.' }
+  answer: [a, b, c, f]
+  explanation: |
+    $H$ is the orthogonal projection onto the column space of $X$.
+
+    - **a, true.** Symmetry is visible from the formula, and
+      $H^2 = X(X^\top X)^{-1}X^\top X (X^\top X)^{-1}X^\top = H$.
+    - **b, true.** If $Hv = \lambda v$ then $\lambda v = H^2 v = \lambda^2 v$, so $\lambda \in \{0, 1\}$:
+      1 on the column space ($p$ dimensions), 0 on its orthogonal complement.
+    - **c, true.** The trace is the sum of the eigenvalues, $p$ ones; or
+      $\operatorname{tr}(X(X^\top X)^{-1}X^\top) = \operatorname{tr}((X^\top X)^{-1}X^\top X) = \operatorname{tr} I_p$.
+      This is why $p$ counts the degrees of freedom used by the fit.
+    - **d, false.** It has rank $p < n$; it throws away the residual directions.
+    - **e, false.** The *diagonal* entries (the leverages) lie in $[0, 1]$, but off-diagonal entries can
+      be negative. With an intercept and one regressor at $x = 0, 1, 2$, the entry linking the first and
+      last observations is $-\tfrac16$. Extending the leverage fact to every entry is the mistake.
+    - **f, true.** $X^\top(I - H) = X^\top - X^\top = 0$: residuals are orthogonal to the regressors,
+      which is the normal equations.
+  source: { name: "Standard result (e.g. Strang, Introduction to Linear Algebra)" }
+
+- id: lac-ls-003
+  topic: algebra-calculus
+  subtopic: Projections and least squares
+  type: short
+  difficulty: medium
+  tags: [normal-equations, orthogonal-projection, regression]
+  prompt: |
+    Least squares chooses $\beta$ to minimise $\lVert y - X\beta \rVert^2$, where $X$ is $n \times p$ with
+    independent columns. Derive the normal equations $X^\top X\hat\beta = X^\top y$ geometrically rather
+    than by differentiating, and say what the fitted vector $X\hat\beta$ is.
+  reference: |
+    As $\beta$ varies, $X\beta$ ranges over the column space $\mathcal{C}(X)$, a $p$-dimensional subspace
+    of $\mathbb{R}^n$. So the problem is: find the point of $\mathcal{C}(X)$ closest to $y$. That point
+    is the orthogonal projection $\hat y$, characterised by the residual $e = y - \hat y$ being
+    orthogonal to the subspace, that is, to every column of $X$:
+
+    $$X^\top(y - X\hat\beta) = 0 \quad\Longleftrightarrow\quad X^\top X\hat\beta = X^\top y.$$
+
+    It is the minimiser by Pythagoras: for any $\beta$, $X\hat\beta - X\beta$ lies in $\mathcal{C}(X)$
+    and is orthogonal to $e$, so
+    $\lVert y - X\beta \rVert^2 = \lVert e \rVert^2 + \lVert X(\hat\beta - \beta) \rVert^2 \ge \lVert e \rVert^2$.
+
+    Independent columns make $X^\top X$ invertible, so $\hat\beta = (X^\top X)^{-1}X^\top y$ and
+    $\hat y = X(X^\top X)^{-1}X^\top y = Hy$, the projection of $y$ onto $\mathcal{C}(X)$. With an
+    intercept column, orthogonality to $\mathbf{1}$ says the residuals sum to zero.
+  keyPoints:
+    - Xβ ranges over the column space of X, so the task is the closest point of that subspace to y
+    - The closest point is the orthogonal projection, so the residual is orthogonal to every column of X
+    - Writing that orthogonality as Xᵀ(y − Xβ̂) = 0 gives the normal equations
+    - Uses Pythagoras (or an equivalent argument) to show any other β gives a larger error
+    - Identifies the fitted values as Hy = X(XᵀX)⁻¹Xᵀy, the projection of y onto the column space
+  hints:
+    - 'What set does $X\beta$ range over as $\beta$ varies?'
+    - In the plane, how do you find the point of a line closest to a given point?
+  followUps:
+    - With an intercept in the model, what does orthogonality to the column of ones tell you about the residuals and the fitted values?
+    - Why can adding a regressor never increase the residual sum of squares?
+    - What changes if the columns of $X$ are linearly dependent?
+  explanation: |
+    The geometric derivation is what the interviewer is after: it explains why the residual is
+    orthogonal to the regressors, why adding a regressor cannot hurt the in-sample fit (projecting onto
+    a larger subspace), and what goes wrong with dependent columns (the projection $\hat y$ is still
+    unique, but $\hat\beta$ is not). Candidates who differentiate correctly but cannot say what $\hat y$
+    is geometrically have missed the point of the question.
+  source: { name: "Linear Algebra for Quant Interviews (techinterview.org)", url: "https://www.techinterview.org/post/3233474574/linear-algebra-quant-interviews/" }
+
+- id: lac-ls-004
+  topic: algebra-calculus
+  subtopic: Projections and least squares
+  type: numeric
+  difficulty: medium
+  tags: [collinearity, condition-number, regression]
+  prompt: |
+    Two regressors are standardised so that $\tfrac1n X^\top X$ is their sample correlation matrix
+
+    $$\begin{pmatrix} 1 & \rho \\ \rho & 1 \end{pmatrix}, \qquad \rho = 0.95.$$
+
+    What is the condition number of $X^\top X$, the ratio of its largest to its smallest eigenvalue?
+  answer: 39
+  hints:
+    - Try the vectors $(1, 1)$ and $(1, -1)$.
+    - Scaling a matrix by $n$ does not change the ratio of its eigenvalues.
+  followUps:
+    - What is the condition number of $X$ itself?
+    - 'In which direction of $(\beta_1, \beta_2)$ is the least-squares estimate least precise, and how much less precise than in the best direction?'
+    - 'What does ridge regression, which adds $\lambda I$ to $X^\top X$, do to the condition number?'
+  explanation: |
+    The eigenvectors are $(1, 1)$ and $(1, -1)$ with eigenvalues $1 + \rho = 1.95$ and $1 - \rho = 0.05$,
+    so
+
+    $$\kappa(X^\top X) = \frac{1 + \rho}{1 - \rho} = \frac{1.95}{0.05} = 39.$$
+
+    The estimate's covariance is $\sigma^2 (X^\top X)^{-1}$, so the variance in the direction
+    $(1, -1)$ (the difference $\beta_1 - \beta_2$) is 39 times that in the direction $(1, 1)$: two
+    nearly collinear regressors pin down their combined effect well and their separate effects badly.
+    Ridge regression gives $(1.95 + \lambda')/(0.05 + \lambda')$ with $\lambda' = \lambda/n$, which drops
+    quickly as $\lambda$ grows.
+
+    Common wrong answers: $\sqrt{39} \approx 6.24$, the condition number of $X$ (forming $X^\top X$
+    squares it), and $1/(1 - \rho^2) \approx 10.3$, the variance inflation factor, which measures
+    something else.
+  source: { name: "Collinearity and conditioning of the normal equations (e.g. Quantt, Linear Algebra for Quant Interviews)", url: "https://www.quantt.co.uk/resources/linear-algebra-quant-interview" }
+
+- id: lac-ls-005
+  topic: algebra-calculus
+  subtopic: Projections and least squares
+  type: short
+  difficulty: hard
+  tags: [normal-equations, qr-decomposition, numerical-stability]
+  prompt: |
+    Why is solving the normal equations $X^\top X\beta = X^\top y$ numerically worse than solving the same
+    least-squares problem with a QR factorisation or the SVD of $X$? Be specific about the condition
+    number and what it means in double-precision arithmetic.
+  reference: |
+    The singular values of $X$ are $\sigma_1 \ge \dots \ge \sigma_p > 0$, and the eigenvalues of
+    $X^\top X$ are $\sigma_i^2$, so
+
+    $$\kappa(X^\top X) = \kappa(X)^2.$$
+
+    Solving a linear system with condition number $\kappa$ in floating point gives a relative error of
+    roughly $\kappa \cdot \varepsilon$, with $\varepsilon \approx 10^{-16}$ in double precision. With
+    $\kappa(X) = 10^6$, the normal equations face $10^{12}$ and keep about 4 correct digits, while QR
+    keeps about 10. QR writes $X = QR$ with orthonormal $Q$, and solves the triangular system
+    $R\beta = Q^\top y$; $R$ has the same condition number as $X$, and orthogonal transformations do not
+    amplify rounding errors, so the method is backward stable.
+
+    Forming $X^\top X$ can lose information outright. For
+    $X = \begin{pmatrix} 1 & 1 \\ \delta & 0 \\ 0 & \delta \end{pmatrix}$ with $\delta^2$ below machine
+    precision, $X^\top X = \begin{pmatrix} 1 + \delta^2 & 1 \\ 1 & 1 + \delta^2 \end{pmatrix}$ rounds to the
+    singular all-ones matrix, although $X$ has full rank.
+
+    The SVD is the most robust: it reveals near rank-deficiency and lets you truncate tiny singular
+    values (the pseudo-inverse). The normal equations remain fine, and cheapest, when $X$ is well
+    conditioned. Highly correlated regressors (factor exposures, overlapping signals) are the usual
+    source of bad conditioning in finance.
+  keyPoints:
+    - The condition number of XᵀX is the square of that of X, since its eigenvalues are the squared singular values
+    - Relative error is roughly condition number times machine epsilon, so the normal equations lose about twice as many digits
+    - QR solves Rβ = Qᵀy with R as well conditioned as X, and orthogonal transformations do not amplify errors
+    - Forming XᵀX can destroy information entirely (e.g. the Läuchli-type example with a tiny δ)
+    - SVD handles near rank-deficiency by truncating small singular values; normal equations are fine when X is well conditioned
+  hints:
+    - 'How are the singular values of $X$ related to the eigenvalues of $X^\top X$?'
+    - 'In double precision, roughly how many digits do you lose solving a system with condition number $\kappa$?'
+    - What does multiplying by an orthogonal matrix do to lengths, and so to errors?
+  followUps:
+    - 'Give a $3 \times 2$ matrix of full rank whose $X^\top X$ is exactly singular in floating point.'
+    - 'You can stream the data only once. How do you compute least squares without forming $X^\top X$?'
+    - Where does ridge regression fit into this picture?
+  explanation: |
+    "QR is more stable" is not an answer; the interviewer wants the squaring of the condition number
+    and what it costs in digits. Note the nuance: the least-squares problem itself can be sensitive to
+    $\kappa(X)^2$ when the residual is large, but the normal equations pay $\kappa(X)^2$ even when the
+    fit is nearly exact. For streaming data, update a QR factorisation row by row with Givens
+    rotations.
+  source: { name: "Normal equations versus QR (e.g. Trefethen and Bau, Numerical Linear Algebra; Quantt, Linear Algebra for Quant Interviews)", url: "https://www.quantt.co.uk/resources/linear-algebra-quant-interview" }
+
+- id: lac-ls-006
+  topic: algebra-calculus
+  subtopic: Projections and least squares
+  type: single
+  difficulty: medium
+  tags: [regression-slopes, correlation, cauchy-schwarz]
+  prompt: |
+    On the same data set you regress $y$ on $x$ by least squares with an intercept and get slope $a$;
+    you then regress $x$ on $y$, also with an intercept, and get slope $c$. Which pair $(a, c)$ is
+    possible?
+  choices:
+    - { id: a, text: '$(2,\ 0.6)$' }
+    - { id: b, text: '$(2,\ 0.4)$' }
+    - { id: c, text: '$(-1,\ 0.5)$' }
+    - { id: d, text: '$(0.5,\ 3)$' }
+  answer: b
+  explanation: |
+    The two slopes are
+
+    $$a = \frac{\operatorname{Cov}(x, y)}{\operatorname{Var}(x)}, \qquad c = \frac{\operatorname{Cov}(x, y)}{\operatorname{Var}(y)}, \qquad ac = \frac{\operatorname{Cov}(x, y)^2}{\operatorname{Var}(x)\operatorname{Var}(y)} = r^2,$$
+
+    so $a$ and $c$ have the same sign and $0 \le ac \le 1$ (Cauchy–Schwarz).
+
+    - b gives $ac = 0.8$, a correlation of about $0.89$: possible.
+    - a gives $ac = 1.2 > 1$ and d gives $ac = 1.5$: both would need $|r| > 1$. They come from expecting
+      the second regression to invert the first ($c = 1/a$), which happens only for a perfect fit;
+      otherwise both regressions shrink towards the mean.
+    - c has slopes of opposite signs, impossible since both share the sign of the covariance.
+  source: { name: "Quant, FM and Data Science Interview Compilation (LSU)", url: "https://www.math.lsu.edu/~smolinsk/Quant_Interview_Prep.pdf" }

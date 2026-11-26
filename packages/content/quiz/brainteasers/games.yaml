@@ -1,0 +1,395 @@
+# Strategy games and backward induction: work back from the end, find the losing positions, copy or steal a strategy.
+- id: bt-games-001
+  topic: brainteasers
+  subtopic: Strategy games and backward induction
+  type: short
+  difficulty: medium
+  tags: [pirates, backward-induction, voting]
+  prompt: |
+    Five pirates, ranked 1 (most senior) to 5, must share 100 indivisible gold coins. The most senior
+    pirate still alive proposes a division, and every living pirate votes on it, the proposer
+    included. If **at least half** vote yes, the division is carried out; otherwise the proposer is
+    thrown overboard and the next most senior pirate proposes. Every pirate is perfectly rational
+    and wants, in order: first to stay alive, then as many coins as possible, and then, other things
+    being equal, to see someone thrown overboard (so a pirate who would be no better off votes no).
+
+    What should pirate 1 propose, and why will it pass?
+  reference: |
+    Work backwards from the smallest game.
+
+    - **Pirate 5 alone** keeps all 100.
+    - **Pirates 4 and 5:** pirate 4's own vote is half, so he proposes 100 for himself and 0 for
+      pirate 5, and it passes.
+    - **Pirates 3, 4, 5:** pirate 3 needs one more vote. Pirate 5 gets 0 if pirate 3 dies, so 1 coin
+      buys him: (99, 0, 1).
+    - **Pirates 2 to 5:** pirate 2 needs one more vote (2 of 4 is half). Pirate 4 gets 0 in the
+      three-pirate game, so 1 coin buys him: (99, 0, 1, 0).
+    - **All five:** pirate 1 needs two more votes. In the four-pirate game pirates 3 and 5 get 0, so
+      1 coin each buys them.
+
+    Pirate 1 proposes **98 for himself, 0 for pirate 2, 1 for pirate 3, 0 for pirate 4 and 1 for
+    pirate 5**. Pirates 1, 3 and 5 vote yes, three of five, and it passes.
+  keyPoints:
+    - Solves the game backwards, starting from one or two pirates
+    - In the two-pirate game the senior pirate's own vote is enough, so he takes everything
+    - Each proposer buys the cheapest votes, one coin more than those pirates would get in the next smaller game
+    - "The proposal is 98, 0, 1, 0, 1: pirate 1 keeps 98 coins and pirates 3 and 5 get one each"
+    - Explains that a pirate who would be no better off votes no, so the bribe must be strictly better
+  hints:
+    - Start with only the two most junior pirates. What happens?
+    - Add one pirate at a time. Whose vote is cheapest to buy?
+    - A pirate who would get nothing if the proposer died can be bought for one coin.
+  followUps:
+    - What changes if a proposal needs a strict majority to pass?
+    - With 100 coins, how many pirates can there be before the most senior one cannot save himself?
+  explanation: |
+    Backward induction is the whole method: the five-pirate game is decided by what each pirate would
+    get in the four-pirate game, and so on down. Candidates who try to reason forwards ("everyone will
+    want a fair share") get nowhere, and those who jump to "give 1 coin to two pirates" often pick
+    the wrong two (2 and 4, who get 99 and 1 in the next game and cannot be bought cheaply).
+
+    The rules matter. With "at least half" the two-pirate game is a dictatorship; with a strict
+    majority, pirate 4 would always be thrown overboard by pirate 5, which changes everything above
+    it. A strong answer says which rule it assumed and why the tie-breaking preference is needed.
+  source: { name: "Screwy pirates (Omohundro and Stewart, Scientific American 1999; e.g. Zhou, A Practical Guide to Quantitative Finance Interviews)" }
+
+- id: bt-games-002
+  topic: brainteasers
+  subtopic: Strategy games and backward induction
+  type: short
+  difficulty: medium
+  tags: [backward-induction, parity, tigers]
+  prompt: |
+    100 tigers and one sheep live on an island where there is plenty of grass. Tigers can live on
+    grass but would rather eat the sheep. A tiger that eats the sheep turns into a sheep itself, and
+    can then be eaten. Only one tiger can eat a sheep at a time. Every tiger is perfectly rational
+    and cares above all about not being eaten. Will the sheep be eaten? Explain.
+  reference: |
+    No. Work up from small numbers.
+
+    - **1 tiger:** it eats the sheep safely, since nobody is left to eat it.
+    - **2 tigers:** if one eats, it becomes a sheep facing 1 tiger, which (by the case above) eats it.
+      So neither eats: the sheep is safe.
+    - **3 tigers:** a tiger that eats leaves 2 tigers and a sheep, and we just saw that sheep is safe.
+      So a tiger eats.
+    - In general, with $n$ tigers a tiger eats exactly when the resulting situation with $n - 1$
+      tigers is safe for the new sheep. So the sheep is eaten when $n$ is odd and safe when $n$ is
+      even.
+
+    With 100 tigers, an even number, the sheep is not eaten.
+  keyPoints:
+    - Solves small cases first (1 tiger eats; 2 tigers do not)
+    - "Each tiger's decision depends on the game with one fewer tiger: it eats only if the new sheep would be safe"
+    - Concludes by induction that the sheep is eaten exactly when the number of tigers is odd
+    - Answers that with 100 tigers the sheep survives
+  hints:
+    - What happens with a single tiger? With two?
+    - Eating the sheep turns a tiger into the sheep of a game with one fewer tiger.
+  followUps:
+    - With 101 tigers, which tiger eats, and what happens next?
+    - Why is it important that every tiger knows every other tiger is rational?
+  explanation: |
+    The question looks like it is about appetite, but it is a backward induction on the number of
+    tigers. The state after a tiger eats is the same game with one fewer tiger, so the answers
+    alternate. A common mistake is to reason "someone will be tempted first", ignoring that each
+    tiger foresees what the others will do.
+  source: { name: "Tiger and sheep (e.g. Zhou, A Practical Guide to Quantitative Finance Interviews; Brainstellar)", url: "https://brainstellar.com/puzzles/strategy/7" }
+
+- id: bt-games-003
+  topic: brainteasers
+  subtopic: Strategy games and backward induction
+  type: numeric
+  difficulty: easy
+  tags: [subtraction-game, losing-positions, modular-arithmetic]
+  prompt: |
+    There are 23 coins on a table. Two players take turns removing 1, 2, 3 or 4 coins. The player who
+    takes the last coin wins. You move first. How many coins should you take on your first move to be
+    sure of winning?
+  answer: 3
+  unit: coins
+  followUps:
+    - With 25 coins, who wins?
+    - What if the player who takes the last coin loses?
+  explanation: |
+    The positions you want to leave your opponent are the multiples of 5. From a multiple of 5,
+    whatever they take ($k$ coins, with $1 \le k \le 4$), you take $5 - k$ and return to a multiple of
+    5. Eventually you leave them 0, which means you took the last coin. From any other number you can
+    move to a multiple of 5.
+
+    $23 = 4 \times 5 + 3$, so take 3, leaving 20. The common slip is to aim for multiples of 4 (the
+    largest move) rather than 5 (one more than the largest move).
+  source: { name: "Classic subtraction game (Bachet's game)" }
+
+- id: bt-games-004
+  topic: brainteasers
+  subtopic: Strategy games and backward induction
+  type: numeric
+  difficulty: medium
+  tags: [nim, xor, combinatorial-games]
+  prompt: |
+    Three piles hold 3, 4 and 5 coins. Two players take turns; a move removes any positive number of
+    coins from a single pile. The player who takes the last coin wins. You move first, and exactly one
+    first move guarantees you a win. How many coins does that move remove?
+  answer: 2
+  unit: coins
+  hints:
+    - With two piles, which positions are losing for the player to move?
+    - Write the pile sizes in binary.
+    - A position is losing exactly when the bitwise XOR of the pile sizes is 0.
+  followUps:
+    - Why does a move from an XOR-zero position always produce a non-zero XOR, and vice versa?
+    - How does the strategy change if the player who takes the last coin loses?
+  explanation: |
+    Bouton's theorem: a Nim position is a loss for the player to move exactly when the XOR (binary
+    addition without carries) of the pile sizes is 0. From an XOR-zero position every move makes it
+    non-zero, and from a non-zero one there is always a move back to zero.
+
+    Here $3 \oplus 4 \oplus 5 = 011 \oplus 100 \oplus 101 = 010 = 2$. To make the XOR zero, change one
+    pile $p$ to $p \oplus 2$, which must be smaller than $p$: $3 \oplus 2 = 1$ works, while
+    $4 \oplus 2 = 6$ and $5 \oplus 2 = 7$ would need coins added. So the only winning move is to
+    reduce the pile of 3 to 1, removing **2** coins, leaving $1, 4, 5$ with XOR 0.
+
+    A common wrong move is to equalise two piles (take 1 from the 5 to make $3, 4, 4$), which wins
+    with two piles but leaves XOR 3 here.
+  source: { name: "Nim (Bouton, 1901)" }
+
+- id: bt-games-005
+  topic: brainteasers
+  subtopic: Strategy games and backward induction
+  type: short
+  difficulty: medium
+  tags: [colouring, strategy, coins-in-a-row]
+  prompt: |
+    Fifty coins of various values lie in a row. Two players take turns; on each turn a player takes
+    one coin from either end of the row. Show that the first player can always end with at least as
+    much money as the second.
+  reference: |
+    Number the coins 1 to 50 from left to right and add up the odd-numbered coins and the
+    even-numbered coins. The first player picks whichever group has the larger total (say the odd
+    ones) and takes only coins from that group.
+
+    This is always possible. At the start the two end coins are 1 (odd) and 50 (even), so he takes
+    coin 1. Now both ends, 2 and 50, are even, so the second player must take an even coin, which
+    exposes an odd coin at that end. The first player takes it, and again both ends are even. This
+    repeats until the coins run out, so the first player collects every odd-numbered coin and the
+    second every even-numbered one. Since he chose the larger group, he gets at least half.
+  keyPoints:
+    - Splits the coins into odd and even positions and compares the two totals
+    - Notes that with an even number of coins the two ends always have different parities when it is the first player's turn
+    - Shows the first player can take all coins of the chosen parity, forcing the opponent to take the others
+    - Concludes he gets at least the larger of the two totals, hence at least half
+  hints:
+    - Colour the coins alternately. What colours are the two end coins?
+    - After you take an end coin of one colour, what colours are the two ends your opponent faces?
+  followUps:
+    - Is this strategy optimal, or can the first player often do better? How would you compute the best play?
+    - With an odd number of coins, can the first player be forced to lose?
+  explanation: |
+    The first player does not need to find the best play to guarantee a tie or better: the parity
+    strategy is a simple non-losing strategy. It relies on the number of coins being even, so that the
+    first player can always keep both ends of the second player's choice on the same parity.
+
+    It is not optimal in general; the best play comes from a dynamic programme over the remaining
+    interval, $V(i, j) = \max(c_i - V(i+1, j),\ c_j - V(i, j-1))$. With an odd number of coins the
+    guarantee fails: in $1, 5, 1$ the first player must take a 1, the second takes the 5, and the
+    first ends with 2 against 5.
+  source: { name: "Coins in a row (classic; e.g. Winkler, Mathematical Puzzles)" }
+
+- id: bt-games-006
+  topic: brainteasers
+  subtopic: Strategy games and backward induction
+  type: short
+  difficulty: hard
+  tags: [strategy-stealing, chomp, existence]
+  prompt: |
+    A rectangular chocolate bar of $m \times n$ squares (not $1 \times 1$) has its bottom-left square
+    poisoned. Two players take turns choosing a remaining square and eating it together with every
+    remaining square above it, to its right, or both (above and to the right). Whoever eats the
+    poisoned square loses. Show that the first player has a winning strategy. You do not need to say
+    what it is.
+  reference: |
+    The game is finite and cannot be drawn, so one of the players has a winning strategy (by backward
+    induction over the finitely many positions).
+
+    Suppose the second player had one. Let the first player open by eating only the top-right square.
+    The second player's winning strategy answers with some square $s$. Eating $s$ also removes the
+    top-right square (it is above and to the right of every square), so the position after that reply
+    is exactly the position the first player would have produced by eating $s$ as his opening move.
+    So the first player could have opened with $s$ and then followed the second player's winning
+    strategy as if he were the second player. That is a winning strategy for the first player,
+    contradicting the assumption. Hence the first player wins.
+  keyPoints:
+    - Notes the game is finite with no draws, so one player has a winning strategy
+    - Considers the first move of eating only the top-right square
+    - Observes that any reply also removes the top-right square, so the first player could have made that reply himself
+    - Concludes by contradiction (strategy stealing) that the second player cannot have a winning strategy
+  hints:
+    - In a finite game with no draws, one of the two players must have a winning strategy. Which one could it be?
+    - Consider the move that eats only the top-right square.
+    - Whatever the reply to that move, could the first player have made the reply himself?
+  followUps:
+    - Find an explicit winning strategy for a square $n \times n$ bar.
+    - Find one for a $2 \times n$ bar.
+    - Why does strategy stealing not show that the first player wins at, say, chess?
+  explanation: |
+    Strategy stealing proves that a winning strategy exists without constructing it. It needs a move
+    that is never harmful: here, eating the top-right square, because every later move eats it anyway,
+    so it can be "absorbed" into whatever the opponent does next.
+
+    For square bars a strategy is known: eat the square diagonally next to the poison, leaving an L
+    with two equal arms, then mirror every move on the other arm. For general rectangles no simple
+    strategy is known, which is why the existence proof is the expected answer. A weak answer tries
+    small cases and generalises without proof.
+  source: { name: "Chomp (Gale, 1974; e.g. Winkler, Mathematical Puzzles)" }
+
+- id: bt-games-007
+  topic: brainteasers
+  subtopic: Strategy games and backward induction
+  type: short
+  difficulty: easy
+  tags: [game-theory, iterated-dominance, level-k]
+  prompt: |
+    Everyone in a room writes down a number between 0 and 100 (any real number). The winner is the
+    person whose number is closest to two-thirds of the average of all the numbers. What should you
+    write if everyone is perfectly rational and knows the others are too? And what would you actually
+    write in a room of real people?
+  reference: |
+    With perfect rationality and common knowledge of it, **0**. The average is at most 100, so the
+    target is at most $66.7$, and any number above $66.7$ does worse than $66.7$ itself whatever the
+    others do. If nobody plays above $66.7$, the target is at most $44.4$, so nothing above $44.4$
+    makes sense; repeating, the bound $100 \cdot (2/3)^k$ shrinks to 0. Everyone writing 0 is the
+    only Nash equilibrium.
+
+    Real people do not iterate forever. Many stop after one or two steps (guessing 33 or 22), some
+    pick at random, so the average typically lands somewhere around 20 to 40 and the winning number
+    near two-thirds of that. A good practical answer models the others: estimate the distribution of
+    their depths of reasoning, take two-thirds of the average that implies, and say why.
+  keyPoints:
+    - Numbers above two-thirds of 100 are dominated, whatever the others play
+    - Repeating the argument (iterated elimination) drives the bound to 0, the unique equilibrium
+    - The equilibrium answer needs everyone to be rational and to know everyone else is, to every level
+    - In practice the right answer depends on the other players, so models their depth of reasoning and gives a number well above 0 (roughly 15 to 30)
+  hints:
+    - Is there any number nobody should ever write, whatever the others do?
+    - If nobody writes that, what does the new upper bound on the target become?
+    - Would you really write the equilibrium answer in a room of people who have never seen this game?
+  followUps:
+    - Suppose half the room writes 50 at random and the other half is rational. What should you write?
+    - What changes if the target is the average itself rather than two-thirds of it?
+  explanation: |
+    This is a common question at trading firms because it separates two skills: the formal argument
+    (iterated elimination of dominated strategies) and the practical one (playing against the people
+    who are actually there). Answering only "0" misses the second half; answering only "about 25"
+    without the equilibrium misses the first.
+
+    The rationality chain is the part worth stating carefully: excluding numbers above $66.7$ needs
+    only that you are rational; excluding numbers above $44.4$ needs that you know the others are,
+    and so on. In experiments, averages in the 20s and 30s are typical for first plays.
+  source: { name: "Keynesian beauty contest / guess two-thirds of the average (Moulin; Nagel, 1995)" }
+
+- id: bt-games-008
+  topic: brainteasers
+  subtopic: Strategy games and backward induction
+  type: single
+  difficulty: medium
+  tags: [isomorphism, magic-square, game-tree]
+  prompt: |
+    Two players take turns choosing numbers from 1 to 9; each number can be chosen only once. The
+    first player to hold three numbers (among all those they have chosen) that add up to exactly 15
+    wins. If all nine numbers are taken with no winner, it is a draw. With best play on both sides,
+    what is the result?
+  choices:
+    - { id: a, text: "The first player wins" }
+    - { id: b, text: "The second player wins" }
+    - { id: c, text: "A draw" }
+  answer: c
+  explanation: |
+    Arrange 1 to 9 in the $3 \times 3$ magic square
+
+    $$\begin{matrix} 2 & 7 & 6 \\ 9 & 5 & 1 \\ 4 & 3 & 8 \end{matrix}$$
+
+    Its rows, columns and diagonals are exactly the eight triples of distinct numbers from 1 to 9
+    that sum to 15. So choosing a number is placing a mark in a cell, and holding three numbers that
+    sum to 15 is having three in a line: the game *is* noughts and crosses, which is a draw with best
+    play.
+
+    Choice a is the natural guess because the first player gets five numbers to the second's four,
+    and the first player does have strong openings (5, the centre). But perfect defence draws, just as
+    in noughts and crosses. A full search of the game tree confirms the draw.
+  source: { name: "Pick fifteen (Perlis; e.g. Berlekamp, Conway and Guy, Winning Ways)" }
+
+- id: bt-games-009
+  topic: brainteasers
+  subtopic: Strategy games and backward induction
+  type: short
+  difficulty: medium
+  tags: [symmetry, strategy, mirroring]
+  prompt: |
+    Two players take turns placing identical round coins flat on a round table. Coins may not overlap
+    and may not hang over the edge; once placed, a coin is never moved. The first player who cannot
+    place a coin loses. Who wins with best play, and how? (The table is larger than a coin.)
+  reference: |
+    The first player wins. He places his first coin exactly at the centre of the table. After that,
+    whenever the second player places a coin, the first player places one at the point symmetric
+    through the centre (rotated by 180 degrees).
+
+    That spot is always free. After each of the first player's moves, the coins form a pattern
+    symmetric about the centre. If the second player's new coin is placed legally, its mirror image is
+    on the table (the table is symmetric) and does not overlap any earlier coin (their mirror images
+    did not overlap the new coin). It cannot overlap the new coin itself either: a coin and its mirror
+    image overlap only if the coin covers the centre, which the first coin occupies. So the first
+    player always has a move; the game is finite, so the second player is the one who runs out.
+  keyPoints:
+    - The first player wins
+    - He opens by placing a coin at the exact centre
+    - He then answers each coin with its mirror image through the centre
+    - Explains why the mirror spot is always free (the position is symmetric, and a coin overlaps its own mirror only if it covers the centre)
+    - Notes the game is finite, so the player who always has a reply cannot lose
+  hints:
+    - The table has a special point. Who should use it?
+    - Try to keep the position symmetric after each of your moves.
+    - Why can the opponent never take the spot you need?
+  followUps:
+    - Does the strategy work on a rectangular table? On a table shaped like a triangle?
+    - What if the coins are of two different sizes, chosen by the player?
+  explanation: |
+    Symmetry strategies win many games of this kind: make the position symmetric, then copy. The first
+    coin at the centre is needed both to create the symmetric position and to occupy the only point
+    whose mirror image is itself.
+
+    Weak answers say "first player, by mirroring" without explaining why the mirror spot cannot be
+    blocked, which is the whole content. Others try to estimate how many coins fit, which is
+    irrelevant.
+  source: { name: "Coins on a round table (classic; e.g. Winkler, Mathematical Puzzles)" }
+
+- id: bt-games-010
+  topic: brainteasers
+  subtopic: Strategy games and backward induction
+  type: single
+  difficulty: hard
+  tags: [parity, divisors, combinatorial-games]
+  prompt: |
+    A game starts with the number $N = 2025$. Players take turns; on each turn a player replaces $N$
+    by $N - d$, where $d$ is a divisor of $N$ with $1 \le d < N$. A player who faces $N = 1$ cannot
+    move and loses. With best play, who wins?
+  choices:
+    - { id: a, text: "The first player, by subtracting 1 to reach 2024" }
+    - { id: b, text: "The second player" }
+    - { id: c, text: "The first player, by subtracting 675, the largest proper divisor" }
+    - { id: d, text: "Neither: the outcome depends on luck, since the game can go on for a long time" }
+  answer: b
+  explanation: |
+    Odd numbers are losing positions for the player to move, and even numbers are winning.
+
+    - From an **odd** $N$, every divisor $d$ is odd, so $N - d$ is even (and at least 2). The player
+      facing an odd number must hand over an even one.
+    - From an **even** $N$, subtracting $d = 1$ gives an odd number.
+
+    So the player facing an even number can always pass back an odd one, and the player facing an odd
+    number always has to pass back an even one. Since $N$ strictly decreases, eventually the player
+    facing odd numbers reaches 1 and loses. $2025$ is odd, so the **second** player wins by always
+    subtracting 1.
+
+    Choices a and c are first moves that look natural, but every first move from 2025 gives the
+    second player an even number. Choice d ignores that the game is finite and has no chance in it.
+  source: { name: "Game of divisors (e.g. Brainstellar)", url: "https://brainstellar.com/puzzles/strategy/221" }

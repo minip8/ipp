@@ -45,7 +45,8 @@ cargo test -j 4 && cargo clippy --all-targets -- -D warnings
 cargo test -p ipp-judge-contracts -j 4         # crate names carry an ipp- prefix
 
 # Content and database
-pnpm --filter @ipp/content check               # validates problems/quiz; Python references reproduce the tests
+pnpm --filter @ipp/content check               # validates problems/quiz; Python references reproduce the tests,
+                                               # and every quant numeric answer is recomputed
 pnpm --filter @ipp/content exec tsx scripts/judge-all.ts   # every reference solution through the real judge
 pnpm --filter @ipp/db generate --name <what_changed>       # after editing packages/db/src/schema.ts
 ```
@@ -140,8 +141,8 @@ browser ── /api/* (Next rewrite, same origin, cookie session) ──▶ apps
 - Quiz questions are YAML arrays under `packages/content/quiz/<topic>/`; topics are declared in
   `quiz/topics.yaml` (in study order), each with a `track`: `fundamentals` (the default) or
   `quant`. A `numeric` question's `answer` is an integer, a fraction (`5/36`), a decimal or a
-  percentage; without a `tolerance` a typed decimal to three significant figures counts for a
-  non-integer answer and everything else must be exact (`numericMatches` in
+  percentage; without a `tolerance` a typed decimal or whole number within 0.5% (three
+  significant figures) counts for a non-integer answer and everything else must be exact (`numericMatches` in
   `packages/contracts/src/numeric.ts`), with a `tolerance` (`abs`/`rel`) anything within it counts.
   `short` and `numeric` questions may add `hints` (gentlest first) and `followUps` for the
   discussion interviewer; both are server-only.
@@ -153,6 +154,11 @@ browser ── /api/* (Next rewrite, same origin, cookie session) ──▶ apps
   question uses must be on exactly one area of its topic (and every listed subtopic must have
   questions), so a question with a new subtopic fails the content check until it is placed
   there.
+- Every `numeric` question of a quant topic needs an independent recomputation of its answer in
+  `packages/content/scripts/quant_checks/<topic>.py` (`@check("<id>")`: enumerate, run the
+  recurrence, or simulate; never restate the explanation's formula). The content check runs them
+  (`scripts/verify-quant-quiz.py [topic]` runs them alone) and a content test fails when one is
+  missing.
 - After changing content: run the content check, then `pnpm db:seed`.
 
 ## Database

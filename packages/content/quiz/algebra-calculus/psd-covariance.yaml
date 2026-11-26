@@ -1,0 +1,335 @@
+# Positive semidefinite and covariance matrices: validity checks, Cholesky, singular covariance and repairs.
+- id: lac-psd-001
+  topic: algebra-calculus
+  subtopic: Positive semidefinite and covariance matrices
+  type: multiple
+  difficulty: medium
+  tags: [covariance-matrix, positive-semidefinite, principal-minors]
+  prompt: |
+    Which of these matrices could be the covariance matrix of a random vector? Select all that apply.
+
+    $$A = \begin{pmatrix} 4 & 3 \\ 3 & 2 \end{pmatrix}, \qquad B = \begin{pmatrix} 1 & 2 \\ 2 & 4 \end{pmatrix}, \qquad C = \begin{pmatrix} 2 & -1 & 0 \\ -1 & 2 & -1 \\ 0 & -1 & 2 \end{pmatrix},$$
+
+    $$D = \begin{pmatrix} 1 & 0.9 & 0 \\ 0.9 & 1 & 0.9 \\ 0 & 0.9 & 1 \end{pmatrix}, \qquad E = \begin{pmatrix} 1 & 2 \\ 0 & 1 \end{pmatrix}.$$
+  choices:
+    - { id: a, text: '$A$' }
+    - { id: b, text: '$B$' }
+    - { id: c, text: '$C$' }
+    - { id: d, text: '$D$' }
+    - { id: e, text: '$E$' }
+  answer: [b, c]
+  explanation: |
+    A covariance matrix must be symmetric and positive semidefinite (PSD). For a symmetric matrix, PSD
+    is equivalent to every *principal* minor being $\ge 0$; positive definite is equivalent to every
+    *leading* principal minor being $> 0$ (Sylvester's criterion).
+
+    - **A, no.** $\det A = 8 - 9 = -1 < 0$: the implied correlation is $3/\sqrt{8} \approx 1.06$.
+      Checking only that the diagonal is positive misses this.
+    - **B, yes.** $\det B = 0$ and the diagonal is positive, so $B$ is PSD but singular: it is the
+      covariance of $(X, 2X)$. Rejecting it confuses "positive semidefinite" with "positive definite";
+      covariance matrices may be singular.
+    - **C, yes.** Leading minors $2, 3, 4$ are all positive, so $C$ is positive definite (its
+      eigenvalues are $2 - \sqrt2$, $2$, $2 + \sqrt2$).
+    - **D, no.** Every $2 \times 2$ principal minor is fine, but $\det D = 1 - 2(0.81) = -0.62 < 0$. It
+      asks for $X_1$ and $X_3$ to be uncorrelated while each has correlation 0.9 with $X_2$, which is
+      impossible. Checking the pairs one at a time is the usual mistake.
+    - **E, no.** It is not symmetric, and $\operatorname{Cov}(X_1, X_2) = \operatorname{Cov}(X_2, X_1)$.
+
+    In finance the same checks apply to any correlation matrix assembled by hand for a stress test.
+  source: { name: "Standard covariance-matrix validity check (e.g. Zhou, A Practical Guide to Quantitative Finance Interviews)" }
+
+- id: lac-psd-002
+  topic: algebra-calculus
+  subtopic: Positive semidefinite and covariance matrices
+  type: short
+  difficulty: easy
+  tags: [covariance-matrix, positive-semidefinite, gram-matrix]
+  prompt: |
+    Why is every covariance matrix symmetric and positive semidefinite? Show also that $X^\top X$ is
+    positive semidefinite for any real matrix $X$. When does each fail to be positive definite?
+  reference: |
+    $\Sigma_{ij} = \operatorname{Cov}(X_i, X_j) = \operatorname{Cov}(X_j, X_i)$, so $\Sigma$ is symmetric.
+    For any fixed vector $w$, bilinearity of covariance gives
+
+    $$w^\top \Sigma w = \sum_{i,j} w_i w_j \operatorname{Cov}(X_i, X_j) = \operatorname{Var}(w^\top X) \ge 0.$$
+
+    In portfolio language, $w^\top \Sigma w$ is the variance of the portfolio with weights $w$, and a
+    variance cannot be negative. Similarly $w^\top X^\top X w = \lVert Xw \rVert^2 \ge 0$; a sample
+    covariance matrix is $X_c^\top X_c/(T-1)$ for the centred data $X_c$, so it is PSD by the same line.
+
+    $\Sigma$ fails to be positive definite exactly when $\operatorname{Var}(w^\top X) = 0$ for some
+    $w \ne 0$: some combination of the variables is constant (a redundant asset, such as an index
+    alongside all its constituents). $X^\top X$ fails exactly when $Xw = 0$ for some $w \ne 0$, i.e. the
+    columns of $X$ are dependent, which is certain when there are fewer rows than columns.
+  keyPoints:
+    - Symmetric because Cov(Xᵢ, Xⱼ) = Cov(Xⱼ, Xᵢ)
+    - wᵀΣw equals Var(wᵀX), the variance of a linear combination (a portfolio), so it is non-negative
+    - wᵀXᵀXw = ‖Xw‖² ≥ 0
+    - Not positive definite exactly when some non-zero combination has zero variance, or Xw = 0 for some w ≠ 0
+    - Gives an instance, such as a redundant asset or fewer observations than variables
+  hints:
+    - 'What is the variance of $w^\top X$ in terms of $\Sigma$?'
+    - 'Write $w^\top X^\top X w$ as a squared length.'
+  followUps:
+    - Is every symmetric PSD matrix the covariance matrix of some random vector? How would you construct one?
+    - A symmetric matrix has all its leading principal minors non-negative. Must it be PSD?
+    - Why does PSD force every diagonal entry, and every eigenvalue, to be non-negative?
+  explanation: |
+    The one idea is that a quadratic form in a covariance matrix is the variance of a linear
+    combination. Candidates often prove PSD by quoting "eigenvalues are non-negative", which is
+    circular. On the second follow-up: no, $\begin{pmatrix} 0 & 0 \\ 0 & -1 \end{pmatrix}$ has leading
+    minors $0$ and $0$; for semidefiniteness every principal minor must be checked.
+  source: { name: "Standard result (e.g. Strang, Introduction to Linear Algebra)" }
+
+- id: lac-psd-003
+  topic: algebra-calculus
+  subtopic: Positive semidefinite and covariance matrices
+  type: short
+  difficulty: medium
+  tags: [covariance-matrix, singular-matrix, portfolio-optimisation]
+  prompt: |
+    The covariance matrix of the returns of $N$ assets has an eigenvalue equal to zero. What does the
+    corresponding eigenvector mean as a portfolio? How could this happen in practice, and why should it
+    worry you before feeding the matrix to a mean-variance optimiser?
+  reference: |
+    If $\Sigma v = 0$ then $v^\top \Sigma v = \operatorname{Var}(v^\top R) = 0$: the long-short portfolio
+    with weights $v$ has a return with no variance, a riskless combination of risky assets. If its
+    expected return differs from the risk-free return on the same capital, the model is pricing an
+    arbitrage.
+
+    How it happens:
+    - exact linear dependence among the instruments, such as an index or ETF together with all its
+      constituents, a spread included alongside both of its legs, or the FX triangle (the log
+      return of EURJPY is the sum of those of EURUSD and USDJPY, so $(1, 1, -1)$ is a null vector);
+    - fewer observations than assets: a sample covariance from $T$ periods has rank at most $T - 1$;
+    - stale or forward-filled prices that make a series constant over the sample.
+
+    Why it matters: $\Sigma$ is singular, so $\Sigma^{-1}\mu$ does not exist, and an optimiser sees a
+    direction of zero risk and will take an unbounded position in it if that direction has any expected
+    return. Near-zero eigenvalues are almost as bad, because estimation noise biases the smallest
+    sample eigenvalues downwards and the optimiser concentrates in exactly those directions. Remedies:
+    remove redundant instruments, use a factor model, shrink the estimate, or floor the eigenvalues.
+  keyPoints:
+    - The eigenvector is a portfolio whose return variance vᵀΣv is zero, a riskless combination
+    - If that combination earns a non-zero excess return, the model implies an arbitrage
+    - Causes include exact linear dependence (index plus constituents, FX triangle) or fewer observations than assets
+    - Σ is singular, so Σ⁻¹μ does not exist and the optimiser can take unbounded positions in that direction
+    - Small but non-zero eigenvalues cause similar instability; fix by removing redundancy, a factor model or shrinkage
+  hints:
+    - 'What is $v^\top \Sigma v$ for that eigenvector?'
+    - Think of a set of instruments in which one is a fixed combination of the others.
+    - 'What does the optimiser''s solution, proportional to $\Sigma^{-1}\mu$, need?'
+  followUps:
+    - How would you detect near-singularity before running the optimiser?
+    - You hold log returns of EURUSD, USDJPY and EURJPY. Which eigenvector of their covariance matrix has (nearly) zero eigenvalue?
+    - What does shrinking towards a multiple of the identity do to the eigenvalues and eigenvectors?
+  explanation: |
+    Strong answers translate the algebra into a portfolio immediately and give a realistic cause.
+    Weaker ones say "the matrix is not invertible" and stop. The interviewer usually pushes on the
+    near-singular case, which is the one that actually bites: an optimiser is an error maximiser that
+    loads on the directions whose risk is most underestimated.
+  source: { name: "Negative and zero eigenvalues of covariance matrices (e.g. Quantt, Linear Algebra for Quant Interviews)", url: "https://www.quantt.co.uk/resources/linear-algebra-quant-interview" }
+
+- id: lac-psd-004
+  topic: algebra-calculus
+  subtopic: Positive semidefinite and covariance matrices
+  type: short
+  difficulty: medium
+  tags: [cholesky, correlated-normals, monte-carlo]
+  prompt: |
+    You can generate independent standard normal variables. How do you generate two standard normals
+    with correlation $\rho$, and how does this generalise to a normal vector with covariance matrix
+    $\Sigma$? What goes wrong if $\Sigma$ is only positive semidefinite, or is not positive
+    semidefinite at all?
+  reference: |
+    Two variables: take $X = Z_1$ and $Y = \rho Z_1 + \sqrt{1 - \rho^2}\,Z_2$. Then
+    $\operatorname{Var}(Y) = \rho^2 + 1 - \rho^2 = 1$ and $\operatorname{Cov}(X, Y) = \rho$, and $(X, Y)$ is
+    jointly normal because it is a linear map of independent normals.
+
+    General case: factor $\Sigma = LL^\top$ and set $X = \mu + LZ$ with $Z$ a vector of independent
+    standard normals; then $\operatorname{Cov}(X) = L\,I\,L^\top = \Sigma$. The usual choice is the
+    Cholesky factor, lower triangular with positive diagonal, which exists and is unique when $\Sigma$
+    is positive definite. The two-variable recipe is exactly the Cholesky factor
+    $\begin{pmatrix} 1 & 0 \\ \rho & \sqrt{1-\rho^2} \end{pmatrix}$. Any $A$ with $AA^\top = \Sigma$ works
+    equally well, for example $Q\Lambda^{1/2}$ from the eigendecomposition $\Sigma = Q\Lambda Q^\top$.
+
+    - $\Sigma$ PSD but singular: the plain Cholesky algorithm meets a zero pivot and divides by zero.
+      Use pivoted Cholesky or the eigendecomposition (zero eigenvalues simply drop out); the simulated
+      vector then lives on a lower-dimensional subspace, as it should.
+    - $\Sigma$ not PSD: no real factor exists. Cholesky meets a negative number under a square root.
+      The matrix is not a covariance matrix at all and must be repaired before simulating.
+  keyPoints:
+    - For two variables uses Y = ρZ₁ + √(1 − ρ²) Z₂ and checks the variance is 1 and the covariance ρ
+    - Generalises to X = μ + LZ with LLᵀ = Σ, so Cov(X) = Σ
+    - Names the Cholesky factorisation, and notes any factor with AAᵀ = Σ (e.g. from the eigendecomposition) works
+    - Singular PSD Σ makes plain Cholesky hit a zero pivot; use pivoting or the eigendecomposition
+    - A non-PSD Σ has no real factor (negative value under a square root) and must be fixed first
+  hints:
+    - Start with $X = Z_1$ and look for $Y = aZ_1 + bZ_2$.
+    - 'What is $\operatorname{Cov}(LZ)$ for a fixed matrix $L$?'
+    - 'Multiply $\begin{pmatrix} 1 & 0 \\ a & b \end{pmatrix}$ by its transpose.'
+  followUps:
+    - Why would a Monte Carlo engine prefer Cholesky to the eigendecomposition?
+    - Does the order in which you list the variables change the simulated distribution?
+    - How would you simulate 100 normals with every pairwise correlation equal to 0.3 without any factorisation?
+  explanation: |
+    The two-variable construction is expected instantly; the interviewer is really after the
+    general $LZ$ argument and the failure modes. On the follow-ups: Cholesky costs about $n^3/3$
+    operations and gives a triangular factor that is cheap to apply; reordering changes $L$ but not
+    the distribution of $X$; and a common factor does the last one, $X_i = \sqrt{0.3}\,M + \sqrt{0.7}\,Z_i$.
+  source: { name: "Generating correlated normals with the Cholesky decomposition (e.g. Zhou, A Practical Guide to Quantitative Finance Interviews)" }
+
+- id: lac-psd-005
+  topic: algebra-calculus
+  subtopic: Positive semidefinite and covariance matrices
+  type: numeric
+  difficulty: medium
+  tags: [cholesky, conditional-variance, covariance-matrix]
+  prompt: |
+    To simulate a normal vector with covariance matrix
+
+    $$\Sigma = \begin{pmatrix} 4 & 2 & 2 \\ 2 & 5 & 3 \\ 2 & 3 & 6 \end{pmatrix}$$
+
+    you factor $\Sigma = LL^\top$ with $L$ lower triangular with positive diagonal (the Cholesky
+    factorisation). What is the bottom-right entry $L_{33}$?
+  answer: 2
+  hints:
+    - 'The first column of $L$ is the first column of $\Sigma$ divided by $\sqrt{\Sigma_{11}}$.'
+    - 'Then fill in the second column, then $L_{33}$ from $\Sigma_{33} = L_{31}^2 + L_{32}^2 + L_{33}^2$.'
+  followUps:
+    - Interpret $L_{33}^2$ statistically.
+    - 'How would you check, while factorising, whether $\Sigma$ is a valid covariance matrix at all?'
+  explanation: |
+    Work column by column, using $\Sigma_{ij} = \sum_k L_{ik} L_{jk}$:
+
+    - $L_{11} = \sqrt{4} = 2$, $L_{21} = 2/2 = 1$, $L_{31} = 2/2 = 1$;
+    - $L_{22} = \sqrt{5 - 1^2} = 2$, $L_{32} = (3 - 1 \cdot 1)/2 = 1$;
+    - $L_{33} = \sqrt{6 - 1^2 - 1^2} = 2$.
+
+    So $L = \begin{pmatrix} 2 & 0 & 0 \\ 1 & 2 & 0 \\ 1 & 1 & 2 \end{pmatrix}$, and multiplying out confirms
+    $LL^\top = \Sigma$.
+
+    $L_{33}^2$ is the variance of $X_3$ left over after conditioning on $X_1$ and $X_2$ (the variance
+    of the third independent shock). Equivalently $L_{33}^2 = \det\Sigma / \det\Sigma_{\{1,2\}} = 64/16 = 4$.
+    A negative number under any of the square roots would have shown that $\Sigma$ is not PSD.
+
+    The common wrong answer is $\sqrt6 \approx 2.45$, the square root of the diagonal entry, which
+    ignores the parts of $X_3$ already explained by the first two shocks.
+  source: { name: "Standard Cholesky factorisation exercise (e.g. Golub and Van Loan, Matrix Computations)" }
+
+- id: lac-psd-006
+  topic: algebra-calculus
+  subtopic: Positive semidefinite and covariance matrices
+  type: numeric
+  difficulty: medium
+  tags: [correlation-matrix, trace, largest-eigenvalue]
+  prompt: |
+    $C$ is a $10 \times 10$ correlation matrix: symmetric, positive semidefinite, with every diagonal
+    entry equal to 1. What is the largest possible value of its largest eigenvalue?
+  answer: 10
+  hints:
+    - What is the sum of the eigenvalues of $C$?
+    - What sign can the eigenvalues have?
+  followUps:
+    - What is the smallest possible value of the largest eigenvalue, and which matrix attains it?
+    - 'If every off-diagonal correlation equals $\rho \ge 0$, what is the largest eigenvalue, and what share of the variance does the first principal component explain?'
+  explanation: |
+    The eigenvalues are non-negative (PSD) and add up to the trace, which is 10. So none can exceed
+    10, and 10 is attained by the all-ones matrix (every correlation equal to 1), whose eigenvalues
+    are $10, 0, \dots, 0$.
+
+    In PCA terms, $\lambda_{\max}/10$ is the share of total variance explained by the first principal
+    component. A largest eigenvalue close to the trace is the signature of one dominant common factor,
+    as when markets sell off together and every correlation rises towards 1.
+
+    Common wrong answers: 1 (thinking that entries bounded by 1 bound the eigenvalues by 1) and "no
+    limit". The opposite extreme, the identity, has every eigenvalue equal to 1, so the largest
+    eigenvalue of a correlation matrix always lies between 1 and $n$.
+  source: { name: "Standard result on correlation-matrix eigenvalues (e.g. QuantVault linear algebra question bank)", url: "https://quantvault.org/linear-algebra-interview-questions.html" }
+
+- id: lac-psd-007
+  topic: algebra-calculus
+  subtopic: Positive semidefinite and covariance matrices
+  type: single
+  difficulty: hard
+  tags: [matrix-product, positive-semidefinite, commuting-matrices]
+  prompt: |
+    $A$ and $B$ are $n \times n$ covariance matrices (real, symmetric, positive semidefinite). Is the
+    product $AB$ a covariance matrix?
+  choices:
+    - { id: a, text: 'Always: a product of positive semidefinite matrices is positive semidefinite.' }
+    - { id: b, text: 'Not in general, since $AB$ need not be symmetric; but it is whenever $AB = BA$.' }
+    - { id: c, text: 'Not in general, and $AB = BA$ is not enough either: $AB$ can then have a negative eigenvalue.' }
+    - { id: d, text: 'Only when $A$ and $B$ are both diagonal.' }
+  answer: b
+  explanation: |
+    A covariance matrix must be symmetric, and $(AB)^\top = B^\top A^\top = BA$, which is generally
+    different from $AB$. For example
+
+    $$A = \begin{pmatrix} 2 & 1 \\ 1 & 1 \end{pmatrix}, \quad B = \begin{pmatrix} 1 & 0 \\ 0 & 0 \end{pmatrix}, \quad AB = \begin{pmatrix} 2 & 0 \\ 1 & 0 \end{pmatrix}.$$
+
+    If $AB = BA$, then $AB$ is symmetric, and commuting symmetric matrices can be diagonalised by the
+    same orthogonal $Q$: $A = Q\Lambda Q^\top$, $B = QMQ^\top$, so $AB = Q(\Lambda M)Q^\top$ with
+    $\Lambda M$ diagonal and non-negative. Hence $AB$ is PSD.
+
+    - a is the tempting analogy with non-negative numbers; it fails on symmetry. (Curiously, $AB$
+      always has real non-negative eigenvalues, being similar to $A^{1/2} B A^{1/2}$ when $A$ is
+      invertible; it is symmetry that fails.)
+    - c is what you get if you check symmetry and then doubt the eigenvalues; simultaneous
+      diagonalisation settles it.
+    - d is too strict: $A$ and $A^2$ commute and are rarely diagonal.
+
+    The product that *is* always a covariance matrix is the elementwise (Hadamard) product, by the
+    Schur product theorem.
+  source: { name: "Quant, FM and Data Science Interview Compilation (LSU)", url: "https://www.math.lsu.edu/~smolinsk/Quant_Interview_Prep.pdf" }
+
+- id: lac-psd-008
+  topic: algebra-calculus
+  subtopic: Positive semidefinite and covariance matrices
+  type: short
+  difficulty: hard
+  tags: [nearest-correlation-matrix, eigenvalue-clipping, shrinkage]
+  prompt: |
+    You estimate a $50 \times 50$ correlation matrix pairwise: each entry uses whatever dates both
+    assets have data for. The result has a few negative eigenvalues. Why can this happen, when a
+    correlation matrix computed from one complete panel of data never has any? How would you repair it
+    before using it in a simulation or an optimiser?
+  reference: |
+    A correlation matrix computed from one complete data set is $D^{-1/2} X_c^\top X_c D^{-1/2}$ for the
+    centred data $X_c$, a scaled Gram matrix, and therefore PSD. Pairwise estimates use a different
+    sample for each entry, so the entries are not the correlations of any single data set and nothing
+    forces them to be mutually consistent: every $2 \times 2$ block can be valid while a $3 \times 3$
+    block is not (0.9, 0.9 and 0 is impossible). The same happens with correlations set by hand for
+    stress tests, asynchronous closing times, or entries estimated over different windows.
+
+    Repairs:
+    - **Eigenvalue clipping.** Write $C = Q\Lambda Q^\top$, replace negative (or tiny) eigenvalues with a
+      small $\varepsilon \ge 0$, rebuild, and rescale to unit diagonal with $D^{-1/2}\tilde{C}D^{-1/2}$.
+    - **Nearest correlation matrix.** Minimise the Frobenius distance to $C$ over correlation matrices
+      (Higham's alternating projections), which changes the entries as little as possible.
+    - **Shrinkage.** $(1 - \delta)C + \delta I$ has eigenvalues $(1 - \delta)\lambda_i + \delta$, so it is PSD
+      once $\delta \ge -\lambda_{\min}/(1 - \lambda_{\min})$; or shrink towards a constant-correlation target.
+    - Better still, fix the cause: estimate on a common sample, impute missing data, or use a factor model.
+
+    Afterwards, confirm that a Cholesky factorisation succeeds, and remember that the repair changes the
+    correlations, most of all those involved in the inconsistent blocks.
+  keyPoints:
+    - A correlation matrix from one complete data set is a scaled Gram matrix and hence PSD
+    - Pairwise estimates use different samples for different entries, so they need not be mutually consistent
+    - Eigenvalue clipping, with negative eigenvalues replaced by a small non-negative value, rebuilt and rescaled to unit diagonal
+    - Alternatives such as the nearest correlation matrix (Higham) or shrinkage towards the identity or a structured target
+    - Verifies the result (e.g. Cholesky now succeeds) and notes that the repair alters the correlations
+  hints:
+    - 'Why is $X^\top X$ always PSD? Is the pairwise matrix of that form for some single $X$?'
+    - 'What do the eigenvalues of $(1 - \delta)C + \delta I$ look like?'
+  followUps:
+    - After clipping the eigenvalues you rescale to unit diagonal. Why is that needed, and does it keep the matrix PSD?
+    - 'If the smallest eigenvalue of $C$ is $-0.1$, how large must $\delta$ be in $(1 - \delta)C + \delta I$?'
+    - Which entries does the repair change most, and how would you explain the change to a risk manager?
+  explanation: |
+    The key insight is that PSD comes from the Gram structure, which pairwise estimation destroys;
+    candidates who only say "numerical error" miss it. Any one sensible repair is fine if it ends with
+    a valid correlation matrix (unit diagonal included). On the second follow-up:
+    $(1 - \delta)(-0.1) + \delta \ge 0$ gives $\delta \ge 1/11 \approx 0.091$. Rescaling by a positive
+    diagonal matrix, $D^{-1/2}\tilde{C}D^{-1/2}$, is a congruence, so it keeps the matrix PSD.
+  source: { name: "Fixing a nearly-PSD covariance matrix (e.g. QuantVault linear algebra question bank; Higham, 2002)", url: "https://quantvault.org/linear-algebra-interview-questions.html" }

@@ -1,0 +1,213 @@
+# Discrete distributions: binomial, geometric, Poisson, and the tricks for working with them.
+- id: prob-discrete-001
+  topic: probability
+  subtopic: Discrete distributions
+  type: numeric
+  difficulty: easy
+  tags: [poisson, counting-process]
+  prompt: |
+    Calls arrive at a desk as a Poisson process with an average of 2 calls per minute. What is the
+    probability that at least 2 calls arrive in a given minute?
+  answer: 0.593994
+  answerText: |-
+    $1 - 3e^{-2} \approx 0.594$
+  explanation: |
+    The count in one minute is Poisson with mean $\lambda = 2$, so
+    $P(N = k) = e^{-2} 2^k / k!$. Use the complement:
+
+    $$P(N \ge 2) = 1 - P(0) - P(1) = 1 - e^{-2} - 2e^{-2} = 1 - 3e^{-2} \approx 0.594.$$
+
+    Common slips are to forget the $P(1)$ term (giving $1 - e^{-2} \approx 0.865$, the probability of
+    *at least one*) or to answer $1/2$ because 2 is the mean.
+
+- id: prob-discrete-002
+  topic: probability
+  subtopic: Discrete distributions
+  type: single
+  difficulty: easy
+  tags: [binomial, approximation, coins]
+  prompt: |
+    A fair coin is tossed 100 times. The probability of exactly 50 heads is closest to:
+  choices:
+    - { id: a, text: "0.5" }
+    - { id: b, text: "0.25" }
+    - { id: c, text: "0.08" }
+    - { id: d, text: "0.01" }
+  answer: c
+  explanation: |
+    The count has mean 50 and standard deviation $\sqrt{100 \cdot \tfrac14} = 5$. The most likely
+    value of a near-normal count is roughly $\dfrac{1}{\sigma\sqrt{2\pi}} = \dfrac{1}{5 \cdot 2.507} \approx 0.080$; the exact value is $\binom{100}{50} 2^{-100} \approx 0.0796$.
+
+    - a confuses "50 is the expected number" with "50 is likely".
+    - b is the answer for 10 tosses (exactly 5 heads, $0.246$); the peak shrinks like $1/\sqrt{n}$.
+    - d treats the 101 possible counts as roughly equally likely; they are not, most of the mass is
+      within a couple of standard deviations of 50.
+
+- id: prob-discrete-003
+  topic: probability
+  subtopic: Discrete distributions
+  type: numeric
+  difficulty: medium
+  tags: [binomial, negative-binomial, series]
+  prompt: |
+    Team A wins each game against team B independently with probability $0.6$. They play a
+    best-of-seven series (the first team to win four games wins the series, and no more games are
+    played). What is the probability that A wins the series?
+  answer: 11097/15625
+  answerText: |-
+    $11097/15625 = 0.710208$
+  hints:
+    - Would the winner change if the teams played all seven games regardless?
+    - Then A wins the series exactly when A wins at least four of seven independent games.
+  followUps:
+    - What is the expected number of games played?
+    - How long a series would make A at least 90% likely to win?
+  explanation: |
+    Pretend all seven games are played even after the series is decided. That does not change who
+    reaches four wins first, and A wins the series exactly when A wins at least 4 of the 7. So the
+    number of A's wins is Binomial$(7, 0.6)$ and
+
+    $$P = \sum_{k=4}^{7} \binom{7}{k} 0.6^k\, 0.4^{7-k} = 0.290304 + 0.261274 + 0.130637 + 0.027994 = 0.710208.$$
+
+    Summing by series length (A wins in 4, 5, 6 or 7 games, $\binom{3+j}{j} 0.6^4\, 0.4^j$ for $j$
+    losses) gives the same number. The mistake to avoid is $\binom{7}{4} 0.6^4\, 0.4^3$ alone,
+    or summing over lengths while forgetting that A must win the *last* game of the series.
+  source: { name: "Classic series problem (e.g. Blitzstein and Hwang, Introduction to Probability)" }
+
+- id: prob-discrete-004
+  topic: probability
+  subtopic: Discrete distributions
+  type: numeric
+  difficulty: medium
+  tags: [binomial, normal-approximation, estimation]
+  prompt: |
+    A fair coin is tossed 400 times. **Estimate**, without a calculator, the probability of getting
+    at least 220 heads. An answer within half a percentage point of the exact value is accepted.
+  answer: 0.0255201
+  answerText: |-
+    About $0.0255$ (exact binomial). The normal approximation gives $\approx 0.023$, or $\approx 0.026$ with a continuity correction.
+  tolerance: { abs: 0.005 }
+  hints:
+    - What are the mean and standard deviation of the number of heads?
+    - How many standard deviations above the mean is 220?
+  followUps:
+    - What does the continuity correction do here, and why does it help?
+    - About how many tosses would make 55% heads or more a one-in-a-thousand event?
+  explanation: |
+    The number of heads has mean $400 \cdot \tfrac12 = 200$ and standard deviation
+    $\sqrt{400 \cdot \tfrac14} = 10$. 220 is two standard deviations above the mean, and for a
+    normal $P(Z \ge 2) \approx 2.3\%$. Treating the integer count as covering $[219.5, \infty)$ (the
+    continuity correction) gives $z = 1.95$ and $\approx 2.6\%$, very close to the exact $2.55\%$.
+
+    Useful numbers to know: one-sided tail beyond $1\sigma \approx 16\%$, $2\sigma \approx 2.3\%$,
+    $3\sigma \approx 0.13\%$. Common slips are to use variance 100 as if it were the standard
+    deviation (so 220 looks like $0.2\sigma$) or to quote the two-sided 5%.
+
+- id: prob-discrete-005
+  topic: probability
+  subtopic: Discrete distributions
+  type: numeric
+  difficulty: hard
+  tags: [geometric, conditioning, dice]
+  prompt: |
+    A fair die is rolled repeatedly until the first 6. Given that **no 5** appeared before that 6
+    (every roll before it showed 1, 2, 3 or 4), what is the expected number of rolls, counting the
+    roll that showed the 6?
+  answer: 3
+  unit: rolls
+  hints:
+    - Look at the first roll that shows a 5 or a 6. How long does it take to arrive?
+    - Is the time of that roll related to whether it shows 5 or 6?
+  followUps:
+    - Many people answer 5. What question does 5 actually answer?
+    - Given that no odd number appeared before the first 6, what is the expected number of rolls?
+  explanation: |
+    Let $T$ be the first roll that shows a 5 or a 6. $T$ is geometric with success probability
+    $1/3$, so $E[T] = 3$, and *which* of 5 or 6 it shows is independent of $T$ (each with probability
+    $1/2$). The condition "no 5 before the first 6" says exactly that roll $T$ shows a 6, and then the
+    number of rolls is $T$. Conditioning on an event independent of $T$ leaves its distribution
+    unchanged, so the answer is $E[T] = 3$.
+
+    The popular wrong answer is 5: "the die effectively has five faces 1, 2, 3, 4, 6, so the wait for
+    a 6 is 5". That describes rolling a five-sided die. Here the 5s are still rolled; conditioning
+    on not seeing one *before the 6* selects the histories in which the 6 came early, because long
+    histories are the ones likely to contain a 5.
+  source: { name: "Variant of Elchanan Mossel's dice problem" }
+
+- id: prob-discrete-006
+  topic: probability
+  subtopic: Discrete distributions
+  type: short
+  difficulty: medium
+  tags: [poisson, thinning, independence]
+  prompt: |
+    Customers enter a shop as a Poisson process with an average of 10 per hour, and each customer,
+    independently, buys something with probability $0.3$. What is the distribution of the number of
+    buyers in an hour, and are the number of buyers and the number of non-buyers independent?
+    Contrast this with a day on which exactly 10 customers come in.
+  reference: |
+    Buyers $B \sim$ Poisson$(3)$ and non-buyers $N \sim$ Poisson$(7)$, and they are independent
+    (Poisson thinning). Directly: the total is $B + N \sim$ Poisson$(10)$ and, given the total
+    $b + n$, buyers are Binomial$(b + n, 0.3)$, so
+
+    $$P(B = b, N = n) = e^{-10}\frac{10^{b+n}}{(b+n)!}\binom{b+n}{b}0.3^b\,0.7^n = e^{-3}\frac{3^b}{b!}\cdot e^{-7}\frac{7^n}{n!},$$
+
+    which factorises into the two Poisson probabilities.
+
+    With exactly 10 customers, $B \sim$ Binomial$(10, 0.3)$ and $N = 10 - B$, so they are perfectly
+    negatively dependent: every buyer is one fewer non-buyer. The independence in the Poisson case
+    comes from the randomness of the total, which exactly offsets that negative dependence.
+  keyPoints:
+    - Buyers are Poisson with mean 3 and non-buyers Poisson with mean 7
+    - They are independent, shown by factorising the joint probability or citing Poisson thinning
+    - With a fixed total of 10 they are perfectly negatively dependent (N = 10 - B)
+    - Explains that the random Poisson total is what makes the split independent
+  hints:
+    - Condition on the total number of customers.
+    - Write the joint probability of $b$ buyers and $n$ non-buyers and try to factorise it.
+  followUps:
+    - Seeing 8 buyers in an hour, what is your expected number of non-buyers?
+    - Two independent Poisson streams with rates 3 and 7 are merged. Given 10 arrivals in total, how many came from the first?
+  explanation: |
+    Candidates usually get Poisson(3) but then say the counts must be dependent "because they come
+    from the same customers". The factorisation shows otherwise, and it is a property worth knowing
+    for market data: if orders arrive as a Poisson process and each is independently a buy or a
+    sell, the buy and sell counts are independent Poisson processes.
+  source: { name: "Poisson thinning (e.g. Blitzstein and Hwang, Introduction to Probability)" }
+
+- id: prob-discrete-007
+  topic: probability
+  subtopic: Discrete distributions
+  type: short
+  difficulty: medium
+  tags: [biased-coin, von-neumann, geometric]
+  prompt: |
+    You have a coin that lands heads with some probability $p$, $0 < p < 1$, which you do not know.
+    Tosses are independent. How can you use it to make a decision with exactly 50/50 odds, and what is
+    the expected number of tosses your method uses?
+  reference: |
+    Toss the coin in pairs. If the pair is HT, call it "heads"; if TH, call it "tails"; if HH or TT,
+    discard the pair and toss another. HT and TH each have probability $p(1-p)$, so given that a pair
+    is accepted, each verdict has probability exactly $1/2$, whatever $p$ is.
+
+    A pair is accepted with probability $2p(1-p)$, so the number of pairs is geometric with mean
+    $\dfrac{1}{2p(1-p)}$, and the expected number of tosses is $\dfrac{1}{p(1-p)}$: 4 for a fair coin,
+    much more for a very biased one (about 11.1 for $p = 0.1$).
+  keyPoints:
+    - Toss in pairs and map HT and TH to the two outcomes, discarding HH and TT
+    - HT and TH have the same probability p(1-p) by independence, so the result is fair for any p
+    - Number of pairs is geometric with success probability 2p(1-p)
+    - Expected tosses 1/(p(1-p)), which is 4 for a fair coin
+  hints:
+    - Which two sequences of tosses have the same probability, whatever $p$ is?
+    - What do you do when you get neither of them?
+  followUps:
+    - How would you use a fair coin to simulate an event of probability $1/3$? What is the expected number of tosses?
+    - Can you reduce the expected number of tosses by reusing the discarded pairs?
+  explanation: |
+    The idea is symmetry: whatever the bias, HT and TH are equally likely because they contain the
+    same tosses in a different order. Candidates sometimes suggest estimating $p$ first, which can
+    never give exactly $1/2$, or "toss twice and compare with HH", which still depends on $p$. The
+    follow-up about efficiency leads to the idea of extracting more random bits from the discarded
+    sequences.
+  source: { name: "Von Neumann's fair-coin trick (1951)" }

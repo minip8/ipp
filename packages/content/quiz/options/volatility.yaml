@@ -1,0 +1,299 @@
+# Implied and realised volatility: vol arithmetic, variance adding over time, the skew, and what a delta-hedged option really bets on.
+- id: opt-volatility-001
+  topic: options
+  subtopic: Implied and realised volatility
+  type: numeric
+  difficulty: easy
+  tags: [volatility-scaling, daily-move, mental-math]
+  prompt: |
+    A stock trades at \$50 and its annual volatility is 32%. Taking a year to have 256 trading days,
+    what is the size of a one-standard-deviation one-day move in the stock price?
+  answer: 1
+  unit: dollars
+  explanation: |
+    Variance adds over independent days, so volatility scales with the square root of time:
+
+    $$\sigma_{\text{day}} = \frac{\sigma_{\text{year}}}{\sqrt{256}} = \frac{32\%}{16} = 2\%,$$
+
+    and 2% of \$50 is \$1.
+
+    Traders use 256 days because its square root is 16 ("divide annual vol by 16"); with 252 days the
+    answer is barely different. The common wrong answer is $32\%/256$ of the price, about 6 cents,
+    from scaling volatility linearly in time instead of variance.
+  source: { name: "Standard volatility scaling (e.g. Natenberg, Option Volatility and Pricing)" }
+
+- id: opt-volatility-002
+  topic: options
+  subtopic: Implied and realised volatility
+  type: numeric
+  difficulty: medium
+  tags: [forward-volatility, term-structure, total-variance]
+  prompt: |
+    At-the-money implied volatility is 20% for one-year options and 30% for two-year options on the same
+    stock (both quoted as annual volatilities). What volatility does this imply for the period from the
+    end of year one to the end of year two? Give it as a decimal or a percentage.
+  answer: 0.3741657
+  answerText: |-
+    $\sqrt{2 \times 0.3^2 - 0.2^2} = \sqrt{0.14} \approx 37.4\%$
+  hints:
+    - Volatilities over different periods do not add. What does?
+    - Total variance to time $T$ is $\sigma^2 T$. Split the two-year total into the first year and the second.
+  followUps:
+    - What would it mean if the two-year implied volatility were 10%?
+    - Is a forward volatility something you can trade? How?
+  explanation: |
+    Total variance, $\sigma^2 T$, adds over consecutive periods. Two years at 30% is a total variance
+    of $0.09 \times 2 = 0.18$; the first year uses $0.04$ of it, leaving $0.14$ for the second year:
+
+    $$\sigma_{1 \to 2} = \sqrt{0.18 - 0.04} = \sqrt{0.14} \approx 37.4\%.$$
+
+    The common wrong answer is 40%, from extrapolating volatilities linearly ($2 \times 30 - 20$).
+    Another is 30% or 25%, from averaging. Since variances add, the forward volatility is the one
+    that makes the total come out right; a term structure in which total variance fell would be an
+    arbitrage (calendar spreads).
+  source: { name: "Forward volatility from the term structure (e.g. Gatheral, The Volatility Surface)" }
+
+- id: opt-volatility-003
+  topic: options
+  subtopic: Implied and realised volatility
+  type: short
+  difficulty: easy
+  tags: [implied-volatility, realised-volatility, long-volatility]
+  prompt: |
+    What is the difference between implied and realised volatility? If you believe a stock's realised
+    volatility over the next month will be higher than the one-month implied volatility, what trade
+    expresses that view, and how does it make money?
+  reference: |
+    Realised (historical) volatility measures how much the stock actually moved over a period: the
+    annualised standard deviation of its returns. Implied volatility is the volatility that, put into
+    an option pricing model (Black-Scholes), reproduces an option's market price. It is a price, quoted
+    in volatility units, reflecting supply and demand and the market's expectation of future movement.
+
+    If you expect realised to exceed implied, options are cheap relative to the moves you expect: buy
+    options (for example at-the-money straddles) and delta-hedge them regularly. Being long gamma, the
+    hedging buys low and sells high; if the stock moves more than implied volatility priced in, those
+    gains exceed the time decay you pay. You are also long vega, so you gain if implied volatility
+    rises towards your view.
+  keyPoints:
+    - Realised volatility is measured from the stock's actual past (or future) returns
+    - Implied volatility is backed out from option prices through a model; it is a price, forward-looking
+    - To bet on realised exceeding implied, buy options and delta-hedge them
+    - Profit comes from gamma gains on the hedges exceeding the theta paid, if the stock moves more than implied
+  hints:
+    - One of the two volatilities is observed in the stock's prices, the other in option prices.
+    - Buying an option alone is also a bet on direction. How do you remove that?
+    - What does a delta-hedged long option earn when the stock moves, and what does it pay each day?
+  followUps:
+    - Implied volatility is usually above subsequent realised volatility on equity indices. Why might that be?
+    - Why might you prefer a variance swap to a delta-hedged straddle for this view?
+  explanation: |
+    Candidates often say implied volatility is "the market's forecast" and stop. It is better described
+    as a price that includes a risk premium. The trading part needs the delta hedge; without it, buying
+    a straddle is a bet on the size of the move to expiry, not on realised volatility along the way.
+  source: { name: "Widely asked trading interview question (e.g. Sinclair, Volatility Trading)" }
+
+- id: opt-volatility-004
+  topic: options
+  subtopic: Implied and realised volatility
+  type: single
+  difficulty: medium
+  tags: [skew, smile, equity-index]
+  prompt: |
+    On a stock index, out-of-the-money puts usually trade at a higher implied volatility than
+    out-of-the-money calls equally far from the forward. What is the main reason?
+  choices:
+    - { id: a, text: "Index returns have a fat left tail, volatility tends to rise when the market falls, and there is strong demand for downside protection" }
+    - { id: b, text: "Puts have negative delta, and options with negative delta always carry a higher implied volatility" }
+    - { id: c, text: "Put-call parity forces puts to be more expensive than calls" }
+    - { id: d, text: "Interest rates are positive, which raises put prices relative to call prices" }
+  answer: a
+  explanation: |
+    The skew prices what Black-Scholes leaves out. Large falls in an index are more likely than its
+    lognormal model allows, and they tend to come with a jump in volatility, so low-strike options are
+    worth more than a single volatility suggests. On top of that, investors buy index puts as insurance
+    and few want to sell crash protection, which pushes their prices up further. The skew became steep
+    after the 1987 crash and has stayed.
+
+    Choice c is backwards: put-call parity forces a call and a put with the **same** strike to have the
+    same implied volatility, so the skew is a statement about strikes, not about calls versus puts.
+    Choice b is not a rule (a low-strike call, which has positive delta, carries the same high
+    volatility as the put at that strike). Choice d confuses prices with volatilities: positive rates
+    make puts slightly cheaper relative to calls, and parity already accounts for that.
+  source: { name: "Volatility skew (e.g. Hull, Options, Futures, and Other Derivatives; Gatheral, The Volatility Surface)" }
+
+- id: opt-volatility-005
+  topic: options
+  subtopic: Implied and realised volatility
+  type: single
+  difficulty: medium
+  tags: [implied-volatility, put-call-parity]
+  prompt: |
+    A European call and a European put on the same stock have the same strike and expiry, and their
+    prices satisfy put-call parity. How do their Black-Scholes implied volatilities compare?
+  choices:
+    - { id: a, text: "They are equal" }
+    - { id: b, text: "The call's is higher when interest rates are positive" }
+    - { id: c, text: "The put's is higher, because of the skew" }
+    - { id: d, text: "There is no relationship; each is backed out from its own price" }
+  answer: a
+  explanation: |
+    Black-Scholes prices satisfy parity at every volatility: $C_{BS}(\sigma) - P_{BS}(\sigma) = S - Ke^{-rT}$.
+    If the market call is priced at volatility $\sigma$, parity makes the market put equal to
+    $C_{BS}(\sigma) - S + Ke^{-rT} = P_{BS}(\sigma)$, so the put's implied volatility is the same
+    $\sigma$.
+
+    That is why a volatility smile is quoted by strike, not separately for calls and puts. Choice c
+    confuses the skew across strikes with a difference between calls and puts at one strike. Choice d
+    is true of the method but misses that parity ties the two prices together. In practice small
+    differences appear because of American exercise, dividends, borrowing costs and bid-ask spreads.
+  source: { name: "Standard consequence of put-call parity (e.g. Hull, Options, Futures, and Other Derivatives)" }
+
+- id: opt-volatility-006
+  topic: options
+  subtopic: Implied and realised volatility
+  type: short
+  difficulty: hard
+  tags: [delta-hedging, gamma-weighted, realised-volatility, path-dependence]
+  prompt: |
+    You buy a 3-month option at 20% implied volatility and delta-hedge it (at the 20% Black-Scholes
+    delta) every day until expiry. The stock's realised volatility over the three months turns out to be
+    25%. Are you certain to make money? What determines how much you make?
+  reference: |
+    No, not certain, though it is likely. Hedging at implied volatility, the P&L over each day is about
+
+    $$\tfrac12 \Gamma_t S_t^2\big(R_t^2 - \sigma_{\text{imp}}^2\,\Delta t\big),$$
+
+    where $R_t$ is that day's return. The total is a **gamma-weighted** sum of the gap between realised
+    and implied variance: days when the option has a lot of dollar gamma ($\Gamma S^2$, largest near the
+    strike and near expiry) count far more than days when it is far from the money.
+
+    So the result depends on the path. If the big moves happen while the stock is far from the strike
+    (low gamma) and the stock is quiet while it sits near the strike, you can lose even though realised
+    volatility over the whole period was 25%. For example, a steady climb from 100 to 130 over the
+    first month (small daily moves while the option is near the money) followed by daily swings of
+    about 2% around 130 realises about 25%, yet the hedged option loses money. Daily rather than
+    continuous hedging adds further noise.
+    With realised equal to 25% spread evenly, you make roughly the difference between the option's
+    value at 25% and at 20%.
+
+    To get a payoff that depends only on realised variance, not on where it happened, you would use a
+    variance swap (or a strip of options weighted by $1/K^2$).
+  keyPoints:
+    - Not certain; the expected P&L is positive but depends on the path
+    - Daily P&L is about ½ΓS²(R² − σ²_imp Δt), so the total weights the realised-minus-implied variance by dollar gamma
+    - Big moves when the option is far from the strike (low gamma) count little, so the trade can lose despite higher realised volatility
+    - Discrete hedging adds noise around the continuous-time result
+    - A variance swap (or a 1/K² strip of options) gives exposure to realised variance independent of the path
+  hints:
+    - Write the P&L of one day of a delta-hedged long option in terms of gamma, the day's return and the implied volatility.
+    - Does a large move count the same whatever the stock price is at the time?
+    - Construct a path with realised volatility 25% on which the trade loses.
+  followUps:
+    - What changes if you hedge at the realised volatility's delta instead of the implied one?
+    - How does a variance swap remove the dependence on the path?
+  explanation: |
+    Most candidates say "yes, realised beat implied". The point of the question is the gamma weighting:
+    the option only "sees" volatility where it has gamma. Strong candidates write the daily P&L, give a
+    losing path, and mention the variance swap as the clean instrument.
+  source: { name: "Delta-hedged option P&L (e.g. Carr and Madan, 1998; Sinclair, Volatility Trading)" }
+
+- id: opt-volatility-007
+  topic: options
+  subtopic: Implied and realised volatility
+  type: single
+  difficulty: hard
+  tags: [correlation, spread-option, exchange-option]
+  prompt: |
+    An option pays $\max(S_1 - S_2, 0)$ at expiry, where $S_1$ and $S_2$ are two stock prices. If the
+    correlation between the two stocks' returns rises, with each stock's volatility unchanged, what
+    happens to the option's price?
+  choices:
+    - { id: a, text: "It falls" }
+    - { id: b, text: "It rises" }
+    - { id: c, text: "It stays the same, since each stock's volatility is unchanged" }
+    - { id: d, text: "It depends on whether the option is in the money" }
+  answer: a
+  explanation: |
+    The option pays on the difference $S_1 - S_2$, so what matters is the volatility of the ratio
+    $S_1/S_2$. For lognormal prices it is
+
+    $$\sigma^2 = \sigma_1^2 + \sigma_2^2 - 2\rho\,\sigma_1\sigma_2,$$
+
+    which falls as the correlation $\rho$ rises (Margrabe's formula prices the option like a call with
+    this volatility). Highly correlated stocks move together and their spread moves little, so the
+    option is worth less: its holder is short correlation.
+
+    Choice c is the trap of thinking only each stock's own volatility matters. Choice b is the right
+    answer for a call on a basket such as $S_1 + S_2$, whose volatility rises with correlation.
+    Choice d confuses the sign of an exposure with its size.
+  source: { name: "Quant job interview problem collection (Kent State); Margrabe (1978)", url: "https://www.math.kent.edu/~oana/math60070/InterviewProblems.pdf" }
+
+- id: opt-volatility-008
+  topic: options
+  subtopic: Implied and realised volatility
+  type: numeric
+  difficulty: medium
+  tags: [daily-move, mean-absolute-deviation, normal-distribution]
+  prompt: |
+    A stock trades at \$100 with annual volatility 20%. Take a year to have 256 trading days and daily
+    returns to be normal with mean zero. What is the **expected absolute size** of the stock's price
+    change over one day? An answer within 1 cent is accepted.
+  answer: 0.997356
+  answerText: |-
+    $1.25 \times \sqrt{2/\pi} \approx 1.00$ dollars
+  tolerance: { abs: 0.01 }
+  unit: dollars
+  hints:
+    - Start with the standard deviation of a one-day move.
+    - For a normal variable $X$ with mean 0 and standard deviation $s$, what is $E|X|$?
+  followUps:
+    - How does this relate to the rule that an at-the-money straddle is worth about $0.8\,\sigma\sqrt{T}\,S$?
+    - If a one-day at-the-money straddle cost \$1.50, what would you conclude?
+  explanation: |
+    The one-day standard deviation is $100 \times 20\%/\sqrt{256} = 1.25$ dollars. For a normal
+    variable with mean 0 and standard deviation $s$,
+
+    $$E|X| = s\sqrt{2/\pi} \approx 0.8\,s,$$
+
+    so the expected absolute move is $1.25 \times 0.798 \approx 1.00$ dollar.
+
+    This is the same 0.8 as in the straddle rule: an at-the-money straddle pays the absolute move, so
+    a one-day straddle is worth about one dollar here. The common wrong answer is \$1.25, the
+    standard deviation, which is larger than the mean absolute move.
+  source: { name: "Standard volatility arithmetic (e.g. Natenberg, Option Volatility and Pricing)" }
+
+- id: opt-volatility-009
+  topic: options
+  subtopic: Implied and realised volatility
+  type: short
+  difficulty: easy
+  tags: [square-root-of-time, option-premium, volatility-scaling]
+  prompt: |
+    Why does the price of an at-the-money option grow roughly with the square root of its time to expiry,
+    rather than in proportion to it? If a one-month at-the-money option costs \$4, roughly what does a
+    one-week option with the same implied volatility cost?
+  reference: |
+    The option's value is driven by how far the stock is likely to move by expiry, which is set by
+    the standard deviation of the move. Returns over separate days are close to independent, so their
+    variances add: the variance of the move to expiry grows in proportion to $T$, and its standard
+    deviation in proportion to $\sqrt{T}$. That gives the at-the-money rule
+    $C \approx 0.4\,\sigma\sqrt{T}\,S$.
+
+    One week is about a quarter of a month, so the one-week option is worth about
+    $\sqrt{1/4} = \tfrac12$ as much: about \$2, not \$1.
+  keyPoints:
+    - The value depends on the standard deviation of the move to expiry
+    - Variance of independent returns adds over time, so the standard deviation grows like the square root of time
+    - "States the rule C ≈ 0.4 σ √T S for an at-the-money option"
+    - The one-week option costs about half the one-month option, about 2 dollars
+  hints:
+    - What property of returns over separate days do you need?
+    - Which quantity adds up over days, the standard deviation or the variance?
+  followUps:
+    - Why does this make short-dated options lose value faster near expiry?
+    - When does the square-root rule break down?
+  explanation: |
+    The common wrong answer is \$1, scaling by time instead of its square root. Being able to say
+    "variance adds" is the whole point; it is also why a trader thinks of short-dated options as
+    decaying fastest near expiry, since $\sqrt{T}$ falls fastest as $T$ approaches zero.
+  source: { name: "Standard volatility scaling (e.g. Natenberg, Option Volatility and Pricing)" }

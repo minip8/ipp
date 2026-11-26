@@ -88,10 +88,16 @@ describe('numericMatches', () => {
     expect(matches('-7/2', '3.5')).toBe(false);
   });
 
-  it('holds an integer or a fraction to the exact value', () => {
+  it('holds a fraction to the exact value', () => {
     expect(matches('1/3', '33/100')).toBe(false);
     expect(matches('1/3', '333/1000')).toBe(false);
+  });
+
+  it('accepts a whole number that is the answer to three significant figures', () => {
+    expect(matches('105.127', '105')).toBe(true);
+    expect(matches('2468.3', '2470')).toBe(true);
     expect(matches('7/2', '4')).toBe(false);
+    expect(matches('99.4', '100')).toBe(false);
   });
 
   it('holds every form to the exact value when the answer is a whole number', () => {

@@ -1,0 +1,193 @@
+# Estimation and Fermi questions: break an unknown quantity into factors you can estimate, state the assumptions, sanity-check the result.
+- id: bt-estimation-001
+  topic: brainteasers
+  subtopic: Estimation and Fermi questions
+  type: short
+  difficulty: easy
+  tags: [fermi, market-sizing, structure]
+  prompt: |
+    Estimate how many piano tuners work in Chicago. Explain how you build the estimate; the structure
+    and the assumptions matter more than the final number.
+  reference: |
+    Estimate demand for tunings, then divide by what one tuner can supply.
+
+    - Chicago has about 3 million people, roughly 1.2 million households (about 2.5 people each).
+    - Perhaps 1 household in 20 has a piano: about 60,000. Add schools, churches, venues and studios,
+      say another 10,000 to 20,000, for roughly 75,000 pianos.
+    - A piano in use is tuned about once a year: about 75,000 tunings a year.
+    - A tuner does about 4 tunings a day (each takes 1 to 2 hours plus travel), 5 days a week,
+      50 weeks a year: about 1,000 tunings a year.
+
+    That gives about $75{,}000 / 1{,}000 = 75$ tuners, so "somewhere between 50 and 150". The most
+    uncertain inputs are the fraction of households with a piano and how often pianos are tuned; each
+    could be off by a factor of 2, which is why the answer is a range.
+  keyPoints:
+    - Splits the problem into demand (pianos times tunings per year) and supply (tunings per tuner per year)
+    - Gives explicit, defensible numbers for population, households and piano ownership
+    - Estimates tunings per tuner from working hours and the time per tuning
+    - Reaches an answer of the right order of magnitude (tens to low hundreds) and states it as a range
+    - Names the least certain assumption or sanity-checks the result another way
+  hints:
+    - Who creates the demand for piano tuning, and how often?
+    - How many pianos can one tuner look after in a year?
+  followUps:
+    - Which single assumption would you check first if you could, and how?
+    - How would you estimate the same thing from the supply side alone, for example from a phone directory?
+  explanation: |
+    Fermi questions are marked on the decomposition, not the number: a clear chain of a few factors,
+    each with a stated and plausible value, and a final range. Interviewers also listen for a sanity
+    check (does 75 tuners for a city of 3 million feel right?) and for the candidate naming the
+    weakest link.
+
+    Weak answers jump to a number with no structure, give false precision ("83 tuners"), or forget
+    that tuners have limited working time. Units mistakes (tunings per day versus per year) are the
+    most common arithmetic error.
+  source: { name: "Fermi's piano tuners (classic; e.g. Poundstone, How Would You Move Mount Fuji?)" }
+
+- id: bt-estimation-002
+  topic: brainteasers
+  subtopic: Estimation and Fermi questions
+  type: short
+  difficulty: medium
+  tags: [fermi, volume, packing]
+  prompt: |
+    Roughly how many golf balls would fit inside a school bus? Explain your estimate.
+  reference: |
+    Divide the usable volume of the bus by the volume each ball takes up, allowing for gaps.
+
+    - **Bus interior:** about 10 m long, 2.4 m wide and 1.8 m high: about 45 cubic metres. Seats and
+      fittings take maybe 10% to 20%, leaving roughly 40 cubic metres.
+    - **One ball:** diameter about 4.3 cm, so volume $\tfrac43 \pi (2.15)^3 \approx 40$ cubic cm.
+      (A quick alternative: a 4.3 cm cube is about 80 cubic cm, which builds in the gaps of a
+      simple-cubic packing.)
+    - **Packing:** randomly poured spheres fill about 60% to 65% of the space.
+
+    So the count is about $\frac{40 \times 10^6 \times 0.64}{40} \approx 600{,}000$, call it half a
+    million to a million.
+  keyPoints:
+    - Estimates the bus's interior volume from plausible dimensions (tens of cubic metres)
+    - Estimates a golf ball's volume from its diameter (about 40 cubic cm)
+    - Allows for packing efficiency (spheres fill roughly 60 to 75% of space) and for the seats
+    - Gets an answer of the right order (hundreds of thousands to a million) and gives it as a range
+  hints:
+    - Treat it as one volume divided by another.
+    - Balls cannot fill all of the space. Roughly what fraction do they fill?
+  followUps:
+    - How would your answer change if the balls were stacked as tightly as possible rather than poured in?
+    - Which of your inputs is most uncertain?
+  explanation: |
+    The structure is volume over volume with a packing correction, and the packing fraction is the
+    step most often forgotten (it changes the answer by almost a factor of 2). Dense regular packing
+    fills about 74%, random pouring about 64%, and treating each ball as a cube is about 52%; any of
+    these is acceptable if it is stated.
+
+    Unit errors are the usual way to go wrong: cubic metres to cubic centimetres is a factor of
+    $10^6$, and candidates who use $10^3$ or $10^9$ are off by a thousand.
+  source: { name: "Golf balls in a school bus (widely reported; e.g. Poundstone, How Would You Move Mount Fuji?)" }
+
+- id: bt-estimation-003
+  topic: brainteasers
+  subtopic: Estimation and Fermi questions
+  type: numeric
+  difficulty: medium
+  tags: [fermi, physics, pressure]
+  prompt: |
+    Estimate the total mass of the Earth's atmosphere, in kilograms. Use what you know about air
+    pressure at sea level and the size of the Earth.
+  answer: "5.15e18"
+  answerText: |-
+    About $5 \times 10^{18}$ kg (the accepted value is about $5.15 \times 10^{18}$ kg)
+  tolerance: { rel: 0.5 }
+  unit: kg
+  hints:
+    - Air pressure at the surface is the weight of the air above each square metre.
+    - Sea-level pressure is about $10^5$ pascals, that is, newtons per square metre.
+    - The Earth's radius is about 6,400 km. What is its surface area?
+  followUps:
+    - What fraction of the Earth's total mass is that?
+    - Your estimate assumes the whole surface is at sea level. In which direction does that bias it?
+  explanation: |
+    Pressure is force per area, and at the surface that force is the weight of the column of air
+    above. So the mass of air is
+
+    $$M \approx \frac{p \cdot 4\pi R^2}{g} \approx \frac{10^5 \times 4\pi \times (6.4 \times 10^6)^2}{10} \approx \frac{10^5 \times 5 \times 10^{14}}{10} = 5 \times 10^{18} \text{ kg}.$$
+
+    The accepted value is about $5.15 \times 10^{18}$ kg; the simple estimate comes out slightly high
+    because land above sea level has less air above it. (A memorable form of the same fact: the air
+    above each square metre weighs about 10 tonnes.)
+
+    The common mistakes are trying to estimate the atmosphere's height and density, which is much
+    harder and less accurate, and slips in the area: forgetting to square the radius or using
+    kilometres instead of metres.
+  source: { name: "Fermi estimate of the atmosphere's mass (classic physics estimation question)" }
+
+- id: bt-estimation-004
+  topic: brainteasers
+  subtopic: Estimation and Fermi questions
+  type: short
+  difficulty: medium
+  tags: [fermi, little-law, aviation]
+  prompt: |
+    Roughly how many people are in the air on commercial flights, worldwide, at a typical moment?
+    Explain your estimate, and check it a second way if you can.
+  reference: |
+    Use "number present = arrival rate times average duration".
+
+    **Route 1, passengers.** Airlines carry roughly 4 to 5 billion passenger journeys a year, about
+    12 million a day. If the average flight lasts about 2 hours, at any moment about
+    $12 \times 10^6 \times \frac{2}{24} \approx 1$ million people are flying.
+
+    **Route 2, flights.** There are on the order of 100,000 commercial flights a day, with perhaps
+    120 to 150 passengers on average. That is 12 to 15 million passengers a day, and the same
+    duration factor gives about 1 million.
+
+    So the answer is about a million (say 0.5 to 1.5 million), higher during daytime peaks over
+    Europe and North America and lower at other times.
+  keyPoints:
+    - Uses a flow-times-duration structure (number in the air = passengers per unit time times average flight time)
+    - Gives plausible inputs for passengers or flights per day and for the average flight length
+    - Arrives at roughly a million (order of magnitude 10^5 to 10^6+)
+    - Cross-checks with a second route or a sanity check, such as flights per day times seats
+  hints:
+    - If you knew how many people fly per day and how long they stay up, how would you get the number airborne at once?
+    - How many flights take off each day worldwide, very roughly? How many people on each?
+  followUps:
+    - Which way would the answer move at 3 a.m. in London, and why?
+    - What is the analogous estimate for the number of cars on the road in a city?
+  explanation: |
+    The structure is Little's law: the average number in a system equals the arrival rate times the
+    average time spent in it. Candidates who instead try to count planes visible on a flight-tracking
+    map or multiply total passengers by a fraction without justifying it lose the thread.
+
+    A second, independent route is what makes this answer convincing. Here the passenger count and
+    the flight count agree, which is evidence that neither input is badly off. Typical errors are
+    using the yearly passenger figure without converting to a daily rate, or forgetting the
+    duration factor and answering "12 million".
+  source: { name: "Fermi estimation question widely used in trading interviews" }
+
+- id: bt-estimation-005
+  topic: brainteasers
+  subtopic: Estimation and Fermi questions
+  type: numeric
+  difficulty: easy
+  tags: [mental-arithmetic, compounding, rule-of-72]
+  prompt: |
+    An investment grows by 6% a year, compounded annually. Without a calculator, estimate how many
+    years it takes to double.
+  answer: 11.8957
+  answerText: |-
+    About 12 years (exactly $\ln 2 / \ln 1.06 \approx 11.9$)
+  tolerance: { rel: 0.05 }
+  unit: years
+  followUps:
+    - Why does the rule of 72 work, and why 72 rather than 69.3?
+    - About how long does it take to multiply by ten at 6%?
+  explanation: |
+    Doubling needs $1.06^n = 2$, so $n = \frac{\ln 2}{\ln 1.06}$. For small $r$, $\ln(1 + r) \approx r$,
+    giving $n \approx \frac{0.693}{0.06} \approx 11.6$. The **rule of 72** uses 72 instead of 69.3,
+    partly because 72 divides evenly by many numbers and partly to correct for $\ln(1 + r)$ being a
+    little less than $r$: $72 / 6 = 12$. The exact value is $11.9$ years.
+
+    A common wrong answer is $100 / 6 \approx 16.7$ years, which is simple interest: it ignores
+    compounding.
+  source: { name: "Rule of 72 (classic mental-arithmetic shortcut)" }

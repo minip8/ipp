@@ -1,0 +1,246 @@
+# Market mechanics: bids, offers and the spread, the order book, crossing the spread, positions and mark-to-market P&L.
+- id: bmm-mechanics-001
+  topic: betting-market-making
+  subtopic: Market mechanics
+  type: numeric
+  difficulty: easy
+  tags: [order-book, market-order, slippage]
+  prompt: |
+    The offers in a stock's order book are 200 shares at \$10.02, 300 at \$10.03 and 400 at \$10.05
+    (nothing cheaper). You send a market order to buy 700 shares, and it fills against the book. How
+    much more do you pay in total than if all 700 shares had filled at the best offer, \$10.02?
+  answer: 9
+  unit: dollars
+  explanation: |
+    A market order takes the cheapest offers first and walks up the book: 200 at 10.02, 300 at 10.03 and
+    the remaining 200 at 10.05. Relative to 10.02, the extra cost is
+
+    $$200 \times 0 + 300 \times 0.01 + 200 \times 0.03 = 3 + 6 = 9 \text{ dollars},$$
+
+    an average price of about 10.0329. This "slippage" grows with order size relative to the displayed
+    depth, which is why large orders are split over time.
+
+    The common slip is to fill the remainder at the last level's full size (400 at 10.05) or to price
+    everything at the worst level touched.
+  source: { name: "Order-book basics (common trading-interview question)" }
+
+- id: bmm-mechanics-002
+  topic: betting-market-making
+  subtopic: Market mechanics
+  type: numeric
+  difficulty: easy
+  tags: [pnl, position, mark-to-market]
+  prompt: |
+    Today you bought 10 contracts at \$4.00, sold 6 at \$5.00, then bought 4 at \$4.50. The market is now
+    \$4.70 bid, \$4.90 offered. Marking your position at the **mid**, what is your total P&L for the day?
+  answer: 10.4
+  answerText: |-
+    $10.40$ dollars
+  unit: dollars
+  explanation: |
+    Position: $10 - 6 + 4 = 8$ contracts long. Cash: $-40 + 30 - 18 = -28$. The position is worth
+    $8 \times 4.80 = 38.40$ at the mid, so
+
+    $$\text{P\&L} = 38.40 - 28 = 10.40.$$
+
+    The same result split up: the 6 contracts bought at 4 and sold at 5 made 6 (realised), the other 4
+    bought at 4 are up 0.80 each (3.20) and the 4 bought at 4.50 are up 0.30 each (1.20), unrealised.
+    Marking at the bid instead (what you could sell at right now) gives 9.60.
+
+    Common slips are counting only the realised part (6) or forgetting the second purchase in the cash.
+  source: { name: "Position and P&L arithmetic (common trading-interview question)" }
+
+- id: bmm-mechanics-003
+  topic: betting-market-making
+  subtopic: Market mechanics
+  type: single
+  difficulty: easy
+  tags: [order-book, limit-order, crossing-the-spread]
+  prompt: |
+    A stock's best bid is 99.50 and its best offer is 100.00. Which of these new limit orders trades
+    immediately?
+  choices:
+    - { id: a, text: "Buy at 100.00" }
+    - { id: b, text: "Sell at 100.00" }
+    - { id: c, text: "Buy at 99.75" }
+    - { id: d, text: "Sell at 99.75" }
+  answer: a
+  explanation: |
+    An order trades on arrival when it **crosses** the spread: a buy at or above the best offer, or a
+    sell at or below the best bid. A buy at 100.00 meets the offer at 100.00 and trades.
+
+    - **b** joins the existing offer at 100.00 and waits behind it.
+    - **c** becomes the new best bid, improving the market, but nobody is selling at 99.75.
+    - **d** becomes the new best offer, again resting.
+
+    The usual confusion is between improving the market (c, d: inside the spread, resting) and crossing
+    it (a: taking liquidity and paying the spread).
+  source: { name: "Order-book basics (e.g. Jane Street, Probability and Markets, making markets jargon)", url: "https://www.janestreet.com/static/pdfs/trading-interview.pdf" }
+
+- id: bmm-mechanics-004
+  topic: betting-market-making
+  subtopic: Market mechanics
+  type: numeric
+  difficulty: medium
+  tags: [market-making, pnl, inventory]
+  prompt: |
+    You quote 99 bid, 101 offered all day, one contract at a time. Customers sell to you 30 times and
+    buy from you 20 times. At the close the mid is 98. Marking your position at the close's mid, what is
+    your P&L for the day?
+  answer: 30
+  unit: dollars
+  hints:
+    - Track your position and your cash separately.
+    - Alternatively, split the P&L into spread earned against a mid of 100 and the change in value of what you are left holding.
+  followUps:
+    - Split the 30 into spread capture and inventory P&L.
+    - What could you have done during the day to avoid ending long 10?
+  explanation: |
+    Cash: $-30 \times 99 + 20 \times 101 = -2970 + 2020 = -950$. Position: long $30 - 20 = 10$, worth
+    $10 \times 98 = 980$. P&L $= 980 - 950 = 30$.
+
+    Decomposed: every trade was 1 better than the starting mid of 100, so spread capture is
+    $50 \times 1 = 50$; but you ended long 10 while the mid fell by 2, costing 20 on the inventory:
+    $50 - 20 = 30$. A market maker earns the spread and pays for the inventory they are left with,
+    which is why they skew quotes to keep it small.
+
+    The common wrong answer is 50, the spread capture alone, which ignores the position.
+  source: { name: "Market-maker P&L decomposition (common trading-interview question)" }
+
+- id: bmm-mechanics-005
+  topic: betting-market-making
+  subtopic: Market mechanics
+  type: short
+  difficulty: easy
+  tags: [terminology, bid-offer, making-markets]
+  prompt: |
+    A trader says "I'm 2 at 4, 10 up." What are they offering to do? If you then say "sold 5", what
+    happens, what is the trader's position, and what is left of their market?
+  reference: |
+    "2 at 4, 10 up" means a bid of 2 and an offer of 4, for 10 contracts on each side: they will buy up
+    to 10 at 2 or sell up to 10 at 4. The spread is 2 and the mid 3.
+
+    "Sold 5" means you **hit** their bid for 5: you sell 5 to them at 2. The trader is now long 5
+    contracts at 2. Their market is partly filled: 5 remain on the bid at 2 and 10 on the offer at 4,
+    until they change or cancel it. Buying from them would
+    be **lifting** the offer ("take 'em", or "buy 5").
+  keyPoints:
+    - Identifies 2 as the bid, 4 as the offer, 10 as the size on each side
+    - 'Says that "sold 5" hits the bid: the trader buys 5 at 2'
+    - States the trader is long 5 at 2
+    - Says 5 remain on the bid and 10 on the offer (a partial fill)
+    - Knows the term lifting for buying at the offer
+  hints:
+    - Which number is the price they will buy at?
+    - Who is buying when you say "sold"?
+  followUps:
+    - What would you say to buy all 10 at 4?
+    - The trader now thinks the value is lower. How should they change their market?
+  explanation: |
+    The vocabulary is part of every market-making interview, and confusing the sides (who buys when you
+    hit a bid) loses the thread of the game. Partial fills matter too: a market stays up for the
+    unfilled size until it is changed or pulled ("out").
+  source: { name: "Jane Street, Probability and Markets (making markets jargon)", url: "https://www.janestreet.com/static/pdfs/trading-interview.pdf" }
+
+- id: bmm-mechanics-006
+  topic: betting-market-making
+  subtopic: Market mechanics
+  type: multiple
+  difficulty: medium
+  tags: [order-book, order-types, priority]
+  prompt: |
+    On an exchange with a price-time priority limit order book, which of the following are true?
+    Select all that apply.
+  choices:
+    - { id: a, text: "A market order is certain to execute (if there is enough size in the book) but its price is not known in advance" }
+    - { id: b, text: "A limit order fixes the worst price you will trade at but may not execute at all" }
+    - { id: c, text: "A new buy limit order at the current best bid improves the market" }
+    - { id: d, text: "Between two orders at the same price, the one that arrived first is filled first" }
+    - { id: e, text: "A wider bid-offer spread always makes a market maker more money" }
+  answer: [a, b, d]
+  explanation: |
+    - **a, b:** true. This is the basic trade-off: a market order buys certainty of execution at the
+      cost of price (it walks the book); a limit order buys price certainty at the cost of execution.
+    - **d:** true. That is the "time" in price-time priority, and why queue position is valuable.
+    - **c:** false. Joining the best bid adds size there but does not change the best price; improving
+      means bidding higher than the current best bid.
+    - **e:** false. A wider spread earns more per trade but attracts fewer trades, and the trades it
+      does get are more likely to come from informed counterparties.
+  source: { name: "Order types and priority (e.g. QuantVault, market microstructure guide)", url: "https://quantvault.org/market-microstructure-interview-guide.html" }
+
+- id: bmm-mechanics-007
+  topic: betting-market-making
+  subtopic: Market mechanics
+  type: short
+  difficulty: medium
+  tags: [crossing-the-spread, execution, limit-order]
+  prompt: |
+    You want to buy 1,000 shares of a stock quoted 50.00 bid, 50.02 offered. When should you cross the
+    spread (buy at the offer now), and when should you post a bid and wait? Put numbers on the
+    trade-off.
+  reference: |
+    Crossing costs half the spread relative to the mid: 1 cent a share, \$10 on 1,000 shares, and gives
+    certain, immediate execution. Posting a bid at 50.00 earns that cent if filled, but you might not be
+    filled, and the fills you do get are skewed towards the moments when the price is falling (adverse
+    selection): if the stock is about to go up, nobody sells to you and you end up chasing it higher.
+
+    So cross when the expected cost of waiting is larger than the half-spread: when you have information
+    or a signal that the price will move up by more than a cent or so before you would be filled, when you
+    must be done now (hedging a risk you already hold, a deadline), or when the spread is small relative
+    to the move you expect. Post and wait when you are patient, have no view on the next move, and the
+    spread is wide relative to expected moves; a market maker earns their living on that side.
+  keyPoints:
+    - Crossing costs half the spread versus the mid, 1 cent a share or \$10 here
+    - Posting may not fill and is adversely selected (filled when the price is moving against you)
+    - Cross when urgency or an expected price move exceeds the half-spread
+    - Post when patient, without a short-term view, especially if the spread is wide
+  hints:
+    - What does crossing cost you compared with the mid?
+    - If you post a bid, when are you most likely to get filled?
+  followUps:
+    - You believe the stock will be 5 cents higher in a minute with probability 0.6 and unchanged otherwise. Cross or post?
+    - Why might a hedger cross the spread on a trade they expect to lose money on?
+  explanation: |
+    The question tests whether a candidate sees both sides: crossing has an explicit cost, waiting has a
+    hidden one (non-execution and adverse selection). Answers that say "always use limit orders, they're
+    cheaper" miss the second; the right answer compares the half-spread with the expected move and the
+    cost of not trading.
+  source: { name: "Execution trade-off (common trading-interview question)" }
+
+- id: bmm-mechanics-008
+  topic: betting-market-making
+  subtopic: Market mechanics
+  type: short
+  difficulty: medium
+  tags: [mark-to-market, pnl, liquidity]
+  prompt: |
+    You bought 1,000 shares at \$20.00. The stock is now quoted 20.40 bid, 20.60 offered. What is your
+    P&L? Explain the difference between marking at the mid and at the bid, and what you would do if
+    your position were 5,000,000 shares in a stock that trades 1,000,000 shares a day.
+  reference: |
+    Nothing is realised yet. Marked at the mid (20.50) the unrealised P&L is $1000 \times 0.50 = 500$;
+    marked at the bid (20.40), what you could sell for right now, it is 400. The mid is the usual estimate
+    of fair value; the bid is the liquidation value, and the difference (half the spread times the
+    position) is the cost of getting out.
+
+    For 5,000,000 shares in a stock trading 1,000,000 a day, neither number is real: the bid is good for a
+    small size, and selling five days' volume would push the price down a long way. A prudent mark
+    takes a liquidity discount (an estimate of the market impact of unwinding over a sensible period),
+    and risk limits should treat the position as hard to exit. The P&L that matters is the one you could
+    realise.
+  keyPoints:
+    - Unrealised P&L of 500 at the mid and 400 at the bid
+    - The mid estimates fair value; the bid is what you could sell for now
+    - The gap is half the spread times the position, the cost of exiting
+    - For a position much larger than daily volume, quoted prices overstate the value, and a liquidity discount or impact estimate is needed
+  hints:
+    - What could you sell the shares for right now?
+    - Is the quoted bid good for any size?
+  followUps:
+    - Your firm marks everything at the mid. How could that mislead the risk managers?
+    - How would you estimate the cost of unwinding the 5,000,000 shares?
+  explanation: |
+    Mark-to-market is easy until the position is large. Interviewers check that candidates separate
+    realised from unrealised P&L, know the difference between a fair-value mark and a liquidation mark,
+    and see that a big position in an illiquid market is worth less than the screen says.
+  source: { name: "Mark-to-market and liquidity (common trading-interview question)" }

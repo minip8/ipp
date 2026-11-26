@@ -1,0 +1,255 @@
+# Expectation and linearity: indicator variables, tail sums, and when expectations mislead.
+- id: prob-expectation-001
+  topic: probability
+  subtopic: Expectation and linearity
+  type: numeric
+  difficulty: easy
+  tags: [dice, maximum, expectation]
+  prompt: |
+    Two fair dice are rolled. What is the expected value of the larger of the two numbers (if they
+    are equal, that common value)?
+  answer: 161/36
+  answerText: |-
+    $161/36 \approx 4.47$
+  explanation: |
+    $P(\max \le k) = (k/6)^2$, so $P(\max = k) = \dfrac{k^2 - (k-1)^2}{36} = \dfrac{2k-1}{36}$, and
+
+    $$E[\max] = \sum_{k=1}^{6} k \cdot \frac{2k-1}{36} = \frac{1 + 6 + 15 + 28 + 45 + 66}{36} = \frac{161}{36} \approx 4.47.$$
+
+    Working with the CDF of the maximum is the general method: the maximum is at most $k$ exactly
+    when every die is. A tail-sum version is just as quick: $E[\max] = \sum_{k=1}^{6} P(\max \ge k) = \sum_{k=1}^{6} \left(1 - \left(\tfrac{k-1}{6}\right)^2\right)$.
+
+    A common wrong answer is $3.5$ or "a bit above it" from treating the maximum like a single die,
+    and another is to count $P(\max = k) = 2k/36$, which double-counts the outcome where both dice
+    show $k$.
+  source: { name: "Classic interview problem" }
+
+- id: prob-expectation-002
+  topic: probability
+  subtopic: Expectation and linearity
+  type: numeric
+  difficulty: easy
+  tags: [indicators, permutations, linearity]
+  prompt: |
+    100 people check their hats. The hats are handed back in a uniformly random order, one hat each.
+    What is the expected number of people who get their own hat back?
+  answer: 1
+  unit: people
+  explanation: |
+    Let $I_k$ be 1 if person $k$ gets their own hat. Person $k$'s hat is equally likely to go to any
+    of the 100 people, so $E[I_k] = 1/100$. By linearity,
+
+    $$E\left[\sum_{k=1}^{100} I_k\right] = 100 \cdot \frac{1}{100} = 1.$$
+
+    Linearity holds even though the $I_k$ are dependent (if 99 people have their own hats, so does
+    the last). That is why the answer is 1 for any number of people, and why this is quick while
+    computing the *distribution* of the number of matches is a page of inclusion-exclusion.
+
+    A common wrong answer is "close to 0", from the feeling that any one person rarely gets their
+    hat; 100 small chances add up to one expected match. Candidates who try to find the
+    distribution first tend to get stuck: for the mean you never need it.
+  source: { name: "Hat-check problem (e.g. Zhou, A Practical Guide to Quantitative Finance Interviews)" }
+
+- id: prob-expectation-003
+  topic: probability
+  subtopic: Expectation and linearity
+  type: numeric
+  difficulty: medium
+  tags: [coupon-collector, geometric, dice]
+  prompt: |
+    A fair die is rolled repeatedly. What is the expected number of rolls until every face from 1 to
+    6 has appeared at least once?
+  answer: 147/10
+  answerText: |-
+    $147/10 = 14.7$
+  unit: rolls
+  hints:
+    - Split the process into stages according to how many different faces you have seen.
+    - Once you have seen $k$ faces, how long until a new one appears?
+    - A geometric waiting time with success probability $p$ has mean $1/p$.
+  followUps:
+    - What is the answer for $n$ faces, and how does it grow with $n$?
+    - What is the variance of the number of rolls?
+  explanation: |
+    Write the total as a sum of stages. After $k$ distinct faces have been seen, each roll shows a
+    new face with probability $\frac{6-k}{6}$, so the wait for the next new face is geometric with
+    mean $\frac{6}{6-k}$. By linearity,
+
+    $$E[T] = \frac66 + \frac65 + \frac64 + \frac63 + \frac62 + \frac61 = 6\left(1 + \tfrac12 + \cdots + \tfrac16\right) = 6 \cdot \frac{49}{20} = \frac{147}{10}.$$
+
+    In general it is $n H_n \approx n \ln n$. Common wrong answers are 6 (one stage only) and 36
+    ($6^2$, from a vague "squared" intuition).
+  source: { name: "Coupon collector's problem (e.g. Zhou, A Practical Guide to Quantitative Finance Interviews)" }
+
+- id: prob-expectation-004
+  topic: probability
+  subtopic: Expectation and linearity
+  type: numeric
+  difficulty: medium
+  tags: [cards, indicators, linearity]
+  prompt: |
+    A deck of 26 red and 26 black cards is shuffled uniformly and laid out in a row. A **colour
+    change** is a pair of adjacent cards of different colours. What is the expected number of colour
+    changes?
+  answer: 26
+  hints:
+    - There are 51 adjacent pairs. Use one indicator per pair.
+    - What is the probability that two specific positions hold cards of different colours?
+  followUps:
+    - What is the expected number of runs (maximal blocks of one colour)?
+    - What if the deck had $r$ red and $b$ black cards?
+  explanation: |
+    For each of the 51 adjacent pairs, the probability that its two cards differ in colour is
+
+    $$\frac{26}{52} \cdot \frac{26}{51} + \frac{26}{52} \cdot \frac{26}{51} = \frac{26}{51}.$$
+
+    By linearity the expected number of changes is $51 \cdot \frac{26}{51} = 26$. In general it is
+    $\frac{2rb}{r+b}$.
+
+    The common wrong answer is $51/2 = 25.5$, which treats adjacent cards as independent fair coin
+    flips. Without replacement, the second card is slightly more likely to differ from the first
+    ($26/51$ rather than $1/2$).
+  source: { name: "Classic indicator problem (e.g. techinterview.org probability brainteasers)", url: "https://www.techinterview.org/post/3233474553/probability-brainteasers-quant-interviews/" }
+
+- id: prob-expectation-005
+  topic: probability
+  subtopic: Expectation and linearity
+  type: numeric
+  difficulty: medium
+  tags: [st-petersburg, geometric-series, expected-value]
+  prompt: |
+    A fair coin is tossed until it first shows heads. If that happens on toss $k$, the casino owes you
+    $2^k$ dollars, but it can pay at most $2^{20}$ dollars (about a million), so you receive
+    $\min(2^k, 2^{20})$ dollars. What is the expected payout?
+  answer: 21
+  unit: dollars
+  hints:
+    - Each outcome $k$ has probability $2^{-k}$. What does each uncapped outcome contribute?
+    - Split the sum at $k = 20$.
+  followUps:
+    - Without the cap the expectation is infinite. Would you pay $1{,}000$ to play the uncapped game? Why not?
+    - How does the fair price grow with the cap, and what does that say about the original paradox?
+  explanation: |
+    Each uncapped outcome contributes $2^k \cdot 2^{-k} = 1$ dollar, so tosses $1$ to $20$ give
+    \$20. Everything from toss 21 on pays the cap:
+
+    $$\sum_{k \ge 21} 2^{20} \cdot 2^{-k} = 2^{20} \cdot 2^{-20} = 1.$$
+
+    The expected payout is \$21. Without the cap it is $\sum 1 = \infty$ (the St Petersburg
+    paradox), yet nobody would pay much to play. Any real counterparty has finite wealth, and the
+    fair price grows only like the logarithm of the cap: doubling the casino's bank adds one dollar.
+
+    The common slip is to add 20 and stop, forgetting that all the long runs pay the cap and
+    together contribute one more dollar; another is to think "infinite in theory, so a huge
+    amount in practice".
+  source: { name: "St Petersburg paradox (Bernoulli, 1738)" }
+
+- id: prob-expectation-006
+  topic: probability
+  subtopic: Expectation and linearity
+  type: short
+  difficulty: medium
+  tags: [linearity, birthday-problem, markov-inequality]
+  prompt: |
+    In a group of 30 people with independent birthdays, uniform over 365 days, what is the expected
+    number of *pairs* of people who share a birthday? Why are you allowed to add up probabilities of
+    events that are clearly dependent? And since the expected number is above 1, can you conclude
+    from that alone that a shared birthday is more likely than not?
+  reference: |
+    There are $\binom{30}{2} = 435$ pairs, and each shares a birthday with probability $1/365$. By
+    linearity, $E[\text{matching pairs}] = 435/365 \approx 1.19$.
+
+    Linearity of expectation, $E[\sum I_j] = \sum E[I_j]$, needs no independence: it is just
+    rearranging a sum over the sample space. The pair events are dependent (if A matches B and B
+    matches C, then A matches C), but that affects the distribution of the count, not its mean.
+
+    No. An expectation above 1 does not make $P(\text{count} \ge 1) > 1/2$: a count that is 100 with
+    probability $1/100$ and 0 otherwise has mean 1 but is zero 99% of the time. The only general link
+    is Markov's inequality, $P(X \ge 1) \le E[X]$, which bounds the probability from above. For 30
+    people the probability happens to be about $0.706$, but you need the exact product to know it.
+  keyPoints:
+    - Expected number of matching pairs is 435/365, about 1.19
+    - Linearity of expectation holds without independence
+    - The dependence between pairs affects the distribution, not the mean
+    - A mean above 1 does not imply probability above one half; gives a counterexample or cites Markov's inequality as only an upper bound
+  hints:
+    - Use one indicator per pair of people.
+    - Write $E[X + Y]$ as a sum over outcomes. Where would independence be needed?
+    - Can you build a random count with mean 1 that is usually zero?
+  followUps:
+    - What is the expected number of days of the year that are the birthday of at least two of the 30?
+    - How does the expected number of matching triples compare?
+  explanation: |
+    The first two parts are routine; the third is where candidates slip, by treating "expected
+    number of matches above 1" as if it meant "probably at least one match". The interviewer wants
+    to hear that a mean says nothing about the probability of being nonzero without more
+    information, and the Markov bound goes the wrong way for that conclusion.
+  source: { name: "Classic birthday problem, linearity variant" }
+
+- id: prob-expectation-007
+  topic: probability
+  subtopic: Expectation and linearity
+  type: short
+  difficulty: hard
+  tags: [uniform, tail-sum, simplex, e]
+  prompt: |
+    You draw independent Uniform$(0,1)$ numbers until their running sum exceeds 1. What is the
+    expected number of draws? Derive it.
+  reference: |
+    Let $N$ be the number of draws. $N > n$ exactly when $U_1 + \cdots + U_n \le 1$, and that
+    probability is the volume of the simplex $\{x_i \ge 0, \sum x_i \le 1\}$, which is $1/n!$ (for
+    example by induction, or because the $n!$ orderings of the partial sums are equally likely). By
+    the tail-sum formula for a non-negative integer variable,
+
+    $$E[N] = \sum_{n=0}^{\infty} P(N > n) = \sum_{n=0}^{\infty} \frac{1}{n!} = e \approx 2.718.$$
+
+    (The $n = 0$ and $n = 1$ terms are both 1, since at least two draws are always needed.)
+  keyPoints:
+    - Rewrites N > n as the event that the sum of n uniforms is at most 1
+    - That probability is the volume of a simplex, 1/n!
+    - Uses the tail-sum formula E[N] = sum of P(N > n)
+    - Concludes E[N] = e, about 2.718
+  hints:
+    - What does $N > n$ say about the first $n$ draws?
+    - What is $P(U_1 + U_2 \le 1)$? And $P(U_1 + U_2 + U_3 \le 1)$?
+    - For a non-negative integer $N$, $E[N] = \sum_{n \ge 0} P(N > n)$.
+  followUps:
+    - What is the expected number of draws until the sum exceeds $t$, for $0 < t \le 1$?
+    - What is the expected value of the sum at the moment it first exceeds 1?
+  explanation: |
+    The answer $e$ is well known; the derivation is what is being tested. The two ideas are the tail
+    sum (which turns an expectation into probabilities you can compute) and the simplex volume. A
+    frequent mistake is guessing 2 (from "each draw averages $1/2$"): the sum must *exceed* 1, and
+    the last draw tends to be large because it is the one that pushed the sum over.
+  source: { name: "Classic interview problem (e.g. Joshi et al., Quant Job Interview Questions and Answers)" }
+
+- id: prob-expectation-008
+  topic: probability
+  subtopic: Expectation and linearity
+  type: multiple
+  difficulty: medium
+  tags: [linearity, jensen, expectation-properties]
+  prompt: |
+    $X$ and $Y$ are random variables with finite expectations (and $X > 0$ where needed). Which
+    statements are **always** true? Select all that apply.
+  choices:
+    - { id: a, text: '$E[X + Y] = E[X] + E[Y]$, even if $X$ and $Y$ are dependent' }
+    - { id: b, text: '$E[XY] = E[X]\,E[Y]$' }
+    - { id: c, text: '$E[1/X] = 1/E[X]$ for a positive $X$' }
+    - { id: d, text: '$E[\max(X, Y)] \ge \max(E[X], E[Y])$' }
+    - { id: e, text: '$E[X^2] \ge (E[X])^2$' }
+    - { id: f, text: 'If $E[X] > E[Y]$ then $P(X > Y) > 1/2$' }
+  answer: [a, d, e]
+  explanation: |
+    - **a, true.** Linearity needs no independence.
+    - **b, false.** It holds when $X$ and $Y$ are uncorrelated (in particular independent), not in
+      general: take $Y = X$ with $X$ a fair $\pm 1$, so $E[XY] = 1$ but $E[X]E[Y] = 0$.
+    - **c, false.** By Jensen, $1/x$ is convex, so $E[1/X] \ge 1/E[X]$, with equality only when $X$ is
+      constant. $X$ equal to 1 or 3 with equal chance gives $E[1/X] = 2/3$ but $1/E[X] = 1/2$.
+    - **d, true.** $\max(X,Y) \ge X$ and $\ge Y$ pointwise, so its mean is at least each mean.
+    - **e, true.** The difference is $\operatorname{Var}(X) \ge 0$.
+    - **f, false.** A mean can be driven by a rare large value: $X$ is 100 with probability $1/10$
+      and 0 otherwise, $Y = 1$; then $E[X] = 10 > 1$ but $P(X > Y) = 1/10$.
+
+    Ticking b is the most common mistake (independence is assumed without being given); f confuses
+    "better on average" with "better most of the time", which matters for any skewed payoff.

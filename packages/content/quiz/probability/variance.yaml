@@ -1,0 +1,307 @@
+# Variance, covariance and correlation: sums of dependent variables, limits on correlation, the bivariate normal.
+- id: prob-variance-001
+  topic: probability
+  subtopic: Variance, covariance and correlation
+  type: numeric
+  difficulty: easy
+  tags: [variance, dice]
+  prompt: |
+    What is the variance of the number shown by one roll of a fair six-sided die?
+  answer: 35/12
+  answerText: |-
+    $35/12 \approx 2.92$
+  explanation: |
+    Use $\operatorname{Var}(X) = E[X^2] - (E[X])^2$:
+
+    $$E[X^2] = \frac{1 + 4 + 9 + 16 + 25 + 36}{6} = \frac{91}{6}, \qquad \operatorname{Var}(X) = \frac{91}{6} - \left(\frac72\right)^2 = \frac{182 - 147}{12} = \frac{35}{12}.$$
+
+    For a uniform distribution on $1, \dots, n$ the general formula is $\frac{n^2 - 1}{12}$. Common
+    slips are to forget to subtract the squared mean (answering $91/6$) or to give the standard
+    deviation ($\approx 1.71$).
+
+- id: prob-variance-002
+  topic: probability
+  subtopic: Variance, covariance and correlation
+  type: single
+  difficulty: easy
+  tags: [variance, independence, sums]
+  prompt: |
+    $X$ and $Y$ are independent, each with variance 1. What is $\operatorname{Var}(X - Y)$?
+  choices:
+    - { id: a, text: "0" }
+    - { id: b, text: "1" }
+    - { id: c, text: '$\sqrt{2}$' }
+    - { id: d, text: "2" }
+  answer: d
+  explanation: |
+    $\operatorname{Var}(X - Y) = \operatorname{Var}(X) + \operatorname{Var}(-Y) - 2\operatorname{Cov}(X, Y) = 1 + 1 - 0 = 2$, since $\operatorname{Var}(-Y) = (-1)^2 \operatorname{Var}(Y)$. Variances of
+    independent variables add whether you add or subtract the variables: subtracting a noisy quantity
+    adds noise, it does not cancel it.
+
+    - a subtracts the variances.
+    - b treats $X - Y$ as if it were as noisy as one variable.
+    - c is the standard deviation of $X - Y$, not its variance.
+  source: { name: "Standard identity" }
+
+- id: prob-variance-003
+  topic: probability
+  subtopic: Variance, covariance and correlation
+  type: single
+  difficulty: easy
+  tags: [correlation, covariance, sums]
+  prompt: |
+    $X$ and $Y$ are independent and identically distributed with finite positive variance. What is
+    the correlation between $X$ and $X + Y$?
+  choices:
+    - { id: a, text: '$1/2$' }
+    - { id: b, text: '$1/\sqrt{2}$' }
+    - { id: c, text: '$1$' }
+    - { id: d, text: 'It depends on the distribution of $X$' }
+  answer: b
+  explanation: |
+    Let $\sigma^2$ be the common variance. Then
+
+    $$\operatorname{Cov}(X, X + Y) = \operatorname{Var}(X) + \operatorname{Cov}(X, Y) = \sigma^2, \qquad \operatorname{Var}(X + Y) = 2\sigma^2,$$
+
+    so $\operatorname{Corr} = \dfrac{\sigma^2}{\sigma \cdot \sqrt{2}\,\sigma} = \dfrac{1}{\sqrt2} \approx 0.707$.
+    More generally, the correlation of one term with a sum of $n$ i.i.d. terms is $1/\sqrt{n}$: its
+    share of the variance is $1/n$, and correlation is the square root of that share.
+
+    - a confuses correlation with the share of variance, $\rho^2 = 1/2$ ("$X$ is half of the sum").
+    - c says that because $X$ is part of the sum they move together perfectly; $Y$ adds independent noise.
+    - d: only the first two moments enter a correlation, and they cancel.
+
+- id: prob-variance-004
+  topic: probability
+  subtopic: Variance, covariance and correlation
+  type: numeric
+  difficulty: medium
+  tags: [hypergeometric, indicators, covariance, cards]
+  prompt: |
+    13 cards are dealt from a well-shuffled standard 52-card deck. What is the variance of the number
+    of hearts in the hand?
+  answer: 507/272
+  answerText: |-
+    $507/272 \approx 1.86$
+  hints:
+    - Write the count as a sum of 13 indicators, one per card position in the hand.
+    - What is the covariance of two such indicators when drawing without replacement?
+  followUps:
+    - How does this compare with dealing with replacement, and why is it smaller?
+    - What is the variance of the number of aces in a 13-card hand?
+  explanation: |
+    Let $I_j$ indicate that the $j$-th card dealt is a heart. Each has $P = 1/4$ and variance
+    $\tfrac14 \cdot \tfrac34 = \tfrac{3}{16}$. For $j \ne k$,
+    $P(I_j = I_k = 1) = \tfrac{13}{52} \cdot \tfrac{12}{51} = \tfrac{1}{17}$, so
+    $\operatorname{Cov}(I_j, I_k) = \tfrac1{17} - \tfrac1{16} = -\tfrac{1}{272}$. Then
+
+    $$\operatorname{Var} = 13 \cdot \frac{3}{16} + 13 \cdot 12 \cdot \left(-\frac{1}{272}\right) = \frac{663}{272} - \frac{156}{272} = \frac{507}{272} \approx 1.86.$$
+
+    This matches the hypergeometric formula $n p (1-p) \frac{N - n}{N - 1} = 13 \cdot \tfrac14 \cdot \tfrac34 \cdot \tfrac{39}{51}$. The common wrong answer is the binomial $13 \cdot \tfrac{3}{16} = \tfrac{39}{16} \approx 2.44$, which ignores the negative covariance: drawing a heart makes the
+    next heart less likely.
+  source: { name: "Indicator method for the hypergeometric (e.g. Blitzstein and Hwang, Introduction to Probability)" }
+
+- id: prob-variance-005
+  topic: probability
+  subtopic: Variance, covariance and correlation
+  type: numeric
+  difficulty: hard
+  tags: [random-sum, law-of-total-variance, dice]
+  prompt: |
+    Roll a fair die and call the result $N$. Then roll $N$ more fair dice and let $S$ be the sum of
+    those $N$ dice (the first roll is not included). What is $\operatorname{Var}(S)$?
+  answer: 735/16
+  answerText: |-
+    $735/16 = 45.9375$
+  hints:
+    - Condition on $N$. What are $E[S \mid N]$ and $\operatorname{Var}(S \mid N)$?
+    - Law of total variance, $\operatorname{Var}(S) = E[\operatorname{Var}(S \mid N)] + \operatorname{Var}(E[S \mid N])$.
+  followUps:
+    - What is $E[S]$, and why is it simply $3.5 \times 3.5$?
+    - What is $\operatorname{Cov}(N, S)$?
+  explanation: |
+    Each die has mean $\mu = 7/2$ and variance $\sigma^2 = 35/12$, and $N$ has the same mean and
+    variance. Given $N$, $S$ has mean $N\mu$ and variance $N\sigma^2$. By the law of total variance,
+
+    $$\operatorname{Var}(S) = E[N]\,\sigma^2 + \operatorname{Var}(N)\,\mu^2 = \frac72 \cdot \frac{35}{12} + \frac{35}{12} \cdot \frac{49}{4} = \frac{245}{24} + \frac{1715}{48} = \frac{735}{16} \approx 45.9.$$
+
+    The first term is the noise in the dice for a given $N$; the second is the extra uncertainty
+    from not knowing how many dice there are, and it is the larger part. The usual mistake is to stop
+    at the first term ($245/24 \approx 10.2$), as if $N$ were fixed at its mean, or to multiply
+    variances, $\sigma^2 \cdot \operatorname{Var}(N)$.
+  source: { name: "Random sums (Wald's identities; e.g. Blitzstein and Hwang, Introduction to Probability)" }
+
+- id: prob-variance-006
+  topic: probability
+  subtopic: Variance, covariance and correlation
+  type: numeric
+  difficulty: hard
+  tags: [correlation-matrix, positive-semidefinite, equicorrelation]
+  prompt: |
+    Three random variables have the same correlation $\rho$ between every pair. What is the smallest
+    possible value of $\rho$?
+  answer: -1/2
+  hints:
+    - Consider the variance of $X + Y + Z$ for standardised variables.
+    - A variance can never be negative.
+  followUps:
+    - What is the smallest common correlation for $n$ variables?
+    - Construct three variables that achieve it.
+  explanation: |
+    Standardise each variable to variance 1. Then
+
+    $$0 \le \operatorname{Var}(X + Y + Z) = 3 + 6\rho, \qquad \text{so } \rho \ge -\tfrac12.$$
+
+    The bound is attained: take $X, Y, Z$ to be independent standard variables minus their average,
+    rescaled; their sum is identically 0. Equivalently, the correlation matrix must be positive
+    semidefinite, and its eigenvalues are $1 + 2\rho$ and $1 - \rho$ (twice). For $n$ variables the
+    bound is $-\frac{1}{n-1}$: many variables cannot all be strongly negatively related to each other.
+
+    The common wrong answer is $-1$: if $X$ and $Y$ are perfectly negatively correlated, and $Y$ and $Z$
+    are too, then $X$ and $Z$ are perfectly *positively* correlated.
+  source: { name: "Classic quant interview question on correlation matrices" }
+
+- id: prob-variance-007
+  topic: probability
+  subtopic: Variance, covariance and correlation
+  type: numeric
+  difficulty: hard
+  tags: [bivariate-normal, orthant-probability, symmetry]
+  prompt: |
+    $(X, Y)$ is bivariate normal, each with mean 0 and variance 1, and correlation $\rho = 1/2$. What
+    is $P(X > 0 \text{ and } Y > 0)$?
+  answer: 1/3
+  hints:
+    - Write $Y = \rho X + \sqrt{1 - \rho^2}\,Z$ with $Z$ independent standard normal.
+    - The pair $(X, Z)$ is rotationally symmetric. Describe the event as a set of angles.
+  followUps:
+    - What is the answer for general $\rho$?
+    - What is $P(X > 0, Y > 0)$ when $\rho = -1/2$? When $\rho = 1$?
+  explanation: |
+    Write $Y = \tfrac12 X + \tfrac{\sqrt3}{2} Z$ with $X, Z$ independent standard normal. The point
+    $(X, Z)$ has a rotationally symmetric distribution, so its angle is uniform on $[0, 2\pi)$. $X > 0$
+    is the half-plane with normal vector $(1, 0)$, and $Y > 0$ the half-plane with normal vector
+    $(\rho, \sqrt{1-\rho^2})$. The normals are at angle $\arccos\rho$, so the two half-planes
+    intersect in a wedge of angle $\pi - \arccos\rho$, and
+
+    $$P = \frac{\pi - \arccos\rho}{2\pi} = \frac14 + \frac{\arcsin\rho}{2\pi} = \frac14 + \frac{\pi/6}{2\pi} = \frac13.$$
+
+    Sanity checks: $\rho = 0$ gives $1/4$, $\rho = 1$ gives $1/2$, $\rho = -1$ gives 0. The common
+    wrong answers are $1/4$ (ignoring the correlation) and $\frac14 + \frac{\rho}{4}$ or similar
+    linear guesses, which fail those checks at $\rho = -1$.
+  source: { name: "Sheppard's formula for the bivariate normal orthant probability" }
+
+- id: prob-variance-008
+  topic: probability
+  subtopic: Variance, covariance and correlation
+  type: multiple
+  difficulty: medium
+  tags: [correlation, independence, normal]
+  prompt: |
+    All variables below have finite, positive variance. Which statements are **always** true? Select
+    all that apply.
+  choices:
+    - { id: a, text: 'If $\operatorname{Corr}(X, Y) = 0$, then $X$ and $Y$ are independent' }
+    - { id: b, text: 'If $X$ and $Y$ are independent, then $\operatorname{Corr}(X, Y) = 0$' }
+    - { id: c, text: '$\operatorname{Corr}(2X + 3,\ 5Y - 1) = \operatorname{Corr}(X, Y)$' }
+    - { id: d, text: 'If $\operatorname{Corr}(X, Y) = 0.9$ and $\operatorname{Corr}(Y, Z) = 0.9$, then $\operatorname{Corr}(X, Z) > 0$' }
+    - { id: e, text: 'If $\operatorname{Corr}(X, Y) = 0.5$ and $\operatorname{Corr}(Y, Z) = 0.5$, then $\operatorname{Corr}(X, Z) > 0$' }
+    - { id: f, text: 'If $X$ and $Y$ are each normally distributed and uncorrelated, they are independent' }
+  answer: [b, c, d]
+  explanation: |
+    - **a, false.** $X$ uniform on $\{-1, 0, 1\}$ and $Y = X^2$ are uncorrelated but $Y$ is a function
+      of $X$. Correlation only measures linear association.
+    - **b, true.** Independence gives $E[XY] = E[X]E[Y]$, so the covariance is 0.
+    - **c, true.** Correlation is unchanged by shifting and by scaling with positive factors (a
+      negative factor flips its sign).
+    - **d, true.** The correlation matrix must be positive semidefinite, which forces
+      $\operatorname{Corr}(X, Z) \ge ab - \sqrt{(1-a^2)(1-b^2)} = 0.81 - 0.19 = 0.62$.
+    - **e, false.** The same bound gives only $0.25 - 0.75 = -0.5$, and it is attained: take $X$ and
+      $Z$ with variance 1 and correlation $-\tfrac12$, and $Y = X + Z$, which has variance 1 and
+      correlation $\tfrac12$ with each. Correlation is "transitive" only when the two correlations are
+      large enough ($a^2 + b^2 > 1$).
+    - **f, false.** Marginal normality is not enough; *joint* normality is. Take $X$ standard normal
+      and $Y = SX$ with $S = \pm 1$ a fair independent sign: $Y$ is standard normal, $\operatorname{Cov}   = E[S]E[X^2] = 0$, yet $|Y| = |X|$.
+
+    The usual mistakes are a and f (treating uncorrelated as independent) and e (assuming correlation
+    is transitive).
+  source: { name: "Common correlation pitfalls in quant interviews" }
+
+- id: prob-variance-009
+  topic: probability
+  subtopic: Variance, covariance and correlation
+  type: short
+  difficulty: medium
+  tags: [correlation, independence, normal]
+  prompt: |
+    Give an example of two random variables that are uncorrelated but not independent, and show that
+    they are. Under what conditions does zero correlation imply independence?
+  reference: |
+    Let $X$ be uniform on $\{-1, 0, 1\}$ (or standard normal) and $Y = X^2$. Then
+    $\operatorname{Cov}(X, Y) = E[X^3] - E[X]E[X^2] = 0 - 0 = 0$, since $X$ is symmetric about 0. But
+    they are dependent: $P(Y = 0 \mid X = 0) = 1 \ne P(Y = 0) = 1/3$. Zero correlation rules out
+    only a *linear* relationship, and here the relationship is perfect but quadratic.
+
+    Zero correlation does imply independence when $(X, Y)$ is **jointly** normal (bivariate normal),
+    because the joint density then factorises when the covariance is 0. It is not enough that each is
+    normal separately ($Y = SX$ with an independent random sign $S$ is a counterexample). It also holds
+    when $X$ and $Y$ each take only two values, since then $\operatorname{Cov}(X, Y) = 0$ is the same
+    as $P(X = 1, Y = 1) = P(X = 1)P(Y = 1)$ after relabelling the values to 0 and 1.
+  keyPoints:
+    - A valid example such as Y = X² with X symmetric about 0
+    - Shows the covariance is zero and shows the dependence explicitly
+    - Correlation measures only linear dependence
+    - Zero correlation implies independence for jointly normal variables, not merely marginally normal ones
+    - Mentions the two-valued (Bernoulli) case, or another valid special case
+  hints:
+    - Try a variable that is a deterministic, non-linear function of a symmetric one.
+    - What special property of the joint normal density do you know?
+  followUps:
+    - Construct two marginally normal, uncorrelated variables that are dependent.
+    - Is there a measure of dependence that is zero only under independence?
+  explanation: |
+    The example is easy to remember; the second half separates candidates. Many say "for normal
+    variables", which is wrong unless it is the *joint* distribution that is normal, and the random
+    sign construction shows why. The binary case is a nice extra that interviewers like, since
+    indicators come up constantly.
+  source: { name: "Quant, FM and Data Science Interview Compilation (LSU)", url: "https://www.math.lsu.edu/~smolinsk/Quant_Interview_Prep.pdf" }
+
+- id: prob-variance-010
+  topic: probability
+  subtopic: Variance, covariance and correlation
+  type: short
+  difficulty: medium
+  tags: [diversification, portfolio-variance, correlation]
+  prompt: |
+    You hold an equally weighted portfolio of $n$ assets. Each asset's return has variance $\sigma^2$
+    and every pair of returns has correlation $\rho$. What is the variance of the portfolio's return,
+    and what happens as $n$ grows? What does this say about how much diversification can achieve?
+  reference: |
+    The portfolio return is $\frac1n \sum R_i$, so
+
+    $$\operatorname{Var} = \frac{1}{n^2}\left(n\sigma^2 + n(n-1)\rho\sigma^2\right) = \frac{\sigma^2}{n} + \left(1 - \frac1n\right)\rho\sigma^2.$$
+
+    As $n \to \infty$ it tends to $\rho\sigma^2$. The idiosyncratic part, $\sigma^2(1 - \rho)/n$,
+    diversifies away, but the common part $\rho\sigma^2$ does not: with $\rho = 0.3$, no number of
+    such assets takes the volatility below $\sqrt{0.3} \approx 55\%$ of a single asset's.
+
+    Since the variance cannot be negative for any $n$, it also follows that
+    $\rho \ge -\frac{1}{n-1}$: many assets cannot all be strongly negatively correlated with each
+    other.
+  keyPoints:
+    - Variance is σ²/n + (1 - 1/n)ρσ²
+    - Tends to ρσ² as n grows, so only the uncorrelated part diversifies away
+    - Interprets ρσ² as common (systematic) risk that cannot be diversified
+    - Optionally notes the implied bound ρ ≥ -1/(n-1)
+  hints:
+    - Expand the variance of a sum as the sum of all pairwise covariances.
+    - How many diagonal terms and how many off-diagonal terms are there?
+  followUps:
+    - With $\sigma = 20\%$ and $\rho = 0.25$, roughly how many assets get you within 10% of the minimum variance?
+    - How would you hedge the common part instead?
+  explanation: |
+    Weak answers say "variance goes to zero with $n$", which is true only for uncorrelated assets.
+    The point is the floor $\rho\sigma^2$: correlation, not the number of positions, limits
+    diversification. Candidates also often drop the $\frac{1}{n^2}$ from the weights or count
+    $\binom{n}{2}$ instead of $n(n-1)$ ordered pairs in the covariance sum.
+  source: { name: "Standard portfolio-variance argument" }

@@ -1,0 +1,290 @@
+# Put-call parity: deriving it, using it to price, spotting a violation and stating the trade, dividends and box spreads.
+- id: opt-parity-001
+  topic: options
+  subtopic: Put-call parity
+  type: numeric
+  difficulty: easy
+  tags: [put-call-parity, arbitrage, conversion]
+  prompt: |
+    A stock that pays no dividends trades at \$50. European options on it with strike \$50 and the
+    same expiry trade at \$4.50 for the call and \$3.00 for the put. Interest rates are zero and you can
+    trade the stock, the options and cash freely, short selling included. Per share, how much riskless
+    profit can you lock in today?
+  answer: 3/2
+  answerText: |-
+    1.50 dollars
+  unit: dollars
+  explanation: |
+    Put-call parity with zero rates says $C - P = S - K = 50 - 50 = 0$, so the call and put should
+    cost the same. The call is \$1.50 too expensive relative to the put.
+
+    The trade (a conversion): sell the call (+4.50), buy the put (−3.00) and buy the share (−50),
+    borrowing \$50 at zero interest to pay for it. You keep \$1.50 today. At expiry the long put and
+    the short call together sell your share for exactly \$50 whatever happens (if $S_T > 50$ the call
+    is exercised against you, otherwise you exercise the put), and that repays the loan. The \$1.50
+    collected today is the profit.
+
+    A common slip is to sell the call and buy the put without buying the share. That also collects
+    \$1.50, but the position is a synthetic short stock, not riskless.
+  source: { name: "Widely asked trading interview question (e.g. techinterview.org options guide)", url: "https://www.techinterview.org/post/3233477254/options-greeks-quant-trading-interview/" }
+
+- id: opt-parity-002
+  topic: options
+  subtopic: Put-call parity
+  type: single
+  difficulty: medium
+  tags: [put-call-parity, conversion, reversal, arbitrage]
+  prompt: |
+    A stock that pays no dividends trades at \$100. One-year European options struck at \$100 trade at
+    \$10 for the call and \$3 for the put. A zero-coupon bond paying \$1 in a year costs \$0.95, and you
+    can borrow and lend at that price. Which trade locks in a riskless profit?
+  choices:
+    - { id: a, text: 'Sell the call, buy the put, buy the share and borrow \$95 (repaying \$100 in a year)' }
+    - { id: b, text: 'Buy the call, sell the put, short the share and lend \$95 (receiving \$100 in a year)' }
+    - { id: c, text: 'Sell the call and buy the share, and nothing else' }
+    - { id: d, text: 'None: the call should be worth more than the put because interest rates are positive' }
+  answer: a
+  explanation: |
+    Parity says $C - P = S - K \cdot P(0, T) = 100 - 95 = 5$. The quotes give $C - P = 7$, so the
+    call is \$2 rich relative to the put.
+
+    Sell the rich side and buy the cheap side: sell the call (+10), buy the put (−3), buy the share
+    (−100) and borrow \$95. Net cash today: $10 - 3 - 100 + 95 = +2$. At expiry the put and the
+    short call together deliver the share for exactly \$100 in every scenario, which repays the loan.
+    This is a conversion: long the share and synthetically short it through the options, so it has no
+    exposure to the stock.
+
+    Choice b, the reversal, is the same trade in the other direction and loses \$2. Choice c is a
+    covered call, which still loses if the stock falls. Choice d is half right: with positive rates the
+    call should be worth more, but by \$5, not \$7.
+  source: { name: "Standard conversion arbitrage (e.g. Hull, Options, Futures, and Other Derivatives)" }
+
+- id: opt-parity-003
+  topic: options
+  subtopic: Put-call parity
+  type: numeric
+  difficulty: medium
+  tags: [put-call-parity, dividends]
+  prompt: |
+    A stock trades at \$100 and will pay a dividend of exactly \$3 per share before the options
+    expire. A European call struck at \$100 trades at \$5. Interest rates are zero. What is the
+    no-arbitrage price of the European put with the same strike and expiry?
+  answer: 8
+  unit: dollars
+  hints:
+    - Without the dividend, what would parity say?
+    - Who receives the dividend, the holder of the share or the holder of the options?
+  followUps:
+    - What does the put-minus-call price difference tell you about the market's expected dividend?
+    - Why do equity desks talk about "implied dividends"?
+  explanation: |
+    The holder of the share gets the dividend; the options holder does not. So in parity the share
+    must be replaced by what the options are really written on, the share minus the present value of
+    the dividend:
+
+    $$C - P = (S - PV(D)) - PV(K) \quad\Longrightarrow\quad P = C - S + PV(D) + PV(K) = 5 - 100 + 3 + 100 = 8.$$
+
+    The dividend lowers the expected price at expiry by \$3, which makes the call cheaper and the put
+    more expensive.
+
+    The common wrong answer is \$5, from parity without the dividend. Getting \$2 comes from adding
+    the dividend on the wrong side.
+  source: { name: "Put-call parity with known dividends (e.g. Hull, Options, Futures, and Other Derivatives)" }
+
+- id: opt-parity-004
+  topic: options
+  subtopic: Put-call parity
+  type: numeric
+  difficulty: medium
+  tags: [box-spread, interest-rates, put-call-parity]
+  prompt: |
+    European options on a stock, each on one share and all expiring in exactly one year, are combined
+    as follows: long the 90
+    call, short the 100 call, long the 100 put and short the 90 put. The package costs \$9.50. What
+    one-year interest rate, compounded annually, does this price imply? Give it as a decimal or a
+    percentage.
+  answer: 1/19
+  answerText: |-
+    $10/9.50 - 1 = 1/19 \approx 5.26\%$
+  hints:
+    - What does the package pay at expiry if the stock finishes below 90? Between 90 and 100? Above 100?
+    - Once you know the payoff, what kind of instrument is this?
+  followUps:
+    - If the bank lends to you at 4% a year, what trade would you do with the box?
+    - What risks remain if the options are American?
+  explanation: |
+    The long 90 call and short 90 put make a synthetic long forward at 90; the short 100 call and long
+    100 put make a synthetic short forward at 100. Together they pay
+
+    $$(S_T - 90) - (S_T - 100) = 10$$
+
+    whatever the stock does. This is a box spread: a zero-coupon bond paying \$10 in a year. Paying
+    \$9.50 for it means lending at
+
+    $$\frac{10}{9.50} - 1 = \frac{1}{19} \approx 5.26\%.$$
+
+    The common wrong answer is 5%, from $0.50/10$: interest is earned on the \$9.50 lent, not on
+    the \$10 repaid.
+  source: { name: "Box spread (e.g. Hull, Options, Futures, and Other Derivatives)" }
+
+- id: opt-parity-005
+  topic: options
+  subtopic: Put-call parity
+  type: short
+  difficulty: medium
+  tags: [put-call-parity, model-free, replication]
+  prompt: |
+    State put-call parity for European options on a stock that pays no dividends, with a constant
+    continuously compounded rate $r$, and derive it. Does it rely on the Black-Scholes model? What
+    assumptions does it need, and when does it fail?
+  reference: |
+    $$C - P = S_0 - K e^{-rT}.$$
+
+    Compare two portfolios: (1) a long call and a short put, both struck at $K$ and expiring at $T$;
+    (2) a long share and a loan of $K e^{-rT}$, repaid as $K$ at $T$. At expiry (1) pays
+    $(S_T - K)^+ - (K - S_T)^+ = S_T - K$ in every state, and so does (2). Two portfolios with the same
+    payoff in every state must have the same price today, or you would buy the cheaper, sell the
+    dearer and pocket the difference with no risk.
+
+    The argument uses no model of the stock price at all: not lognormality, not constant volatility.
+    It needs European exercise (so both options are alive until $T$), no dividends before expiry (or
+    their present value subtracted from $S_0$), borrowing and lending at $r$, the ability to sell short,
+    and no transaction costs or default risk. It fails for American options, where it becomes the
+    inequality $S_0 - K \le C - P \le S_0 - K e^{-rT}$ (no dividends), and in practice it holds only
+    to within transaction costs, borrowing fees for hard-to-borrow stocks and differences between
+    borrowing and lending rates.
+  keyPoints:
+    - "States C - P = S - K e^{-rT}"
+    - Shows the call minus the put pays S_T - K in every state, the same as the share minus a bond paying K
+    - Uses the law of one price (or an explicit arbitrage) to equate today's prices
+    - Says it is model-free, not dependent on Black-Scholes or any distribution for the stock
+    - Lists the assumptions (European exercise, dividends accounted for, borrowing and lending at r, short selling, no frictions)
+    - Notes it becomes an inequality for American options
+  hints:
+    - What does a long call plus a short put at the same strike pay at expiry?
+    - Can you build the same payoff with the stock and a bond?
+    - Which step of your argument used a probability distribution for the stock?
+  followUps:
+    - How does parity change if the stock pays a continuous dividend yield $q$?
+    - For American options on a non-dividend stock, derive the bounds on $C - P$.
+    - What does parity imply about the implied volatilities of a call and a put with the same strike?
+  explanation: |
+    Most candidates can state parity; the interviewer is checking that they can derive it from payoffs,
+    say clearly that it is independent of any model, and list where it breaks. A frequent slip is to
+    say it "comes from Black-Scholes"; another is to apply it unchanged to American options.
+  source: { name: "Quant job interview problem collection (Kent State)", url: "https://www.math.kent.edu/~oana/math60070/InterviewProblems.pdf" }
+
+- id: opt-parity-006
+  topic: options
+  subtopic: Put-call parity
+  type: single
+  difficulty: easy
+  tags: [put-call-parity, at-the-money, interest-rates]
+  prompt: |
+    A stock that pays no dividends trades at \$100. The interest rate is 5% a year, continuously
+    compounded. Which is worth more: a one-year European call struck at \$100, or a one-year European put struck at
+    \$100?
+  choices:
+    - { id: a, text: "The call" }
+    - { id: b, text: "The put" }
+    - { id: c, text: "They are worth the same, since the strike equals the stock price" }
+    - { id: d, text: "It depends on the stock's volatility" }
+  answer: a
+  explanation: |
+    By put-call parity, $C - P = S - K e^{-rT} = 100 - 100 e^{-0.05} \approx 4.88 > 0$. The options are
+    at the money with respect to spot, but the forward price $100 e^{0.05} \approx 105.1$ is above the
+    strike, so the call is in the money with respect to the forward. The call and put are worth the
+    same when the strike equals the forward price.
+
+    Choice c is the common slip: "at the money" is symmetric only relative to the forward. Choice d
+    misses that volatility cancels out of $C - P$: it raises both prices by the same amount.
+  source: { name: "Standard consequence of put-call parity (e.g. Hull, Options, Futures, and Other Derivatives)" }
+
+- id: opt-parity-007
+  topic: options
+  subtopic: Put-call parity
+  type: numeric
+  difficulty: hard
+  tags: [put-call-parity, implied-forward, discount-factor]
+  prompt: |
+    You see these European option prices on one stock, all with the same expiry:
+
+    | Strike | Call | Put |
+    |---|---|---|
+    | 90 | 14 | 2 |
+    | 110 | 4 | 11 |
+
+    You are told nothing about interest rates, dividends or the stock price. Assuming the quotes are
+    free of arbitrage, what forward price for delivery at the options' expiry do they imply?
+  answer: 1950/19
+  answerText: |-
+    $1950/19 \approx 102.63$ dollars
+  unit: dollars
+  hints:
+    - Write put-call parity in terms of the forward price $F$ and the discount factor $D$ to expiry, with no stock price or dividends in it.
+    - You have two strikes, so two equations, and two unknowns.
+  followUps:
+    - What discount factor do the quotes imply? What interest rate is that, roughly, for a one-year expiry?
+    - If the stock trades at \$100, what do you infer about dividends?
+  explanation: |
+    Parity written with the forward price covers dividends and rates at once:
+
+    $$C(K) - P(K) = D\,(F - K),$$
+
+    where $D$ is the discount factor to expiry. The two strikes give
+
+    $$14 - 2 = 12 = D\,(F - 90), \qquad 4 - 11 = -7 = D\,(F - 110).$$
+
+    Subtracting, $19 = 20D$, so $D = 0.95$, and then $F = 90 + 12/0.95 = 1950/19 \approx 102.63$.
+
+    The common mistake is to assume zero rates ($D = 1$): the first strike then gives $F = 102$ and the
+    second $F = 103$, which disagree, a sign that the discount factor must be solved for too. Traders
+    back out the forward and the discount factor this way all the time, because the option prices
+    are cleaner than estimates of dividends and borrowing costs.
+  source: { name: "Implied forward from put-call parity (standard market practice)" }
+
+- id: opt-parity-008
+  topic: options
+  subtopic: Put-call parity
+  type: short
+  difficulty: hard
+  tags: [conversion, residual-risk, pin-risk, early-exercise]
+  prompt: |
+    You hold a conversion on a stock: long 100 shares, long one put and short one call on 100 shares,
+    struck at \$50 with the same expiry. In theory it is riskless. As the trader running it, what risks
+    do you still have? Assume listed, American-style equity options.
+  reference: |
+    The position has no exposure to the stock price, volatility or gamma: long put plus short call is a
+    synthetic short forward that cancels the shares. What remains is everything parity takes as given:
+
+    - **Interest rates:** you financed the shares, so the value depends on the rate you pay for the
+      remaining life; a change in rates changes the value of the position.
+    - **Dividends:** the price assumed a dividend. If the company raises, cuts or adds one, the value
+      changes (you receive the dividend on the shares, but the options were priced on the expected
+      one).
+    - **Early exercise:** with American options, your short call may be exercised early, typically just
+      before an ex-dividend date when it is deep in the money, which takes away your shares and the
+      dividend you counted on; deep in the money you may also want to exercise the put early.
+    - **Pin risk:** if the stock closes very near \$50 at expiry, you do not know whether your short call
+      will be assigned, so you may wake up long or short 100 shares unexpectedly.
+    - **Borrow and financing:** for the mirror trade (a reversal, short stock) the stock loan can be
+      recalled or its fee can rise.
+  keyPoints:
+    - Notes the position is delta-neutral with no gamma or vega exposure, being synthetic short stock against long stock
+    - Interest-rate (financing) risk on the share position
+    - Dividend risk, a change from the dividend the prices assumed
+    - Early-exercise risk with American options, especially assignment of the short call before an ex-dividend date
+    - Pin risk at expiry when the stock is near the strike and assignment is uncertain
+  hints:
+    - Which inputs did put-call parity treat as known?
+    - What can the holder of the call you sold do before expiry?
+    - What happens on expiry day if the stock closes at \$50.01?
+  followUps:
+    - Which way does a rate rise hurt you, for a conversion versus a reversal?
+    - How would you hedge the pin risk on expiry day?
+  explanation: |
+    Candidates who know parity often stop at "it is riskless". Market makers hold conversions and
+    reversals in size, and the interviewer wants the list of what parity assumes away: rates,
+    dividends, American exercise and the expiry mechanics. Pin risk and early assignment before a
+    dividend are the two points strong candidates bring up unprompted.
+  source: { name: "Options market-making practice (e.g. Natenberg, Option Volatility and Pricing)" }

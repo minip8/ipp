@@ -1,0 +1,297 @@
+# Model validation and backtesting: overfitting, in-sample against out-of-sample, cross-validation for time series, look-ahead and selection bias across many backtests.
+- id: stat-backtesting-001
+  topic: statistics
+  subtopic: Model validation and backtesting
+  type: short
+  difficulty: medium
+  tags: [backtest, sharpe-ratio, look-ahead-bias, transaction-costs]
+  prompt: |
+    A junior researcher shows you a daily equity strategy with a backtested Sharpe ratio of 3 over
+    five years. What do you check first, and why?
+  reference: |
+    A Sharpe ratio of 3 for a daily equity strategy is far above what is usually achievable at size,
+    so the first suspicion is an error in the backtest rather than a discovery.
+
+    - **Look-ahead bias:** does any input use information not available at the decision time? Closing
+      prices used to trade at that close, fundamentals before their release date, full-sample
+      normalisation, revised data, timestamps in the wrong time zone.
+    - **Survivorship and universe:** is the universe today's constituents, or a point-in-time list that
+      includes delisted stocks?
+    - **Costs and execution:** commissions, spreads, market impact at the intended size, borrow
+      availability and cost for shorts, capacity. High-turnover strategies often lose most of their
+      Sharpe ratio here.
+    - **Selection:** how many variants, parameters and universes were tried? The best of many has an
+      inflated Sharpe ratio (deflate it, or test on untouched data).
+    - **Robustness:** performance by year and by sector, sensitivity to parameters and to delaying
+      execution by a day, dependence on a few days or a few stocks, behaviour in stress periods.
+    - **Data errors:** bad prints, unadjusted splits and dividends that create fake returns.
+
+    Then, if it survives: an economic story for why the edge exists, and paper trading.
+  keyPoints:
+    - Treats a Sharpe of 3 as suspicious and looks for errors first
+    - Look-ahead bias, with concrete examples such as trading at the close used in the signal or unreleased fundamentals
+    - Survivorship bias in the universe
+    - Transaction costs, market impact, borrow and capacity
+    - Number of variants tried (selection or data snooping) and robustness checks such as lagging execution or sub-period stability
+  hints:
+    - Is a Sharpe of 3 plausible for this kind of strategy? What is the most common cause of a too-good backtest?
+    - What happens to the result if you trade one day later than the signal?
+    - What would the strategy cost to trade?
+  followUps:
+    - The Sharpe drops from 3 to 0.8 when you delay execution by one day. What does that tell you?
+    - How would you estimate the capacity of the strategy?
+  explanation: |
+    Interviewers want an ordered checklist that starts with the cheapest, most likely explanations.
+    The one-day delay test is a favourite because it catches most look-ahead bugs at once: a real edge
+    usually decays gradually with delay, while a leak collapses.
+  source: { name: "Common quant-research interview question; see Bailey, Borwein, López de Prado and Zhu, Pseudo-Mathematics and Financial Charlatanism (2014)" }
+
+- id: stat-backtesting-002
+  topic: statistics
+  subtopic: Model validation and backtesting
+  type: numeric
+  difficulty: hard
+  tags: [selection-bias, multiple-testing, expected-maximum, sharpe-ratio]
+  prompt: |
+    You backtest 100 independent strategies over 4 years. None has any edge. Assume the estimated
+    annualised Sharpe ratio of a strategy with no edge is normal with mean 0 and standard deviation
+    $1/\sqrt T$, with $T$ in years, and that the expected maximum of 100 independent standard normals is
+    about 2.51. What is the expected Sharpe ratio of the best of the 100 backtests? Answers within
+    0.03 are accepted.
+  answer: 1.25380
+  answerText: |-
+    $\frac{2.51}{\sqrt 4} \approx 1.25$
+  tolerance: { abs: 0.03 }
+  hints:
+    - What is the standard deviation of each estimated Sharpe ratio after 4 years?
+    - The best backtest is the maximum of 100 such estimates.
+  followUps:
+    - How many years of data would you need for the best of 100 null strategies to have an expected Sharpe below 0.5?
+    - How does the answer change if the 100 strategies are highly correlated variations of one idea?
+  explanation: |
+    Each estimated Sharpe ratio has standard deviation $1/\sqrt 4 = 0.5$, and the best of 100 is the
+    maximum of 100 independent normals with that spread:
+
+    $$E\left[\max \widehat{\text{SR}}\right] \approx 0.5 \times 2.51 \approx 1.25.$$
+
+    So a Sharpe ratio of 1.25 over four years is exactly what pure noise produces when you pick the
+    best of 100 tries. The expected maximum grows only like $\sqrt{2\ln N}$ (an overestimate for
+    small $N$: it gives 3.03 here), but it does grow, and the required track record grows with the
+    number of trials. Bailey and López de Prado's deflated Sharpe ratio corrects a reported Sharpe
+    ratio for exactly this.
+
+    The common wrong answer is 0, the expected Sharpe ratio of each strategy, which ignores that you
+    report the maximum.
+  source: { name: "Bailey, Borwein, López de Prado and Zhu (2014); Bailey and López de Prado, The Deflated Sharpe Ratio (2014)", url: "https://papers.ssrn.com/abstract=2460551" }
+
+- id: stat-backtesting-003
+  topic: statistics
+  subtopic: Model validation and backtesting
+  type: single
+  difficulty: medium
+  tags: [cross-validation, leakage, overlapping-labels, purging]
+  prompt: |
+    You predict 20-day forward returns from daily features, and estimate out-of-sample accuracy with
+    5-fold cross-validation, assigning days to folds at random. The cross-validated $R^2$ is far better
+    than what the model later achieves in live trading. What is the most likely reason?
+  choices:
+    - { id: a, text: "Test days have neighbours in the training folds whose 20-day labels share up to 19 days of the same returns, so the model is tested on near-copies of its training data" }
+    - { id: b, text: "Five folds is too few; ten folds would have given an honest estimate" }
+    - { id: c, text: "Shuffling the days destroys the signal, so the cross-validated estimate is too pessimistic" }
+    - { id: d, text: "R squared is biased upwards in small samples; measuring mean squared error instead would fix it" }
+  answer: a
+  explanation: |
+    Random folds put day $t$ in the test set and days $t - 1$ and $t + 1$ in the training set. Their
+    labels overlap almost entirely, and features are usually persistent too, so a flexible model can
+    "predict" a test label by recognising its neighbours. That is leakage, and it is worse the more
+    flexible the model. Training on days after the test day also lets the model learn from the future.
+
+    The fix is to respect time: walk-forward (train on the past, test on the next block), or purged
+    k-fold cross-validation, which removes from the training set every observation whose label overlaps
+    the test period and adds an embargo after it.
+
+    - **b**: more folds make the leak worse, not better.
+    - **c**: the effect is the opposite; the estimate is too optimistic.
+    - **d**: changing the metric does not stop the leak.
+  source: { name: "Purged cross-validation (López de Prado, Advances in Financial Machine Learning)" }
+
+- id: stat-backtesting-004
+  topic: statistics
+  subtopic: Model validation and backtesting
+  type: numeric
+  difficulty: medium
+  tags: [overfitting, r-squared, in-sample]
+  prompt: |
+    You regress 200 daily returns on 50 candidate features plus an intercept by OLS. In truth the
+    returns are i.i.d. normal and independent of every feature. What in-sample $R^2$ do you expect on
+    average?
+  answer: 50/199
+  answerText: |-
+    $\frac{p}{n - 1} = \frac{50}{199} \approx 0.251$
+  hints:
+    - Fitting with no signal is fitting noise. How much of the noise's variation can 50 free directions absorb?
+    - The residual sum of squares has $n - p - 1$ degrees of freedom, the total sum of squares $n - 1$.
+  followUps:
+    - What adjusted $R^2$ do you expect, and why is it about zero?
+    - What out-of-sample $R^2$ would this model have on fresh data?
+  explanation: |
+    With an intercept, the centred response has $n - 1 = 199$ dimensions of variation. The 50
+    features span 50 of them, and when $y$ is pure noise independent of the features, its variation is
+    spread evenly over all directions, so on average the fit captures $\frac{50}{199}$ of it:
+
+    $$E[R^2] = \frac{p}{n - 1} = \frac{50}{199} \approx 0.25.$$
+
+    (Exactly, $R^2$ has a Beta$\left(\frac{p}{2}, \frac{n - p - 1}{2}\right)$ distribution here.) So an
+    in-sample $R^2$ of 25% with this many features is what no signal at all looks like. Adjusted $R^2$
+    corrects for this and is about 0 on average; out of sample the model does worse than predicting
+    the mean, since it has fitted noise.
+
+    The common wrong answer is 0, from thinking that features with no relation to the target cannot
+    explain anything in sample.
+  source: { name: "Standard result on R squared under the null (e.g. Hastie, Tibshirani and Friedman, The Elements of Statistical Learning)" }
+
+- id: stat-backtesting-005
+  topic: statistics
+  subtopic: Model validation and backtesting
+  type: numeric
+  difficulty: easy
+  tags: [sharpe-ratio, track-record, power]
+  prompt: |
+    A strategy truly has an annualised Sharpe ratio of 0.5, with i.i.d. returns. How many years of
+    returns do you need before the expected t-statistic of its mean return reaches 2?
+  answer: 16
+  unit: years
+  explanation: |
+    The t-statistic of the mean return over $T$ years is approximately the annualised Sharpe ratio times
+    $\sqrt T$ (the mean grows like $T$, its standard error like $\sqrt T$). So
+
+    $$0.5\sqrt T = 2 \quad\Longrightarrow\quad T = 16 \text{ years}.$$
+
+    Sampling more often does not help: the precision depends on calendar time, not the number of
+    observations. A respectable Sharpe ratio of 0.5 can never be confirmed statistically within a
+    typical career at one firm, which is why prior plausibility and economic reasoning carry so much
+    weight. The common wrong answer is 4 (forgetting to square: $2/0.5$).
+  source: { name: "Track-record length (e.g. Bailey and López de Prado, The Sharpe Ratio Efficient Frontier, 2012)" }
+
+- id: stat-backtesting-006
+  topic: statistics
+  subtopic: Model validation and backtesting
+  type: short
+  difficulty: hard
+  tags: [overfitting, parameter-search, deflated-sharpe, hold-out]
+  prompt: |
+    A researcher tried 200 parameter combinations of a strategy on 10 years of data and reports the
+    best one, with an in-sample Sharpe ratio of 1.8. How would you judge whether the strategy is real
+    or an artefact of the search?
+  reference: |
+    The reported number is the maximum of 200 noisy estimates, so it is biased upwards even if every
+    combination is worthless. With 10 years each estimate has a standard error of about $1/\sqrt{10} \approx 0.32$, and the expected maximum of 200 independent null estimates is about $2.75 \times 0.32 \approx 0.87$ (less if the combinations are correlated). A Sharpe ratio of 1.8 clears that bar, but
+    the question is by how much, after accounting for the search.
+
+    - **Deflated Sharpe ratio:** compare 1.8 with the expected maximum under the null given the
+      number of (effectively independent) trials, the variance of Sharpe ratios across trials, the
+      sample length, skewness and kurtosis.
+    - **Untouched hold-out data:** test the chosen parameters once on data that played no part in the
+      search; or use walk-forward selection, re-choosing parameters on past data only.
+    - **Probability of backtest overfitting:** with combinatorially symmetric cross-validation, split
+      the history into blocks, choose the best combination on half and see where it ranks on the other
+      half; a robust strategy keeps a high rank.
+    - **Shape of the parameter surface:** a broad plateau of good neighbouring parameters is reassuring;
+      a lone spike is overfitting.
+    - **Economic rationale** and stability across sub-periods and markets.
+  keyPoints:
+    - The best of 200 is biased upwards even with no edge (selection bias)
+    - Estimates the null benchmark, e.g. expected maximum about 2.7 standard errors, with a standard error of about 0.3
+    - Proposes deflating the Sharpe ratio or another multiple-testing correction accounting for the number of trials
+    - Validates on untouched hold-out data or by walk-forward selection
+    - Checks the parameter surface for a plateau rather than a spike, or uses combinatorially symmetric cross-validation
+  hints:
+    - What Sharpe ratio would the best of 200 worthless combinations show?
+    - Which data can still give an unbiased estimate of the chosen strategy's performance?
+    - What should the neighbouring parameter values look like if the strategy is real?
+  followUps:
+    - The 200 combinations are highly correlated. Does that make the selection bias larger or smaller, and why?
+    - How would you compute the effective number of independent trials?
+  explanation: |
+    The quantitative baseline is what lifts an answer from "beware overfitting" to a judgement.
+    Correlated trials reduce the selection bias, because the effective number of independent tries
+    is smaller; estimating that number, for example from clustering the trials' returns, is part of
+    the deflated Sharpe method.
+  source: { name: "Bailey, Borwein, López de Prado and Zhu, The Probability of Backtest Overfitting", url: "https://papers.ssrn.com/abstract=2326253" }
+
+- id: stat-backtesting-007
+  topic: statistics
+  subtopic: Model validation and backtesting
+  type: multiple
+  difficulty: easy
+  tags: [look-ahead-bias, survivorship-bias, selection-bias]
+  prompt: |
+    Which of these backtest practices introduce look-ahead, survivorship or selection bias? Select all
+    that apply.
+  choices:
+    - { id: a, text: "Using today's S&P 500 members as the universe for a backtest of 2005 to 2025" }
+    - { id: b, text: "Standardising a signal with its mean and standard deviation over the full sample" }
+    - { id: c, text: "Trading at a day's closing price on a signal computed from that same closing price" }
+    - { id: d, text: "Using company fundamentals stamped with the date they became public" }
+    - { id: e, text: "Re-estimating the model each month using only data available at that month's start" }
+    - { id: f, text: "Choosing the look-back window that worked best over the whole sample, then reporting the whole-sample Sharpe ratio" }
+  answer: [a, b, c, f]
+  explanation: |
+    - **a, biased (survivorship):** today's members include the companies that grew into the index and
+      exclude those that failed or shrank out of it.
+    - **b, biased (look-ahead):** the full-sample mean and variance use future data; use rolling or
+      expanding windows.
+    - **c, biased (look-ahead):** you cannot know the close before trading at it; trade at the next
+      open or close, or use a price from before the signal.
+    - **d, fine:** point-in-time data are the fix for look-ahead in fundamentals (using the fiscal
+      period end date instead would be biased).
+    - **e, fine:** that is walk-forward estimation.
+    - **f, biased (selection):** the reported performance includes the benefit of choosing the window
+      on the same data.
+
+    The subtle ones are b and f, which do not look like using future prices but are.
+  source: { name: "Standard backtesting pitfalls (e.g. López de Prado, Advances in Financial Machine Learning)" }
+
+- id: stat-backtesting-008
+  topic: statistics
+  subtopic: Model validation and backtesting
+  type: short
+  difficulty: medium
+  tags: [out-of-sample, shrinkage, alpha-decay]
+  prompt: |
+    A strategy had a Sharpe ratio of 2.0 in its development sample and 1.0 in its first year of live
+    trading. Is it broken? How would you decide?
+  reference: |
+    Not necessarily. Several things predict a drop even for a sound strategy:
+
+    - **Selection and regression to the mean:** the strategy was chosen because its in-sample Sharpe
+      ratio was high, so the in-sample number is biased upwards; a large haircut (often about half) is
+      normal.
+    - **Noise:** one year of live trading estimates the Sharpe ratio with a standard error of about 1,
+      so 1.0 is entirely consistent with a true value anywhere from about $-1$ to $3$; the live number is
+      not evidence of decay yet.
+    - **Real frictions:** costs, market impact and fills worse than assumed; and alpha decay from
+      crowding or a changing market.
+
+    To decide: compare live with the backtest over the same period run on the same data (is the gap
+    implementation or the market?), check costs and slippage against assumptions, look at whether the
+    signal's predictive correlation has changed, set in advance what live performance would trigger a
+    review, and combine the evidence (a sceptical prior shrinks both numbers).
+  keyPoints:
+    - In-sample Sharpe is inflated by selection, so a drop is expected (regression to the mean)
+    - One year of live data is very noisy (standard error about 1), so the live Sharpe is weak evidence
+    - Considers costs, slippage, capacity and alpha decay
+    - Proposes a concrete diagnosis, e.g. comparing live with the backtest over the live period, or checking signal correlations
+    - Sets decision rules in advance rather than reacting to one number
+  hints:
+    - Why might the development-sample Sharpe ratio overstate the truth?
+    - How precisely does one year of returns measure a Sharpe ratio?
+    - Run the backtest over the live year. What would a match or a mismatch tell you?
+  followUps:
+    - What live Sharpe ratio after one year would make you cut the strategy?
+    - How would you size a strategy whose backtest Sharpe is 2 but whose live record is short?
+  explanation: |
+    Many candidates jump to "the strategy has decayed". The standard error of one year's Sharpe ratio
+    is the key number, and comparing the live result with the backtest run over the same period is the
+    practical step that separates implementation problems from a changed market.
+  source: { name: "Common quant-research interview discussion (backtest haircuts; Harvey and Liu, Backtesting, 2015)" }

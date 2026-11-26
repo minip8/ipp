@@ -58,6 +58,11 @@ describe('markdownMathErrors', () => {
       expect.stringContaining('does not typeset'),
     ]);
   });
+  it('rejects an inline formula that runs over a line break', () => {
+    expect(markdownMathErrors('Let $x +\ny$ be the total.', 'quant').join()).toMatch(/line break/);
+    expect(markdownMathErrors('Then\n\n$$\nx +\ny\n$$\n', 'quant')).toEqual([]);
+  });
+
   it('rejects a pair of dollars the site would show as plain text', () => {
     expect(markdownMathErrors('Let $ x $ be the total.', 'quant').join()).toMatch(/plain text/);
     expect(markdownMathErrors('Worth $x$5 more.', 'quant').join()).toMatch(/plain text/);

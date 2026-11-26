@@ -1,0 +1,264 @@
+# SVD, PCA and conditioning: principal components of returns, low-rank approximation, condition numbers.
+- id: lac-svd-001
+  topic: algebra-calculus
+  subtopic: SVD, PCA and conditioning
+  type: numeric
+  difficulty: medium
+  tags: [pca, equicorrelation, explained-variance]
+  prompt: |
+    Five assets have returns with equal variances and the same correlation $0.3$ between every pair.
+    What fraction of the total variance is explained by the first principal component of their
+    correlation matrix?
+  answer: 11/25
+  answerText: |-
+    $11/25 = 0.44$
+  hints:
+    - 'Write the correlation matrix as $(1 - \rho)I + \rho J$, with $J$ the all-ones matrix.'
+    - The total variance is the trace.
+  followUps:
+    - What are the other four eigenvalues, and what do their eigenvectors look like as portfolios?
+    - 'What does the fraction tend to as the number of assets grows with $\rho$ fixed?'
+  explanation: |
+    $C = 0.7\,I + 0.3\,J$. The all-ones matrix $J$ has eigenvalue 5 on $\mathbf{1}$ and 0 on every vector
+    whose entries sum to zero, so $C$ has eigenvalues $0.7 + 0.3 \cdot 5 = 2.2$ (eigenvector $\mathbf{1}$)
+    and $0.7$ four times. The total variance is $\operatorname{tr} C = 5$, so the first component explains
+
+    $$\frac{1 + (n - 1)\rho}{n} = \frac{2.2}{5} = 0.44.$$
+
+    The first component is the equally weighted portfolio, the "market"; the others are any long-short
+    portfolios with weights summing to zero, all with the same small variance. As $n$ grows the share
+    tends to $\rho$: with many assets, the common correlation is the fraction of risk that cannot be
+    diversified away.
+
+    Common wrong answers: $0.3$ (the correlation itself, which is only the large-$n$ limit), $0.2$
+    ($1/n$, as if there were no correlation) and $0.06$ (dividing $\rho$ by $n$).
+  source: { name: "Eigenvalues of an equicorrelated matrix (e.g. QuantVault linear algebra question bank)", url: "https://quantvault.org/linear-algebra-interview-questions.html" }
+
+- id: lac-svd-002
+  topic: algebra-calculus
+  subtopic: SVD, PCA and conditioning
+  type: short
+  difficulty: medium
+  tags: [pca, factor-models, stock-returns]
+  prompt: |
+    Explain principal component analysis to a trader with no statistics background, using the daily
+    returns of 500 US stocks as the example. What does the first principal component usually look
+    like, and what do the next few look like?
+  reference: |
+    PCA finds the directions in which the returns move the most. Think of portfolios whose weights
+    form a vector of length one: the first principal component is the one whose daily return varies the
+    most; the second varies the most among portfolios uncorrelated with the first; and so on. Together
+    they re-express the 500 returns as uncorrelated "factors" ranked by how much of the total variance
+    each explains. Mathematically they are the eigenvectors of the covariance (or correlation) matrix,
+    and the eigenvalues are their variances.
+
+    For stocks, the first component has weights of the same sign on almost every stock, roughly equal
+    in size: it is the market factor, and it typically explains far more variance than any other
+    component (often a quarter or more, and more in a sell-off, when correlations rise). The next
+    components are long-short: sector or industry spreads (technology against utilities, energy
+    against the rest) and style factors such as size or value, each explaining a few percent. For a
+    yield curve the first three are level, slope and curvature.
+
+    Uses: a statistical risk model, hedging the market out of a position, reducing dimension, and the
+    residual returns used in statistical arbitrage. Caveats: covariance and correlation give different
+    components (high-volatility stocks dominate the former), signs are arbitrary, and components
+    beyond the first few are unstable and hard to interpret, especially with few days of data
+    relative to the number of stocks.
+  keyPoints:
+    - PCA finds uncorrelated combinations of the returns (portfolios), ordered by how much of the variance each explains
+    - They are the eigenvectors of the covariance or correlation matrix, the eigenvalues being their variances
+    - The first component of stock returns has same-signed, roughly equal weights, the market factor, with the largest share of variance
+    - Later components are long-short, typically sector or style spreads, each explaining a few percent
+    - Mentions a caveat, such as covariance versus correlation, instability of later components, or noise when stocks outnumber days
+  hints:
+    - Of all portfolios with unit-length weights, which one has the most volatile return?
+    - Why would almost every stock load positively on it?
+  followUps:
+    - Would you run PCA on the covariance matrix or the correlation matrix, and why does it matter?
+    - For daily changes in a yield curve, what do the first three components look like?
+    - How would you use the first component to hedge a single-stock position?
+  explanation: |
+    The test is translation: a correct definition in terms of eigenvectors is necessary but the
+    interviewer wants the portfolio reading and the empirical shape. The reason the first component
+    is same-signed is that stock returns are almost all positively correlated; for a positive
+    covariance matrix the top eigenvector has entries of one sign (Perron–Frobenius). Weak answers
+    describe PCA as "finding the most important stocks".
+  source: { name: "Interpreting principal components of stock returns (e.g. Quantt, Linear Algebra for Quant Interviews)", url: "https://www.quantt.co.uk/resources/linear-algebra-quant-interview" }
+
+- id: lac-svd-003
+  topic: algebra-calculus
+  subtopic: SVD, PCA and conditioning
+  type: numeric
+  difficulty: medium
+  tags: [svd, low-rank-approximation, eckart-young]
+  prompt: |
+    A matrix $A$ has singular values 5, 3 and 1. Over all matrices $B$ of the same shape with rank at
+    most 1, what is the smallest possible value of the Frobenius norm $\lVert A - B \rVert_F$? Give your
+    answer to three significant figures.
+  answer: 3.16228
+  answerText: |-
+    $\sqrt{10} \approx 3.16$
+  hints:
+    - Which rank-one matrix does the SVD suggest?
+    - The Frobenius norm is unchanged by multiplying by orthogonal matrices.
+  followUps:
+    - What is the smallest error in the spectral (operator) norm instead?
+    - What fraction of the squared Frobenius norm of $A$ does the best rank-one approximation keep, and what is the PCA reading of that number?
+  explanation: |
+    By the Eckart–Young theorem the best rank-$k$ approximation, in both the Frobenius and the
+    spectral norm, keeps the $k$ largest terms of the SVD: $B = \sigma_1 u_1 v_1^\top$. The error is then
+    $\sigma_2 u_2 v_2^\top + \sigma_3 u_3 v_3^\top$, and because the Frobenius norm is unchanged by
+    orthogonal transformations,
+
+    $$\lVert A - B \rVert_F = \sqrt{\sigma_2^2 + \sigma_3^2} = \sqrt{9 + 1} = \sqrt{10} \approx 3.16.$$
+
+    The approximation keeps $25/35 \approx 71\%$ of $\lVert A \rVert_F^2$, which is the PCA statement "the
+    first component explains 71% of the variance" when $A$ is a centred data matrix.
+
+    Common wrong answers: 3 (the spectral-norm error, $\sigma_2$), 4 (adding the singular values instead
+    of their squares) and 10 (the squared error).
+  source: { name: "SVD and best low-rank approximation (Eckart–Young theorem; e.g. QuantVault linear algebra question bank)", url: "https://quantvault.org/linear-algebra-interview-questions.html" }
+
+- id: lac-svd-004
+  topic: algebra-calculus
+  subtopic: SVD, PCA and conditioning
+  type: numeric
+  difficulty: medium
+  tags: [condition-number, singular-values, non-symmetric]
+  prompt: |
+    What is the condition number $\kappa_2(A) = \sigma_{\max}/\sigma_{\min}$ of
+
+    $$A = \begin{pmatrix} 3 & 0 \\ 4 & 5 \end{pmatrix}?$$
+  answer: 3
+  hints:
+    - 'The singular values are the square roots of the eigenvalues of $A^\top A$.'
+    - 'Use the trace and determinant of $A^\top A$.'
+  followUps:
+    - Why is $5/3$, the ratio of the eigenvalues, the wrong answer?
+    - 'Check your singular values against $\lvert \det A \rvert$.'
+  explanation: |
+    Compute
+
+    $$A^\top A = \begin{pmatrix} 25 & 20 \\ 20 & 25 \end{pmatrix},$$
+
+    whose eigenvalues are $45$ and $5$ (eigenvectors $(1, 1)$ and $(1, -1)$). The singular values are
+    $\sqrt{45} = 3\sqrt5$ and $\sqrt5$, so $\kappa_2(A) = 3$. As a check, $\sigma_1\sigma_2 = 15 = \lvert\det A\rvert$.
+
+    The common wrong answer is $5/3$, the ratio of the eigenvalues of $A$ (its diagonal entries, since
+    $A$ is triangular). For a non-symmetric matrix the eigenvalues say little about how much $A$
+    stretches vectors; only for symmetric (more generally, normal) matrices are the singular values the
+    absolute eigenvalues.
+  source: { name: "Standard result (e.g. Trefethen and Bau, Numerical Linear Algebra)" }
+
+- id: lac-svd-005
+  topic: algebra-calculus
+  subtopic: SVD, PCA and conditioning
+  type: single
+  difficulty: easy
+  tags: [condition-number, floating-point, numerical-stability]
+  prompt: |
+    You solve $Ax = b$ in double precision (about 16 significant digits) using a stable method, and $A$
+    has condition number about $10^{10}$. Roughly how many significant digits of the computed $x$ can
+    you trust?
+  choices:
+    - { id: a, text: 'About 16: a stable method gives full precision' }
+    - { id: b, text: 'About 6' }
+    - { id: c, text: 'About 10' }
+    - { id: d, text: 'None' }
+  answer: b
+  explanation: |
+    The rule of thumb is that the relative error in $x$ is about $\kappa(A) \cdot \varepsilon$, where
+    $\varepsilon \approx 10^{-16}$ is the unit roundoff:
+
+    $$\kappa \varepsilon \approx 10^{10} \cdot 10^{-16} = 10^{-6},$$
+
+    so about $16 - 10 = 6$ digits survive. You lose roughly $\log_{10}\kappa$ digits.
+
+    - a: stability means the method does not add error beyond what the problem's conditioning implies;
+      it cannot remove the conditioning, which belongs to the problem, not the algorithm.
+    - c confuses the digits lost (10) with the digits kept.
+    - d would need $\kappa \gtrsim 10^{16}$, when the matrix is singular to working precision.
+  source: { name: "Standard numerical analysis rule of thumb (e.g. Trefethen and Bau, Numerical Linear Algebra)" }
+
+- id: lac-svd-006
+  topic: algebra-calculus
+  subtopic: SVD, PCA and conditioning
+  type: short
+  difficulty: hard
+  tags: [sample-covariance, shrinkage, random-matrix-theory]
+  prompt: |
+    You estimate the covariance matrix of 500 stocks from 250 days of returns. What is wrong with the
+    sample covariance matrix as the input to a minimum-variance optimiser, and what would you do about
+    it?
+  reference: |
+    **It is singular.** With centred data $X$ of size $250 \times 500$, $\hat\Sigma = X^\top X/249$ has
+    rank at most 249, so at least 251 eigenvalues are exactly zero. There are portfolios with zero
+    estimated variance, $\hat\Sigma^{-1}$ does not exist, and an optimiser will happily build a
+    "riskless" portfolio out of noise.
+
+    **Even when it is invertible, its spectrum is distorted.** Unless the number of days greatly
+    exceeds the number of stocks, the sample eigenvalues are spread out relative to the true ones: the
+    small ones are biased down, the large ones up. For pure noise with ratio $q = N/T < 1$ they spread
+    over $\sigma^2[(1 - \sqrt{q})^2, (1 + \sqrt{q})^2]$ (Marchenko–Pastur) although every true eigenvalue
+    is $\sigma^2$. The optimiser loads on the smallest, most underestimated directions, so the realised
+    risk of the "optimal" portfolio is much higher than predicted.
+
+    **Fixes:** shrink towards a structured target (Ledoit–Wolf, towards a scaled identity or constant
+    correlation); use a factor model (a few factors plus diagonal specific risk, far fewer parameters
+    than the $500 \cdot 501/2 = 125{,}250$ of a full covariance); clean the eigenvalues
+    (random-matrix-theory clipping); add constraints such as no short sales or position limits; or use
+    more data (higher frequency, longer history).
+  keyPoints:
+    - The sample covariance has rank at most 249, so it is singular with at least 251 zero eigenvalues
+    - Zero or tiny eigenvalues correspond to portfolios that look riskless in sample, and the optimiser concentrates in them
+    - Even with more days than stocks, the smallest sample eigenvalues are biased down and the largest up (Marchenko–Pastur)
+    - Fixes such as shrinkage (e.g. Ledoit–Wolf), a factor model, eigenvalue cleaning or portfolio constraints
+    - Notes that the predicted risk of the optimised portfolio understates its realised risk
+  hints:
+    - 'What is the rank of $X^\top X$ when $X$ has 250 rows?'
+    - What does an optimiser do with a direction that has zero estimated variance?
+    - If every true eigenvalue were equal, would the sample eigenvalues be equal?
+  followUps:
+    - How does shrinkage towards a scaled identity change the eigenvalues and the eigenvectors?
+    - With a one-factor model, how many parameters do you estimate instead of 125,250?
+    - Why does a long-only constraint act like shrinkage?
+  explanation: |
+    The rank argument is the minimum; strong candidates go on to say that the problem persists for
+    invertible but noisy estimates, which is the practically important case. On the follow-ups:
+    shrinkage keeps the eigenvectors and pulls the eigenvalues towards their mean; a one-factor model
+    needs 500 betas, 500 specific variances and the factor variance, 1,001 in all; and a no-short
+    constraint stops the optimiser from exploiting the most underestimated long-short directions
+    (Jagannathan and Ma).
+  source: { name: "Covariance estimation with more assets than observations (e.g. Quantt, Linear Algebra for Quant Interviews; Ledoit and Wolf, 2004)", url: "https://www.quantt.co.uk/resources/linear-algebra-quant-interview" }
+
+- id: lac-svd-007
+  topic: algebra-calculus
+  subtopic: SVD, PCA and conditioning
+  type: multiple
+  difficulty: medium
+  tags: [svd, singular-values, eigenvalues]
+  prompt: |
+    $A = U\Sigma V^\top$ is a singular value decomposition of a real $m \times n$ matrix $A$. Which
+    statements are true? Select all that apply.
+  choices:
+    - { id: a, text: 'Every real matrix, square or not, has an SVD.' }
+    - { id: b, text: 'The singular values of a square matrix are the absolute values of its eigenvalues.' }
+    - { id: c, text: 'For a real symmetric matrix, the singular values are the absolute values of its eigenvalues.' }
+    - { id: d, text: 'The rank of $A$ is the number of non-zero singular values.' }
+    - { id: e, text: 'The largest singular value equals the largest value of $\lVert Ax \rVert$ over unit vectors $x$.' }
+    - { id: f, text: 'If $A$ is square, $U = V$.' }
+  answer: [a, c, d, e]
+  explanation: |
+    - **a, true.** $A^\top A$ is symmetric PSD, so it has an orthonormal eigenbasis $V$; the singular
+      values are the square roots of its eigenvalues and $U$ comes from $Av_i = \sigma_i u_i$.
+    - **b, false.** $\begin{pmatrix} 1 & 1 \\ 0 & 1 \end{pmatrix}$ has eigenvalues 1 and 1 but singular
+      values $\frac{\sqrt5 \pm 1}{2} \approx 1.618$ and $0.618$. Carrying the symmetric case over to all
+      matrices is the mistake.
+    - **c, true.** $S = Q\Lambda Q^\top$ becomes an SVD after moving the signs of negative eigenvalues
+      into one of the factors.
+    - **d, true.** $U$ and $V$ are invertible, so $\operatorname{rank} A = \operatorname{rank}\Sigma$.
+    - **e, true.** This is the spectral norm $\lVert A \rVert_2 = \sigma_1$, attained at $x = v_1$.
+    - **f, false.** $U = V$ (with non-negative $\Sigma$) holds for symmetric positive semidefinite
+      matrices; for a rotation, $U \ne V$. Assuming it in general carries over the covariance-matrix
+      case, where the SVD and the eigendecomposition coincide.
+  source: { name: "Standard SVD facts (e.g. Strang, Introduction to Linear Algebra)" }

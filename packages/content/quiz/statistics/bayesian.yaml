@@ -1,0 +1,261 @@
+# Bayesian inference and shrinkage: conjugate updates, prior against likelihood, shrinking noisy estimates, and where Bayesian and frequentist answers part.
+- id: stat-bayesian-001
+  topic: statistics
+  subtopic: Bayesian inference and shrinkage
+  type: numeric
+  difficulty: easy
+  tags: [beta-binomial, conjugate-prior, posterior-mean]
+  prompt: |
+    Your prior for a new trader's hit rate $p$ is Beta$(2, 2)$. You then see 7 winning trades out of
+    10, independent given $p$. What is the posterior mean of $p$?
+  answer: 9/14
+  answerText: |-
+    $\frac{2 + 7}{2 + 2 + 10} = \frac{9}{14} \approx 0.643$
+  explanation: |
+    The Beta prior is conjugate to the binomial likelihood: the posterior density is proportional to
+
+    $$p^{2-1}(1-p)^{2-1} \cdot p^7 (1-p)^3 = p^{9-1}(1-p)^{5-1},$$
+
+    which is Beta$(9, 5)$, with mean $\frac{9}{9 + 5} = \frac{9}{14} \approx 0.643$.
+
+    A useful reading: Beta$(a, b)$ acts like $a$ prior wins and $b$ prior losses, so the posterior mean
+    is a weighted average of the prior mean $0.5$ (weight $4/14$) and the observed rate $0.7$ (weight
+    $10/14$). The common slips are 0.7 (the MLE, ignoring the prior) and $8/12$ (the posterior *mode*,
+    $\frac{a - 1}{a + b - 2}$).
+  source: { name: "Beta-binomial conjugacy (standard; e.g. Gelman et al., Bayesian Data Analysis)" }
+
+- id: stat-bayesian-002
+  topic: statistics
+  subtopic: Bayesian inference and shrinkage
+  type: numeric
+  difficulty: medium
+  tags: [normal-normal, shrinkage, sharpe-ratio, posterior-mean]
+  prompt: |
+    Your prior for a new strategy's true annualised Sharpe ratio is normal with mean 0 and standard
+    deviation 0.5. Nine years of data give an estimated Sharpe ratio of 1.5, which you treat as
+    normally distributed around the true value with standard error $1/3$. What is the posterior mean
+    of the true Sharpe ratio?
+  answer: 27/26
+  answerText: |-
+    $\frac{9}{4 + 9} \cdot 1.5 = \frac{27}{26} \approx 1.04$
+  hints:
+    - With a normal prior and a normal likelihood, the posterior mean is a weighted average of the prior mean and the estimate.
+    - The weights are the precisions, the reciprocals of the variances.
+  followUps:
+    - What is the posterior standard deviation?
+    - With only one year of data and the same estimate, what would the posterior mean be?
+  explanation: |
+    The prior precision is $1/0.5^2 = 4$ and the data precision is $1/(1/3)^2 = 9$. The posterior is
+    normal, with precision $4 + 9 = 13$ and mean
+
+    $$\frac{4 \cdot 0 + 9 \cdot 1.5}{13} = \frac{13.5}{13} = \frac{27}{26} \approx 1.04.$$
+
+    The estimate is shrunk about 30% towards the prior. The common mistakes are to weight by standard
+    deviations instead of variances ($\frac{3}{3 + 2} \cdot 1.5 = 0.9$) or to ignore the prior (1.5).
+    With a single year of data (standard error 1, precision 1) the posterior mean would be only
+    $1.5 \cdot \frac{1}{1 + 4} = 0.3$: one year says very little about a Sharpe ratio. Sceptical priors of this kind are how many funds
+    size new strategies.
+  source: { name: "Normal-normal conjugate update (standard; e.g. Gelman et al., Bayesian Data Analysis)" }
+
+- id: stat-bayesian-003
+  topic: statistics
+  subtopic: Bayesian inference and shrinkage
+  type: single
+  difficulty: medium
+  tags: [gamma-poisson, conjugate-prior, arrival-rate]
+  prompt: |
+    The arrival rate $\lambda$ of large orders, per hour, has a Gamma prior with shape 2 and rate 1
+    (prior mean 2). Orders arrive as a Poisson process, and in 4 hours you see 10 of them. What is the
+    posterior mean of $\lambda$?
+  choices:
+    - { id: a, text: '$12/5 = 2.4$' }
+    - { id: b, text: '$10/4 = 2.5$' }
+    - { id: c, text: '$11/5 = 2.2$' }
+    - { id: d, text: '$12/4 = 3$' }
+    - { id: e, text: '$2$' }
+  answer: a
+  explanation: |
+    With a Gamma$(\alpha, \beta)$ prior (shape, rate) and $k$ events in time $t$, the posterior is
+    proportional to $\lambda^{\alpha - 1}e^{-\beta\lambda} \cdot \lambda^k e^{-\lambda t}$, which is
+    Gamma$(\alpha + k, \beta + t)$. Here that is Gamma$(12, 5)$, with mean $\frac{12}{5} = 2.4$.
+
+    - **b** is the MLE $k/t$, which ignores the prior.
+    - **c** is the posterior mode $\frac{\alpha + k - 1}{\beta + t}$.
+    - **d** adds the events to the shape but forgets to add the exposure to the rate.
+    - **e** is the prior mean, which ignores the data.
+
+    The prior acts like 2 events seen in 1 hour of earlier observation, so the posterior mean pools
+    12 events over 5 hours.
+  source: { name: "Gamma-Poisson conjugacy (standard; e.g. Gelman et al., Bayesian Data Analysis)" }
+
+- id: stat-bayesian-004
+  topic: statistics
+  subtopic: Bayesian inference and shrinkage
+  type: numeric
+  difficulty: hard
+  tags: [bayes-factor, skill-vs-luck, likelihood-ratio]
+  prompt: |
+    Before seeing any results, you believe 10% of new strategies have a 55% win rate and the other
+    90% have a 50% win rate (no edge). A strategy wins 60 of its first 100 trades, independently.
+    What is the posterior probability that it is one of the 55% strategies? Give a decimal; answers
+    within 0.01 are accepted.
+  answer: 0.333358
+  answerText: |-
+    $\frac{0.1 \cdot \text{LR}}{0.1 \cdot \text{LR} + 0.9}$ with $\text{LR} = 1.1^{60}\,0.9^{40} \approx 4.50$, giving $\approx 0.333$
+  tolerance: { abs: 0.01 }
+  hints:
+    - Work in odds. What are the prior odds that it is a 55% strategy?
+    - The binomial coefficients cancel in the likelihood ratio. What is left?
+    - Take logarithms of the likelihood ratio, using $\ln 1.1 \approx 0.0953$ and $\ln 0.9 \approx -0.1054$.
+  followUps:
+    - How many wins out of 100 would you need for the posterior to reach 90%?
+    - A frequentist test of "win rate 50%" gives $z = 2$ here. Why does that feel much more convincing than one in three?
+  explanation: |
+    The binomial coefficient is the same under both hypotheses, so the likelihood ratio is
+
+    $$\text{LR} = \left(\frac{0.55}{0.5}\right)^{60}\left(\frac{0.45}{0.5}\right)^{40} = 1.1^{60}\cdot 0.9^{40}, \qquad \ln\text{LR} = 60(0.0953) - 40(0.1054) \approx 1.504,$$
+
+    so $\text{LR} \approx 4.50$. The prior odds are $1 : 9$, the posterior odds $4.50 : 9 = 1 : 2$, and the
+    posterior probability is about $\frac13$.
+
+    A 60% win rate over 100 trades sounds conclusive: it is two standard deviations above 50%. But
+    the evidence is measured against a specific alternative (55%) and starts from a sceptical prior,
+    and then it only moves the odds by a factor of 4.5: 60 wins is two standard deviations above
+    what a 50% strategy expects, but also one standard deviation above what a 55% strategy expects,
+    so it is only moderately better explained by the edge. The common wrong answers come from treating the p-value (about 0.03) as the probability of no edge.
+  source: { name: "Bayesian model comparison of skill and luck (standard; e.g. MacKay, Information Theory, Inference, and Learning Algorithms)" }
+
+- id: stat-bayesian-005
+  topic: statistics
+  subtopic: Bayesian inference and shrinkage
+  type: multiple
+  difficulty: medium
+  tags: [bayesian-vs-frequentist, map, credible-interval, likelihood-principle]
+  prompt: |
+    Which statements are true? Assume standard models with enough data for regularity conditions to
+    hold where that matters. Select all that apply.
+  choices:
+    - { id: a, text: "With a flat prior, the maximum a posteriori (MAP) estimate equals the maximum-likelihood estimate" }
+    - { id: b, text: "With a normal prior on a normal mean (known variance), the posterior mean is a weighted average of the prior mean and the sample mean, with weights proportional to their precisions" }
+    - { id: c, text: "A 95% credible interval always coincides with the 95% confidence interval" }
+    - { id: d, text: "The posterior mean under a normal prior centred at zero is an unbiased estimator of the true mean" }
+    - { id: e, text: "As the sample grows, the posterior concentrates around the true value for any prior that gives it positive density" }
+    - { id: f, text: "The posterior depends on whether you planned to stop after a fixed number of observations or stopped when you saw a particular result" }
+  answer: [a, b, e]
+  explanation: |
+    - **a, true.** The posterior is likelihood times prior; a flat prior does not move the maximum.
+      (A "flat" prior depends on the parametrisation, so this holds only in the one chosen.)
+    - **b, true.** The precision-weighted average is the normal-normal update.
+    - **c, false.** They often agree numerically with flat priors and lots of data, but they answer
+      different questions and diverge with informative priors, small samples or parameters near a
+      boundary.
+    - **d, false.** Shrinking towards zero is a bias, deliberately accepted for lower mean squared
+      error: $E[\text{posterior mean} \mid \mu] = w\mu$ with $w < 1$.
+    - **e, true.** Posterior consistency (and, with more conditions, the Bernstein-von Mises theorem):
+      the likelihood eventually dominates any prior that does not rule the truth out.
+    - **f, false.** By the likelihood principle the posterior depends on the data only through the
+      likelihood, which is the same for both stopping rules up to a constant. Frequentist p-values do
+      depend on the stopping rule.
+
+    The usual mistakes are c (equating the two kinds of interval) and d (assuming a Bayesian estimate
+    is unbiased because it is "optimal").
+  source: { name: "Standard comparison (e.g. Wasserman, All of Statistics, chapter on Bayesian inference)" }
+
+- id: stat-bayesian-006
+  topic: statistics
+  subtopic: Bayesian inference and shrinkage
+  type: short
+  difficulty: medium
+  tags: [shrinkage, empirical-bayes, james-stein]
+  prompt: |
+    You have estimated Sharpe ratios for 200 strategies, some with one year of history and some with
+    ten. You want the best estimate of each strategy's future Sharpe ratio. Why should you shrink
+    each estimate towards the cross-sectional average, and how much should each be shrunk?
+  reference: |
+    Each estimate is the true value plus noise, $\hat s_i = s_i + e_i$, with noise variance about
+    $1/T_i$ for $T_i$ years. The spread of the raw estimates exaggerates the spread of true Sharpe
+    ratios, and the extremes are mostly the luckiest, so raw estimates are systematically too far
+    from the average: the best-looking strategies will disappoint and the worst will improve
+    (regression to the mean).
+
+    Treat the true values as drawn from a distribution with mean $m$ and variance $\tau^2$, estimated
+    from the cross-section itself (empirical Bayes): $\hat\tau^2 \approx$ variance of the estimates
+    minus the average noise variance. Then the posterior mean is
+
+    $$\tilde s_i = m + \frac{\tau^2}{\tau^2 + 1/T_i}(\hat s_i - m).$$
+
+    Noisier estimates (short histories) are shrunk more; a ten-year record keeps more of its
+    deviation than a one-year record. James and Stein showed that shrinking like this lowers total
+    squared error for three or more estimates, compared with using each estimate on its own, whatever
+    the true values. Grouping by strategy type, or shrinking towards a factor model rather than one
+    average, refines it.
+  keyPoints:
+    - Raw estimates include noise, so their extremes are too extreme; regression to the mean
+    - "Posterior mean as a weighted average of the estimate and the group mean, weight tau squared over (tau squared + noise variance)"
+    - Shorter histories (noisier estimates) are shrunk more
+    - The group mean and spread are estimated from the cross-section (empirical Bayes)
+    - Shrinkage reduces total mean squared error (James-Stein) at the cost of some bias
+  hints:
+    - Write each estimate as true value plus noise. Which strategies are top of the list?
+    - How would you estimate how much true Sharpe ratios vary across strategies?
+    - Should a one-year record and a ten-year record be shrunk by the same amount?
+  followUps:
+    - The estimates have variance 0.5 across strategies and the average noise variance is 0.4. How much is a typical estimate shrunk?
+    - When can shrinking towards one common mean hurt?
+  explanation: |
+    The key insight is that the cross-section tells you how much of the dispersion is real. Candidates
+    who mention regression to the mean but cannot say how much to shrink, or who shrink every estimate
+    by the same factor regardless of its noise, get partial credit. Efron and Morris's baseball batting
+    averages are the classic illustration.
+  source: { name: "James-Stein and empirical Bayes shrinkage (e.g. Efron and Morris, 1977)" }
+
+- id: stat-bayesian-007
+  topic: statistics
+  subtopic: Bayesian inference and shrinkage
+  type: short
+  difficulty: hard
+  tags: [bayesian-vs-frequentist, stopping-rule, lindley-paradox]
+  prompt: |
+    Give two situations in which a Bayesian and a frequentist analysis of the same data reach
+    materially different conclusions, and explain the source of the difference in each. One should
+    involve how the experiment was stopped.
+  reference: |
+    **The stopping rule.** You see 9 heads and 3 tails and want to test a fair coin against a bias
+    towards heads.
+
+    - If the plan was to toss 12 times, the p-value is $P(X \ge 9) = \frac{299}{4096} \approx 0.073$:
+      not significant at 5%.
+    - If the plan was to toss until the third tail, the p-value is the chance of at least 9 heads
+      before the third tail, $\frac{67}{2048} \approx 0.033$: significant.
+
+    The likelihood is proportional to $p^9(1-p)^3$ in both cases, so a Bayesian posterior is
+    identical. Frequentist conclusions depend on what *might* have been observed; Bayesian ones only on
+    what was.
+
+    **Lindley's paradox.** With a very large sample, a result just significant at 5% (say $z = 2$) can
+    still favour a point null when the alternative spreads its prior over a wide range of effects:
+    the Bayes factor for the null grows like $\sqrt n$ at a fixed $z$. The p-value measures surprise
+    under the null; the posterior compares how well each hypothesis predicted the data.
+
+    Other valid examples: small samples with informative priors (shrinkage), many parameters
+    (hierarchical models against separate MLEs), and zero counts, where the MLE is 0 but a posterior
+    is not.
+  keyPoints:
+    - "A stopping-rule example: binomial against negative binomial sampling gives different p-values but the same likelihood"
+    - Computes or clearly describes the two p-values (about 0.07 against 0.03)
+    - Explains the likelihood principle, that the posterior depends only on the observed likelihood
+    - "A second valid case, e.g. Lindley's paradox with large n, informative priors with small samples, or zero counts"
+    - Identifies the source in each case (dependence on unobserved outcomes, or the prior on the alternative)
+  hints:
+    - The same sequence of tosses could come from two different plans for when to stop.
+    - Does the likelihood $p^9(1-p)^3$ depend on the plan? Does the p-value?
+    - For the second example, think about what happens to a fixed $z = 2$ result as $n$ grows very large.
+  followUps:
+    - Which analysis would you trust for a strategy that a researcher kept tweaking until it looked good?
+    - How does the choice of prior on the alternative drive Lindley's paradox?
+  explanation: |
+    The stopping-rule example is the cleanest demonstration of the likelihood principle, and
+    interviewers who ask this usually want it. A strong answer is even-handed: frequentist methods
+    control long-run error rates under a stated plan, which is valuable exactly when the plan is
+    known; Bayesian methods need a prior and are only as good as it.
+  source: { name: "Lindley and Phillips (1976), Inference for a Bernoulli process; Lindley (1957)" }

@@ -1,0 +1,281 @@
+# Making a two-sided market: choosing a mid and a width, consistency between related markets, and quoting in size.
+- id: bmm-quoting-001
+  topic: betting-market-making
+  subtopic: Making a two-sided market
+  type: short
+  difficulty: easy
+  tags: [making-markets, dice, width]
+  prompt: |
+    Three fair dice will be rolled. Make me a two-sided market (a bid and an offer, one contract each)
+    on a contract that pays the sum of the three dice in dollars. Nobody has seen the dice. Explain
+    your mid and your width.
+  reference: |
+    Fair value is $3 \times 3.5 = 10.5$, and since the distribution is symmetric about 10.5 that is
+    the mid. The sum ranges from 3 to 18 with standard deviation $\sqrt{3 \times 35/12} \approx 2.96$.
+
+    Since nobody knows anything I don't, any trade at a bid below 10.5 or an offer above it earns me
+    the distance to 10.5 on average. A market like **9.5 at 11.5** (or 10 at 11) is reasonable: it
+    makes 1 per trade on average whichever side you take, is tight enough that you might trade,
+    and leaves room for me to adjust if I learn something. If I thought you might have information,
+    or if the size were large, I would widen.
+  keyPoints:
+    - Fair value 10.5, from three times 3.5, used as the mid
+    - Notes the spread of outcomes (range 3 to 18, standard deviation about 3)
+    - Gives a concrete market around 10.5, such as 9.5 at 11.5
+    - Explains that against an uninformed counterparty each trade earns about the half-width, and that information or size would make it wider
+  hints:
+    - What is the expected sum?
+    - Who is on the other side of your trades, and do they know anything you don't?
+  followUps:
+    - I buy one at your offer. Then the first die is shown and it is a 6. Where is your market now, and what is your expected P&L?
+    - Now make me a market for 50 contracts.
+    - Suppose I have looked at one of the dice before asking. What changes?
+  explanation: |
+    This is the standard opening of a market-making interview. Interviewers look for a correct fair
+    value, a width that is tied to a reason (uncertainty, who you face, size) rather than a reflex, and
+    a market you can defend as the game continues. Very wide markets ("3 at 18") are safe but useless,
+    because nobody trades and you show no judgement; a market quoted around the wrong mid gets picked
+    off.
+  source: { name: "Common market-making interview question (e.g. Jane Street, Probability and Markets; quantt.co.uk)", url: "https://www.quantt.co.uk/resources/market-making-interview-questions" }
+
+- id: bmm-quoting-002
+  topic: betting-market-making
+  subtopic: Making a two-sided market
+  type: short
+  difficulty: medium
+  tags: [making-markets, dice, order-statistics]
+  prompt: |
+    Make me a market on a contract that pays the **maximum** of three fair dice, in dollars. Explain
+    your mid and your width.
+  reference: |
+    Use $E[M] = \sum_{k=1}^{6} P(M \ge k) = 6 - \sum_{k=1}^{5} \left(\tfrac{k}{6}\right)^3 = 6 - \tfrac{225}{216} = \tfrac{119}{24} \approx 4.96.$
+
+    The distribution is lopsided: $P(M = 6) = 1 - (5/6)^3 = \tfrac{91}{216} \approx 42\%$,
+    $P(M = 5) = \tfrac{61}{216} \approx 28\%$, $P(M = 4) \approx 17\%$ and $P(M \le 3) = \tfrac18$. The median is
+    5 and the standard deviation about 1.1.
+
+    So the mid is just under 5. A market like **4.5 at 5.4** is a reasonable one-lot market against an
+    uninformed counterparty: centred near the mean, with a width of about one standard deviation.
+  keyPoints:
+    - Computes the expected maximum, 119/24, about 4.96 (for example by the tail sum)
+    - Notes that the distribution is skewed towards 6, with a 6 about 42% of the time
+    - Centres the market near 4.96, not at 3.5 and not at 6
+    - Gives a concrete width tied to the spread of outcomes, for example 4.5 at 5.4
+  hints:
+    - What is the probability that all three dice are at most $k$?
+    - For a variable on $1, \dots, 6$, $E[M] = \sum_k P(M \ge k)$.
+  followUps:
+    - I sell to you at your bid. The first die shows a 2. Where is your market now?
+    - Make a market on the minimum of three dice. How is it related to this one?
+    - Make a market on the maximum minus the minimum.
+  explanation: |
+    Jane Street's guide lists this as a practice market. The common slips are to quote around 3.5
+    (forgetting the maximum is high) or near 5.5 or 6 (overestimating how often a 6 appears). The tail
+    sum makes the expectation quick to compute in your head, and noticing the skew is what shows the
+    width was thought about.
+  source: { name: "Jane Street, Probability and Markets (making markets exercises)", url: "https://www.janestreet.com/static/pdfs/trading-interview.pdf" }
+
+- id: bmm-quoting-003
+  topic: betting-market-making
+  subtopic: Making a two-sided market
+  type: short
+  difficulty: medium
+  tags: [making-markets, dice, skew]
+  prompt: |
+    Make me a market on a contract that pays the **square** of one fair die roll, in dollars. Explain
+    the mid and the width.
+  reference: |
+    The outcomes 1, 4, 9, 16, 25, 36 are equally likely, so fair value is $\tfrac{91}{6} \approx 15.17$,
+    not $3.5^2 = 12.25$: squaring is convex, so the mean of the square is above the square of the mean
+    by the variance, $\tfrac{35}{12} \approx 2.92$.
+
+    The distribution is very spread out and skewed: standard deviation about 12.2, median 12.5 (between
+    9 and 16), and half the value comes from the 25 and the 36. A one-lot market like **14 at 16.5**
+    around 15.17 is fine against an uninformed counterparty; the width is wider than for the plain die
+    because each outcome is further from the mean, and I would make it much wider for size.
+  keyPoints:
+    - Fair value is 91/6, about 15.17
+    - Does not quote around 12.25, the square of 3.5, and can say why (convexity, the variance term)
+    - Notes the large spread and skew of the payoff (standard deviation about 12)
+    - Gives a concrete market around 15.17 with a width justified by that spread
+  hints:
+    - List the six payoffs.
+    - Is the mean of the square the same as the square of the mean?
+  followUps:
+    - I buy 10 from you at your offer. What is the standard deviation of your P&L?
+    - Make a market on the product of two independent dice. Why is it different?
+  explanation: |
+    The trap is the plug-in estimate $3.5^2$; Jensen's inequality says a convex payoff is worth more than
+    the payoff at the average. In trading terms, anything with a convex payoff (an option, a squared
+    move) is mispriced by plugging in the expected input, and interviewers like to see that spotted
+    unprompted.
+  source: { name: "Market-making practice in the style of Jane Street, Probability and Markets", url: "https://www.janestreet.com/static/pdfs/trading-interview.pdf" }
+
+- id: bmm-quoting-004
+  topic: betting-market-making
+  subtopic: Making a two-sided market
+  type: short
+  difficulty: easy
+  tags: [making-markets, counting, information]
+  prompt: |
+    Make me a market on the number of tiles in a standard double-six set of dominoes (each tile shows
+    two ends, each end with 0 to 6 pips, and every combination appears exactly once). I know the
+    answer.
+  reference: |
+    A tile is an unordered pair of values from $\{0, \dots, 6\}$, possibly equal: $\binom72 = 21$ tiles
+    with two different ends plus 7 doubles, so **28**.
+
+    Since this can be worked out exactly, there is no uncertainty to be paid for, and I can quote a
+    very tight market around 28, such as 27.5 at 28.5. The fact that you know the answer matters only when I am unsure: then you trade exactly
+    when my market is wrong, and I should quote very wide, or not at all, around my estimate.
+  keyPoints:
+    - Counts the tiles as unordered pairs with repetition, 21 plus 7 equals 28
+    - Quotes a tight market around 28 because the answer is certain
+    - Notes that against a counterparty who knows the answer, any uncertainty must be met with a much wider market
+  hints:
+    - Can you count the tiles rather than estimate them?
+    - How many tiles have two different ends, and how many are doubles?
+  followUps:
+    - Make me a market on the total number of pips on all the tiles.
+    - Suppose you could not work out the count. How would you quote against me, knowing I know it?
+  explanation: |
+    Two lessons in one. First, check whether a "market" question is really an estimation question at
+    all; a quantity you can compute deserves a tight market. Second, who you are trading against
+    decides the width: against someone who knows the answer, every trade you get is one where you
+    were wrong, so uncertainty and an informed counterparty together mean a very wide market.
+  source: { name: "Reported SIG-style market question (e.g. techinterview.org, SIG interview guide)", url: "https://www.techinterview.org/companies/sig-susquehanna-interview-guide/" }
+
+- id: bmm-quoting-005
+  topic: betting-market-making
+  subtopic: Making a two-sided market
+  type: multiple
+  difficulty: medium
+  tags: [arbitrage, making-markets, consistency]
+  prompt: |
+    You are making markets on three contracts that pay, in dollars, the value of die A, the value of
+    die B, and the sum A + B. You quote die A at **3 bid, 4 offered** and die B at **3 bid, 4 offered**.
+    Which of these markets on the sum would let me make a riskless profit by trading against your
+    three markets? Select all that apply.
+  choices:
+    - { id: a, text: "6 bid, 8 offered" }
+    - { id: b, text: "8.5 bid, 9 offered" }
+    - { id: c, text: "5 bid, 5.5 offered" }
+    - { id: d, text: "7 bid, 7.5 offered" }
+    - { id: e, text: "6.5 bid, 8.25 offered" }
+  answer: [b, c]
+  explanation: |
+    Buying A and B from you costs 4 + 4 = 8 and pays A + B; selling them to you raises 3 + 3 = 6. So a
+    sum market is safe only if its bid is at most 8 and its offer at least 6.
+
+    - **b:** I buy A and B from you for 8 and sell you the sum at 8.5. The payoffs cancel and I keep
+      0.5 whatever the dice show.
+    - **c:** I buy the sum from you at 5.5 and sell you A and B for 6. I keep 0.5.
+    - **a, d, e:** each has a bid at most 8 and an offer at least 6, so no combination of trades locks
+      in a profit (d is inside both bounds, a touches the bounds without crossing them).
+
+    The usual mistake is to check only the mids (7 is the right mid for all of them) or to think a sum
+    market must be at least as wide as the two single-die markets together. It need not be; it only
+    must not cross the combined markets.
+  source: { name: "Related-markets consistency question (e.g. quantt.co.uk, market-making interview questions)", url: "https://www.quantt.co.uk/resources/market-making-interview-questions" }
+
+- id: bmm-quoting-006
+  topic: betting-market-making
+  subtopic: Making a two-sided market
+  type: single
+  difficulty: easy
+  tags: [making-markets, width, variance]
+  prompt: |
+    You are asked for markets on two contracts with the same expected value, 35 dollars:
+
+    - **A:** pays the **sum of ten** fair dice.
+    - **B:** pays **ten times** the value of one fair die.
+
+    Against the same uninformed counterparty, which should you quote wider?
+  choices:
+    - { id: a, text: "A, because it depends on more dice" }
+    - { id: b, text: "B" }
+    - { id: c, text: "Neither: they have the same expected value, so the same market" }
+  answer: b
+  explanation: |
+    Width should reflect how far the outcome can land from your fair value. Contract B's standard
+    deviation is $10 \times \sqrt{35/12} \approx 17.1$; contract A's is $\sqrt{10} \times \sqrt{35/12} \approx 5.4$,
+    because independent dice partly cancel each other out. B pays 10 or 60 as easily as 35; A almost
+    always lands between 25 and 45.
+
+    Choice a mistakes more sources of randomness for more risk, when averaging out makes the sum
+    relatively steadier. Choice c ignores everything about a distribution except its mean.
+  source: { name: "Width and uncertainty, in the style of market-making interview warm-ups" }
+
+- id: bmm-quoting-007
+  topic: betting-market-making
+  subtopic: Making a two-sided market
+  type: short
+  difficulty: hard
+  tags: [making-markets, size, risk-limits]
+  prompt: |
+    A contract pays the sum of two fair dice in dollars. Make me a market for 1 contract. Then make me
+    a market for 1,000 contracts, given that your risk limit says the standard deviation of the P&L of
+    any position you hold must stay below \$1,000. Explain what changes.
+  reference: |
+    For one contract: fair value 7, standard deviation $\sqrt{35/6} \approx 2.42$. A market like
+    **6.5 at 7.5** is fine against an uninformed counterparty.
+
+    For 1,000 contracts, a fill would leave a position whose P&L has standard deviation about \$2,415,
+    more than twice the limit. The most I can hold is about $1000 / 2.415 \approx 414$ contracts. So I
+    either quote for up to about 400 ("6.5 at 7.5, 400 up") or, if you need 1,000 now, quote it wider
+    to be paid for the risk and for what I would have to do to get back inside the limit. If there is
+    a way to lay the risk off (another market on the same dice), the size I can show grows.
+
+    Size also changes who is asking: a counterparty who wants 1,000 lots is more likely to know
+    something than one who wants a single lot, so I would widen for that too, or ask why.
+  keyPoints:
+    - One-lot market around 7 with a modest width, such as 6.5 at 7.5
+    - Computes the standard deviation per contract (about 2.4) and of 1,000 contracts (about \$2,400)
+    - Finds the largest position within the limit, about 400 contracts
+    - Either shows less size or quotes wider for size, with the reason
+    - Notes that large size is more likely to come from informed counterparties
+  hints:
+    - What is the standard deviation of one contract's payoff?
+    - How does the standard deviation of a position grow with its size?
+    - How many contracts can you hold within the limit?
+  followUps:
+    - "You quoted 6.5 at 7.5 for 400 and I lift the whole offer. What now?"
+    - "There is a second market on die 1 alone. How much more can you show on the sum, and why?"
+  explanation: |
+    Interviewers use size to see whether a candidate links the market to risk. A single-lot market and
+    a size market on the same contract are different products: the fair value is the same, but the
+    width and the quantity have to reflect how much risk the position adds and how likely a large
+    order is to be informed. Hedging opportunities let you show more size at the same width.
+  source: { name: "Quoting in size (e.g. Jane Street, Probability and Markets; common in market-making interviews)", url: "https://www.janestreet.com/static/pdfs/trading-interview.pdf" }
+
+- id: bmm-quoting-008
+  topic: betting-market-making
+  subtopic: Making a two-sided market
+  type: numeric
+  difficulty: medium
+  tags: [making-markets, width, optimisation]
+  prompt: |
+    A contract is worth exactly \$50 and you know it. Buyers arrive one at a time; each is willing to
+    pay up to $50 + R$ dollars, where $R$ is uniform on $[0, 4]$ and independent from buyer to buyer,
+    and buys one contract from you if your offer is at most that. At what offer price do you maximise
+    your expected profit per arriving buyer?
+  answer: 52
+  unit: dollars
+  hints:
+    - If your offer is $50 + h$, what is the probability that a buyer trades, and what do you make if they do?
+    - Maximise the product over $h$.
+  followUps:
+    - What is the expected profit per buyer at the best offer?
+    - What happens to the best offer if a quarter of buyers know the contract is really worth \$53?
+  explanation: |
+    With the offer at $50 + h$ ($0 \le h \le 4$), a buyer trades with probability $P(R \ge h) = 1 - h/4$
+    and you earn $h$, so the expected profit per buyer is
+
+    $$h\left(1 - \frac h4\right), \qquad \text{maximised at } h = 2,$$
+
+    an offer of \$52 earning \$1 per buyer on average.
+
+    This is the trade-off the width has to balance: quote at fair value and you trade with everyone
+    but earn nothing; quote at 54 and you earn the most per trade but nobody trades. The common wrong
+    answers are 54 (maximising the profit per trade) and 50 (maximising the chance of a trade).
+  source: { name: "Width trade-off in the style of Jane Street, Probability and Markets", url: "https://www.janestreet.com/static/pdfs/trading-interview.pdf" }

@@ -1,0 +1,362 @@
+# Time series: stationarity, autocorrelation and AR(1), random walks against mean reversion, unit roots, overlapping data, volatility clustering and scaling volatility with time.
+- id: stat-time-series-001
+  topic: statistics
+  subtopic: Time series
+  type: single
+  difficulty: easy
+  tags: [stationarity, returns-vs-prices, spurious-regression]
+  prompt: |
+    Why do researchers usually model and regress returns (or price changes) rather than price levels?
+  choices:
+    - { id: a, text: "Price levels behave like a random walk: their mean and variance drift over time, so sample statistics of levels do not settle down and regressions between levels can show relationships that are not there" }
+    - { id: b, text: "Returns are normally distributed and prices are not" }
+    - { id: c, text: "Returns have no autocorrelation by definition" }
+    - { id: d, text: "Price levels are too large for regression software to handle accurately" }
+  answer: a
+  explanation: |
+    Statistical tools such as sample means, correlations and OLS standard errors assume (roughly)
+    stationary data: a distribution that does not change over time. Prices are close to random walks,
+    which are not stationary: their variance grows with time and they wander without returning.
+    Returns are much closer to stationary, so averages over time estimate something.
+
+    - **b**: returns are not normal either (fat tails, skew); the argument does not depend on
+      normality.
+    - **c**: returns can be autocorrelated (momentum, mean reversion, microstructure effects); that
+      is something to test, not a definition.
+    - **d**: numerical precision is not the issue.
+
+    Regressing one price level on another is the textbook spurious regression: high $R^2$ and large
+    t-statistics between unrelated series. The exception is cointegration, when a combination of the
+    levels is stationary.
+  source: { name: "Standard (e.g. Tsay, Analysis of Financial Time Series)" }
+
+- id: stat-time-series-002
+  topic: statistics
+  subtopic: Time series
+  type: numeric
+  difficulty: easy
+  tags: [ar1, half-life, mean-reversion]
+  prompt: |
+    A spread follows the AR(1) process $s_t = 0.9\,s_{t-1} + \varepsilon_t$ (daily steps, mean zero).
+    After how many days is the expected deviation from the mean half its current size? Give the exact,
+    non-integer value.
+  answer: 6.578813
+  answerText: |-
+    $\frac{\ln 2}{\ln(1/0.9)} \approx 6.58$ days
+  unit: days
+  explanation: |
+    The expected value $k$ days ahead is $E[s_{t+k} \mid s_t] = 0.9^k s_t$, so the half-life solves
+    $0.9^k = \tfrac12$:
+
+    $$k = \frac{\ln 2}{-\ln 0.9} = \frac{0.6931}{0.1054} \approx 6.58 \text{ days}.$$
+
+    The common approximation $\ln 2/(1 - \phi) = 6.93$ is close for $\phi$ near 1 but not exact. Other
+    slips are to answer 5 (thinking 10% of the gap closes each day, linearly, so half in 5 days) or
+    10. In pairs trading, the half-life sets the holding period, and an estimated $\phi$ close to 1 means
+    a long and very uncertain half-life.
+  source: { name: "Standard AR(1) half-life (e.g. Tsay, Analysis of Financial Time Series)" }
+
+- id: stat-time-series-003
+  topic: statistics
+  subtopic: Time series
+  type: single
+  difficulty: easy
+  tags: [ar1, stationary-variance]
+  prompt: |
+    A stationary AR(1) process is $x_t = 0.8\,x_{t-1} + \varepsilon_t$, where the $\varepsilon_t$ are
+    i.i.d. with variance 1. What is the variance of $x_t$?
+  choices:
+    - { id: a, text: '$1/(1 - 0.8^2) = 25/9 \approx 2.78$' }
+    - { id: b, text: '$1/(1 - 0.8) = 5$' }
+    - { id: c, text: '$1$' }
+    - { id: d, text: '$1 + 0.8^2 = 1.64$' }
+  answer: a
+  explanation: |
+    Stationarity means $\operatorname{Var}(x_t) = \operatorname{Var}(x_{t-1}) = v$, and $\varepsilon_t$ is
+    independent of $x_{t-1}$, so
+
+    $$v = 0.8^2 v + 1 \quad\Longrightarrow\quad v = \frac{1}{1 - 0.64} = \frac{25}{9} \approx 2.78.$$
+
+    Equivalently, $x_t = \sum_{k \ge 0} 0.8^k\varepsilon_{t-k}$, a geometric series in $0.8^2$.
+
+    - **b** forgets to square the coefficient; $\frac{1}{1-\phi}$ is the factor for the long-run
+      *mean* response to a constant shock, or for the sum of autocorrelations.
+    - **c** ignores the persistence.
+    - **d** keeps only one lag of the infinite sum.
+
+    As $\phi \to 1$ the variance explodes, the signature of a random walk.
+  source: { name: "Standard AR(1) result" }
+
+- id: stat-time-series-004
+  topic: statistics
+  subtopic: Time series
+  type: numeric
+  difficulty: medium
+  tags: [square-root-of-time, autocorrelation, volatility-scaling]
+  prompt: |
+    Daily returns have the same variance every day, a lag-1 autocorrelation of 0.1, and no
+    autocorrelation at any other lag. The square-root-of-time rule estimates the 10-day volatility as
+    $\sqrt{10}$ times the daily volatility. By what factor is the true 10-day volatility larger than
+    that estimate?
+  answer: 1.086278
+  answerText: |-
+    $\sqrt{1 + 2 \cdot \tfrac{9}{10} \cdot 0.1} = \sqrt{1.18} \approx 1.086$
+  hints:
+    - Write the variance of a sum of 10 returns as the sum of all their variances and covariances.
+    - How many adjacent pairs are there among 10 consecutive days?
+  followUps:
+    - What is the factor if the lag-1 autocorrelation is $-0.1$, as for a market-maker's mid-price changes?
+    - For an AR(1) return process with coefficient $\phi$, what happens to the variance ratio as the horizon grows?
+  explanation: |
+    With daily variance $\sigma^2$, the 10-day sum has 10 variance terms and 9 adjacent pairs, each
+    counted twice:
+
+    $$\operatorname{Var}\left(\sum_{t=1}^{10} r_t\right) = 10\sigma^2 + 2 \cdot 9 \cdot 0.1\,\sigma^2 = 11.8\,\sigma^2,$$
+
+    so the volatility is $\sqrt{11.8}\,\sigma$, which is $\sqrt{1.18} \approx 1.086$ times
+    $\sqrt{10}\,\sigma$. Positive autocorrelation (trending) makes long-horizon risk larger than the
+    rule says; negative autocorrelation (mean reversion, bid-ask bounce) makes it smaller.
+
+    The usual slips are to count 10 pairs, or to forget the factor 2 for the two orders of each pair,
+    or to answer 1.18 (the variance ratio rather than the volatility ratio).
+  source: { name: "Variance ratio (Lo and MacKinlay, 1988)" }
+
+- id: stat-time-series-005
+  topic: statistics
+  subtopic: Time series
+  type: short
+  difficulty: hard
+  tags: [unit-root, dickey-fuller, mean-reversion]
+  prompt: |
+    You regress the daily change in a price on yesterday's level, $\Delta p_t = a + b\,p_{t-1} + \varepsilon_t$,
+    over one year of data and find $\hat b < 0$ with a t-statistic of $-2.2$. A colleague says this
+    proves mean reversion at the 5% level. What is wrong with that argument?
+  reference: |
+    Under the null hypothesis that matters, a random walk ($b = 0$, a unit root), the regressor
+    $p_{t-1}$ is non-stationary and the usual t-distribution does not apply. The OLS estimate $\hat b$
+    is biased negative in finite samples (with an intercept, by roughly $-5.5/n$), and its t-statistic
+    follows the Dickey-Fuller
+    distribution, which is shifted left: the 5% critical value with an intercept is about $-2.86$, not
+    $-1.645$. A t-statistic of $-2.2$ is therefore not significant; random walks produce it quite
+    often (roughly one time in five).
+
+    More caveats: unit-root tests have low power against slow mean reversion in short samples
+    (a half-life of months cannot be established from one year of daily data), results are sensitive
+    to structural breaks, and searching across many series or windows for the one that "mean reverts"
+    is multiple testing. Use the Dickey-Fuller critical values (or augmented Dickey-Fuller for serially
+    correlated errors), more history, and out-of-sample checks.
+  keyPoints:
+    - Under the random-walk null the regressor is non-stationary, so the usual t-distribution is wrong
+    - The estimate of b is biased towards negative values even for a random walk
+    - "Uses the Dickey-Fuller critical value (about -2.86 with an intercept), so -2.2 is not significant"
+    - Unit-root tests have low power against slow mean reversion, especially in short samples
+    - Mentions multiple testing, structural breaks or out-of-sample validation
+  hints:
+    - What is the natural null hypothesis here, and is $p_{t-1}$ stationary under it?
+    - Simulate the regression on pure random walks. Is $\hat b$ centred at zero?
+  followUps:
+    - What half-life does $\hat b = -0.02$ imply, and how precisely is it estimated from 250 days?
+    - How would you test whether the spread between two stocks mean-reverts?
+  explanation: |
+    This is the Dickey-Fuller problem, and it catches people because the regression looks like any
+    other. Candidates who suggest checking by simulating random walks and refitting are showing the
+    right instinct: the null distribution can always be computed by Monte Carlo when the textbook one
+    does not apply.
+  source: { name: "Dickey and Fuller (1979); a common quant-research interview topic" }
+
+- id: stat-time-series-006
+  topic: statistics
+  subtopic: Time series
+  type: numeric
+  difficulty: medium
+  tags: [overlapping-returns, autocorrelation, standard-errors]
+  prompt: |
+    From i.i.d. daily returns you build a series of 20-day returns, one observation per day, so each
+    window overlaps the previous one by 19 days. What is the lag-1 autocorrelation of this series?
+  answer: 19/20
+  answerText: |-
+    $19/20 = 0.95$
+  hints:
+    - Two consecutive 20-day returns share some daily returns. How many?
+    - The covariance of two sums of independent terms is the variance of the terms they share.
+  followUps:
+    - What is the autocorrelation at lag $k$, and at lag 20?
+    - If you regress these 20-day returns on an equally overlapping 20-day predictor, roughly how much do the naive standard errors understate the true ones?
+  explanation: |
+    With daily variance $\sigma^2$, each 20-day return has variance $20\sigma^2$, and two consecutive
+    windows share 19 daily returns, so their covariance is $19\sigma^2$:
+
+    $$\rho_1 = \frac{19\sigma^2}{20\sigma^2} = \frac{19}{20}.$$
+
+    In general $\rho_k = \frac{20 - k}{20}$ for $k < 20$ and 0 beyond. The series is almost perfectly
+    autocorrelated although the underlying returns are independent. Regressing such returns on a
+    predictor that is just as persistent (another overlapping sum, or a slow-moving signal) gives far
+    less independent information than the row count suggests: naive standard errors are then several
+    times too small (about 3.7 times for a regressor built the same way), so use Newey-West standard
+    errors or non-overlapping data. The common wrong answer is 0, from the independence of the daily
+    returns.
+  source: { name: "Overlapping-observation bias (e.g. Hansen and Hodrick, 1980)" }
+
+- id: stat-time-series-007
+  topic: statistics
+  subtopic: Time series
+  type: short
+  difficulty: medium
+  tags: [square-root-of-time, volatility-scaling, var]
+  prompt: |
+    A risk system turns 1-day volatility into 10-day volatility by multiplying by $\sqrt{10}$, and does
+    the same for a 99% value-at-risk. When does this go wrong?
+  reference: |
+    The rule assumes daily returns are uncorrelated with constant variance (for volatility), and in
+    addition a distribution that scales like the normal (for quantiles such as VaR).
+
+    - **Autocorrelation:** the variance of a sum includes covariances. Positive autocorrelation
+      (trending, momentum, illiquid prices that adjust slowly) makes 10-day risk larger than
+      $\sqrt{10}$ times; negative autocorrelation (mean reversion, bid-ask bounce) makes it smaller.
+    - **Volatility clustering:** variance is predictable, so today's high volatility is expected to
+      decay (or persist) over the next 10 days; the conditional 10-day forecast is not $\sqrt{10}$
+      times today's conditional volatility (GARCH forecasts mean-revert).
+    - **Fat tails and quantiles:** the sum of 10 fat-tailed daily returns is closer to normal than one
+      day, so scaling a fat-tailed 1-day 99% quantile by $\sqrt{10}$ misstates the 10-day quantile;
+      jumps make it worse.
+    - **Drift and position changes:** over long horizons the mean scales with $t$ and matters; and a
+      real portfolio is traded or hedged over 10 days, or cannot be liquidated at all.
+  keyPoints:
+    - States the assumption of uncorrelated returns with constant variance
+    - Autocorrelation changes the scaling, upwards if positive and downwards if negative
+    - Volatility clustering makes the multi-day conditional forecast differ from root-10 times today's
+    - Quantile scaling needs normality or stability; fat tails and jumps break it
+    - Mentions drift at long horizons or changing positions and liquidity
+  hints:
+    - Write the variance of a 10-day sum. Which terms does the rule drop?
+    - Is tomorrow's volatility the same as today's?
+    - Does a quantile of a sum scale like the square root of the number of terms for any distribution?
+  followUps:
+    - For an illiquid asset whose marked prices are smoothed, which way is the error, and how big can it be?
+    - How would you estimate 10-day VaR without the rule?
+  explanation: |
+    Regulators accepted the rule for years, and it is a favourite interview question because each
+    assumption fails in a different, recognisable way. The variance-of-a-sum argument is the core;
+    good candidates add the GARCH and quantile points.
+  source: { name: "Standard risk-management discussion (e.g. Danielsson and Zigrand, 2006, on the square-root-of-time rule)" }
+
+- id: stat-time-series-008
+  topic: statistics
+  subtopic: Time series
+  type: multiple
+  difficulty: hard
+  tags: [stationarity, random-walk, cointegration, garch]
+  prompt: |
+    Which of these processes are weakly stationary (constant mean, constant finite variance, and
+    autocovariances that depend only on the lag)? $\varepsilon_t$ is i.i.d. $N(0, 1)$ throughout, and
+    each process is started from its stationary distribution where it has one. Select all that apply.
+  choices:
+    - { id: a, text: 'GARCH(1,1) returns, $r_t = \sigma_t\varepsilon_t$ with $\sigma_t^2 = \omega + \alpha r_{t-1}^2 + \beta\sigma_{t-1}^2$, where $\omega > 0$ and $\alpha + \beta < 1$' }
+    - { id: b, text: 'A random walk, $p_t = p_{t-1} + \varepsilon_t$' }
+    - { id: c, text: '$x_t = 0.5\,x_{t-1} + \varepsilon_t$' }
+    - { id: d, text: '$x_t = 0.1\,t + \varepsilon_t$' }
+    - { id: e, text: 'A log price with constant drift, $p_t = p_{t-1} + \mu + \varepsilon_t$' }
+    - { id: f, text: 'The spread $y_t - \beta x_t$ between two cointegrated prices with cointegrating coefficient $\beta$' }
+  answer: [a, c, f]
+  explanation: |
+    - **a, yes.** The conditional variance changes over time, but the unconditional variance is
+      $\omega/(1 - \alpha - \beta)$, finite and constant, and the returns are uncorrelated.
+      Volatility clustering is not non-stationarity.
+    - **b, no.** $\operatorname{Var}(p_t) = \operatorname{Var}(p_0) + t$ grows without bound.
+    - **c, yes.** An AR(1) with $|\phi| < 1$, variance $\frac{1}{1 - 0.25} = \frac43$.
+    - **d, no.** The mean $0.1t$ changes with time (trend-stationary, but not stationary).
+    - **e, no.** Both the mean and the variance grow; its differences are stationary.
+    - **f, yes.** That is the definition of cointegration: a combination of non-stationary series that is
+      stationary.
+
+    The common mistakes are rejecting a (confusing a changing conditional variance with a changing
+    unconditional one) and accepting d (a deterministic trend plus noise looks "well behaved").
+  source: { name: "Standard definitions (e.g. Hamilton, Time Series Analysis)" }
+
+- id: stat-time-series-009
+  topic: statistics
+  subtopic: Time series
+  type: short
+  difficulty: medium
+  tags: [cointegration, pairs-trading, spurious-correlation]
+  prompt: |
+    Two stocks' prices have a correlation of 0.95 over the past five years. A colleague proposes
+    trading the spread between them as a mean-reverting pair. Is the high correlation good evidence?
+    What would you test instead?
+  reference: |
+    No. Correlation of price levels between trending series is nearly meaningless: two unrelated random
+    walks often show large level correlations over a window, and any two stocks that both rose over
+    five years will show a high one. And the correlation of *returns* is not the right quantity either:
+    two series can have highly correlated daily returns and still drift apart for ever, or have weakly
+    correlated returns but a spread that always comes back.
+
+    What matters for a pair is cointegration: whether some combination $y_t - \beta x_t$ is stationary.
+    Test it with Engle-Granger (estimate $\beta$ by regression, then apply a unit-root test to the
+    residuals with the appropriate critical values) or Johansen. Then check the spread's half-life,
+    stability of $\beta$ over time, out-of-sample behaviour, an economic reason for the link (same
+    business, share classes, ADR and local listing), and costs. Selecting the best of many candidate
+    pairs needs a multiple-testing allowance.
+  keyPoints:
+    - High correlation of price levels can be spurious for trending, non-stationary series
+    - Return correlation is also not the same as a mean-reverting spread
+    - The relevant property is cointegration, a stationary linear combination
+    - Names a test, such as Engle-Granger (unit-root test on regression residuals) or Johansen
+    - Checks half-life, stability, an economic rationale or multiple testing across pairs
+  hints:
+    - What correlation do two independent random walks typically show?
+    - Could two stocks have highly correlated daily returns and still drift apart?
+    - What property of the spread does a mean-reversion trade actually need?
+  followUps:
+    - Why are the critical values for a unit-root test on estimated residuals different from the ordinary Dickey-Fuller ones?
+    - How would you choose the hedge ratio, and what happens if it drifts?
+  explanation: |
+    The distinction between correlation and cointegration is one of the most asked time-series
+    questions in quant interviews. A strong answer gives an example of each failure: correlated
+    returns with a diverging spread (a small persistent difference in drift), and a cointegrated pair
+    whose daily returns are only weakly correlated (noisy short-term moves around a common trend).
+  source: { name: "Engle and Granger (1987); a common pairs-trading interview topic" }
+
+- id: stat-time-series-010
+  topic: statistics
+  subtopic: Time series
+  type: short
+  difficulty: medium
+  tags: [volatility-clustering, garch, autocorrelation, independence]
+  prompt: |
+    Daily stock returns show almost no autocorrelation, but their squares (or absolute values) are
+    strongly autocorrelated for many lags. What does that tell you about the returns, and why does it
+    matter for statistical work on them?
+  reference: |
+    It is volatility clustering: large moves tend to follow large moves of either sign, so the size of
+    tomorrow's return is predictable even though its direction is not. The returns are therefore
+    uncorrelated but **not independent**; models such as GARCH capture it, with $r_t = \sigma_t\varepsilon_t$
+    and $\sigma_t^2$ depending on recent squared returns.
+
+    Why it matters:
+
+    - Tests and standard errors that assume i.i.d. data are wrong. The variance of the sample mean is
+      still roughly $\sigma^2/n$ for uncorrelated returns, but the standard errors of variances,
+      autocorrelations and regression coefficients are larger than the i.i.d. formulas say, so use
+      robust (heteroskedasticity- and autocorrelation-consistent) standard errors or bootstrap in blocks.
+    - Risk is time-varying: conditional volatility forecasts beat a constant, and sizing positions by
+      forecast volatility changes the risk profile of a strategy.
+    - The unconditional distribution is fat-tailed even if each day's conditional distribution is
+      normal, because it mixes calm and turbulent periods.
+  keyPoints:
+    - Identifies volatility clustering, predictable magnitude but not direction
+    - Uncorrelated returns are not independent
+    - Names a model such as GARCH or stochastic volatility
+    - "i.i.d.-based standard errors and tests are unreliable; uses robust or block-bootstrap methods"
+    - Notes time-varying risk forecasts or that a mixture of volatilities produces fat tails
+  hints:
+    - If squared returns are predictable, what about the returns is predictable?
+    - Are the returns independent?
+    - What does mixing calm and turbulent days do to the overall distribution?
+  followUps:
+    - Why does volatility targeting tend to raise a strategy's Sharpe ratio?
+    - How would you bootstrap a time series with volatility clustering?
+  explanation: |
+    This is the standard stylised fact of returns, and the question checks whether a candidate can
+    turn "uncorrelated is not independent" into consequences for inference and risk. The fat-tails
+    point (a variance mixture) connects it to the earlier failures of normal approximations.
+  source: { name: "Stylised facts of returns (e.g. Cont, 2001; Engle, 1982; Bollerslev, 1986)" }

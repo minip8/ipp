@@ -1,0 +1,445 @@
+# Linear regression: what OLS minimises, its assumptions and what breaks when each fails, R squared and its abuse, collinearity, omitted variables and regression to the mean.
+- id: stat-regression-001
+  topic: statistics
+  subtopic: Linear regression
+  type: single
+  difficulty: easy
+  tags: [ols, least-squares, total-least-squares]
+  prompt: |
+    In a simple regression of $y$ on $x$ with an intercept, what does ordinary least squares
+    minimise?
+  choices:
+    - { id: a, text: 'The sum of squared vertical distances from the points to the line (residuals in $y$)' }
+    - { id: b, text: "The sum of squared perpendicular distances from the points to the line" }
+    - { id: c, text: 'The sum of absolute vertical distances from the points to the line' }
+    - { id: d, text: 'The sum of squared horizontal distances from the points to the line (residuals in $x$)' }
+  answer: a
+  explanation: |
+    OLS chooses $a, b$ to minimise $\sum_i (y_i - a - b x_i)^2$: errors are measured in $y$ only, because
+    $y$ is the variable being predicted from a given $x$.
+
+    - **b** is total least squares (orthogonal regression), whose line is the first principal
+      component. It treats $x$ and $y$ symmetrically and depends on their units.
+    - **c** is least absolute deviations, or median regression, which is more robust to outliers.
+    - **d** is what you get by regressing $x$ on $y$, which gives a different line unless the
+      points lie exactly on one.
+
+    The three squared-distance lines coincide only when the correlation is $\pm 1$. The asymmetry
+    of OLS is the source of regression to the mean.
+  source: { name: "Standard (e.g. Hastie, Tibshirani and Friedman, The Elements of Statistical Learning)" }
+
+- id: stat-regression-002
+  topic: statistics
+  subtopic: Linear regression
+  type: numeric
+  difficulty: easy
+  tags: [beta, ols-slope, correlation]
+  prompt: |
+    A stock's daily returns $y$ and the market's daily returns $x$ have correlation 0.6. The stock's
+    daily volatility is 2% and the market's is 1%. What is the OLS slope (the stock's beta) in a
+    regression of $y$ on $x$ with an intercept?
+  answer: 6/5
+  answerText: |-
+    $0.6 \cdot \frac{2\%}{1\%} = 1.2$
+  explanation: |
+    The OLS slope is $\frac{\operatorname{Cov}(x, y)}{\operatorname{Var}(x)} = \rho\,\frac{\sigma_y}{\sigma_x} = 0.6 \cdot 2 = 1.2$.
+
+    The common wrong answers are 0.6 (the correlation, which is the slope only when both are
+    standardised), 0.3 (the slope of $x$ on $y$, with the volatility ratio inverted) and 2 (the volatility ratio alone, which
+    is the slope only for perfect correlation). A beta above 1 with a correlation well below 1 is
+    normal for a volatile stock: beta mixes how strongly the stock follows the market with how much
+    it moves.
+  source: { name: "Standard (CAPM beta)" }
+
+- id: stat-regression-003
+  topic: statistics
+  subtopic: Linear regression
+  type: single
+  difficulty: medium
+  tags: [reverse-regression, correlation, r-squared]
+  prompt: |
+    Regressing $y$ on $x$ (with an intercept) gives slope 0.8, and the correlation of $x$ and $y$ is
+    0.6. What is the slope when you regress $x$ on $y$?
+  choices:
+    - { id: a, text: '$1/0.8 = 1.25$' }
+    - { id: b, text: '$0.36/0.8 = 0.45$' }
+    - { id: c, text: '$0.8$, since correlation is symmetric' }
+    - { id: d, text: "It cannot be found without the two standard deviations" }
+  answer: b
+  explanation: |
+    The two slopes are $b_{y|x} = \rho\,\frac{\sigma_y}{\sigma_x}$ and $b_{x|y} = \rho\,\frac{\sigma_x}{\sigma_y}$,
+    so their product is $\rho^2$, which is the $R^2$ of either regression:
+
+    $$b_{x|y} = \frac{\rho^2}{b_{y|x}} = \frac{0.36}{0.8} = 0.45.$$
+
+    - **a** inverts the slope, which would be right only if all points lay on the line ($\rho^2 = 1$).
+      The two regressions minimise different errors (vertical against horizontal), so the lines differ.
+    - **c**: the correlation is symmetric but the slopes carry the units of the variables.
+    - **d**: the standard deviations enter only through their ratio, which the given slope and
+      correlation already fix ($\sigma_y/\sigma_x = 0.8/0.6$).
+
+    Since $\rho^2 \le 1$, $b_{y|x}\,b_{x|y} \le 1$: both regressions are "flatter" than the other's
+    inverse, which is regression to the mean in both directions.
+  source: { name: "Quant, FM and Data Science Interview Compilation (LSU)", url: "https://www.math.lsu.edu/~smolinsk/Quant_Interview_Prep.pdf" }
+
+- id: stat-regression-004
+  topic: statistics
+  subtopic: Linear regression
+  type: short
+  difficulty: medium
+  tags: [duplicated-data, standard-errors, t-statistic]
+  prompt: |
+    By mistake, every row of a regression's data set is included twice, so OLS is run on $2n$ rows
+    instead of $n$. What happens to the coefficients, to $R^2$, to the standard errors and to the
+    t-statistics?
+  reference: |
+    - **Coefficients unchanged:** $X^\top X$ and $X^\top y$ both double, so
+      $\hat\beta = (X^\top X)^{-1}X^\top y$ is the same.
+    - **$R^2$ unchanged:** residuals and deviations from the mean are just duplicated, so both sums of
+      squares double.
+    - **Standard errors shrink by a factor of about $\sqrt2$:** the estimated error variance
+      $\text{RSS}/(N - p)$ barely changes, but $(X^\top X)^{-1}$ halves. Exactly, the squared standard
+      errors are multiplied by $\frac{n - p}{2n - p}$.
+    - **t-statistics grow by about $\sqrt2$**, and p-values become far too small.
+
+    The regression assumes $2n$ independent observations when there are only $n$ pieces of
+    information. The same thing happens, less obviously, with overlapping returns, stacked panels
+    with correlated rows, or forward-filled data: point estimates are fine but the significance is
+    inflated, which is why such regressions need clustered or Newey-West standard errors.
+  keyPoints:
+    - Coefficients are unchanged
+    - R squared is unchanged
+    - Standard errors fall by about a factor of root 2
+    - t-statistics rise by about root 2, giving spurious significance
+    - Links it to dependent or overlapping observations in practice and the need for corrected standard errors
+  hints:
+    - Write $\hat\beta$ in terms of $X^\top X$ and $X^\top y$. What happens to each?
+    - The standard error depends on $(X^\top X)^{-1}$ and on the estimated noise variance.
+  followUps:
+    - What if only half the rows are duplicated?
+    - Where does this problem appear when you regress 20-day forward returns on a daily signal?
+  explanation: |
+    The question looks trivial but tests whether the candidate knows which parts of the output come
+    from the point estimate and which from the assumed amount of information. The practical link to
+    overlapping observations is what interviewers are after.
+  source: { name: "Widely reported interview question (attributed to Citadel on interview-prep sites)" }
+
+- id: stat-regression-005
+  topic: statistics
+  subtopic: Linear regression
+  type: short
+  difficulty: medium
+  tags: [multicollinearity, perfect-collinearity, identification]
+  prompt: |
+    In a regression of $y$ on $x_1$ and $x_2$, what happens if $x_2$ is an exact copy of $x_1$? And if
+    $x_2$ is $x_1$ plus a little independent noise?
+  reference: |
+    **Exact copy.** The columns of $X$ are linearly dependent, so $X^\top X$ is singular and OLS has
+    no unique solution: any $\beta_1, \beta_2$ with $\beta_1 + \beta_2 = b$ fits equally well, where
+    $b$ is the coefficient from using $x_1$ alone. The fitted values, the residuals and $R^2$ are the
+    same as with one copy. Software either drops one column, reports an error, or (with a
+    pseudo-inverse) splits the coefficient as $b/2$ each.
+
+    **Near copy.** $X^\top X$ is nearly singular. The coefficients are still unbiased, but their
+    variances are huge (variance inflation factor $1/(1 - R_{12}^2)$, where $R_{12}^2$ is the
+    $R^2$ of $x_1$ on $x_2$): estimates swing between samples, often with large opposite signs,
+    while their sum $\hat\beta_1 + \hat\beta_2$ stays well determined, and the fitted values and
+    $R^2$ hardly change. Individual t-statistics can be insignificant while the joint F-test is
+    highly significant. Remedies: drop one, combine them, or use ridge regression, which splits the
+    weight between them.
+  keyPoints:
+    - With an exact copy X'X is singular and the coefficients are not identified; only their sum is
+    - Fitted values and R squared are unchanged
+    - With a near copy the coefficients are unbiased but have very large variance and can take large opposite signs
+    - The sum of the two coefficients remains well estimated, and individual t-stats can be insignificant while the joint test is significant
+    - Mentions a remedy such as dropping or combining the variables, or ridge
+  hints:
+    - What is the rank of $X$ when two columns are equal?
+    - Which combinations of $\beta_1$ and $\beta_2$ give the same fitted values?
+    - For the near copy, think about the variance of each coefficient separately and of their sum.
+  followUps:
+    - What does ridge regression do with two identical columns?
+    - How would you detect near-collinearity among 50 features?
+  explanation: |
+    Weak answers say "the model breaks". Strong ones separate identification (only the sum is
+    determined) from prediction (unchanged), and explain the near-collinear case through the
+    variance of individual coefficients versus the variance of their sum. In practice this is the
+    situation of several overlapping momentum or value signals.
+  source: { name: "Common regression interview question (perfect and near multicollinearity)" }
+
+- id: stat-regression-006
+  topic: statistics
+  subtopic: Linear regression
+  type: numeric
+  difficulty: medium
+  tags: [omitted-variable-bias, confounding]
+  prompt: |
+    The true model is $y = x_1 - 2x_2 + \varepsilon$, where $x_1$ and $x_2$ each have variance 1 and
+    correlation 0.6, and $\varepsilon$ is independent of both. You regress $y$ on $x_1$ alone, with an
+    intercept. What slope do you get in a very large sample?
+  answer: -1/5
+  answerText: |-
+    $1 + (-2)(0.6) = -0.2$
+  hints:
+    - The slope is $\operatorname{Cov}(y, x_1)/\operatorname{Var}(x_1)$. Expand the covariance.
+    - The omitted $x_2$ is partly "explained" by $x_1$. By how much?
+  followUps:
+    - What is the slope if you regress $y$ on $x_2$ alone?
+    - Give a trading example where omitted-variable bias flips the sign of a signal.
+  explanation: |
+    $\operatorname{Cov}(y, x_1) = \operatorname{Cov}(x_1 - 2x_2, x_1) = 1 - 2(0.6) = -0.2$, and
+    $\operatorname{Var}(x_1) = 1$, so the slope converges to $-0.2$.
+
+    In general, omitting $x_2$ gives $\beta_1 + \beta_2\delta$, where $\delta$ is the slope of $x_2$ on
+    $x_1$ (here 0.6): the short regression credits $x_1$ with the part of $x_2$'s effect that it
+    predicts. Here the bias is large enough to flip the sign, so a variable that raises $y$ appears to
+    lower it.
+
+    The common wrong answer is 1 (assuming the short regression recovers the true coefficient).
+    Omitted-variable bias does not shrink with more data; only including the confounder, or an
+    instrument, fixes it. In return prediction the classic case is a signal correlated with a known
+    factor such as market beta or size.
+  source: { name: "Omitted-variable bias (standard; e.g. Angrist and Pischke, Mostly Harmless Econometrics)" }
+
+- id: stat-regression-007
+  topic: statistics
+  subtopic: Linear regression
+  type: single
+  difficulty: hard
+  tags: [r-squared, multiple-regression, suppressor-variable]
+  prompt: |
+    On the same observations, the regression of $y$ on $x_1$ (with an intercept) has $R^2 = 0.1$, and
+    the regression of $y$ on $x_2$ has $R^2 = 0.2$. What values can $R^2$ take for the regression of
+    $y$ on both $x_1$ and $x_2$?
+  choices:
+    - { id: a, text: "Exactly 0.3" }
+    - { id: b, text: "Anything from 0.2 to 0.3" }
+    - { id: c, text: "Anything from 0.2 to 1" }
+    - { id: d, text: "Anything from 0.1 to 0.3" }
+    - { id: e, text: "Anything from 0 to 1" }
+  answer: c
+  explanation: |
+    **Lower bound 0.2.** Adding a regressor never lowers in-sample $R^2$, since OLS could set its
+    coefficient to zero. The bound is reached when $x_1$ adds nothing beyond $x_2$, for instance when
+    $x_1$ is $x_2$ plus noise that is uncorrelated with both $y$ and $x_2$ in the sample.
+
+    **Upper bound 1.** Take $y = x_2 - x_1$ exactly, with $x_1$ and $x_2$ strongly positively
+    correlated: each alone explains only a little of $y$, but together they explain all of it. In terms
+    of correlations, with $r_1 = \sqrt{0.1}$, $r_2 = \sqrt{0.2}$ and $r_{12}$ the correlation between the
+    regressors,
+
+    $$R^2 = \frac{r_1^2 + r_2^2 - 2 r_1 r_2 r_{12}}{1 - r_{12}^2},$$
+
+    which reaches 1 when $r_{12}$ is at the edge of what keeps the correlation matrix of $(y, x_1, x_2)$
+    valid.
+
+    - **a** assumes $x_1$ and $x_2$ are uncorrelated, the only case where $R^2$ values add.
+    - **b** assumes the combined fit can never beat the sum. Suppressor effects break that.
+    - **d** forgets that adding a regressor cannot lower $R^2$.
+    - **e** ignores both facts.
+  source: { name: "Widely reported research-screen question (Voleon, reported on interview-prep sites)" }
+
+- id: stat-regression-008
+  topic: statistics
+  subtopic: Linear regression
+  type: short
+  difficulty: medium
+  tags: [regression-to-the-mean, luck-vs-skill, selection]
+  prompt: |
+    Traders who were in the top 10% by P&L last year did noticeably worse this year, on average,
+    than last year. A manager concludes that success makes traders complacent. What is a simpler
+    explanation, and how large would you expect the effect to be?
+  reference: |
+    Regression to the mean. Suppose each year's result is persistent skill plus independent luck,
+    $P_t = S + L_t$. Ranking on last year's P&L selects traders with high skill *and* good luck; the
+    luck does not repeat, so this year they are expected to fall back towards the average, with no
+    change in behaviour at all.
+
+    The expected size follows from the regression of this year on last year: with skill variance
+    $\sigma_S^2$ and luck variance $\sigma_L^2$, the slope is
+
+    $$\frac{\operatorname{Cov}(P_t, P_{t-1})}{\operatorname{Var}(P_{t-1})} = \frac{\sigma_S^2}{\sigma_S^2 + \sigma_L^2},$$
+
+    the year-to-year correlation. If half the variance is luck, the top decile keeps only half its
+    excess over the average. The same happens in reverse: last year's bottom decile improves.
+
+    To test complacency you would compare the top decile's fall with what the year-to-year
+    correlation predicts, or use a control group selected on something other than last year's P&L.
+  keyPoints:
+    - Identifies regression to the mean
+    - Explains it as skill plus luck, where selecting on a noisy outcome selects good luck that does not repeat
+    - The expected fall depends on the year-to-year correlation, the share of variance due to skill
+    - The bottom group should improve by the same mechanism
+    - Suggests how to test the complacency story against this baseline
+  hints:
+    - Write each year's P&L as skill plus luck.
+    - What did the top decile have more of than average, besides skill?
+    - What happened to last year's worst traders?
+  followUps:
+    - With a year-to-year correlation of 0.3, how much of their excess do you expect the top traders to keep?
+    - Where does regression to the mean show up when you select the best strategy from a backtest?
+  explanation: |
+    This is Galton's original phenomenon, and Kahneman's flight instructors. The quantitative part,
+    that the expected shrinkage equals one minus the correlation between years, turns a qualitative
+    answer into a strong one.
+  source: { name: "Regression to the mean (Galton, 1886; Kahneman, Thinking, Fast and Slow)" }
+
+- id: stat-regression-009
+  topic: statistics
+  subtopic: Linear regression
+  type: short
+  difficulty: medium
+  tags: [r-squared, information-coefficient, return-prediction]
+  prompt: |
+    A daily return forecast has an out-of-sample $R^2$ of 1% (a correlation of 0.1 with the next
+    day's return). A colleague says that is useless. Do you agree? Conversely, when is a high $R^2$
+    no evidence of a good model?
+  reference: |
+    A correlation of 0.1 with next-day returns is a strong signal by the standards of finance. If you
+    hold a position proportional to the forecast, with forecast and return jointly normal, the
+    expected P&L per day divided by its standard deviation is $\rho/\sqrt{1 + \rho^2} \approx 0.0995$,
+    which is an annualised Sharpe ratio of about $0.0995\sqrt{252} \approx 1.6$ if the daily bets are
+    independent, before costs. Spread over many stocks with independent errors, the Sharpe rises
+    further (the "fundamental law" of active management). Returns are mostly noise, so $R^2$ is low
+    for any honest return forecast; what matters is the out-of-sample correlation, its stability, and
+    whether it survives costs.
+
+    High $R^2$ means little when it is in-sample with many regressors (it never falls as regressors
+    are added), when the series trend (regressing one price level on another gives large spurious
+    $R^2$), when the target is a level that is easy to predict from its own past (tomorrow's price from
+    today's), or when the data overlap. $R^2$ also says nothing about whether the coefficients are
+    causal or stable.
+  keyPoints:
+    - Disagrees, since a correlation of 0.1 for next-day returns is economically large
+    - Translates it into a Sharpe ratio, roughly 0.1 per day or about 1.6 annualised under independence and before costs
+    - Notes that return forecasts necessarily have low R squared because returns are mostly noise
+    - High R squared can be spurious, e.g. in-sample with many regressors, trending levels, or predicting price levels
+    - What matters is out-of-sample correlation, stability and costs
+  hints:
+    - Suppose you trade in proportion to the forecast every day. What is the daily Sharpe ratio?
+    - How many independent bets a year does a daily signal give you?
+    - For the second part, think about regressing one stock's price on another's.
+  followUps:
+    - How does the Sharpe ratio scale if the same correlation holds across 100 independent stocks?
+    - Why might an $R^2$ of 1% in-sample be worthless?
+  explanation: |
+    Candidates from other fields often treat low $R^2$ as failure. The conversion to a Sharpe ratio is
+    the quantitative point, and the spurious-high-$R^2$ half checks that they know the classic trap
+    with price levels.
+  source: { name: "Common quant-research interview discussion (information coefficient; Grinold and Kahn, Active Portfolio Management)" }
+
+- id: stat-regression-010
+  topic: statistics
+  subtopic: Linear regression
+  type: multiple
+  difficulty: hard
+  tags: [ols-assumptions, heteroskedasticity, errors-in-variables, autocorrelation]
+  prompt: |
+    In a linear regression estimated by OLS, which statements are true? Unless a statement says
+    otherwise, the regressors are exogenous and the errors are independent of them, and "biased"
+    refers to the coefficients. Select all that apply.
+  choices:
+    - { id: a, text: "If the errors are heteroskedastic, the coefficients remain unbiased but the usual standard errors are wrong" }
+    - { id: b, text: "If the errors are i.i.d. but not normally distributed, the coefficients become biased" }
+    - { id: c, text: "If a regressor is measured with independent noise, its coefficient is biased towards zero" }
+    - { id: d, text: "If two regressors are highly (but not perfectly) correlated, their coefficients become biased" }
+    - { id: e, text: "If a relevant variable that is correlated with an included regressor is left out, that regressor's coefficient is biased" }
+    - { id: f, text: "If the errors are autocorrelated (but still independent of the regressors), the coefficients remain unbiased but the usual standard errors are wrong" }
+  answer: [a, c, e, f]
+  explanation: |
+    Unbiasedness of OLS needs only $E[\varepsilon \mid X] = 0$. The other Gauss-Markov conditions
+    (constant variance, no correlation between errors) are about efficiency and standard errors, and
+    normality only about exact small-sample tests.
+
+    - **a, true.** Use heteroskedasticity-robust (White) standard errors, or weighted least squares.
+    - **b, false.** Normality is not needed for unbiasedness or for large-sample inference.
+    - **c, true.** Errors-in-variables: the slope is attenuated by
+      $\frac{\operatorname{Var}(x^*)}{\operatorname{Var}(x^*) + \operatorname{Var}(u)}$. The noise
+      in $x$ becomes correlated with the regression error, violating exogeneity.
+    - **d, false.** Collinearity inflates variances, not bias.
+    - **e, true.** Omitted-variable bias.
+    - **f, true.** Use Newey-West (HAC) standard errors. (With a lagged dependent variable as a
+      regressor, autocorrelated errors do cause bias, which is why the statement specifies
+      independence from the regressors.)
+
+    The usual mistakes are b and d (treating every violation as a source of bias) and missing c,
+    which matters whenever the regressor is itself an estimate, such as a noisy signal or a beta.
+  source: { name: "Standard regression assumptions (e.g. Greene, Econometric Analysis)" }
+
+- id: stat-regression-011
+  topic: statistics
+  subtopic: Linear regression
+  type: numeric
+  difficulty: medium
+  tags: [errors-in-variables, attenuation-bias]
+  prompt: |
+    The true relationship is $y = x^* + \varepsilon$ (slope 1), where $x^*$ has variance 1. You
+    cannot observe $x^*$; you observe $x = x^* + u$, where the measurement error $u$ has variance 0.25
+    and is independent of $x^*$ and $\varepsilon$. You regress $y$ on $x$ with an intercept. What
+    slope do you get in a very large sample?
+  answer: 4/5
+  answerText: |-
+    $\frac{1}{1 + 0.25} = 0.8$
+  hints:
+    - The slope is $\operatorname{Cov}(y, x)/\operatorname{Var}(x)$. Which of these does the measurement error change?
+    - The noise $u$ is independent of everything else. What does it add to $\operatorname{Var}(x)$, and to $\operatorname{Cov}(y, x)$?
+  followUps:
+    - What happens to the slope if instead $y$ is measured with error?
+    - How could you correct the slope if you had a second, independent noisy measurement of $x^*$?
+  explanation: |
+    The measurement error does not change the covariance but inflates the variance of the regressor:
+
+    $$\frac{\operatorname{Cov}(x^* + \varepsilon,\; x^* + u)}{\operatorname{Var}(x^* + u)} = \frac{1}{1 + 0.25} = 0.8.$$
+
+    The slope is biased towards zero by the reliability ratio
+    $\frac{\operatorname{Var}(x^*)}{\operatorname{Var}(x)}$, and more data do not help. Error in $y$, by
+    contrast, only adds noise. The common wrong answers are 1 (assuming the noise averages out) and
+    0.75 (subtracting the noise variance instead of dividing). In finance this is why betas estimated
+    in a first step and used as regressors in a second (Fama-MacBeth) understate the price of risk,
+    and why noisy signals look weaker than they are.
+  source: { name: "Errors-in-variables (standard; e.g. Greene, Econometric Analysis)" }
+
+- id: stat-regression-012
+  topic: statistics
+  subtopic: Linear regression
+  type: short
+  difficulty: hard
+  tags: [frisch-waugh-lovell, adding-a-regressor, standard-errors]
+  prompt: |
+    You add a regressor $x_2$ to the regression $y \sim x_1$ (both with an intercept). When is the
+    coefficient on $x_1$ unchanged? And can its standard error go up as well as down?
+  reference: |
+    By the Frisch-Waugh-Lovell theorem, the coefficient on $x_1$ in the long regression is the slope
+    of $y$ on the part of $x_1$ not explained by $x_2$. The two estimates are related by
+
+    $$\hat\beta_1^{\text{short}} = \hat\beta_1^{\text{long}} + \hat\beta_2^{\text{long}}\,\hat\delta,$$
+
+    where $\hat\delta$ is the slope from regressing $x_2$ on $x_1$. So the coefficient is unchanged
+    exactly when $\hat\delta = 0$ (the regressors are uncorrelated in the sample) or
+    $\hat\beta_2^{\text{long}} = 0$.
+
+    The standard error can move either way. For the coefficient on $x_1$,
+
+    $$\operatorname{Var}(\hat\beta_1) = \frac{\sigma^2}{n\operatorname{Var}(x_1)\left(1 - R_{12}^2\right)}.$$
+
+    Adding $x_2$ lowers the residual variance $\sigma^2$ if $x_2$ explains $y$, which helps, but if
+    $x_2$ is correlated with $x_1$ it raises the variance inflation factor $1/(1 - R_{12}^2)$, which
+    hurts. A useful control that is uncorrelated with $x_1$ only shrinks the standard error; a
+    redundant regressor correlated with $x_1$ only inflates it.
+  keyPoints:
+    - "The coefficient is unchanged when x2 is uncorrelated with x1 in the sample, or when x2's coefficient is zero"
+    - Gives the omitted-variable relation between the short and long coefficients, or the Frisch-Waugh-Lovell partialling-out argument
+    - The standard error can fall, because x2 explains part of y and reduces the residual variance
+    - The standard error can rise, because correlation with x1 inflates the variance (variance inflation factor)
+  hints:
+    - The long-regression coefficient on $x_1$ uses only the variation in $x_1$ that $x_2$ cannot explain.
+    - Relate the short and long coefficients through the regression of $x_2$ on $x_1$.
+    - The variance of $\hat\beta_1$ has a numerator and a denominator. Which does $x_2$ affect?
+  followUps:
+    - In a randomised experiment, why does adding pre-treatment controls not change the treatment estimate much but shrink its standard error?
+    - Can $\hat\beta_1$ change sign when you add $x_2$? Give an example.
+  explanation: |
+    The Frisch-Waugh-Lovell view is the one researchers use daily: "controlling for" a variable means
+    regressing on residuals. Many candidates say that adding a regressor always lowers standard errors
+    (confusing it with $R^2$, which never falls) or always raises them.
+  source: { name: "Frisch-Waugh-Lovell theorem (standard; e.g. Greene, Econometric Analysis)" }

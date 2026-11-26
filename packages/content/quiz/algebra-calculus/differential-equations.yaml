@@ -1,0 +1,139 @@
+# Differential equations: exponential decay and mean reversion, first-order linear equations, constant-coefficient equations.
+- id: lac-ode-001
+  topic: algebra-calculus
+  subtopic: Differential equations
+  type: short
+  difficulty: easy
+  tags: [mean-reversion, exponential-decay, half-life]
+  prompt: |
+    A spread's deviation from its long-run level follows $\dfrac{dx}{dt} = -\theta\,(x - \mu)$ with
+    $\theta > 0$ (the deterministic part of an Ornstein–Uhlenbeck model). Solve the equation, give the
+    half-life of a deviation, and explain how you would estimate $\theta$ from daily data.
+  reference: |
+    Put $u = x - \mu$: then $u' = -\theta u$, so $u(t) = u(0)e^{-\theta t}$ and
+
+    $$x(t) = \mu + \big(x(0) - \mu\big)e^{-\theta t}.$$
+
+    A deviation halves when $e^{-\theta T} = \tfrac12$, so the half-life is $T = \dfrac{\ln 2}{\theta}$;
+    with $\theta = 0.1$ per day, about 6.9 days.
+
+    To estimate $\theta$, sample at spacing $\Delta t$ (one day): the exact solution gives
+    $x_{t+1} - \mu = e^{-\theta\Delta t}(x_t - \mu) + \text{noise}$, an AR(1) model. Regress $x_{t+1}$ on
+    $x_t$ with an intercept: the slope $b$ estimates $e^{-\theta\Delta t}$, so
+    $\hat\theta = -\ln b/\Delta t$, the half-life is $-\ln 2/\ln b$ days, and $\hat\mu = a/(1 - b)$ from
+    the intercept $a$. (Regressing $\Delta x$ on $x_t$ is the same regression, with slope $b - 1$.)
+  keyPoints:
+    - Substitutes u = x − μ to reduce to u′ = −θu
+    - Solution x(t) = μ + (x(0) − μ)e^(−θt)
+    - Half-life ln 2 / θ
+    - Estimates θ from an AR(1) regression of x_(t+1) on x_t, with slope b = e^(−θΔt), so θ = −ln b / Δt
+  hints:
+    - 'Shift the variable so that $\mu$ disappears.'
+    - 'When is $e^{-\theta T}$ equal to $\tfrac12$?'
+    - What does the solution say about $x$ one day later, given $x$ today?
+  followUps:
+    - The AR(1) slope fitted to daily data is $0.95$. What is the half-life in days?
+    - Why is the estimated slope biased when the true slope is close to 1, and why does that matter for a pairs trade?
+    - 'What is the stationary variance of $dX = -\theta(X - \mu)\,dt + \sigma\,dW$?'
+  explanation: |
+    The ODE is one line; the value is in connecting it to data. On the follow-ups: a slope of 0.95
+    gives a half-life of $\ln 2/(-\ln 0.95) \approx 13.5$ days; least squares underestimates a slope
+    near 1 in short samples (Hurwicz bias), so the spread looks more mean-reverting than it is; and the
+    stationary variance of the OU process is $\sigma^2/(2\theta)$.
+  source: { name: "Mean-reversion half-life of an Ornstein–Uhlenbeck process (e.g. Chan, Algorithmic Trading)" }
+
+- id: lac-ode-002
+  topic: algebra-calculus
+  subtopic: Differential equations
+  type: numeric
+  difficulty: easy
+  tags: [first-order-linear, integrating-factor, initial-value-problem]
+  prompt: |
+    $y(x)$ solves $y' + \dfrac{y}{x} = \dfrac{1}{x^2}$ for $x > 0$, with $y(1) = 0$. What is $y(e)$? Give
+    your answer to three significant figures.
+  answer: 0.367879
+  answerText: |-
+    $1/e \approx 0.368$
+  explanation: |
+    The integrating factor is $e^{\int dx/x} = x$, and multiplying through by it makes the left side an
+    exact derivative:
+
+    $$x y' + y = (xy)' = \frac1x \quad\Longrightarrow\quad xy = \ln x + C.$$
+
+    $y(1) = 0$ gives $C = 0$, so $y = \dfrac{\ln x}{x}$ and $y(e) = \dfrac1e \approx 0.368$.
+
+    Common slips: forgetting the constant and then fitting it wrongly, or using the integrating factor
+    $\ln x$ (the integral of $1/x$) instead of $e^{\ln x} = x$.
+  source: { name: "Zhou, A Practical Guide to Quantitative Finance Interviews (calculus chapter)" }
+
+- id: lac-ode-003
+  topic: algebra-calculus
+  subtopic: Differential equations
+  type: numeric
+  difficulty: hard
+  tags: [modelling, separable-equation, snowplough]
+  prompt: |
+    Snow starts falling at some time before 8:00 and falls at a constant rate, so its depth grows in
+    proportion to the time since it started. At 8:00 a snowplough sets off along a road. It clears a
+    constant volume of snow per hour, so its speed is inversely proportional to the depth of the snow.
+    It covers 2 miles in the first hour and 1 further mile in the second hour. How many minutes before
+    8:00 did the snow start? Give your answer to three significant figures.
+  answer: 37.08204
+  answerText: |-
+    $30(\sqrt5 - 1) \approx 37.1$ minutes
+  unit: minutes
+  hints:
+    - Let $T$ be the time in hours from the start of the snow to 8:00. What is the depth at time $t$ after the snow starts?
+    - The plough's speed is $c/t$. Integrate it from $T$ to $T + 1$ and from $T$ to $T + 2$.
+    - Take the ratio of the two distances to eliminate $c$.
+  followUps:
+    - Generalise to distances $d_1$ in the first hour and $d_2$ in the second.
+    - What if the plough's speed were inversely proportional to the square of the depth?
+  explanation: |
+    Measure time $t$ in hours from the start of the snow, and let the plough start at $t = T$. The depth
+    is $kt$, so the speed is $c/t$ for some constant $c$, and the distance covered by time $T + s$ is
+
+    $$\int_T^{T+s} \frac{c}{t}\,dt = c\ln\frac{T + s}{T}.$$
+
+    The data say $c\ln\frac{T+1}{T} = 2$ and $c\ln\frac{T+2}{T} = 3$. Dividing,
+    $\ln\frac{T+2}{T} = \tfrac32\ln\frac{T+1}{T}$, so $\left(\frac{T+2}{T}\right)^2 = \left(\frac{T+1}{T}\right)^3$,
+    which simplifies to $T(T + 2)^2 = (T + 1)^3$, that is $T^2 + T - 1 = 0$. The positive root is
+
+    $$T = \frac{\sqrt5 - 1}{2} \approx 0.618 \text{ hours} \approx 37.1 \text{ minutes},$$
+
+    so the snow began at about 7:23.
+
+    Common wrong answers come from assuming the plough slows linearly in time (rather than like $1/t$),
+    or from measuring time from 8:00 instead of from the start of the snow, which makes the depth a
+    shifted, unknown function.
+  source: { name: "Snowplough problem (Kent State collection; Zhou, A Practical Guide to Quantitative Finance Interviews)", url: "https://www.math.kent.edu/~oana/math60070/InterviewProblems.pdf" }
+
+- id: lac-ode-004
+  topic: algebra-calculus
+  subtopic: Differential equations
+  type: single
+  difficulty: easy
+  tags: [second-order-linear, characteristic-equation, damped-oscillation]
+  prompt: |
+    How does every real solution of $y'' + y' + y = 0$ that is not identically zero behave as
+    $t \to \infty$?
+  choices:
+    - { id: a, text: 'It grows without bound' }
+    - { id: b, text: 'It tends to 0, changing sign infinitely often' }
+    - { id: c, text: 'It tends to 0 without oscillating' }
+    - { id: d, text: 'It oscillates with constant amplitude' }
+  answer: b
+  explanation: |
+    Try $y = e^{rt}$: the characteristic equation $r^2 + r + 1 = 0$ has roots
+    $r = -\tfrac12 \pm \tfrac{\sqrt3}{2}i$, so
+
+    $$y(t) = e^{-t/2}\left(A\cos\tfrac{\sqrt3}{2}t + B\sin\tfrac{\sqrt3}{2}t\right).$$
+
+    The real part $-\tfrac12$ makes it decay; the imaginary part makes it oscillate. This is an
+    underdamped oscillator: for $y'' + by' + cy = 0$ with $b, c > 0$, the solutions oscillate exactly when
+    $b^2 < 4c$.
+
+    - a is a sign error, as for $y'' - y' + y = 0$.
+    - c is the overdamped case, $b^2 > 4c$, which needs real roots; here the discriminant is $1 - 4 < 0$.
+    - d ignores the damping term, as for $y'' + y = 0$.
+  source: { name: "Zhou, A Practical Guide to Quantitative Finance Interviews (calculus chapter)" }

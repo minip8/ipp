@@ -1,0 +1,281 @@
+# Eigenvalues and eigenvectors: trace and determinant, structured matrices, powers, Markov matrices.
+- id: lac-eigen-001
+  topic: algebra-calculus
+  subtopic: Eigenvalues and eigenvectors
+  type: numeric
+  difficulty: easy
+  tags: [trace, determinant, characteristic-polynomial]
+  prompt: |
+    A real $2 \times 2$ matrix has trace 7 and determinant 10. What is its larger eigenvalue?
+  answer: 5
+  explanation: |
+    The eigenvalues of a $2 \times 2$ matrix are the roots of $\lambda^2 - (\operatorname{tr} A)\lambda + \det A$,
+    because their sum is the trace and their product is the determinant:
+
+    $$\lambda^2 - 7\lambda + 10 = (\lambda - 5)(\lambda - 2) = 0 \quad\Longrightarrow\quad \lambda \in \{5, 2\}.$$
+
+    No entries are needed: every $2 \times 2$ matrix with this trace and determinant, symmetric or not,
+    has eigenvalues 5 and 2. For larger matrices the trace and determinant are still the sum and the
+    product of the eigenvalues, but they no longer determine them.
+
+    The common slip is to answer 7, the trace, or to believe the question cannot be answered without
+    the matrix.
+  source: { name: "Standard result (e.g. Strang, Introduction to Linear Algebra)" }
+
+- id: lac-eigen-002
+  topic: algebra-calculus
+  subtopic: Eigenvalues and eigenvectors
+  type: numeric
+  difficulty: easy
+  tags: [rank-one, outer-product, eigenvalues]
+  prompt: |
+    Let $u = (1, 2, 3)^\top$ and $v = (4, -1, 2)^\top$. The $3 \times 3$ matrix $A = uv^\top$ has exactly
+    one non-zero eigenvalue. What is it?
+  answer: 8
+  explanation: |
+    Apply $A$ to $u$: $Au = u(v^\top u) = (v^\top u)\,u$, so $u$ is an eigenvector with eigenvalue
+
+    $$v^\top u = 4 - 2 + 6 = 8.$$
+
+    Every vector orthogonal to $v$ is sent to 0, which accounts for the other two eigenvalues. As a
+    check, the trace of $A$ is $\sum_i u_i v_i = 4 - 2 + 6 = 8$, the sum of the eigenvalues.
+
+    Common wrong answers are $\lVert u \rVert\,\lVert v \rVert = \sqrt{14}\sqrt{21} \approx 17.1$
+    (which is the largest *singular* value of $uv^\top$, not an eigenvalue) and grinding through a
+    cubic characteristic polynomial, which works but misses the one-line argument.
+  source: { name: "Common quant interview question on rank-one matrices (e.g. QuantVault linear algebra question bank)", url: "https://quantvault.org/linear-algebra-interview-questions.html" }
+
+- id: lac-eigen-003
+  topic: algebra-calculus
+  subtopic: Eigenvalues and eigenvectors
+  type: numeric
+  difficulty: medium
+  tags: [matrix-powers, diagonalisation, spectral-decomposition]
+  prompt: |
+    Let
+
+    $$A = \begin{pmatrix} 2 & 1 \\ 1 & 2 \end{pmatrix}.$$
+
+    What is the top-right entry of $A^{10}$?
+  answer: 29524
+  hints:
+    - Find the eigenvalues and eigenvectors of $A$. Is there anything special about the eigenvectors?
+    - Write $A$ as a combination of the projections onto its two eigenvectors.
+  followUps:
+    - What does $A^n / 3^n$ converge to, and why?
+    - How would you compute $A^{1000}$ modulo a prime on a computer without diagonalising?
+  explanation: |
+    $A$ has eigenvector $(1, 1)$ with eigenvalue 3 and eigenvector $(1, -1)$ with eigenvalue 1. With
+    $P$ and $Q$ the projections onto these directions,
+
+    $$A = 3P + Q, \qquad P = \tfrac12\begin{pmatrix} 1 & 1 \\ 1 & 1 \end{pmatrix}, \quad Q = \tfrac12\begin{pmatrix} 1 & -1 \\ -1 & 1 \end{pmatrix}.$$
+
+    Since $P^2 = P$, $Q^2 = Q$ and $PQ = QP = 0$, powers act on the eigenvalues only:
+    $A^n = 3^n P + Q$. The top-right entry is
+
+    $$\frac{3^{10} - 1}{2} = \frac{59049 - 1}{2} = 29524.$$
+
+    This is the point of diagonalisation: $A^n = S \Lambda^n S^{-1}$, so long-run behaviour is governed
+    by the largest eigenvalue. A common slip is to raise the entries to the tenth power
+    ($1^{10} = 1$), or to forget the $Q$ term and answer $3^{10}/2$.
+  source: { name: "Standard result (e.g. Strang, Introduction to Linear Algebra)" }
+
+- id: lac-eigen-004
+  topic: algebra-calculus
+  subtopic: Eigenvalues and eigenvectors
+  type: short
+  difficulty: medium
+  tags: [markov-chain, stochastic-matrix, stationary-distribution]
+  prompt: |
+    A two-state Markov chain has transition matrix (rows sum to 1)
+
+    $$P = \begin{pmatrix} 0.9 & 0.1 \\ 0.3 & 0.7 \end{pmatrix}.$$
+
+    What are the eigenvalues of $P$, and what does each tell you about the chain? For a general
+    transition matrix, why is 1 always an eigenvalue, and why can no eigenvalue exceed 1 in absolute
+    value?
+  reference: |
+    The trace is $1.6$ and the determinant $0.63 - 0.03 = 0.6$, so the eigenvalues are $1$ and $0.6$.
+
+    - **Eigenvalue 1.** Each row sums to 1, so $P\mathbf{1} = \mathbf{1}$. The corresponding *left*
+      eigenvector, $\pi P = \pi$, normalised to sum to 1, is the stationary distribution:
+      $\pi = (3/4, 1/4)$ here (balance $0.1\,\pi_1 = 0.3\,\pi_2$).
+    - **Eigenvalue 0.6.** It sets the speed of convergence: $P^n = \mathbf{1}\pi + 0.6^n\,R$ for a fixed
+      matrix $R$, so the distance from stationarity shrinks by a factor $0.6$ per step. For a two-state
+      chain with switching probabilities $p$ and $q$ the second eigenvalue is $1 - p - q$.
+
+    No eigenvalue exceeds 1 in modulus: if $Pv = \lambda v$, pick $i$ with $|v_i|$ largest; then
+    $|\lambda|\,|v_i| = |\sum_j P_{ij} v_j| \le \sum_j P_{ij} |v_j| \le |v_i|$. Equivalently, the
+    maximum row sum norm of $P$ is 1 and bounds every eigenvalue.
+  keyPoints:
+    - Eigenvalues are 1 and 0.6, from trace 1.6 and determinant 0.6
+    - Rows summing to 1 make the all-ones vector a right eigenvector with eigenvalue 1
+    - The left eigenvector for eigenvalue 1, normalised, is the stationary distribution, here (3/4, 1/4)
+    - The second eigenvalue governs convergence, deviations from stationarity shrinking like 0.6ⁿ
+    - Shows no eigenvalue exceeds 1 in modulus, via the largest component of an eigenvector or the row-sum norm
+  hints:
+    - 'For a $2 \times 2$ matrix, use the trace and the determinant.'
+    - What does $P$ do to the vector of all ones?
+    - Write $P^n$ using the eigendecomposition. Which term survives as $n$ grows?
+  followUps:
+    - When is $-1$ an eigenvalue of a transition matrix, and what does the chain do then?
+    - What does it mean for the chain if the eigenvalue 1 is repeated?
+    - Starting in state 1, roughly how many steps until the probability of being in state 1 is within 0.01 of its limit?
+  explanation: |
+    The trace-and-determinant shortcut gives the eigenvalues in seconds; the interviewer then wants
+    their meaning. Candidates often say "1 is the stationary distribution", confusing the eigenvalue
+    with its left eigenvector, or miss that the *second* eigenvalue, not the first, says how fast the
+    chain forgets where it started. On the last follow-up: the deviation is $\tfrac14 \cdot 0.6^n$,
+    which drops below 0.01 at $n = 7$.
+  source: { name: "Standard Markov chain result (e.g. Norris, Markov Chains)" }
+
+- id: lac-eigen-005
+  topic: algebra-calculus
+  subtopic: Eigenvalues and eigenvectors
+  type: single
+  difficulty: hard
+  tags: [rank-one-update, sherman-morrison, determinant-lemma]
+  prompt: |
+    $u$ and $v$ are non-zero vectors in $\mathbb{R}^n$, with $n \ge 2$. When is the matrix $I - uv^\top$
+    singular?
+  choices:
+    - { id: a, text: 'Exactly when $v^\top u = 1$' }
+    - { id: b, text: 'Exactly when $v^\top u = 0$' }
+    - { id: c, text: 'Exactly when $u$ and $v$ are parallel' }
+    - { id: d, text: 'Never: it differs from $I$ only by a rank-one matrix' }
+  answer: a
+  explanation: |
+    $uv^\top$ has eigenvalue $v^\top u$ with eigenvector $u$, and eigenvalue 0 on the $(n-1)$-dimensional
+    space of vectors orthogonal to $v$. So $I - uv^\top$ has eigenvalues $1 - v^\top u$ and $1$
+    (repeated $n - 1$ times), and
+
+    $$\det(I - uv^\top) = 1 - v^\top u,$$
+
+    which is zero exactly when $v^\top u = 1$; then $(I - uv^\top)u = u - u = 0$. Otherwise the inverse
+    is given by the Sherman–Morrison formula, $(I - uv^\top)^{-1} = I + \dfrac{uv^\top}{1 - v^\top u}$,
+    the identity used to update an inverse covariance matrix cheaply when one factor or observation is
+    added.
+
+    - b confuses the condition with orthogonality; when $v^\top u = 0$ the matrix is invertible with
+      inverse $I + uv^\top$.
+    - c: being parallel is neither necessary nor sufficient. The projection $I - uu^\top/(u^\top u)$ is
+      singular because $v = u/(u^\top u)$ gives $v^\top u = 1$, but $v = 2u/(u^\top u)$ is also
+      parallel and gives an invertible matrix.
+    - d: a rank-one change can move one eigenvalue anywhere, including to 0.
+  source: { name: "Matrix determinant lemma and Sherman–Morrison formula (e.g. Golub and Van Loan, Matrix Computations)" }
+
+- id: lac-eigen-006
+  topic: algebra-calculus
+  subtopic: Eigenvalues and eigenvectors
+  type: multiple
+  difficulty: easy
+  tags: [symmetric-matrices, spectral-theorem, eigenvalues]
+  prompt: |
+    $S$ is a real symmetric $n \times n$ matrix. Which statements are **always** true? Select all that
+    apply.
+  choices:
+    - { id: a, text: 'Every eigenvalue of $S$ is real.' }
+    - { id: b, text: 'Eigenvectors of $S$ belonging to different eigenvalues are orthogonal.' }
+    - { id: c, text: '$S = Q\Lambda Q^\top$ for some orthogonal $Q$ and real diagonal $\Lambda$.' }
+    - { id: d, text: '$S$ is invertible.' }
+    - { id: e, text: 'If every entry of $S$ is positive, every eigenvalue of $S$ is positive.' }
+    - { id: f, text: 'The eigenvalues of $S$ are its diagonal entries.' }
+  answer: [a, b, c]
+  explanation: |
+    a, b and c are the spectral theorem.
+
+    - **a, true.** If $Sx = \lambda x$ with $x$ complex, then $\bar{x}^\top S x = \lambda \lVert x \rVert^2$
+      and the left side equals its own conjugate, so $\lambda$ is real.
+    - **b, true.** $\lambda_1 x^\top y = (Sx)^\top y = x^\top S y = \lambda_2 x^\top y$, so
+      $x^\top y = 0$ when $\lambda_1 \ne \lambda_2$.
+    - **c, true.** A symmetric matrix always has an orthonormal basis of eigenvectors, even when
+      eigenvalues repeat.
+    - **d, false.** The zero matrix is symmetric. Symmetry says nothing about singularity.
+    - **e, false.** $\begin{pmatrix} 1 & 2 \\ 2 & 1 \end{pmatrix}$ has eigenvalues 3 and $-1$. Positive
+      entries are not positive definiteness; this is the most common mistake here, and the reason a
+      matrix of positive correlations can still be invalid.
+    - **f, false.** That holds for triangular (including diagonal) matrices; for the matrix above the
+      diagonal entries are both 1.
+  source: { name: "Spectral theorem (e.g. Strang, Introduction to Linear Algebra)" }
+
+- id: lac-eigen-007
+  topic: algebra-calculus
+  subtopic: Eigenvalues and eigenvectors
+  type: single
+  difficulty: medium
+  tags: [diagonalisation, jordan-block, complex-eigenvalues]
+  prompt: |
+    Consider the real matrices
+
+    $$A = \begin{pmatrix} 1 & 1 \\ 0 & 1 \end{pmatrix}, \quad B = \begin{pmatrix} 1 & 1 \\ 0 & 2 \end{pmatrix}, \quad C = \begin{pmatrix} 0 & -1 \\ 1 & 0 \end{pmatrix}, \quad D = \begin{pmatrix} 2 & 0 \\ 0 & 2 \end{pmatrix}.$$
+
+    Which of them **cannot** be diagonalised, even allowing complex eigenvalues and eigenvectors?
+  choices:
+    - { id: a, text: '$A$ only' }
+    - { id: b, text: '$A$ and $B$' }
+    - { id: c, text: '$A$ and $C$' }
+    - { id: d, text: '$A$ and $D$' }
+    - { id: e, text: 'None of them' }
+  answer: a
+  explanation: |
+    A matrix is diagonalisable when it has a full set of independent eigenvectors. Distinct eigenvalues
+    guarantee this; a repeated eigenvalue needs an eigenspace of full dimension.
+
+    - $A$: eigenvalue 1 twice, but $A - I = \begin{pmatrix} 0 & 1 \\ 0 & 0 \end{pmatrix}$ has rank 1, so
+      there is only one independent eigenvector, $(1, 0)$. $A$ is a Jordan block and is not diagonalisable.
+    - $B$: triangular with distinct eigenvalues 1 and 2, so diagonalisable. Choosing b treats
+      "upper triangular with an off-diagonal 1" as the problem, when the repeated eigenvalue is.
+    - $C$: rotation by $90°$, eigenvalues $\pm i$. They are distinct, so $C$ is diagonalisable over
+      $\mathbb{C}$, though not over $\mathbb{R}$. Choosing c confuses "no real eigenvalues" with
+      "not diagonalisable".
+    - $D = 2I$: a repeated eigenvalue with a two-dimensional eigenspace; it is already diagonal.
+      Choosing d assumes every repeated eigenvalue is a defect.
+  source: { name: "Standard result (e.g. Strang, Introduction to Linear Algebra)" }
+
+- id: lac-eigen-008
+  topic: algebra-calculus
+  subtopic: Eigenvalues and eigenvectors
+  type: short
+  difficulty: hard
+  tags: [ab-ba, gram-matrix, pca]
+  prompt: |
+    $A$ is $m \times n$ and $B$ is $n \times m$. Show that $AB$ and $BA$ have the same non-zero
+    eigenvalues. Why is this useful when computing the principal components of a matrix of daily
+    returns with 60 rows (days) and 2,000 columns (stocks)?
+  reference: |
+    Suppose $ABv = \lambda v$ with $v \ne 0$ and $\lambda \ne 0$. Put $w = Bv$. Then $w \ne 0$, since
+    otherwise $\lambda v = A(Bv) = 0$. And
+
+    $$BA\,w = B(ABv) = \lambda\,Bv = \lambda w,$$
+
+    so $\lambda$ is an eigenvalue of $BA$. The argument is symmetric, so the non-zero eigenvalues agree;
+    in fact $\lambda^n \det(\lambda I_m - AB) = \lambda^m \det(\lambda I_n - BA)$, so they agree with
+    multiplicities and the two spectra differ only in the number of zeros. The condition $\lambda \ne 0$
+    matters: for $m \ne n$ the larger product always has extra zero eigenvalues.
+
+    For centred returns $X$ ($60 \times 2000$), the covariance $X^\top X$ is $2000 \times 2000$ but has
+    rank at most 60 (59 after demeaning). Its non-zero eigenvalues are those of the $60 \times 60$
+    matrix $XX^\top$, which is far cheaper to decompose. If $XX^\top u = \lambda u$, then $X^\top u$ is an
+    eigenvector of $X^\top X$ with the same eigenvalue (normalise it by $\sqrt{\lambda}$). This is the
+    SVD of $X$ seen from its short side.
+  keyPoints:
+    - From ABv = λv with λ ≠ 0 shows Bv ≠ 0 and BA(Bv) = λ(Bv)
+    - Notes the argument needs λ ≠ 0, and that the number of zero eigenvalues can differ
+    - Optionally gives the characteristic polynomial relation, so multiplicities agree too
+    - Uses it to eigen-decompose the 60×60 matrix XXᵀ instead of the 2000×2000 matrix XᵀX
+    - Maps eigenvectors back with Xᵀu (normalised), or identifies this with the SVD of X
+  hints:
+    - 'Start from $ABv = \lambda v$ and look for an eigenvector of $BA$ built from $v$.'
+    - 'Why must you assume $\lambda \ne 0$?'
+    - 'How many non-zero eigenvalues can $X^\top X$ have when $X$ has 60 rows?'
+  followUps:
+    - 'Show directly that $\operatorname{tr}(AB) = \operatorname{tr}(BA)$. Is that implied by the result?'
+    - If $A$ and $B$ are both square, are $AB$ and $BA$ always similar?
+    - With 60 days and 2,000 stocks, how many principal components have non-zero sample variance?
+  explanation: |
+    The common gap is to forget why $Bv$ is non-zero, which is exactly where $\lambda \ne 0$ enters.
+    For square matrices $AB$ and $BA$ have the same characteristic polynomial but need not be similar:
+    with $A = \begin{pmatrix} 0 & 1 \\ 0 & 0 \end{pmatrix}$ and $B = \begin{pmatrix} 1 & 0 \\ 0 & 0 \end{pmatrix}$,
+    $AB = 0$ while $BA \ne 0$. The finance half is the "small side" trick used whenever there are many
+    more assets than observations.
+  source: { name: "Standard result (e.g. Horn and Johnson, Matrix Analysis)" }

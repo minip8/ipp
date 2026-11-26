@@ -46,7 +46,8 @@ describe('the authored roadmap', () => {
     // They are pointers a learner is glad of, not a second graph.
     const links = Object.values(roadmap).flatMap((nodes) => nodes.flatMap((n) => n.related));
     expect(links.length).toBeGreaterThan(0);
-    expect(links.length).toBeLessThanOrEqual(24);
+    // A few per topic on average; the cap grows with the number of topics.
+    expect(links.length).toBeLessThanOrEqual(3 * Object.keys(roadmap).length);
     for (const nodes of Object.values(roadmap))
       for (const n of nodes) expect(n.related.length, n.id).toBeLessThanOrEqual(3);
   });

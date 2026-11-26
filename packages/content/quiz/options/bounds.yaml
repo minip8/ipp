@@ -1,0 +1,234 @@
+# Static arbitrage bounds: bounds on call and put prices, monotonicity and convexity in strike, spotting an arbitrage in a set of quotes.
+- id: opt-bounds-001
+  topic: options
+  subtopic: Static arbitrage bounds
+  type: numeric
+  difficulty: easy
+  tags: [lower-bound, european-call, arbitrage]
+  prompt: |
+    A stock that pays no dividends trades at \$100. A zero-coupon bond paying \$1 in one year costs
+    \$0.95. What is the lowest price at which a one-year European call struck at \$90 can trade without
+    allowing an arbitrage?
+  answer: 29/2
+  answerText: |-
+    $100 - 90 \times 0.95 = 14.50$ dollars
+  unit: dollars
+  explanation: |
+    A call is worth at least the stock minus the present value of the strike:
+
+    $$C \ge S - K \cdot P(0, T) = 100 - 90 \times 0.95 = 14.50.$$
+
+    Compare the call with a forward-like position: long the share and borrowing \$85.50 (repaying
+    \$90 at expiry). That position pays $S_T - 90$, while the call pays $\max(S_T - 90, 0)$, which is
+    at least as much in every state. So the call cannot be cheaper. If it traded at, say, \$14, you
+    would buy it, short the share and lend \$85.50: you receive $100 - 14 - 85.50 = 0.50$ today, and
+    at expiry you hold the call and \$90 against the short share, which is worth at least zero.
+
+    The common wrong answer is \$10, the intrinsic value $S - K$. For a European call on a
+    non-dividend stock, $S - PV(K)$ is the tighter bound, which is also why such a call is never
+    exercised early.
+  source: { name: "Standard no-arbitrage bound (e.g. Hull, Options, Futures, and Other Derivatives)" }
+
+- id: opt-bounds-002
+  topic: options
+  subtopic: Static arbitrage bounds
+  type: multiple
+  difficulty: medium
+  tags: [arbitrage, convexity, monotonicity, quotes]
+  prompt: |
+    A stock that pays no dividends trades at \$100, and interest rates are zero. Each line below is a
+    set of quotes for European calls on the stock, all with the same expiry, at strikes 90, 100 and
+    110. Which sets admit an arbitrage? Select all that apply.
+  choices:
+    - { id: a, text: "C(90) = 11, C(100) = 5, C(110) = 1" }
+    - { id: b, text: "C(90) = 9, C(100) = 5, C(110) = 2" }
+    - { id: c, text: "C(90) = 11, C(100) = 7, C(110) = 1" }
+    - { id: d, text: "C(90) = 13, C(100) = 6, C(110) = 2" }
+    - { id: e, text: "C(90) = 12, C(100) = 7, C(110) = 7.50" }
+  answer: [b, c, e]
+  explanation: |
+    Check the conditions in turn: each call at least $S - K$ (rates are zero), prices falling in the
+    strike, by no more than the strike difference, and convex in the strike.
+
+    - **b:** $C(90) = 9 < 100 - 90 = 10$. Buy the call, short the share, keep \$1 after investing
+      \$90 of the proceeds. At expiry the call and the \$90 cover the short share.
+    - **c:** the slopes are $(11 - 7)/10 = 0.4$ then $(7 - 1)/10 = 0.6$, so prices are not convex.
+      Buy the butterfly (long 90, short two 100, long 110): you receive $-11 + 14 - 1 = 2$ today, and
+      its payoff is never negative.
+    - **e:** the 110 call costs more than the 100 call. Buy the 100 call and sell the 110 call: you
+      receive \$0.50 and the call spread you hold pays at least zero.
+    - **a** and **d** pass every test: the prices fall with the strike, by less than 10 at each step,
+      the drops shrink (6 then 4 in a; 7 then 4 in d), and each call is worth at least $S - K$ and
+      at most $S$.
+
+    The usual miss is c, where every price looks sensible on its own and only the butterfly shows the
+    problem. Choice d is sometimes flagged because the 90 call looks "expensive", but expensive is not
+    arbitrage.
+  source: { name: "Static arbitrage conditions on call prices (e.g. Carr and Madan, 2005; Hull, Options, Futures, and Other Derivatives)" }
+
+- id: opt-bounds-003
+  topic: options
+  subtopic: Static arbitrage bounds
+  type: single
+  difficulty: easy
+  tags: [upper-bound, european-put]
+  prompt: |
+    For a European put with strike $K$ and expiry $T$ on a stock that pays no dividends, with a constant
+    interest rate $r > 0$, which is the tightest upper bound on its price that holds in every
+    arbitrage-free market?
+  choices:
+    - { id: a, text: "$K$" }
+    - { id: b, text: "$K e^{-rT}$" }
+    - { id: c, text: "$S_0$" }
+    - { id: d, text: "$K e^{-rT} - S_0$" }
+  answer: b
+  explanation: |
+    The put pays $\max(K - S_T, 0) \le K$ at expiry, so today it is worth at most the present value of
+    $K$, $K e^{-rT}$. The bound is approached as the stock price goes to zero, so it cannot be
+    improved.
+
+    Choice a is a valid bound, and the right one for an American put, which can be exercised now for
+    up to $K$, but it is not tight for a European put. Choice c is the upper bound for a call, not a
+    put: a put on a stock near zero is worth almost $K e^{-rT}$, far more than $S_0$. Choice d is the
+    **lower** bound for a European put.
+  source: { name: "Standard no-arbitrage bound (e.g. Hull, Options, Futures, and Other Derivatives)" }
+
+- id: opt-bounds-004
+  topic: options
+  subtopic: Static arbitrage bounds
+  type: numeric
+  difficulty: medium
+  tags: [convexity, butterfly, upper-bound]
+  prompt: |
+    European calls on a stock with the same expiry trade at \$12 for strike 90 and \$4 for strike 110.
+    What is the highest price at which the 100-strike call with that expiry can trade without allowing
+    an arbitrage?
+  answer: 8
+  unit: dollars
+  hints:
+    - Which combination of the three calls has a payoff that is never negative?
+    - The 100 strike is exactly halfway between the other two.
+  followUps:
+    - What is the lowest price the 100 call can have, if interest rates are zero?
+    - What does convexity in strike say about the risk-neutral distribution of the stock?
+  explanation: |
+    Call prices must be convex in the strike, so the 100 call cannot be above the straight line
+    between the other two:
+
+    $$C(100) \le \tfrac12 C(90) + \tfrac12 C(110) = \tfrac12 (12 + 4) = 8.$$
+
+    The trade if it is above 8: sell two 100 calls and buy one 90 and one 110 call (buy the butterfly).
+    You receive $2\,C(100) - 16 > 0$ today, and the butterfly pays $\ge 0$ at expiry whatever happens.
+
+    The usual wrong answers are 12 (only using that calls fall with the strike) and 4 (reversing
+    the inequality).
+  source: { name: "Convexity of call prices in strike (e.g. Hull, Options, Futures, and Other Derivatives)" }
+
+- id: opt-bounds-005
+  topic: options
+  subtopic: Static arbitrage bounds
+  type: short
+  difficulty: medium
+  tags: [convexity, butterfly, risk-neutral-density]
+  prompt: |
+    Why must European call prices (same underlying, same expiry) be a convex function of the strike?
+    If the 95, 100 and 105 calls violate convexity, what trade do you do, and what does it pay?
+  reference: |
+    A butterfly, long one call at $K - h$, short two at $K$, long one at $K + h$, pays a tent: zero
+    outside $(K - h, K + h)$ and rising to $h$ at $S_T = K$. Its payoff is never negative, so its price
+    must be non-negative:
+
+    $$C(K - h) - 2\,C(K) + C(K + h) \ge 0,$$
+
+    which is convexity on equally spaced strikes (unequally spaced ones work with weights).
+
+    If the quotes violate it, buy the butterfly: long the 95 and 105 calls and short two 100 calls. You
+    receive cash today because the butterfly's price is negative, and at expiry you receive the tent
+    payoff, which is at least zero. Riskless profit.
+
+    Deeper reason: the butterfly price divided by $h^2$ approximates the discounted risk-neutral
+    density at $K$ (Breeden-Litzenberger, $\partial^2 C / \partial K^2 = e^{-rT} q(K)$), and a
+    density cannot be negative.
+  keyPoints:
+    - The butterfly (long the outer strikes, short two of the middle strike) has a payoff that is never negative
+    - So its price is non-negative, which is the convexity condition on the three calls
+    - If convexity fails, buy the butterfly, receiving cash today, with a non-negative payoff at expiry
+    - Links the second derivative in strike to the risk-neutral density (Breeden-Litzenberger)
+  hints:
+    - Find a combination of the three calls whose payoff is never negative.
+    - Sketch the payoff of long 95, short two 100, long 105.
+    - What would $\partial^2 C/\partial K^2$ represent, if you could take it?
+  followUps:
+    - What other conditions must a strip of call prices satisfy to be arbitrage-free?
+    - How would you check a whole implied-volatility smile for butterfly arbitrage?
+  explanation: |
+    Candidates often say "because the payoff is convex", which is true but not the argument: convexity
+    of the payoff in $S$ is a different statement. The argument is the butterfly's non-negative
+    payoff. The link to the risk-neutral density is what a research interviewer usually asks next.
+  source: { name: "Breeden and Litzenberger (1978); standard static-arbitrage condition" }
+
+- id: opt-bounds-006
+  topic: options
+  subtopic: Static arbitrage bounds
+  type: numeric
+  difficulty: hard
+  tags: [digital-option, call-spread, bounds]
+  prompt: |
+    Interest rates are zero. European calls on a stock with the same expiry trade at \$7.60 for strike
+    95, \$4.80 for strike 100 and \$2.70 for strike 105. A digital option with that expiry pays \$1 if
+    the stock finishes **above** \$100 and nothing otherwise. Using only these quotes, what is the
+    tightest upper bound on the digital's no-arbitrage price?
+  answer: 14/25
+  answerText: |-
+    $(7.60 - 4.80)/5 = 0.56$ dollars
+  unit: dollars
+  hints:
+    - Compare the digital's payoff with the payoff of a call spread. Which call spread lies above it everywhere?
+    - Scale the spread so that it pays exactly \$1 once the stock is well above the strike.
+  followUps:
+    - What is the corresponding lower bound?
+    - As the strikes get closer together, what does the bound converge to, and why does a trader still hedge a digital with a call spread?
+  explanation: |
+    A call spread long one 95 call and short one 100 call, scaled by $\tfrac15$, pays $\tfrac15 \min\big(\max(S_T - 95, 0), 5\big)$:
+    zero below 95, rising to 1 at 100, and 1 above. The digital pays 0 up to 100 and 1 above. So the
+    spread pays at least as much as the digital in every state, and
+
+    $$D \le \frac{C(95) - C(100)}{5} = \frac{2.80}{5} = 0.56.$$
+
+    The same argument with the 100/105 spread, which pays no more than the digital, gives the lower
+    bound $D \ge (4.80 - 2.70)/5 = 0.42$.
+
+    The bound 0.56 is tight: a stock distribution consistent with all three call prices can put no
+    probability between 95 and 100, and then the digital is worth (in the limit) exactly 0.56. The common
+    wrong answers are 0.42 (the lower bound) and 0.49 or 0.5 (a guess at the midpoint).
+  source: { name: "Digital options as limits of call spreads (standard static-replication argument)" }
+
+- id: opt-bounds-007
+  topic: options
+  subtopic: Static arbitrage bounds
+  type: single
+  difficulty: medium
+  tags: [infinite-maturity, upper-bound, lower-bound]
+  prompt: |
+    A stock pays no dividends, and the interest rate is constant and positive. What is a European call
+    with strike $K$ worth as its time to expiry goes to infinity?
+  choices:
+    - { id: a, text: "The stock price $S_0$" }
+    - { id: b, text: "$S_0 - K$, its intrinsic value" }
+    - { id: c, text: "Zero" }
+    - { id: d, text: "It depends on the volatility of the stock" }
+  answer: a
+  explanation: |
+    Squeeze it between two model-free bounds:
+
+    $$S_0 - K e^{-rT} \le C \le S_0.$$
+
+    The upper bound holds because the call pays at most the share. As $T \to \infty$, $K e^{-rT} \to 0$,
+    so the lower bound rises to $S_0$ and the call's value tends to $S_0$, in any arbitrage-free model.
+
+    Intuitively, paying $K$ at a date infinitely far away costs nothing today, so the call is as good
+    as the share. Choice b is the intrinsic value, which ignores the time value of the strike. Choice d
+    is the instinct that "more time means more volatility value"; here the bounds pin the answer
+    without any model (and in Black-Scholes the price tends to $S_0$ for every volatility, even with
+    $r = 0$).
+  source: { name: "Widely asked interview question (e.g. QuantVault options question list)", url: "https://quantvault.org/options-pricing-interview-questions.html" }

@@ -17,6 +17,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Json } from '@ipp/contracts';
 import {
+  CONTENT_ROOT,
   EXTENSIONS,
   judgedReferenceSolutions,
   listProblemSlugs,
@@ -130,6 +131,19 @@ if (!only.length) {
     }
   } catch (e) {
     bad(`quiz: ${(e as Error).message}`);
+  }
+  // Every numeric answer of the quant topics, recomputed (scripts/quant_checks).
+  try {
+    const out = execFileSync('python3', ['scripts/verify-quant-quiz.py'], {
+      cwd: CONTENT_ROOT,
+      stdio: 'pipe',
+    });
+    process.stdout.write(out);
+  } catch (e) {
+    const err = e as { stdout?: Buffer; stderr?: Buffer; message: string };
+    bad(
+      `quant answers: ${err.stdout?.toString() ?? ''}${err.stderr?.toString() ?? ''}${err.stdout ? '' : err.message}`,
+    );
   }
 }
 

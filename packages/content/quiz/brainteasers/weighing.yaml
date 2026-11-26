@@ -1,0 +1,288 @@
+# Weighing and measuring: counterfeit coins, scales, poisoned bottles, jugs, fuses and hourglasses.
+- id: bt-weighing-001
+  topic: brainteasers
+  subtopic: Weighing and measuring
+  type: short
+  difficulty: hard
+  tags: [counterfeit-coin, balance, information]
+  prompt: |
+    You have 12 coins that look identical. Eleven weigh the same; one is counterfeit and is either
+    heavier or lighter than the others, you do not know which. You have a two-pan balance and no
+    weights. Each weighing tells you only whether the left pan is heavier, the right pan is heavier,
+    or they balance.
+
+    Show how to find the counterfeit coin **and** say whether it is heavier or lighter, using three
+    weighings. Then explain why no method can always do it in two.
+  reference: |
+    Number the coins 1 to 12. **First weighing:** 1, 2, 3, 4 against 5, 6, 7, 8.
+
+    **If it balances,** the fake is among 9 to 12 and coins 1 to 8 are genuine. Weigh 9, 10, 11
+    against 1, 2, 3. If that balances, the fake is 12: weigh it against coin 1 to see whether it is
+    heavy or light. If 9, 10, 11 are heavier, the fake is one of them and is heavy: weigh 9 against
+    10; the heavier one is fake, and if they balance it is 11. (Lighter: the same with "lighter".)
+
+    **If 1 to 4 are heavier** (the other case is symmetric), either one of 1 to 4 is heavy or one of
+    5 to 8 is light: 8 possibilities, and 9 to 12 are genuine. Weigh 1, 2, 5 against 3, 6, 9.
+    - Left heavier: 1 or 2 is heavy, or 6 is light. Weigh 1 against 2: the heavier is the fake; if
+      they balance, 6 is light.
+    - Right heavier: 3 is heavy or 5 is light. Weigh 3 against 9: if 3 is heavier it is the fake,
+      otherwise 5 is light.
+    - Balance: 4 is heavy, or 7 or 8 is light. Weigh 7 against 8: the lighter is the fake; if they
+      balance, 4 is heavy.
+
+    **Two weighings are not enough:** there are $12 \times 2 = 24$ possible answers (which coin,
+    heavy or light), and two weighings have only $3^2 = 9$ possible outcomes, so two different
+    answers would give the same results.
+  keyPoints:
+    - "Counts the possibilities: 24 (12 coins, heavy or light) against 3 outcomes per weighing"
+    - Starts with four coins against four, splitting the cases into three groups of eight
+    - After an unbalanced first weighing, moves coins between pans and brings in known-genuine coins so each outcome leaves at most three cases
+    - Gives a complete third weighing for every branch, including telling heavy from light
+    - Argues two weighings cannot work because 9 outcomes cannot separate 24 cases
+  hints:
+    - How many different answers are possible, and how many outcomes do three weighings have?
+    - Each weighing should split the remaining possibilities as evenly as possible into three groups. What first weighing does that?
+    - After 1, 2, 3, 4 outweigh 5, 6, 7, 8, mix them up in the second weighing and use a coin you now know is genuine.
+  followUps:
+    - With 13 coins and three weighings, what can you still do, and what not?
+    - With four weighings, what is the largest number of coins you can handle in the same way?
+    - What changes if you are also given one extra coin known to be genuine?
+  explanation: |
+    The counting bound drives everything: every weighing has three outcomes, so it can at best
+    divide the remaining possibilities by three. With 24 possibilities, three weighings (27
+    outcomes) leave almost no slack, and the first weighing must leave at most 9 possibilities in
+    every branch. Four against four leaves 8 in each; five against five would leave 10 if it is
+    unbalanced, too many.
+
+    The step candidates usually miss is in the unbalanced branch: you must move some coins to the
+    other pan and replace some with known-good ones, so that each of the three outcomes means
+    something different. Weighing only the suspect coins from the heavy side again, which feels
+    natural, wastes the information about the light side.
+
+    Saying "three, by a ternary search" is not enough: a procedure that finds the coin but cannot
+    say whether it is heavy or light (for example when the fake turns out to be coin 12 and is never
+    compared) does not answer the question.
+  source: { name: "Twelve-coin problem (classic; e.g. Winkler, Mathematical Puzzles; techinterview.org)", url: "https://www.techinterview.org/post/3233476822/quant-interview-logic-puzzles/" }
+
+- id: bt-weighing-002
+  topic: brainteasers
+  subtopic: Weighing and measuring
+  type: numeric
+  difficulty: medium
+  tags: [counterfeit-coin, digital-scale, one-weighing]
+  prompt: |
+    There are 10 bags of coins, each holding 20 coins. Nine of the bags hold only genuine 10-gram
+    coins; one bag holds only counterfeit 11-gram coins. You have a digital scale that shows the exact
+    weight of whatever is on it, and you may use it **once**, placing any coins you like from any
+    bags. What is the smallest total number of coins you can put on the scale and still be sure which
+    bag is the counterfeit one?
+  answer: 45
+  unit: coins
+  hints:
+    - Take a different number of coins from each bag. How does the reading tell you the bag?
+    - Does every bag need to contribute a coin?
+  followUps:
+    - Now the counterfeit coins weigh either 9 or 11 grams (the same for the whole bag, you don't know which). Does the same sample still work?
+    - What if two of the bags might be counterfeit?
+  explanation: |
+    If you take $c_i$ coins from bag $i$, $N$ coins in total, the scale reads $10N + c_j$ grams when
+    bag $j$ is the counterfeit one. So the bag can be read off exactly when the $c_i$ are all
+    different. One bag may contribute nothing: if the reading is exactly $10N$, that bag is the fake.
+
+    Ten different non-negative whole numbers add up to at least $0 + 1 + \cdots + 9 = 45$, and taking
+    0, 1, ..., 9 coins from the ten bags achieves it.
+
+    The common answer is 55 (taking 1, 2, ..., 10), which works but is not the minimum: it misses
+    that the last bag can be identified by contributing nothing.
+  source: { name: "Classic counterfeit-bag puzzle (e.g. Zhou, A Practical Guide to Quantitative Finance Interviews)" }
+
+- id: bt-weighing-003
+  topic: brainteasers
+  subtopic: Weighing and measuring
+  type: numeric
+  difficulty: hard
+  tags: [counterfeit-coin, digital-scale, balanced-ternary]
+  prompt: |
+    There are 5 bags with 100 coins in each. Within a bag all coins weigh the same, but each bag's
+    coins weigh 9, 10 or 11 grams, and any combination across the five bags is possible. You have a
+    digital scale showing the exact weight, which you may use **once**, putting any coins from any
+    bags on it.
+
+    What is the smallest total number of coins you can put on the scale and still determine the coin
+    weight of every bag?
+  answer: 121
+  unit: coins
+  hints:
+    - How many combinations of bag weights are possible? How many different readings can the scale give with $T$ coins on it?
+    - Measure each coin's weight relative to 10 grams, so each bag contributes $-c$, $0$ or $+c$ grams of deviation.
+    - Which counts $c_1, \ldots, c_5$ make every combination of $\pm c_i$ and $0$ give a different total?
+  followUps:
+    - With $n$ bags, what is the minimum?
+    - What if the coin weights per bag can only be 10 or 11 grams?
+  explanation: |
+    Write each bag's coins as $10 + e_i$ grams with $e_i \in \{-1, 0, 1\}$. With $c_i$ coins from bag
+    $i$ and $T = \sum c_i$ in total, the scale reads $10T + \sum c_i e_i$.
+
+    **Lower bound.** There are $3^5 = 243$ combinations, and the deviation $\sum c_i e_i$ lies
+    between $-T$ and $T$, so it takes at most $2T + 1$ values. Telling all combinations apart needs
+    $2T + 1 \ge 243$, so $T \ge 121$.
+
+    **It is achievable.** Take 1, 3, 9, 27, 81 coins. Every whole number from $-121$ to $121$ has
+    exactly one representation $\sum 3^{i} e_i$ with digits $e_i \in \{-1, 0, 1\}$ (balanced
+    ternary), so the reading decodes uniquely. The total is $1 + 3 + 9 + 27 + 81 = 121$, and 81 is
+    within the 100 coins in a bag.
+
+    Common wrong answers: 31 from 1, 2, 4, 8, 16 (binary works for two possible weights, not three),
+    and 341 from 1, 4, 16, 64, 256 (base 4 is unique but wasteful, and needs more coins than a bag
+    holds).
+  source: { name: "Counterfeit coins II (Zhou, A Practical Guide to Quantitative Finance Interviews)" }
+
+- id: bt-weighing-004
+  topic: brainteasers
+  subtopic: Weighing and measuring
+  type: numeric
+  difficulty: medium
+  tags: [poisoned-wine, information, base-3]
+  prompt: |
+    One of 1,000 bottles of wine is poisoned. Anyone who drinks even a drop of the poisoned wine dies
+    within 24 hours, and you only see who has died at the end of each 24-hour period; the poison has
+    no other effect. You have 48 hours, so you can run **two** rounds of tasting, and you see the
+    results of the first round before choosing the second. A taster may drink from any number of
+    bottles in a round, and a taster who survives the first round can drink in the second.
+
+    What is the smallest number of tasters that guarantees you identify the poisoned bottle by the
+    end of the 48 hours?
+  answer: 7
+  unit: tasters
+  hints:
+    - With a single round, each taster tells you one bit (dies or lives), so 10 tasters handle 1,000 bottles. What can a taster tell you over two rounds?
+    - Count the different fates a single taster can have.
+    - Label the bottles in base 3.
+  followUps:
+    - With $r$ rounds, how many bottles can $k$ tasters handle?
+    - Does your second round actually depend on the first round's results?
+  explanation: |
+    Over two rounds a taster has three possible fates: dies after round 1, dies after round 2, or
+    survives. With $k$ tasters there are at most $3^k$ distinguishable outcomes, so you need
+    $3^k \ge 1000$. Since $3^6 = 729 < 1000 \le 2187 = 3^7$, at least 7 tasters are needed.
+
+    Seven suffice. Write each bottle number in base 3 with 7 digits. Taster $i$ drinks, in round 1,
+    from every bottle whose $i$-th digit is 0, and in round 2 (if alive) from every bottle whose
+    $i$-th digit is 1. The fates of the seven tasters spell out the poisoned bottle's digits. (A
+    taster who died in round 1 has digit 0, so the bottles they would have tasted in round 2 are
+    already cleared.)
+
+    The common wrong answer is 10, the one-round answer, which ignores that a second round turns each
+    taster into a three-way signal.
+  source: { name: "Poisoned wine puzzle (widely asked; e.g. tradinginterview.com, techinterview.org)", url: "https://www.tradinginterview.com/trading-brain-teasers/" }
+
+- id: bt-weighing-005
+  topic: brainteasers
+  subtopic: Weighing and measuring
+  type: numeric
+  difficulty: easy
+  tags: [water-jugs, search]
+  prompt: |
+    You have an unmarked 3-litre jug and an unmarked 5-litre jug, both empty, and a tap. One step is
+    one of: fill a jug completely from the tap; empty a jug completely; or pour from one jug into the
+    other until the first is empty or the second is full. What is the fewest number of steps needed to
+    have exactly 4 litres in the 5-litre jug?
+  answer: 6
+  unit: steps
+  followUps:
+    - Which amounts can you measure with jugs of $a$ and $b$ litres?
+    - Why is filling the larger jug first faster here than filling the smaller one first?
+  explanation: |
+    Fill the 5-litre jug and use the 3-litre jug to take water out of it:
+
+    1. Fill the 5: (3-litre, 5-litre) = (0, 5).
+    2. Pour the 5 into the 3: (3, 2).
+    3. Empty the 3: (0, 2).
+    4. Pour the 5 into the 3: (2, 0).
+    5. Fill the 5: (2, 5).
+    6. Pour the 5 into the 3 until it is full, which takes 1 litre: (3, 4).
+
+    The other natural route, filling the 3-litre jug repeatedly and pouring it into the 5, also works
+    but takes 8 steps. A breadth-first search over the 24 possible states confirms that 6 is the
+    minimum. Every whole number of litres from 0 to 5 can be left in the 5-litre jug, because 3 and 5
+    have no common factor ($4 = 2 \times 5 - 2 \times 3$ is the route above).
+  source: { name: "Water jug puzzle (classic; e.g. Poundstone, How Would You Move Mount Fuji?)" }
+
+- id: bt-weighing-006
+  topic: brainteasers
+  subtopic: Weighing and measuring
+  type: short
+  difficulty: easy
+  tags: [burning-ropes, timing]
+  prompt: |
+    You have two ropes and a lighter. Each rope takes exactly 60 minutes to burn completely when lit
+    at one end, but it burns unevenly: half of a rope does not necessarily take 30 minutes. How do you
+    measure exactly 45 minutes?
+  reference: |
+    At the same moment, light rope A at **both** ends and rope B at **one** end.
+
+    Rope A burns out after exactly 30 minutes: the two flames together consume it twice as fast as
+    one flame, wherever along the rope they happen to meet. At that moment, rope B has 30 minutes'
+    worth of burning left (not necessarily half its length). Light B's other end: it now burns out in
+    15 more minutes. When it does, 45 minutes have passed.
+  keyPoints:
+    - Lighting a rope at both ends makes it burn out in exactly half its time, however uneven it is
+    - Light rope A at both ends and rope B at one end at the same time
+    - When A is gone (30 minutes), light the other end of B
+    - B then burns out after 15 more minutes, at 45 minutes in total
+  hints:
+    - You cannot cut a rope in half to get 30 minutes. Why not?
+    - What happens if you light a rope at both ends?
+    - You may light more than one end at the same moment.
+  followUps:
+    - With these two ropes, which durations can you measure?
+    - With one rope only, can you measure 15 minutes?
+  explanation: |
+    The fact to notice is that two flames on one rope always finish in half the rope's burning time:
+    if they meet after $t$ minutes, the two burnt parts would each have taken $t$ minutes with one
+    flame, and together they make the whole rope, so $2t = 60$. The unevenness never matters because
+    the argument is about time, not length.
+
+    The common wrong idea is to fold or cut a rope at its midpoint, which assumes it burns evenly.
+  source: { name: "Burning ropes (classic; e.g. Zhou, A Practical Guide to Quantitative Finance Interviews; techinterview.org)", url: "https://www.techinterview.org/post/3233476822/quant-interview-logic-puzzles/" }
+
+- id: bt-weighing-007
+  topic: brainteasers
+  subtopic: Weighing and measuring
+  type: short
+  difficulty: medium
+  tags: [hourglasses, timing]
+  prompt: |
+    You have a 4-minute hourglass and a 7-minute hourglass. You can turn either one over at any
+    moment you like, but you can only judge time by watching them run out. How do you measure exactly
+    9 minutes, starting the moment you first turn the hourglasses?
+  reference: |
+    - Minute 0: start both hourglasses.
+    - Minute 4: the 4-minute glass runs out. Turn it over. (The 7-minute glass has 3 minutes left.)
+    - Minute 7: the 7-minute glass runs out. The 4-minute glass has been running 3 minutes and has 1
+      minute left. Turn the 7-minute glass over.
+    - Minute 8: the 4-minute glass runs out. The 7-minute glass has run for 1 minute since it was
+      turned, so turn it over again: it now holds exactly 1 minute of sand on top.
+    - Minute 9: the 7-minute glass runs out. 9 minutes have passed.
+  keyPoints:
+    - Starts both hourglasses together
+    - Turns the 4-minute glass when it runs out at minute 4
+    - Turns the 7-minute glass when it runs out at minute 7
+    - At minute 8, when the 4-minute glass runs out, turns the 7-minute glass back, leaving 1 minute of sand
+    - The 7-minute glass then runs out at minute 9
+  hints:
+    - The only moments you can act on are when a glass runs out.
+    - At minute 7, how much sand is left in the 4-minute glass?
+    - Turning a partly run glass gives you back exactly the time it has already run.
+  followUps:
+    - Can you measure 9 minutes if you are allowed to start timing at any event, not only at minute 0? Is there a different route?
+    - Which whole numbers of minutes can you measure with these two glasses?
+  explanation: |
+    Hourglass puzzles are searches over a small state space: at each event (a glass running out) you
+    decide which glasses to turn. The key tool is the "turn-back" move: a glass that has run for $t$
+    minutes since it was last turned, turned again, measures exactly $t$ more minutes. Here the 7-minute
+    glass runs for 1 minute (from 7 to 8), and turning it back at 8 buys that minute again.
+
+    A common wrong answer starts the clock late (for example "wait until minute 7, then measure 2
+    more"), which does not measure 9 minutes from the start, or assumes a glass can be read halfway.
+  source: { name: "Hourglass puzzle (classic; e.g. Winkler, Mathematical Puzzles)" }
