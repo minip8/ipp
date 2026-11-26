@@ -18,6 +18,7 @@ import {
   type Message,
   MessageIntent,
   problemScaffold,
+  QuantSecondOpinion,
   type QuizQuestion,
   REPORT_DIMENSIONS,
   ReportAssessment,
@@ -42,7 +43,14 @@ import {
   systemBlocks,
 } from './prompts';
 import { createModelClient, defaultModelFor } from './providers';
+import { QuantAssessmentSchema, toQuantAssessment } from './quant/assessment';
+import { parseModelJson, repairLatexEscapes } from './quant/latex';
 import { createQuantRuntime, type QuantMirror, type QuantTraceEvent } from './quant/round';
+import {
+  quantRoomAssessmentMessages,
+  quantRoomReviewMessages,
+  quantRoomSystem,
+} from './quant-room-prompts';
 import { reviewMessages, roomAssessmentMessages, roomSystem } from './room-prompts';
 import type {
   AiScope,
@@ -52,6 +60,7 @@ import type {
   InterviewerConfig,
   InterviewerDeps,
   ModelUsage,
+  QuantReviewResult,
   ResolvedKey,
   ReviewResult,
   ShortAnswerGrade,
@@ -103,6 +112,18 @@ export const ReviewSchema = z.object({
   issues: z.array(z.string()),
   complexity: z.string(),
   follow_ups: z.array(z.string()),
+  answer: z.string(),
+});
+
+/** A quant room's second opinion on one question (`QuantSecondOpinion`). */
+export const QuantRoomReviewSchema = z.object({
+  verdict: QuantSecondOpinion.shape.verdict,
+  summary: z.string(),
+  covered: z.array(z.string()),
+  missing: z.array(z.string()),
+  follow_ups: z.array(z.string()),
+  /** 0..1, or -1 when there is nothing to score yet. */
+  suggested_score: z.number(),
   answer: z.string(),
 });
 
@@ -1127,6 +1148,103 @@ export function createInterviewer(
     }
   }
 
+  // ------------------------------------------------------------ quant rooms (the host interviews)
+
+  async function reviewQuantRoom(
+    padId: string,
+    opts: { index: number; question?: string },
+  ): Promise<QuantReviewResult> {
+    try {
+      if (!deps.loadQuantRoomContext) return { ok: false, reason: 'failed' };
+      const key = await deps.resolveKey({ padId });
+      if (!key.ok) return { ok: false, reason: 'no_key' };
+      const budget = await deps.checkBudget(padId);
+      if (!budget.ok) return { ok: false, reason: 'budget', message: budget.reason };
+      const ctx = await deps.loadQuantRoomContext(padId);
+      const q = ctx?.questions.find((x) => x.index === opts.index);
+      if (!ctx || !q) return { ok: false, reason: 'failed' };
+      const res = await callModel(
+        { padId },
+        key,
+        {
+          purpose: 'review',
+          system: quantRoomSystem([q], Date.parse(ctx.pad.startedAt)),
+          messages: quantRoomReviewMessages(ctx, q, opts.question),
+          ...CALLS.review,
+          schema: QuantRoomReviewSchema,
+        },
+        effectiveModel(ctx.pad.interviewer.model, key.provider, defaultModel(key.provider)).id,
+      );
+      if (res.refused) return { ok: false, reason: 'failed' };
+      const out = QuantRoomReviewSchema.parse(parseModelJson(res.text));
+      const text = (s: string) => repairLatexEscapes(s).trim();
+      const list = (xs: string[], max: number) => xs.map(text).filter(Boolean).slice(0, max);
+      const score = out.suggested_score;
+      const review = QuantSecondOpinion.parse({
+        index: q.index,
+        verdict: out.verdict,
+        summary: text(out.summary),
+        covered: list(out.covered, 8),
+        missing: list(out.missing, 6),
+        followUps: list(out.follow_ups, 3),
+        suggestedScore:
+          Number.isFinite(score) && score >= 0 ? Math.round(Math.min(1, score) * 100) / 100 : null,
+        answer: opts.question ? text(out.answer) || null : null,
+        model: res.model,
+        createdAt: deps.now().toISOString(),
+      });
+      return { ok: true, review };
+    } catch (err) {
+      const e = err instanceof ModelError ? err : null;
+      deps.log.warn(
+        { padId, err: err instanceof Error ? err.message : String(err) },
+        'quant room review failed',
+      );
+      if (e?.keyFailure && e.keyFailure !== 'rate_limited') return { ok: false, reason: 'no_key' };
+      return { ok: false, reason: 'failed' };
+    }
+  }
+
+  async function generateQuantRoomAssessment(padId: string): Promise<ReportAssessment | null> {
+    try {
+      if (!deps.loadQuantRoomContext) return null;
+      const key = await deps.resolveKey({ padId });
+      if (!key.ok) {
+        deps.log.info({ padId, key: key.state }, 'quant room assessment skipped: no usable key');
+        return null;
+      }
+      const budget = await deps.checkBudget(padId);
+      if (!budget.ok) {
+        deps.log.info({ padId, reason: budget.reason }, 'quant room assessment skipped: budget');
+        return null;
+      }
+      const ctx = await deps.loadQuantRoomContext(padId);
+      if (!ctx) return null;
+      const res = await callModel(
+        { padId },
+        key,
+        {
+          purpose: 'assessment',
+          system: quantRoomSystem(ctx.questions, Date.parse(ctx.pad.startedAt)),
+          messages: quantRoomAssessmentMessages(ctx),
+          ...CALLS.assessment,
+          schema: QuantAssessmentSchema,
+        },
+        effectiveModel(ctx.pad.interviewer.model, key.provider, defaultModel(key.provider)).id,
+      );
+      if (res.refused) return null;
+      const out = QuantAssessmentSchema.safeParse(parseModelJson(res.text));
+      if (!out.success) throw new Error('unparseable quant room assessment');
+      return toQuantAssessment(out.data);
+    } catch (err) {
+      deps.log.error(
+        { padId, err: err instanceof Error ? err.message : String(err) },
+        'quant room assessment failed',
+      );
+      return null;
+    }
+  }
+
   async function gradeShortAnswer(
     userId: string,
     question: Extract<QuizQuestion, { type: 'short' }>,
@@ -1199,6 +1317,8 @@ export function createInterviewer(
     generateRoomAssessment,
     generateQuantAssessment,
     reviewSolution,
+    reviewQuantRoom,
+    generateQuantRoomAssessment,
     gradeShortAnswer,
     discussShortAnswer,
     cachedClients: () => clients.size,

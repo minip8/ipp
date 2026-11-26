@@ -18,6 +18,7 @@ import { Hono } from 'hono';
 import type { Ctx } from '../context';
 import { type Env, parseBody, requireAccount } from '../http/app';
 import { badRequest, notFound, rateLimited } from '../http/errors';
+import { refuseDuringQuantInterview } from '../quant/guard';
 import {
   applySelfGrade,
   feedbackOf,
@@ -90,6 +91,7 @@ export function quizBankRoutes(ctx: Ctx) {
 
   r.get('/quiz/questions/:id', async (c) => {
     const user = requireAccount(c);
+    await refuseDuringQuantInterview(ctx, user.id);
     const q = await activeQuestion(c.req.param('id'));
     const a = (await latestAnswerMap(db, user.id, { questionIds: [q.id] })).get(q.id);
     const out: QuizBankQuestion = {
@@ -102,6 +104,7 @@ export function quizBankRoutes(ctx: Ctx) {
 
   r.post('/quiz/questions/:id/answers', async (c) => {
     const user = requireAccount(c);
+    await refuseDuringQuantInterview(ctx, user.id);
     const body = await parseBody(c, SubmitStandaloneAnswerRequest);
     // Same budget as attempt answers: short answers are graded on the user's own key.
     const wait = await ctx.limiter.hit([

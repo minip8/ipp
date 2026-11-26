@@ -2,7 +2,8 @@
 /**
  * The round's questions as the candidate sees them: the current one in full, with its own clock,
  * and the earlier ones collapsed. Read only from the round view in the pad's state, so a missed
- * chat message never leaves it behind.
+ * chat message never leaves it behind. In a quant room (a hosted round) there is no clock, no
+ * total and no AI: a calm waiting state until the host asks, and between questions.
  */
 import type { QuantQuestionView, QuantRoundView } from '@ipp/contracts';
 import {
@@ -10,6 +11,7 @@ import {
   ClockIcon,
   FileBarChartIcon,
   FlagIcon,
+  HelpCircleIcon,
   LightbulbIcon,
   SparklesIcon,
 } from 'lucide-react';
@@ -27,12 +29,14 @@ import {
   GameSummary,
   SettledGame,
 } from '@/features/quant-game/game-panel';
+import { hostedWaiting } from '@/features/quant-room/logic';
 import { formatClock, plural } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import {
   closedLabel,
   currentQuestion,
   earlierQuestions,
+  isHosted,
   lastSettledGame,
   minutesPerQuestion,
   questionClock,
@@ -81,9 +85,9 @@ function ClockBar({ q }: { q: QuantQuestionView }) {
         <span>
           {c.over
             ? 'Past the time for this question. Finish your thought; the interviewer moves on soon.'
-            : `About ${plural(Math.max(1, Math.round(q.budgetSec / 60)), 'minute')} for this question`}
+            : `About ${plural(Math.max(1, Math.round((q.budgetSec ?? 0) / 60)), 'minute')} for this question`}
         </span>
-        <span className="shrink-0 tabular">{formatClock(q.budgetSec)}</span>
+        <span className="shrink-0 tabular">{formatClock(q.budgetSec ?? 0)}</span>
       </div>
       <div className="h-1 overflow-hidden rounded-full bg-surface-3" aria-hidden>
         <div
@@ -124,7 +128,7 @@ function Current({ q }: { q: QuantQuestionView }) {
           <span className="font-medium text-fg">{q.unit}</span>
         </p>
       )}
-      <ClockBar q={q} />
+      {q.budgetSec !== null && <ClockBar q={q} />}
       {q.hintsGiven > 0 && (
         <p className="flex items-center gap-1.5 text-xs text-fg-muted" data-testid="hints-given">
           <LightbulbIcon className="size-3.5 text-fg-subtle" aria-hidden />
@@ -139,7 +143,7 @@ function Current({ q }: { q: QuantQuestionView }) {
 function Pending({ round }: { round: QuantRoundView }) {
   const { state } = usePad();
   const each = state.pad.durationMin
-    ? minutesPerQuestion(state.pad.durationMin, round.total)
+    ? minutesPerQuestion(state.pad.durationMin, round.total ?? 1)
     : null;
   return (
     <div className="flex flex-col items-center px-6 py-12 text-center" data-testid="round-pending">
@@ -148,9 +152,32 @@ function Pending({ round }: { round: QuantRoundView }) {
       </span>
       <p className="font-medium">The interviewer is about to start</p>
       <p className="mt-1 max-w-72 text-sm text-fg-muted">
-        It says hello first. Then the first of {plural(round.total, 'question')} appears here
+        It says hello first. Then the first of {plural(round.total ?? 0, 'question')} appears here
         {each ? `, with about ${plural(each, 'minute')} for each` : ''}.
       </p>
+    </div>
+  );
+}
+
+/** A quant room with no question open: waiting for the first, between questions, or ended. */
+function HostedWaiting({ round }: { round: QuantRoundView }) {
+  const { readOnly } = usePad();
+  const w = hostedWaiting(round, readOnly);
+  return (
+    <div
+      className="flex flex-col items-center px-6 py-12 text-center"
+      data-testid="round-waiting"
+      role="status"
+    >
+      <span className="mb-3 flex size-10 items-center justify-center rounded-lg border border-border bg-surface-2 text-fg-subtle">
+        {readOnly ? (
+          <FlagIcon className="size-5" aria-hidden />
+        ) : (
+          <HelpCircleIcon className="size-5" aria-hidden />
+        )}
+      </span>
+      <p className="font-medium">{w.title}</p>
+      <p className="mt-1 max-w-72 text-sm text-fg-muted">{w.body}</p>
     </div>
   );
 }
@@ -264,6 +291,7 @@ export function QuestionPanel({
   if (!round) return null;
   const current = currentQuestion(round);
   const settled = lastSettledGame(round);
+  const hosted = isHosted(round);
   return (
     <section
       aria-label="Question"
@@ -274,12 +302,14 @@ export function QuestionPanel({
         <h2 className="text-sm font-medium" data-testid="round-heading">
           {roundHeading(round)}
         </h2>
-        {current && <QuestionTimer q={current} className="ml-auto" />}
+        {current && !hosted && <QuestionTimer q={current} className="ml-auto" />}
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {round.phase === 'pending' && <Pending round={round} />}
+        {hosted
+          ? !current && <HostedWaiting round={round} />
+          : round.phase === 'pending' && <Pending round={round} />}
         {current && <Current q={current} />}
-        {round.phase === 'finished' && <Finished onEnd={onEnd} ending={ending} />}
+        {!hosted && round.phase === 'finished' && <Finished onEnd={onEnd} ending={ending} />}
         {settled?.game && <SettledGame index={settled.index} game={settled.game} />}
         <Earlier questions={earlierQuestions(round)} />
       </div>
@@ -310,7 +340,7 @@ export function QuestionStrip({ onOpen }: { onOpen: () => void }) {
     >
       <span className="flex items-center gap-2 text-xs">
         <span className="font-medium text-fg">{roundHeading(round)}</span>
-        <QuestionTimer q={current} className="ml-auto text-xs" />
+        {current.budgetSec !== null && <QuestionTimer q={current} className="ml-auto text-xs" />}
       </span>
       {current.game ? (
         <GameStripLine game={current.game} />

@@ -6,18 +6,43 @@
  * counts only; the hints actually given are in the transcript, in the interviewer's words. A
  * market-making game adds its review (game-review.tsx), and its solution is a plain line of
  * figures.
+ *
+ * A quant room's report (`mode: 'hosted'`) is the same list of the questions its host asked,
+ * with the host's own verdicts (a missing one can still be given here), the time each was open,
+ * the hints recorded and whether the follow-up was asked; there are no budgets.
  */
 import type { QuantQuestionReview, QuantReport } from '@ipp/contracts';
-import { ChevronRightIcon, ClockIcon, LightbulbIcon } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  CheckIcon,
+  ChevronRightIcon,
+  ClockIcon,
+  LightbulbIcon,
+  MessageCircleQuestionIcon,
+} from 'lucide-react';
+import { type ReactNode, useState } from 'react';
 import { DifficultyBadge, toneText } from '@/components/domain';
 import { MathMarkdown } from '@/components/math-markdown';
+import { InlineError } from '@/components/states';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
+import { Spinner } from '@/components/ui/spinner';
+import { EMPTY_VERDICT, hintsSummary, TYPE_LABEL, verdictOf } from '@/features/quant-room/logic';
+import { VerdictForm } from '@/features/quant-room/verdict-form';
+import { api } from '@/lib/api';
 import { plural } from '@/lib/format';
+import { qk } from '@/lib/queries';
 import { cn } from '@/lib/utils';
 import { GameReview } from './game-review';
-import { hintsLabel, STATUS_LABEL, STATUS_TONE, scoreView, timeLabel } from './quant-logic';
+import {
+  HOSTED_STATUS_LABEL,
+  hintsLabel,
+  STATUS_LABEL,
+  STATUS_TONE,
+  scoreView,
+  timeLabel,
+} from './quant-logic';
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -37,7 +62,9 @@ function Solution({ q }: { q: QuantQuestionReview }) {
             <p className="text-sm leading-relaxed tabular">{q.solution}</p>
           ) : (
             <MathMarkdown className="text-sm leading-relaxed">
-              {q.unit && q.type === 'numeric' ? `${q.solution} (${q.unit})` : q.solution}
+              {q.unit && q.type === 'numeric' && !q.solution.endsWith(q.unit)
+                ? `${q.solution} (${q.unit})`
+                : q.solution}
             </MathMarkdown>
           )}
         </div>
@@ -64,7 +91,60 @@ function Solution({ q }: { q: QuantQuestionReview }) {
   );
 }
 
-function QuestionReview({ q }: { q: QuantQuestionReview }) {
+/** A quant room's host gives a verdict the question never got (allowed after the end). */
+function GiveVerdict({ padId, index }: { padId: string; index: number }) {
+  const qc = useQueryClient();
+  const [draft, setDraft] = useState(EMPTY_VERDICT);
+  const save = useMutation({
+    mutationFn: () => {
+      const v = verdictOf(draft);
+      if (!v) throw new Error('Choose a score first.');
+      return api.setVerdict(padId, index, v);
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.report(padId) });
+      void qc.invalidateQueries({ queryKey: qk.hostView(padId), exact: true });
+    },
+  });
+  return (
+    <div
+      className="space-y-2 rounded-md border border-dashed border-border-strong px-4 py-3"
+      data-testid="give-verdict"
+    >
+      <p className="text-sm text-fg-muted">
+        You gave no verdict on this answer. You can still give one.
+      </p>
+      <VerdictForm
+        value={draft}
+        onChange={setDraft}
+        idPrefix={`report-verdict-${index}`}
+        allowNone={false}
+      />
+      <InlineError error={save.error} />
+      <Button
+        size="sm"
+        variant="primary"
+        disabled={draft.score === null || save.isPending}
+        onClick={() => save.mutate()}
+        data-testid="save-report-verdict"
+      >
+        {save.isPending ? <Spinner /> : <CheckIcon />} Save verdict
+      </Button>
+    </div>
+  );
+}
+
+function QuestionReview({
+  q,
+  hosted,
+  padId,
+  canGiveVerdict,
+}: {
+  q: QuantQuestionReview;
+  hosted: boolean;
+  padId?: string;
+  canGiveVerdict: boolean;
+}) {
   const time = timeLabel(q);
   const score = q.verdict && scoreView(q.verdict.score);
   const reached = q.status !== 'not_reached';
@@ -73,8 +153,13 @@ function QuestionReview({ q }: { q: QuantQuestionReview }) {
       <h3 className="font-medium">Question {q.index + 1}</h3>
       <span className="text-sm text-fg-muted">· {q.topicTitle}</span>
       <DifficultyBadge difficulty={q.difficulty} />
+      {hosted && q.type !== 'game' && (
+        <span className="rounded-[4px] border border-border px-1.5 text-2xs leading-[18px] text-fg-muted">
+          {TYPE_LABEL[q.type]}
+        </span>
+      )}
       <Badge tone={STATUS_TONE[q.status]} data-testid="review-status">
-        {STATUS_LABEL[q.status]}
+        {(hosted ? HOSTED_STATUS_LABEL : STATUS_LABEL)[q.status]}
       </Badge>
       {score && (
         <span
@@ -129,15 +214,27 @@ function QuestionReview({ q }: { q: QuantQuestionReview }) {
         )}
         <span className="inline-flex items-center gap-1.5" data-testid="review-hints">
           <LightbulbIcon className="size-3.5 text-fg-subtle" aria-hidden />
-          {hintsLabel(q)}
+          {hosted ? hintsSummary(q.hintRungs, 'in your own words') : hintsLabel(q)}
         </span>
+        {hosted && q.followUpAsked && (
+          <span className="inline-flex items-center gap-1.5" data-testid="review-follow-up">
+            <MessageCircleQuestionIcon className="size-3.5 text-fg-subtle" aria-hidden />
+            Follow-up asked
+          </span>
+        )}
       </p>
       {q.verdict ? (
         <div className="rounded-md border border-border px-4 py-3" data-testid="review-verdict">
-          <Section title="Interviewer’s verdict">
-            <MathMarkdown className="text-sm leading-relaxed">{q.verdict.summary}</MathMarkdown>
+          <Section title={hosted ? 'Your verdict' : 'Interviewer’s verdict'}>
+            {q.verdict.summary.trim() ? (
+              <MathMarkdown className="text-sm leading-relaxed">{q.verdict.summary}</MathMarkdown>
+            ) : (
+              <p className="text-sm text-fg-muted">A score, with no note.</p>
+            )}
           </Section>
         </div>
+      ) : hosted && canGiveVerdict && padId ? (
+        <GiveVerdict padId={padId} index={q.index} />
       ) : (
         <p className="text-sm text-fg-muted">No verdict was written for this answer.</p>
       )}
@@ -147,20 +244,43 @@ function QuestionReview({ q }: { q: QuantQuestionReview }) {
   );
 }
 
-export function QuantReview({ quant }: { quant: QuantReport }) {
+export function QuantReview({
+  quant,
+  padId,
+  canGiveVerdicts = false,
+}: {
+  quant: QuantReport;
+  padId?: string;
+  /** A quant room's host may give a verdict that is missing (the API allows it after the end). */
+  canGiveVerdicts?: boolean;
+}) {
+  const hosted = quant.mode === 'hosted';
   return (
     <Card aria-labelledby="quant-review-heading" data-testid="quant-review">
       <CardHeader>
-        <CardTitle id="quant-review-heading">Questions</CardTitle>
+        <CardTitle id="quant-review-heading">{hosted ? 'Questions asked' : 'Questions'}</CardTitle>
         <span className="text-xs text-fg-subtle tabular">
           {plural(quant.questions.length, 'question')}
         </span>
       </CardHeader>
-      <ol className="divide-y divide-border">
-        {quant.questions.map((q) => (
-          <QuestionReview key={q.index} q={q} />
-        ))}
-      </ol>
+      {quant.questions.length === 0 ? (
+        <p className="px-4 py-6 text-sm text-fg-muted sm:px-5" data-testid="quant-review-empty">
+          No question was asked in this interview. The chat, the scratchpad and your notes are
+          below.
+        </p>
+      ) : (
+        <ol className="divide-y divide-border">
+          {quant.questions.map((q) => (
+            <QuestionReview
+              key={q.index}
+              q={q}
+              hosted={hosted}
+              padId={padId}
+              canGiveVerdict={canGiveVerdicts}
+            />
+          ))}
+        </ol>
+      )}
     </Card>
   );
 }

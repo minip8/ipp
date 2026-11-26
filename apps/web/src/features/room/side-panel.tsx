@@ -4,7 +4,15 @@
  * plus two things that are theirs alone: private notes and the AI second opinion.
  */
 import { MessagesSquareIcon, NotebookPenIcon, SparklesIcon } from 'lucide-react';
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import {
+  type ComponentProps,
+  forwardRef,
+  type ReactNode,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import type { ChatHandle } from '@/features/pad/chat-panel';
 import { usePad } from '@/features/pad/session';
@@ -12,10 +20,18 @@ import { cn } from '@/lib/utils';
 import { PrivateNotes, SecondOpinion } from './host-tools';
 import { RoomChat } from './room-chat';
 
-export const RoomSidePanel = forwardRef<ChatHandle, { className?: string }>(function RoomSidePanel(
-  { className },
-  ref,
-) {
+type RoomChatProps = ComponentProps<typeof RoomChat>;
+
+export const RoomSidePanel = forwardRef<
+  ChatHandle,
+  {
+    className?: string;
+    /** The host's second opinion (on the code by default; a quant room's is on a question). */
+    review?: ReactNode;
+    Text?: RoomChatProps['Text'];
+    empty?: RoomChatProps['empty'];
+  }
+>(function RoomSidePanel({ className, review, Text, empty }, ref) {
   const { isHost, state, me } = usePad();
   const chat = useRef<ChatHandle>(null);
   const [tab, setTab] = useState('chat');
@@ -37,7 +53,7 @@ export const RoomSidePanel = forwardRef<ChatHandle, { className?: string }>(func
     toggleMic: () => {},
   }));
 
-  if (!isHost) return <RoomChat ref={chat} className={className} />;
+  if (!isHost) return <RoomChat ref={chat} className={className} Text={Text} empty={empty} />;
   return (
     <Tabs
       value={tab}
@@ -71,7 +87,7 @@ export const RoomSidePanel = forwardRef<ChatHandle, { className?: string }>(func
         hidden={tab !== 'chat'}
         className="min-h-0 flex-1 focus-visible:outline-none"
       >
-        <RoomChat ref={chat} bare />
+        <RoomChat ref={chat} bare Text={Text} empty={empty} />
       </TabsContent>
       <TabsContent
         value="notes"
@@ -87,7 +103,7 @@ export const RoomSidePanel = forwardRef<ChatHandle, { className?: string }>(func
         hidden={tab !== 'review'}
         className="min-h-0 flex-1 focus-visible:outline-none"
       >
-        <SecondOpinion />
+        {review ?? <SecondOpinion />}
       </TabsContent>
     </Tabs>
   );

@@ -290,7 +290,7 @@ export function TopBar(props: TopBarProps) {
           {state.problem?.title ?? state.pad.title}
         </h1>
         {state.problem && <DifficultyBadge difficulty={state.problem.difficulty} />}
-        {state.round && <QuantPathBadge path={state.round.path} />}
+        {state.round?.path && <QuantPathBadge path={state.round.path} />}
         {isRoom ? (
           <span className="truncate text-xs text-fg-subtle" data-testid="room-role">
             {isHost ? '· you are hosting' : host ? `· interview with ${host.name}` : '· interview'}

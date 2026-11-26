@@ -40,6 +40,8 @@ export class MockQuizBank {
   questions = QUIZ_BANK_QUESTIONS;
   /** The questions of the quant topic (QUANT_TOPIC), mostly numeric. */
   quant = QUANT_QUESTIONS;
+  /** More questions, of any topic (the quant-room specs make the room's bank the public one). */
+  extra: QuizBankItem['question'][] = [];
   /** The user's latest answer per question (seeded with QUIZ_BANK_PRIOR). */
   answers = new Map<string, Recorded>();
 
@@ -52,7 +54,7 @@ export class MockQuizBank {
   }
 
   private item(id: string): QuizBankItem | null {
-    const question = [...this.questions, ...this.quant].find((q) => q.id === id);
+    const question = [...this.questions, ...this.quant, ...this.extra].find((q) => q.id === id);
     if (!question) return null;
     const a = this.answers.get(id);
     return {
@@ -84,8 +86,10 @@ export class MockQuizBank {
       const slug = decodeURIComponent(m[1] ?? '');
       const topic = topics.find((t) => t.slug === slug);
       if (!topic) return notFound('Topic');
-      const questions =
-        slug === QUIZ_BANK_TOPIC ? this.questions : slug === QUANT_TOPIC ? this.quant : [];
+      const questions = [
+        ...(slug === QUIZ_BANK_TOPIC ? this.questions : slug === QUANT_TOPIC ? this.quant : []),
+        ...this.extra.filter((q) => q.topic === slug),
+      ];
       return QuizBank.parse({
         topic: {
           slug: topic.slug,

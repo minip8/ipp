@@ -321,13 +321,16 @@ export async function eligibleQuestions(ctx: Ctx, path: QuantPath): Promise<Elig
   ) as EligibleRow[];
 }
 
-/** Ids of the questions posed in the owner's latest `RECENT_ROUNDS` rounds. */
+/**
+ * Ids of the questions posed in the owner's last `RECENT_ROUNDS` practice rounds. A quant room
+ * the user hosted is not one of them: they asked those questions, they did not answer them.
+ */
 export async function recentlyPosed(ctx: Ctx, userId: string): Promise<Set<string>> {
   const rows = await ctx.db
     .select({ state: quantRounds.state })
     .from(quantRounds)
     .innerJoin(pads, eq(pads.id, quantRounds.padId))
-    .where(eq(pads.ownerId, userId))
+    .where(and(eq(pads.ownerId, userId), eq(pads.kind, 'practice')))
     .orderBy(desc(pads.startedAt))
     .limit(RECENT_ROUNDS);
   const ids = new Set<string>();

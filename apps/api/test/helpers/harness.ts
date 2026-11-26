@@ -16,6 +16,8 @@ import type {
   Interviewer,
   InterviewerDeps,
   QuantContext,
+  QuantReviewResult,
+  QuantRoomContext,
   QuantStep,
   QuantStepResult,
   ReviewResult,
@@ -324,6 +326,45 @@ export class FakeInterviewer implements Interviewer {
         createdAt: new Date().toISOString(),
       },
     };
+  };
+  /** What the quant room adviser was shown, per call. */
+  quantRoomContexts: QuantRoomContext[] = [];
+  /** The second opinions asked for, in order. */
+  quantRoomReviews: { padId: string; index: number; question?: string }[] = [];
+  reviewQuantRoom = async (
+    padId: string,
+    opts: { index: number; question?: string },
+  ): Promise<QuantReviewResult> => {
+    if (!(await this.model({ padId }))) return { ok: false, reason: 'no_key' };
+    const budget = await this.deps.checkBudget(padId);
+    if (!budget.ok) return { ok: false, reason: 'budget', message: budget.reason };
+    const ctx = (await this.deps.loadQuantRoomContext?.(padId)) ?? null;
+    const q = ctx?.questions.find((x) => x.index === opts.index);
+    if (!ctx || !q) return { ok: false, reason: 'failed' };
+    this.quantRoomContexts.push(ctx);
+    this.quantRoomReviews.push({ padId, ...opts });
+    return {
+      ok: true,
+      review: {
+        index: q.index,
+        verdict: 'partly_correct',
+        summary: `Q${q.index + 1}: ${q.hintRungs.length} hints recorded.`,
+        covered: ['Set up the sample space.'],
+        missing: ['Did not condition on the first roll.'],
+        followUps: ['What if the die were biased?'],
+        suggestedScore: 0.5,
+        answer: opts.question ? `About "${opts.question}": yes.` : null,
+        model: 'fake',
+        createdAt: new Date().toISOString(),
+      },
+    };
+  };
+  generateQuantRoomAssessment = async (padId: string) => {
+    if (!(await this.model({ padId }))) return null;
+    const ctx = (await this.deps.loadQuantRoomContext?.(padId)) ?? null;
+    if (!ctx) return null;
+    this.quantRoomContexts.push(ctx);
+    return this.quantAssessment;
   };
   /** The questions handed to `gradeShortAnswer`, in order. */
   gradeCalls: unknown[] = [];

@@ -82,8 +82,10 @@ import {
   uuid,
 } from './fixtures';
 import { DRILL_RUNS, drillBests } from './fixtures-drill';
+import { publicOf, ROOM_BANK } from './fixtures-quant-room';
 import { QUANT_FOLLOW_UP, QUANT_QUESTIONS, QUANT_TOPIC } from './fixtures-quiz-quant';
 import { QUIZ_ROADMAP } from './fixtures-quiz-roadmap';
+import { MockQuantRooms } from './mock-quant-room';
 import { MockQuantRounds } from './mock-quant-round';
 import { MockQuizBank } from './mock-quiz-bank';
 
@@ -147,6 +149,22 @@ export class MockBackend {
   drillRuns: DrillRun[] = structuredClone(DRILL_RUNS);
   /** Live quant rounds: their pads, the scripted interviewer and their reports. */
   quant: MockQuantRounds;
+  /** Quant rooms (§8.4): their hosted rounds, the host's routes and their reports. */
+  quantRooms: MockQuantRooms;
+  /**
+   * The signed-in user is a candidate in a quant room that is still going: the quiz routes that
+   * reveal answers refuse them (`in_quant_interview`), as the API's guard does.
+   */
+  inQuantInterview(): boolean {
+    return [...this.pads.values()].some(
+      (d) =>
+        d.pad.kind === 'room' &&
+        d.pad.format === 'quant' &&
+        d.pad.status === 'active' &&
+        d.role !== 'owner' &&
+        d.members.some((m) => m.userId === this.me.id),
+    );
+  }
 
   constructor() {
     this.pads.set(ACTIVE_PAD_ID, makePadDetail());
@@ -166,6 +184,14 @@ export class MockBackend {
       }),
     );
     this.quant = new MockQuantRounds(this);
+    this.quantRooms = new MockQuantRooms(this);
+  }
+
+  /** The quant room specs: the public question bank is the room's bank (prompts only). */
+  useRoomBank() {
+    this.quizBank.questions = [];
+    this.quizBank.quant = [];
+    this.quizBank.extra = ROOM_BANK.map(publicOf);
   }
 
   fail(match: RegExp, status: number, body: unknown, times = 1) {
@@ -236,6 +262,7 @@ export class MockBackend {
       this.sockets.push(ws);
       const socketPad = /\/ws\/pads\/([0-9a-f-]{36})/.exec(ws.url())?.[1] ?? '';
       this.quant.connected(ws, socketPad);
+      this.quantRooms.connected(ws, socketPad);
       ws.onMessage((raw) => {
         const parsed = ClientEvent.safeParse(JSON.parse(String(raw)));
         if (!parsed.success) {
@@ -246,6 +273,11 @@ export class MockBackend {
         this.received.push(ev);
         if (ev.type === 'ping') ws.send(JSON.stringify({ type: 'pong' }));
         const quantPad = this.pads.get(socketPad)?.pad.format === 'quant';
+        const quantRoom = quantPad && this.pads.get(socketPad)?.pad.kind === 'room';
+        if (quantRoom && ev.type === 'chat.send') {
+          this.quantRooms.chat(this, socketPad, ev.text, ev.via);
+          return;
+        }
         if (quantPad && ev.type === 'language') {
           ws.send(
             JSON.stringify({
@@ -332,6 +364,7 @@ export class MockBackend {
     };
     pad.members = [...pad.members, member];
     this.push({ type: 'member.joined', member });
+    if (pad.pad.format === 'quant') this.quantRooms.joined(this, pad.pad.id, member);
   }
 
   /**
@@ -415,6 +448,7 @@ export class MockBackend {
       if (!pad) return this.status(404, 'not_found', 'Invite not found');
       const info: InviteInfo = {
         kind: pad.pad.kind,
+        format: pad.pad.format,
         title: pad.pad.title,
         hostName: pad.members.find((x) => x.role === 'owner')?.name ?? 'Someone',
         status: pad.pad.status,
@@ -509,7 +543,12 @@ export class MockBackend {
     }
 
     if (path === '/api/pads' && method === 'POST') {
-      const req = CreatePadRequest.parse(body);
+      const parsed = CreatePadRequest.safeParse(body);
+      if (!parsed.success)
+        return this.status(400, 'validation_error', parsed.error.issues[0]?.message ?? 'Invalid');
+      const req = parsed.data;
+      if (req.format === 'quant') return this.quantRooms.create(this, req);
+      if (req.queue) return this.status(400, 'validation_error', 'Only a quant room has a queue');
       if (req.kind === 'room') {
         const id = uuid();
         const slug = req.blank ? null : (req.problemSlug ?? 'two-sum');
@@ -518,7 +557,7 @@ export class MockBackend {
             id,
             problemSlug: slug,
             title: PROBLEMS.find((p) => p.slug === slug)?.title ?? 'Interview room',
-            language: req.language,
+            language: req.language ?? 'python',
             durationMin: req.durationMin,
             shareToken: `room_${id.slice(0, 8)}`,
             startedAt: new Date().toISOString(),
@@ -534,10 +573,10 @@ export class MockBackend {
           (p) =>
             (!req.random?.difficulty || p.difficulty === req.random.difficulty) &&
             (!req.random?.tag || p.tags.includes(req.random.tag)) &&
-            p.languages.includes(req.language),
+            p.languages.includes(req.language ?? 'python'),
         )?.slug ??
         'two-sum';
-      const refusal = this.languageRefusal(slug, req.language);
+      const refusal = this.languageRefusal(slug, req.language ?? 'python');
       if (refusal) return refusal;
       const id = uuid();
       const detail = makePadDetail({
@@ -545,7 +584,7 @@ export class MockBackend {
           id,
           problemSlug: slug,
           title: req.title ?? PROBLEMS.find((p) => p.slug === slug)?.title ?? 'Two Sum',
-          language: req.language,
+          language: req.language ?? 'python',
           durationMin: req.durationMin,
           interviewer: req.interviewer,
           startedAt: new Date().toISOString(),
@@ -583,6 +622,17 @@ export class MockBackend {
       if (!pad)
         return this.status(404, 'not_found', 'This pad does not exist or you are not a member.');
       if (rest === '' && method === 'GET') return this.detail(pad);
+      if (pad.pad.kind === 'room' && pad.pad.format === 'quant') {
+        const out = await this.quantRooms.handle(this, pad, rest, method, q, body);
+        if (out !== undefined) return out;
+      } else if (rest.startsWith('/host/round/')) {
+        // As the API's `quantRoomForHost`: the host first, then the format.
+        if (this.me.guest)
+          return this.status(403, 'account_required', 'Sign in with an account to do this');
+        if (pad.pad.kind !== 'room' || pad.role !== 'owner')
+          return this.status(403, 'forbidden', 'Only the host of a room can do this');
+        return this.status(409, 'wrong_format', 'Only a quant room has questions to pose');
+      }
       const quant = pad.pad.format === 'quant';
       if (rest === '' && method === 'PATCH') {
         const upd = UpdatePadRequest.parse(body);
@@ -627,6 +677,7 @@ export class MockBackend {
           const view: HostView = {
             problem: pad.pad.problemSlug ? (HOST_VIEWS[pad.pad.problemSlug] ?? null) : null,
             notes: this.hostNotes.get(id) ?? '',
+            round: null,
           };
           return view;
         }
@@ -754,6 +805,18 @@ export class MockBackend {
     }
 
     // quizzes
+    // As the API's `refuseDuringQuantInterview`: the routes that reveal answers or explanations.
+    if (
+      this.inQuantInterview() &&
+      (/^\/api\/quiz\/questions\/[^/]+(\/answers)?$/.test(path) ||
+        (/^\/api\/quiz\/attempts\/[0-9a-f-]{36}$/.test(path) && method === 'GET') ||
+        /^\/api\/quiz\/attempts\/[0-9a-f-]{36}\/(answers|discussion|finish)$/.test(path))
+    )
+      return this.status(
+        409,
+        'in_quant_interview',
+        'You are a candidate in a quant interview that is still going: answers and explanations are unavailable until it ends.',
+      );
     if (path === '/api/quiz/topics') return this.quizTopics;
     if (path === '/api/quiz/roadmap') return this.quizRoadmap;
     const bank = this.quizBank.handle(

@@ -56,6 +56,15 @@ function RoomBadge({ p }: { p: PadSummary }) {
 }
 
 function Outcome({ p }: { p: PadSummary }) {
+  // A quant room: the host's verdicts are in the report; its candidate has no outcome to show.
+  if (p.format === 'quant' && p.kind === 'room')
+    return p.role === 'owner' ? (
+      <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-fg-muted">
+        <FileTextIcon className="size-4 text-fg-subtle" aria-hidden /> Your verdicts in the report
+      </span>
+    ) : (
+      <span className="text-fg-subtle">—</span>
+    );
   // A quant round is not solved or not: its report scores each question.
   if (p.format === 'quant')
     return (
