@@ -2150,6 +2150,7 @@ describe('market-making games', () => {
           mechanics: (await gameNow()).spec,
         },
         books: gameBooks(await gameNow()),
+        state: await gameNow(),
         hintRungs: [],
         followUpAsked: false,
       });

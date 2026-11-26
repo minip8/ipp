@@ -559,9 +559,10 @@ a fresh start for stalls and the unanswered count, as after a step of its own.
   author's counterparty playbook, the explanation, the hint ladder; nothing that changes with
   play, so it stays cached for the whole game), the game's books in the per-turn system message
   (`gameBooksLines`, below) and game variants of the reply, nudge, stall and forced-close tasks.
-  One rule of it comes from a live game: ask for a tighter or bigger market at most twice in a
+  Two rules of it come from live games: ask for a tighter or bigger market at most twice in a
   stage, then trade the market as it stands (a playbook with no cap had the interviewer ask five
-  times while the candidate re-posted the same market).
+  times while the candidate re-posted the same market), and ask any one question at most twice,
+  then go on as if answered (a stage that reveals "after their answer" had it ask four times).
 - **The books in code** (`normaliseTurn`, `quant/turn.ts`), so a step is never one the server would
   refuse for its own reasons: a forced turn is a close whatever the model chose; a hint records the
   next unused authored rung (a higher rung is clamped down, a rung already given or a hint past
@@ -654,12 +655,13 @@ a fresh start for stalls and the unanswered count, as after a step of its own.
   played by a scripted candidate who posts quotes through the same `quote` step as the API, quotes
   around the public fair value and shades after fills, leaves a stale market once after a
   reveal, types a market in the chat once and asks for the fair value once; it prints the books
-  after every step and compares the game's turns with the others. Live (Opus 5.5, five games):
-  a game's turn p50 4.1 to 5.8 s against 2.8 to 3.9 s for the bank question of the same run, as
-  its per-turn books add about 1.2 to 1.6 thousand uncached input tokens (1.7 to 2.1 thousand a
-  call against about 0.53 thousand) and its moves more output, while the cache reads stay whole
-  (6.2 to 7.1 thousand tokens a call); reveal turns, posted whole, are most of the difference in
-  a game with many reveals.
+  after every step and compares the game's turns with the others. Live (Opus 5.5, seven games):
+  a game's turn p50 4.1 to 6.5 s against 2.8 to 3.9 s for the bank question of the same run. Its
+  per-turn books add 1.2 to 1.6 thousand uncached input tokens (1.7 to 2.1 thousand a call
+  against about 0.53 thousand) and it writes about twice the output (330 to 500 tokens: the
+  reason weighs the playbook), while the cache reads stay whole (6.2 to 7.1 thousand tokens a
+  call); a reveal or a game's close is posted whole, so in a game with a reveal every stage the
+  candidate waits for the whole call more often.
 
 ## 8. Quizzes
 
