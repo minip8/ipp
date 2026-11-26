@@ -426,14 +426,12 @@ test('voice reads the interviewer’s trade once and never the candidate’s quo
   await expect.poll(spoken).toEqual(['I buy 1 at 11.5. Make me a new market.']);
   await b.quant.close(id);
   await expect(heading(page)).toHaveText('Question 3 of 4');
-  await expect
-    .poll(spoken)
-    .toEqual([
-      'I buy 1 at 11.5. Make me a new market.',
-      // The closing line's formula is said in words (`speechOf`).
-      'Right, 5 over 36 is it. Let’s move on to the next one.',
-      'Question 3 is on your screen.',
-    ]);
+  await expect.poll(spoken).toEqual([
+    'I buy 1 at 11.5. Make me a new market.',
+    // The closing line's formula is said in words (`speechOf`).
+    'Right, 5 over 36 is it. Let’s move on to the next one.',
+    'Question 3 is on your screen.',
+  ]);
 });
 
 test.describe('the setup option', () => {
