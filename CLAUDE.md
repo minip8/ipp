@@ -128,7 +128,15 @@ browser ── /api/* (Next rewrite, same origin, cookie session) ──▶ apps
   nothing else: a new route that is not about a pad takes `requireAccount`, not `requireUser`.
   A room has no AI in the conversation and may have no problem (`problemSlug` null), and
   host-only data (interviewer notes, reference solutions, `host_notes`, the AI review, the
-  report) must never be put in `PadDetail`, the shared Yjs document or a broadcast event.
+  report) must never be put in `PadDetail`, the shared Yjs document or a broadcast event. A
+  **quant room** (ARCHITECTURE §8.4: `POST /api/pads` with `kind: 'room', format: 'quant'`, no
+  key needed) interviews on questions of the bank: its round is `mode: 'hosted'`, moved only by
+  the host's steps (`QuantHostStep`, the `…/host/round/*` routes, `apps/api/src/quant/room.ts`),
+  with no clock and never recorded as anyone's quiz answer. Its host-only data (solutions, hint
+  ladders, follow-ups, verdicts, the queue) goes out only through `GET …/host` and
+  `…/host/round/*` behind `roomForHost`; a candidate gets `publicRound` (no total, no budgets),
+  and while the room is active the quiz routes that reveal answers refuse them
+  (`refuseDuringQuantInterview`, 409 `in_quant_interview`: a deterrent, not a control).
 - **The mental math drill** (ARCHITECTURE §8.1) is generated and marked in the browser; the API
   only stores finished runs (`drill_runs`, `POST`/`GET /api/drill/runs`) after the contract's
   consistency checks, computing totals, score and `finishedAt` itself. Bests count full-mix runs only.
@@ -136,13 +144,15 @@ browser ── /api/* (Next rewrite, same origin, cookie session) ──▶ apps
   has no problem, code or runs; the AI interviewer asks quant-track questions one by one while the
   candidate works on the scratchpad. The round's state (`quant_rounds`) is server-only and changes
   only through the pure `advanceRound` in contracts, applied by `apps/api/src/quant/round.ts` behind
-  a compare-and-swap on its version; the browser gets `publicRound` (`PadDetail.round`,
+  a compare-and-swap on its version. A stored state without `mode` is an AI round (`quantMode`);
+  a quant room's is `hosted` (§8.4), and each refuses the other's steps (`wrong_mode`). The
+  browser gets `publicRound` (`PadDetail.round`,
   `round.updated`), and question ids, answers, verdicts, hints and later questions reach it only in
   the report after the pad ended (hint and follow-up text never). Assembly is
   `apps/api/src/quant/assemble.ts`; the interviewer's side is `packages/interviewer/src/quant/`
   (one structured turn per message, the books and the clock kept in code); the web's is
   `apps/web/src/features/quant-pad/`, loaded only for a quant pad. A route or event that assumes code or a problem must refuse a
-  quant pad (409 `wrong_format`). A slot may hold a market-making game (ARCHITECTURE §8.3,
+  quant pad, a quant room included (409 `wrong_format`). A slot may hold a market-making game (ARCHITECTURE §8.3,
   `packages/contracts/src/quant-game.ts`): its hidden values, quotes, position and P&L live in the
   round's state and change only through `advanceRound`; a stored trade names the interviewer's
   side, everything shown names the candidate's, and the browser gets `gameView` only (never a

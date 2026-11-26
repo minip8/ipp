@@ -64,7 +64,7 @@ Better Auth owns `user`, `session`, `account`, `verification` (text ids). App ta
 | `problems` | `slug` pk, title, difficulty, category, tags text[], statement, signature jsonb, limits jsonb, interviewer_notes, reference_solutions jsonb, languages text[], starter_code jsonb, harness jsonb (server-only), source jsonb |
 | `problem_tests` | problem_slug, idx, hidden, data jsonb (`TestCase`) |
 | `pads` | id uuid, owner_id, title, kind (`practice` / `room`), format (`coding` / `quant`, §8.2), problem_slug (null: a blank room, and every quant pad), language (stored as `python` and unused for a quant pad), status, duration_min (null: no time limit), interviewer jsonb, share_token, host_notes (rooms, host-only), started_at, ended_at |
-| `quant_rounds` | pad_id pk (a quant pad, cascade), state jsonb (`QuantRoundState`, server-only: question ids, verdicts, hint rungs), version (compare-and-swap guard), updated_at |
+| `quant_rounds` | pad_id pk (a quant pad, cascade), state jsonb (`QuantRoundState`, server-only: question ids, verdicts, hint rungs; a quant room's also `mode: 'hosted'` and the host's queue, §8.4), version (compare-and-swap guard), updated_at |
 | `pad_members` | pad_id, user_id, role (`owner`; `collaborator` = a room's candidate) |
 | `pad_docs` | pad_id pk, state bytea (merged Yjs state), updated_at |
 | `pad_updates` | pad_id, seq, at, update bytea — append-only Yjs history for playback, coalesced to at most one row per ~2 s of editing |
@@ -106,7 +106,7 @@ Every body is validated with the contracts schema named below.
 | `GET /api/ai-key/models` | | `AiModelList` (`provider`, `defaultModel`, `models[] {id, label, default}`, `source` live / fallback); 409 `ai_key_missing` without a usable key; 429 |
 | `GET /api/problems?difficulty=&tag=&q=` | | `ProblemSummary[]` |
 | `GET /api/problems/:slug` | | `ProblemDetail` |
-| `POST /api/pads` | `CreatePadRequest` (`kind: 'room'` hosts an interview; a room may be `blank`) | `Pad` |
+| `POST /api/pads` | `CreatePadRequest` (`kind: 'room'` hosts an interview; a room may be `blank`; `format: 'quant'` with an optional `queue` makes a quant room, §8.4) | `Pad` |
 | `POST /api/pads/quant` | `CreateQuantPadRequest` (`path`, `durationMin` 20 / 30 / 45, `interviewer` without `enabled`, `title?`, `includeGame?`: a market-making game in the second slot, §8.3; absent, a trader round has one) | `Pad` (`format: 'quant'`, §8.2); 409 `ai_key_missing` without a usable key, 409 `quant_unavailable` when the path has too few questions, 429 (the `POST /api/pads` allowance) |
 | `POST /api/pads/:id/round/quote` | `PostQuantQuoteRequest` (`index`, `bid`, `ask`, `size`; any member) | `QuantRoundView` (the quote posted as the poster's chat message, §8.3); 409 `wrong_format` on a pad that is not a quant pad, 409 with the round's refusal as the code (`bad_quote`, `quote_limit`, `wrong_index`, `not_game`, `wrong_phase`, `ended`, …), 429 (the chat allowance) |
 | `GET /api/pads` | | `PadSummary[]` (mine, newest first, with `format`, and `quantPath` for a quant pad) |
@@ -118,9 +118,10 @@ Every body is validated with the contracts schema named below.
 | `POST /api/pads/join` | `{ shareToken }` | `{ padId }` (the session's user becomes a member; a guest may only join rooms) |
 | `POST /api/pads/join-guest` | `JoinGuestRequest` (`shareToken`, `name`), no session needed | `{ padId }`, and a guest session cookie when there was no session (rooms only) |
 | `POST /api/pads/:id/problem` | `ChangeProblemRequest` (`problemSlug` or null) | `PadProblem` (room host; also broadcast as `pad.problem`) |
-| `GET /api/pads/:id/host` | | `HostView` (room host: interviewer notes, reference solutions, own notes) |
+| `GET /api/pads/:id/host` | | `HostView` (room host: interviewer notes, reference solutions, own notes; a quant room's `round`, §8.4) |
+| `GET`, `PUT`, `POST /api/pads/:id/host/round/*` | | a quant room's host: bank search, queue, pose, hint, follow-up, close, verdict, second opinion (§8.4) |
 | `PUT /api/pads/:id/host/notes` | `UpdateHostNotesRequest` | `{ notes }` (room host; also after the room ended) |
-| `POST /api/pads/:id/review` | `ReviewRequest` (`question?`) | `SolutionReview` (room host, on their key; 409 `ai_key_missing`, 429, 502 `review_failed`) |
+| `POST /api/pads/:id/review` | `ReviewRequest` (`question?`) | `SolutionReview` (room host, on their key; 409 `ai_key_missing`, 429, 502 `review_failed`; 409 `wrong_format` in a quant room) |
 | `GET /api/pads/:id/report` | | `Report` (`assessmentUnavailable` says why there is no assessment; a room's report is its host's alone and carries `hostNotes`; a quant pad's carries `quant`, §8.2); 409 `pad_active` before the pad ends |
 | `POST /api/pads/:id/report/assessment` | | `Report` (owner only, after the pad ended, with a usable key; starts the assessment again, or for a room writes it for the first time) |
 | `GET /api/pads/:id/playback` | | `Playback` |
@@ -138,6 +139,7 @@ Every body is validated with the contracts schema named below.
 | `GET /api/quiz/topics/:slug/questions` | | `QuizBank` (active questions as `PublicQuizQuestion` + the caller's status per question) |
 | `GET /api/quiz/questions/:id` | | `QuizBankQuestion` (latest recorded response and its feedback, both null before answering) |
 | `POST /api/quiz/questions/:id/answers` | `SubmitStandaloneAnswerRequest` | `AnswerFeedback` (graded like attempt answers; same rate limit) |
+| | | These two and the attempt routes that show answers (`GET …/attempts/:id`, `…/answers`, `…/discussion`, `…/finish`) are 409 `in_quant_interview` for a candidate in an active quant room (§8.4) |
 | `POST /api/drill/runs` | `RecordDrillRunRequest` (config, results per category, `elapsedMs`) | `RecordDrillRunResponse` (the stored `DrillRun`, totals and score computed by the server, and `newBest`); 429 |
 | `GET /api/drill/runs` | | `DrillHistory` (the latest `DRILL_HISTORY_LIMIT` runs newest first, bests per duration and level, `totalRuns`) |
 | `GET /healthz`, `GET /readyz` | | liveness / dependencies reachable |
@@ -151,7 +153,8 @@ Problem responses never contain hidden tests, interviewer notes or reference sol
 exception is `GET /api/pads/:id/host`, for the host of a room. Nothing a member reads about an
 active quant pad contains a question's id, answer, explanation, hints or follow-ups, a verdict, or
 any question not yet posed (§8.2), nor a game's hidden values, fair value, marks, counterparty
-notes or hints (§8.3).
+notes or hints (§8.3); in a quant room the host reads all of that for the questions they posed or
+queued, through `GET …/host` and `…/host/round/*` only (§8.4).
 
 ### 4.1 Interview rooms
 
@@ -188,6 +191,12 @@ link is a candidate (role `collaborator`). The web app offers it as "Host an int
   assessment written only when the host asks for it. Both run on the host's own key, with the
   room prompts in `packages/interviewer/src/room-prompts.ts`: the model advises the host as an
   observer and never addresses the candidate.
+- **Quant rooms** (§8.4): a room of format `quant` (`POST /api/pads` with `format: 'quant'`)
+  interviews on questions of the bank instead of a library problem. Its host poses them one by
+  one (or none, and just talks), sees each question's solution and material, records hints,
+  follow-ups and their own verdicts, and asks the AI for a second opinion on a question or an
+  assessment afterwards (`packages/interviewer/src/quant-room-prompts.ts`). The candidate sees
+  only what was posed, and while the room is active the quiz will not show them answers.
 Quiz responses never contain answers or explanations for questions the user has not answered
 (practice) or before the attempt is finished (exam).
 
@@ -758,7 +767,8 @@ and level (the first one when it scores above 0). Both routes need an account (a
 
 A practice pad of format `quant` (`POST /api/pads/quant`, from the Quant page): the AI interviewer
 asks a few questions of a quant path one after another, out loud or in chat, under the pad's
-clock. There is no problem, no code and no runs; the candidate works on the scratchpad
+clock. (A room of format `quant`, whose round a person runs with no clock, is §8.4; everything
+below is about the AI-run round, `mode` absent or `'ai'`, unless it says otherwise.) There is no problem, no code and no runs; the candidate works on the scratchpad
 (`YDOC.notes`) and the whiteboard. The interviewer runs the round, so a quant pad needs the
 owner's key to be created and its `interviewer.enabled` is always true. Collaborators (an account
 joining by the link, as on any practice pad) see exactly what the owner sees.
@@ -849,7 +859,10 @@ joining by the link, as on any practice pad) see exactly what the owner sees.
   characters. A later question is in it in no form. A game's slot is an entry of its own kind,
   with the game's content and books (§8.3).
 - **Refused on a quant pad**: runs and a language change (409 / WS `error` `wrong_format`), the
-  room-only endpoints (403 as for any practice pad; `POST …/problem` also checks the format).
+  room-only endpoints (403 as for any practice pad; `POST …/problem` also checks the format). A
+  quant room (§8.4) accepts the room-only endpoints that make sense for it (the host's notes, the
+  report, playback, the assessment) and refuses the ones about code (`…/problem`, `…/review`:
+  `wrong_format`).
 
 ### 8.3 Market-making games
 
@@ -1073,6 +1086,191 @@ was, and so is its assembly: the same draws from the same generator).
   the settlement is on the panel but not stated in the chat as the interviewer's closes state
   it; on a phone the quote form is on the Question tab, not beside the chat.
 
+### 8.4 Quant rooms
+
+A **quant room** is to the question bank what a coding room (§4.1) is to the problem library: a
+pad of kind `room` and format `quant` in which a person, the host, interviews a candidate on
+questions of the bank. The host may line questions up beforehand, pick more during the
+interview, or run the room with none at all and just talk over the shared scratchpad and
+whiteboard. Everything a room guarantees holds: the candidate needs only a name (a guest), there
+is no AI in the conversation (`interviewer.enabled` is always false, so no trigger reaches the
+interviewer, and nothing is ever said by a model), chat is between people (the host's messages
+role `interviewer` with their user id, the candidates' `candidate`), and host-only data never
+reaches a candidate. The AI only advises the host, on request and on the host's own key.
+
+**The round is hosted.** A quant room's `quant_rounds` row holds a `QuantRoundState` with
+`mode: 'hosted'` (`createHostedRound`); every other round has no `mode` and reads as `'ai'`
+(`quantMode`), so stored rounds are untouched. The same pure `advanceRound`
+(`packages/contracts/src/quant-round.ts`) moves both, a hosted round only through the host's
+steps (`QuantHostStep`, raised by the API from the host's routes) and `end`; an AI step on a
+hosted round and a host step on an AI round are refused `wrong_mode`. A hosted round:
+
+- starts empty (`questions: []`, `current: -1`, `path: null`, `durationMin: 0`) and holds only
+  the questions the host posed, in the order posed, each with its `type` (any type of the bank)
+  and the text posed;
+- has no clock, budgets, nudges, timeouts or round time: `quantClock` is null, `budgetSec` is
+  null on every question, and the sweeper (§8.2) skips it (by SQL and in code);
+- keeps the host's **queue** in the state (`queue`: bank question ids in order, never posed
+  ones, at most `QUANT_QUEUE_MAX` = 50), server-only like the rest of the state;
+- is `pending` until the first pose, `asking` while a question is open, and `finished` whenever
+  none is (between questions, and after the end): until the pad ends the host may pose another.
+  Ending the pad (`endPad` → `end`) closes the open question as `ended` and sets `ended: true`;
+  afterwards only a missing verdict may be given;
+- is never anyone's quiz answer: `quant_round_answers` are written only for a practice round
+  (`pads.kind = 'practice'` and mode `ai`), since a room's owner is the host, who asked; and its
+  questions are not "recently posed" to the host's own practice rounds (`recentlyPosed` reads
+  practice pads only);
+- offers no market-making games in this version (`POST …/round/quote` is refused `wrong_mode`):
+  the host would have to make the counterparty's trades by hand. A host-driven game (the host
+  trading against the candidate's quotes, the engine keeping the books) is the natural next step.
+
+The host's steps (`advanceRound`, pure and total; every illegal step a refusal):
+
+| step | what it does | refusals |
+|---|---|---|
+| `pose { pick }` | appends `pick` (`hostedPick` of an active bank question), makes it current with `posedAt` now and a posing message (`reveal`, `total: null`); closes an open question first, by `interviewer`, without a verdict; takes the id out of the queue | `already_posed` (this room asked it), `question_limit` (60), `invalid` (a malformed pick) |
+| `host_hint { index, rung }` | records a hint on the open question: the next authored rung (1-based) or 0 for one in the host's own words | `not_open`, `wrong_index`, `hint_rung` (skipped, repeated or beyond the ladder), `hint_limit` (20 per question), `invalid` |
+| `host_follow_up { index }` | records that the open question's follow-up was asked (once) | `not_open`, `wrong_index`, `follow_up_used` |
+| `host_close { index, verdict }` | closes the open question by `interviewer`, with the host's verdict or none | `not_open`, `wrong_index`, `invalid` (a score outside 0..1) |
+| `host_verdict { index, verdict }` | gives or replaces the host's verdict on a closed question; once the pad has ended, only on one that has none | `wrong_index`, `not_closed`, `has_verdict` (after the end), `invalid` |
+| `queue { questionIds }` | replaces the queue | `invalid` (a repeat or a malformed id), `already_posed`, `queue_limit` |
+| `end` | closes the open question as `ended`; `ended: true` | `ended` (already) |
+
+After the pad ended every step but `host_verdict` is refused `ended`. Host steps name no version
+(like `end` and `quote`): `applyHostStep` (`apps/api/src/quant/round.ts`) decides one again when
+it loses the compare-and-swap to a concurrent write, up to three times. The step's transaction
+is `applyStep`'s (§8.2): the share lock on the pad, the database's clock, the next state behind
+the compare-and-swap, and for a `pose` the posing message (role `interviewer`, kind
+`proactive`, intent `question`, the **host's** user id, exactly the posed text) with a
+`question` timeline event whose `total` is null. After the commit the room gets
+`message.created`, then `round.updated`, but only when the round as a member sees it changed
+(a pose, a hint's count, a close, the end): the queue, a follow-up and a verdict broadcast
+nothing.
+
+**What is posed.** `hostedPrompt(question)` (contracts, `quant-room.ts`) is the one text a
+candidate is shown, in the chat message, the question panel, voice, the transcript and the AI's
+material: a short or numeric question's prompt as it is; a choice question's prompt followed by
+its options as a list (`- **(a)** …`) and "Choose one." or "Choose every option that applies.";
+an output question's prompt, its program in a fenced block (a fence longer than any backtick run
+in the code) and "*Python, Python 3.12.* Say what it prints, or that it does not compile, fails
+at runtime, has undefined behaviour or prints something unspecified." Composing Markdown on the
+server keeps every surface as it is (the candidate's view already renders a Markdown prompt), and
+a candidate in a room answers by talking, not through a form, so nothing structured is needed;
+nothing of the answer is in it. `quizSolution(question)` is the answer as a person reads it
+(Markdown, host-only): the right option(s), "It prints: …" or "It does not compile.", the
+reference, or the number with its unit.
+
+**Routes** (all but the first under `roomForHost`: the room's owner, with an account; a
+candidate gets 403, a guest 403 `account_required`, a non-member 404; on a coding room the
+`host/round/*` routes are 409 `wrong_format`):
+
+| Method and path | Request | Response and errors |
+|---|---|---|
+| `POST /api/pads` | `CreatePadRequest` with `kind: 'room'`, `format: 'quant'`, optional `queue` (active bank ids in order, ≤ 50), `title?` (default "Quant interview"), `durationMin` (the top bar's clock only; null for none), `interviewer` (stored with `enabled` and `voice` false; `model` is what the host's AI calls use) | `Pad` (`format: 'quant'`, `problemSlug` null, `language` stored as `python`). No AI key needed. 400 `validation_error` with a problem, `random`, `blank`, `kind: 'practice'` (a practice quant round is `POST /api/pads/quant`) or a repeated id; 400 `unknown_question` for an id that is not an active bank question; 429 (the pad allowance). A coding pad still needs `language` (400 without); `queue` on a coding pad is 400 |
+| `GET /api/pads/:id/host` | | `HostView`: `problem` null, `notes`, and `round` (`HostRoundView`, below; null for a coding room). Also after the end |
+| `GET /api/pads/:id/host/round/bank?track=&topic=&subtopic=&difficulty=&type=&q=&limit=&offset=` | `HostBankQuery` (all optional; `q` a case-insensitive substring of the prompt, the subtopic or the id; `limit` 1..100, default 30) | `HostBankPage`: `total`, `limit`, `offset`, `items` (`HostBankItem` = `HostQuestionMaterial` + `status` `available` / `queued` / `posed`), every topic with its active question count (`topics`, quant first, then study order), and `subtopics` of `topic` when given. Active questions only, quant and fundamentals alike, in study order. 400 `validation_error` for a bad query; 429 (`padEvents`) |
+| `PUT /api/pads/:id/host/round/queue` | `UpdateQuantQueueRequest` (`questionIds`, the whole queue in order: reorder, add and remove in one call) | `HostRoundView`; 400 `unknown_question` / `validation_error` (repeat, > 50); 409 `already_posed`, `pad_ended`; 429 |
+| `POST /api/pads/:id/host/round/pose` | `PoseQuantQuestionRequest` (`questionId`: any active bank question, queued or not) | `HostRoundView`; 404 `not_found` (unknown or inactive); 409 `already_posed`, `question_limit`, `pad_ended`; 429 (the chat allowance: it posts the host's message) |
+| `POST /api/pads/:id/host/round/hint` | `RecordQuantHintRequest` (`index` of the open question, `rung`: next authored, or 0) | `HostRoundView`; 409 `not_open`, `wrong_index`, `hint_rung`, `hint_limit`, `pad_ended`; 429 |
+| `POST /api/pads/:id/host/round/follow-up` | `RecordQuantFollowUpRequest` (`index`) | `HostRoundView`; 409 `not_open`, `wrong_index`, `follow_up_used`, `pad_ended`; 429 |
+| `POST /api/pads/:id/host/round/close` | `CloseQuantQuestionRequest` (`index`, `verdict?`: `{ score 0..1, summary ≤ 4,000 }` or null) | `HostRoundView`; 400 for a score outside 0..1; 409 `not_open`, `wrong_index`, `pad_ended`; 429 |
+| `PUT /api/pads/:id/host/round/verdict` | `SetQuantVerdictRequest` (`index`, `verdict`) | `HostRoundView`; 409 `wrong_index`, `not_closed`, `has_verdict` (after the end); 429. Also after the end |
+| `POST /api/pads/:id/host/round/review` | `QuantSecondOpinionRequest` (`index?`, default the open question; `question?` ≤ 1,000) | `QuantSecondOpinion` (below); 409 `no_question` (none open and no index), `wrong_index` (not asked here), `ai_key_missing`; 429 (`review`), 429 `ai_budget`; 502 `review_failed`. Neither stored nor broadcast |
+| `PUT /api/pads/:id/host/notes`, `GET …/report`, `POST …/report/assessment`, `GET …/playback` | as for any room | the report carries `quant` (below); the assessment is 409 `nothing_to_assess` when no question was posed, no candidate wrote in the chat and the scratchpad is empty |
+
+The refusal codes are `advanceRound`'s (`QuantRefusal`), each with a fixed message for a person
+(`HOST_REFUSALS` in `routes/pads.ts`); the round's `ended` is reported as `pad_ended`, as by every
+room route.
+
+**What a quant room refuses**: runs (409 `wrong_format`), a language change (PATCH and the
+socket's `language` event: `wrong_format`), `POST …/problem` (`wrong_format`), the code review
+`POST …/review` (`wrong_format`: a quant room's second opinion is `…/host/round/review`) and
+quotes (`wrong_mode`). PATCH keeps `interviewer.enabled` false. What it accepts as any room does:
+chat, telemetry (`blur` only, as a quant pad), the host's notes, the end, delete, join and
+join-guest.
+
+**Who sees what.**
+
+- *The candidate* (guest or account): `PadDetail` (`round` = `publicRound`: `mode: 'hosted'`,
+  `path` null, `total` null, the posed questions with their posed text, topic and its title,
+  difficulty, unit, times, how each closed, the count of hints recorded, the posing message's id,
+  `budgetSec` null; never a question id, subtopic, type, verdict, hint text, the queue, or
+  anything not yet posed), `round.updated` and `message.created` on the event socket, the join
+  response, the invite, the scratchpad and whiteboard. A hosted view shows "Question 3", never
+  "3 of N", and no countdown. The report, playback, `GET …/host` and every `host/round/*` route
+  are refused (403).
+- *The host*: everything the candidate sees, and `HostView.round` (`HostRoundView`: `version`,
+  `phase`, `ended`, `open` (the open question's index or null), `questions` (`HostRoundQuestion`:
+  index, id, topic and title, difficulty, type, the posed text, `posedAt`, `posedMessageId`,
+  `closedAt`, `closedBy`, `timeSec`, `hintRungs`, `followUpAsked`, `verdict`, and `material`),
+  and `queue` (`{ questionId, material }`, `material` null for a question no longer active)).
+  `HostQuestionMaterial` is the bank question in full: the public projection (`prompt`,
+  `choices`, `code`, `unit`, `type`, `subtopic`, …), `topicTitle`, `solution`
+  (`quizSolution`), `correctAnswer` (as in `AnswerFeedback`), `keyPoints`, `explanation`,
+  `hints` (the ladder; `hintRungs` says which rungs were recorded), `followUps` and
+  `tolerance`. This is the one place a question's hints and follow-ups leave the server: to the
+  host who asks them, as a coding room's host reads the problem's interviewer notes. The web
+  refetches `GET …/host` when `round.updated` arrives (there is no host-only round event); every
+  host route answers with the new `HostRoundView`.
+- *The AI* (for the host, `packages/interviewer/src/quant-room-prompts.ts`): never the queue.
+
+**AI for the host**, on the host's key, as in a coding room (§4.1): the model advises the host as
+an observer and never addresses the candidate (`QUANT_ROOM_PROMPT`). It reads
+`InterviewerDeps.loadQuantRoomContext` (`QuantRoomContext`: the pad, every posed question with
+the bank question in full and its bookkeeping, the open question's index, the transcript, the
+scratchpad cut at 8,000 characters and the host's notes).
+
+- *Second opinion* (`Interviewer.reviewQuantRoom`, purpose `review`): one call over the
+  question's block (the posed text, solution, key points, explanation, the authored ladder with
+  the recorded rungs marked, the follow-ups, the host's verdict), the messages from its posing
+  to its close (or now), the scratchpad, the host's notes and the host's own question. Returns
+  `QuantSecondOpinion`: `index`, `verdict` (`correct`, `partly_correct`, `incorrect`, `not_yet`,
+  `unclear`), `summary`, `covered`, `missing` (≤ 6), `followUps` (≤ 3, worded so as not to give
+  the answer away), `suggestedScore` (0..1, rounded to hundredths, null when there is nothing to
+  score), `answer` (to the host's question, else null), `model`, `createdAt`.
+- *Assessment* (`Interviewer.generateQuantRoomAssessment`, written only when the host asks with
+  `POST …/report/assessment`): one call over every posed question, the whole transcript with a
+  platform line where each was posed, the final scratchpad, the host's notes and a code-built
+  table (time open, hints recorded, follow-up, how it ended, the host's verdict), on the quant
+  dimensions (`QUANT_REPORT_DIMENSIONS`, `QuantAssessmentSchema`; speed judged on time open
+  against difficulty, as there were no budgets), written for the host about the candidate in the
+  third person. It never gives or changes a verdict (the host's are first-hand, and it may say
+  where it disagrees). A room in which no bank question was posed is assessed on its
+  conversation; one with nothing at all is refused `nothing_to_assess` before any call.
+
+**The report** (`Report.quant`, the host's alone, only after the end): `QuantReport` with
+`mode: 'hosted'`, `path` null and the posed questions in order, each a `QuantQuestionReview`:
+`type` any of the bank's, `solution` `quizSolution`, `keyPoints` (short), `explanation`,
+`status` (`answered` when the host closed it or moved on, `unfinished` when the pad ended on it;
+never `not_reached`), the host's `verdict`, `hintsGiven`, `hintsAvailable`, `hintRungs`,
+`followUpAsked`, `timeSec`, `budgetSec` null. Queued questions never posed are not in it, and no
+hint or follow-up text is (`hintRungs` are numbers; the host reads the ladder in `GET …/host`,
+which still answers after the end). `Report.stats` has the run figures null, as for any quant
+pad; `interviewerMessages` counts the host's chat messages, never the posed questions.
+
+**Answers are not a tab away.** A guest cannot reach the quiz at all (`requireAccount`). A
+candidate signed in with an account is, while a non-host member of an active quant room, refused
+by the quiz routes that reveal answers or explanations: `GET /api/quiz/questions/:id`,
+`POST /api/quiz/questions/:id/answers`, `GET /api/quiz/attempts/:id`,
+`POST /api/quiz/attempts/:id/answers`, `…/discussion` and `…/finish` answer 409
+`in_quant_interview` ("You are a candidate in a quant interview that is still going: answers and
+explanations are unavailable until it ends."). One check, `refuseDuringQuantInterview`
+(`apps/api/src/quant/guard.ts`), called first in each. Browsing topics, the roadmap, a topic's
+bank (prompts only) and starting an attempt stay open. It lifts the moment the room ends or the
+candidate leaves it (`DELETE /api/pads/:id`), and never applies to the host. It is a
+**deterrent, not a control**: a second account, another browser or another device defeats it;
+the real control is the host, who is watching.
+
+**Proven by tests**: `packages/contracts/test/quant-room.test.ts` (every host step and refusal,
+the AI round unchanged and refusing host steps, the view, the posed text, a fuzz over host
+steps, old payloads); `apps/api/test/quant-room.test.ts` (creation with and without a queue, a
+guest end to end posing every type with hints, follow-up, closes, verdicts and an end
+mid-question, the leak scan of every candidate payload, the queue, the bank search and who may
+use it, the quiz guard, no quiz answer, the sweeper, the routes refused and accepted, the second
+opinion, the assessment and an empty room, with the model scripted);
+`packages/interviewer/test/quant-room.test.ts` (what the model is shown, people's text kept as
+data, the answers' shaping, no call without a key or over budget).
+
 ## 9. Security checklist
 
 - Sessions: httpOnly, SameSite=Lax, Secure in production; Origin check on state-changing requests.
@@ -1090,6 +1288,7 @@ was, and so is its assembly: the same draws from the same generator).
 - Rate limits in Redis (sliding window) keyed by user and by IP.
 - Hidden tests, reference solutions and interviewer notes never reach the browser; redaction happens in exactly one place in the API and is unit-tested. (A room's host reads the notes and solutions of the problem they chose, §4.1; hidden tests stay hidden from them too.)
 - Guests (§4.1) exist only for the rooms they were invited to: created by a valid room link, refused by every route that is not a pad they are a member of.
+- A quant room's host-only material (solutions, key points, explanations, hint ladders, follow-ups, verdicts, the queue, §8.4) is returned only by `GET …/host` and the `host/round/*` routes, behind `roomForHost`; what a candidate gets of the round is `publicRound`, built field by field. A candidate in an active quant room is refused the quiz routes that reveal answers (`in_quant_interview`), a deterrent only.
 
 ### Limits added by the security review
 
