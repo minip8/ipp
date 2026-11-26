@@ -78,3 +78,31 @@ test('an injected inline handler is blocked', async ({ page }) => {
   expect(ran).toBe(false);
   expect((await violations()).join('\n')).toContain('script-src');
 });
+
+test('quiz math (KaTeX styles and fonts) loads from this origin with no violation', async ({
+  page,
+}) => {
+  await setup(page);
+  const violations = await watchViolations(page);
+  const failed: string[] = [];
+  page.on('requestfailed', (r) => failed.push(r.url()));
+  await page.goto('/quiz/topics/probability?question=prob-derangements');
+  await expect(page.locator('.katex').first()).toBeVisible();
+  await page.evaluate(() => document.fonts.ready);
+  const fonts = await page.evaluate(() =>
+    performance
+      .getEntriesByType('resource')
+      .map((e) => e.name)
+      .filter((n) => /KaTeX_.*\.(woff2?|ttf)/.test(n)),
+  );
+  // The fonts KaTeX uses for this page, served from the app itself.
+  expect(fonts.length).toBeGreaterThan(0);
+  for (const f of fonts) expect(new URL(f).origin).toBe(new URL(page.url()).origin);
+  expect(
+    await page.evaluate(() =>
+      [...document.fonts].some((f) => f.family === 'KaTeX_Main' && f.status === 'loaded'),
+    ),
+  ).toBe(true);
+  expect(failed).toEqual([]);
+  expect(await violations()).toEqual([]);
+});

@@ -30,6 +30,7 @@ const q = (id: string, over: Partial<PublicQuizQuestion> = {}): PublicQuizQuesti
     { id: 'b', text: 'B' },
   ],
   code: null,
+  unit: null,
   ...over,
 });
 const item = (
@@ -71,6 +72,7 @@ describe('filters in the URL', () => {
     expect(
       parseFilters(new URLSearchParams('status=missed&difficulty=hard&type=output&x=1')),
     ).toEqual({ status: 'missed', difficulty: 'hard', type: 'output' });
+    expect(parseFilters(new URLSearchParams('type=numeric')).type).toBe('numeric');
     expect(parseFilters(new URLSearchParams('status=bogus&difficulty=HARD&type=')).status).toBe(
       'all',
     );
@@ -251,7 +253,10 @@ describe('recording an answer', () => {
   });
 
   it('updates only the answered item in the cached bank', () => {
-    const bank: QuizBank = { topic: { slug: 'os', title: 'OS', description: '' }, items };
+    const bank: QuizBank = {
+      topic: { slug: 'os', title: 'OS', description: '', track: 'fundamentals' },
+      items,
+    };
     const at = '2026-02-02T00:00:00.000Z';
     const next = bankWithFeedback(bank, fb({ correct: false, score: 0.5 }), at);
     expect(next.items.find((i) => i.question.id === 'p3')).toMatchObject({

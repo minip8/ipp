@@ -1,5 +1,5 @@
 'use client';
-import type { AnswerFeedback, PublicQuizQuestion } from '@ipp/contracts';
+import { type AnswerFeedback, NUMERIC_INPUT_MAX, type PublicQuizQuestion } from '@ipp/contracts';
 import {
   CheckIcon,
   CircleCheckIcon,
@@ -11,9 +11,9 @@ import {
 import type * as React from 'react';
 import { CodeBlock } from '@/components/code-block';
 import { DifficultyBadge, LANG_LABEL } from '@/components/domain';
-import { Markdown } from '@/components/markdown';
+import { MathMarkdown } from '@/components/math-markdown';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/input';
+import { Input, Textarea } from '@/components/ui/input';
 import { RadioCard, RadioRoot } from '@/components/ui/radio-cards';
 import { Spinner } from '@/components/ui/spinner';
 import { humanize } from '@/lib/format';
@@ -24,6 +24,9 @@ import {
   type Draft,
   formatCorrect,
   GRADED_BY_LABEL,
+  NUMERIC_HINT,
+  NUMERIC_PLACEHOLDER,
+  numericProblem,
   OUTCOME_LABEL,
   type Outcome,
   type OutputKind,
@@ -200,7 +203,7 @@ function ChoiceList({
               )}
             </span>
             <span className="min-w-0 flex-1">
-              <Markdown className="text-base [&_p]:m-0">{c.text}</Markdown>
+              <MathMarkdown className="text-base [&_p]:m-0">{c.text}</MathMarkdown>
               {(state === 'right' || state === 'missed' || state === 'wrong') && (
                 <span
                   className={cn(
@@ -326,17 +329,111 @@ function ShortAnswerInput({
   );
 }
 
+/**
+ * One number, typed: a fraction needs `/`, so the keyboard is the ordinary one, not a numeric
+ * pad. Enter submits (the page's own Enter shortcut ignores text fields). A value that cannot
+ * be sent is explained under the field once Submit was pressed, and from then on as it changes.
+ */
+function NumericAnswerInput({
+  q,
+  draft,
+  setDraft,
+  feedback,
+  locked,
+  onSubmit,
+}: {
+  q: PublicQuizQuestion;
+  draft: Extract<Draft, { type: 'numeric' }>;
+  setDraft: (d: Draft) => void;
+  feedback: AnswerFeedback | undefined;
+  locked: boolean;
+  onSubmit?: () => void;
+}) {
+  const id = `numeric-${q.id}`;
+  const problem = draft.checked && !locked ? numericProblem(draft.value) : null;
+  const graded =
+    feedback && !feedback.needsSelfGrade ? (feedback.correct ? 'right' : 'wrong') : null;
+  const note = graded ? `${id}-verdict` : problem ? `${id}-problem` : `${id}-hint`;
+  return (
+    <div className="space-y-1.5">
+      <label htmlFor={id} className="text-sm font-medium">
+        Your answer
+      </label>
+      <div className="flex items-center gap-2.5">
+        <Input
+          id={id}
+          type="text"
+          value={draft.value}
+          readOnly={locked}
+          maxLength={NUMERIC_INPUT_MAX}
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          enterKeyHint="done"
+          placeholder={NUMERIC_PLACEHOLDER}
+          aria-invalid={problem ? true : undefined}
+          aria-describedby={note}
+          data-state={graded ?? undefined}
+          onChange={(e) => setDraft({ ...draft, value: e.target.value })}
+          onKeyDown={(e) => {
+            if (e.key !== 'Enter' || e.shiftKey || e.altKey || e.nativeEvent.isComposing) return;
+            e.preventDefault();
+            onSubmit?.();
+          }}
+          className={cn(
+            'h-10 w-48 text-md tabular read-only:bg-surface-2 read-only:text-fg-muted max-lg:scroll-mb-28',
+            graded === 'right' &&
+              'border-ok ring-1 ring-ok read-only:text-fg focus-visible:border-ok focus-visible:ring-1 focus-visible:ring-ok',
+            graded === 'wrong' &&
+              'border-bad ring-1 ring-bad read-only:text-fg focus-visible:border-bad focus-visible:ring-1 focus-visible:ring-bad',
+            PHONE_FIELD,
+          )}
+        />
+        {q.unit && <span className="text-md text-fg-muted">{q.unit}</span>}
+      </div>
+      {graded ? (
+        <p
+          id={note}
+          className={cn(
+            'flex items-center gap-1 text-xs font-medium',
+            graded === 'right' ? 'text-ok-text' : 'text-bad-text',
+          )}
+        >
+          {graded === 'right' ? (
+            <CheckIcon className="size-3.5" strokeWidth={3} aria-hidden />
+          ) : (
+            <XIcon className="size-3.5" strokeWidth={3} aria-hidden />
+          )}
+          {graded === 'right' ? 'Your answer · correct' : 'Your answer · incorrect'}
+        </p>
+      ) : problem ? (
+        <p id={note} role="alert" className="text-xs font-medium text-bad-text">
+          {problem}
+        </p>
+      ) : (
+        <p id={note} className="text-xs text-fg-muted">
+          {NUMERIC_HINT}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function AnswerInput(props: {
   q: PublicQuizQuestion;
   draft: Draft;
   setDraft: (d: Draft) => void;
   feedback: AnswerFeedback | undefined;
   locked: boolean;
+  /** Enter in a one-line field (a numeric answer): what the page's primary button does. */
+  onSubmit?: () => void;
 }) {
   const { draft } = props;
   if (draft.type === 'single' || draft.type === 'multiple')
     return <ChoiceList {...props} draft={draft} />;
   if (draft.type === 'output') return <OutputAnswerInput {...props} draft={draft} />;
+  if (draft.type === 'numeric') return <NumericAnswerInput {...props} draft={draft} />;
   return <ShortAnswerInput {...props} draft={draft} />;
 }
 
@@ -364,7 +461,7 @@ export function FeedbackPanel({
 }) {
   const outcome = outcomeOf(feedback) ?? 'incorrect';
   const Icon = OUTCOME_ICON[outcome];
-  const showCorrect = q.type === 'output' || q.type === 'short';
+  const showCorrect = q.type === 'output' || q.type === 'short' || q.type === 'numeric';
   return (
     <section
       aria-live="polite"
@@ -394,9 +491,9 @@ export function FeedbackPanel({
               yourself.
             </p>
             <Section title="Reference answer">
-              <p className="rounded-md border-l-2 border-accent bg-surface-2 px-3 py-2 text-base whitespace-pre-wrap">
-                {formatCorrect(q, feedback)}
-              </p>
+              <div className="rounded-md border-l-2 border-accent bg-surface-2 px-3 py-2">
+                <MathMarkdown className="text-base">{formatCorrect(q, feedback)}</MathMarkdown>
+              </div>
             </Section>
             <div>
               <p className="mb-2 text-sm font-medium">How did you do?</p>
@@ -423,7 +520,7 @@ export function FeedbackPanel({
           <>
             {feedback.feedback && (
               <Section title="Feedback">
-                <p className="text-base">{feedback.feedback}</p>
+                <MathMarkdown className="text-base">{feedback.feedback}</MathMarkdown>
               </Section>
             )}
             {showCorrect && (
@@ -435,16 +532,24 @@ export function FeedbackPanel({
                   <pre className="rounded-md border border-border bg-surface-2 px-3 py-2 font-mono text-sm whitespace-pre-wrap">
                     {feedback.correctAnswer.output}
                   </pre>
-                ) : (
+                ) : q.type === 'output' ? (
                   <p className="rounded-md border-l-2 border-ok bg-surface-2 px-3 py-2 text-base whitespace-pre-wrap">
                     {formatCorrect(q, feedback)}
                   </p>
+                ) : (
+                  // A reference answer or a numeric one: Markdown, maybe with math.
+                  <div
+                    className="rounded-md border-l-2 border-ok bg-surface-2 px-3 py-2"
+                    data-testid="correct-answer"
+                  >
+                    <MathMarkdown className="text-base">{formatCorrect(q, feedback)}</MathMarkdown>
+                  </div>
                 )}
               </Section>
             )}
             {feedback.explanation && (
               <Section title="Why">
-                <Markdown className="text-base">{feedback.explanation}</Markdown>
+                <MathMarkdown className="text-base">{feedback.explanation}</MathMarkdown>
               </Section>
             )}
           </>

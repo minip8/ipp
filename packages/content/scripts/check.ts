@@ -2,6 +2,7 @@
  * Validates content and checks reference solutions without the judge:
  *   - every problem and quiz file parses against the contracts
  *   - quiz/roadmap.yaml is a sound graph and places every quiz subtopic on exactly one node
+ *   - quiz Markdown has no math in fundamentals topics, and every formula typesets in quant ones
  *   - solution.py (+ harness.py) reproduces tests.json (run in a subprocess with a tiny runner);
  *     skipped for a problem without solution.py (one that does not offer Python)
  *   - solution.cpp, with harness.cpp appended as the API appends it, passes `g++ -fsyntax-only`
@@ -27,6 +28,7 @@ import {
   roadmapGaps,
   untaxonomizedTags,
 } from '../src';
+import { quizMathErrors } from '../src/math';
 
 const RUNNER = `
 import importlib.util, json, sys
@@ -114,6 +116,8 @@ if (!only.length) {
       `quiz: ${questions.length} questions in ${topics.length} topics`,
       Object.fromEntries(perTopic),
     );
+    const math = quizMathErrors(questions, new Map(topics.map((t) => [t.slug, t.track])));
+    for (const m of math) bad(`quiz math: ${m}`);
     try {
       const roadmap = loadQuizRoadmap();
       const gaps = roadmapGaps(roadmap, questions);

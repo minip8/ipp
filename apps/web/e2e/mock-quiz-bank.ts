@@ -11,15 +11,16 @@ import {
   QuizBankQuestion,
   type QuizQuestionStatus,
   type QuizResponse,
+  type QuizTopic,
   SubmitStandaloneAnswerRequest,
 } from '@ipp/contracts';
-import { QUIZ_TOPICS } from './fixtures';
 import {
   QUIZ_BANK_FEEDBACK,
   QUIZ_BANK_PRIOR,
   QUIZ_BANK_QUESTIONS,
   QUIZ_BANK_TOPIC,
 } from './fixtures-quiz-bank';
+import { QUANT_FEEDBACK, QUANT_QUESTIONS, QUANT_TOPIC } from './fixtures-quiz-quant';
 
 type Recorded = { response: QuizResponse; feedback: AnswerFeedback; at: string };
 
@@ -37,6 +38,8 @@ const statusOf = (f: AnswerFeedback | undefined): QuizQuestionStatus =>
 export class MockQuizBank {
   /** The questions of QUIZ_BANK_TOPIC, in the order the API returns them. */
   questions = QUIZ_BANK_QUESTIONS;
+  /** The questions of the quant topic (QUANT_TOPIC), mostly numeric. */
+  quant = QUANT_QUESTIONS;
   /** The user's latest answer per question (seeded with QUIZ_BANK_PRIOR). */
   answers = new Map<string, Recorded>();
 
@@ -49,7 +52,7 @@ export class MockQuizBank {
   }
 
   private item(id: string): QuizBankItem | null {
-    const question = this.questions.find((q) => q.id === id);
+    const question = [...this.questions, ...this.quant].find((q) => q.id === id);
     if (!question) return null;
     const a = this.answers.get(id);
     return {
@@ -63,8 +66,15 @@ export class MockQuizBank {
   /**
    * Returns a JSON body, a Response for errors, or undefined when the path is not a bank route.
    * `keyActive` mirrors the user's AI key: without one, short answers are self-graded.
+   * `topics` is what GET /api/quiz/topics returns.
    */
-  handle(method: string, path: string, body: unknown, keyActive: boolean): unknown {
+  handle(
+    method: string,
+    path: string,
+    body: unknown,
+    keyActive: boolean,
+    topics: QuizTopic[],
+  ): unknown {
     const notFound = (what: string) =>
       new Response(JSON.stringify({ error: { code: 'not_found', message: `${what} not found` } }), {
         status: 404,
@@ -72,15 +82,18 @@ export class MockQuizBank {
     let m = path.match(/^\/api\/quiz\/topics\/([^/]+)\/questions$/);
     if (m && method === 'GET') {
       const slug = decodeURIComponent(m[1] ?? '');
-      const topic = QUIZ_TOPICS.find((t) => t.slug === slug);
+      const topic = topics.find((t) => t.slug === slug);
       if (!topic) return notFound('Topic');
-      const items =
-        slug === QUIZ_BANK_TOPIC
-          ? this.questions.map((q) => this.item(q.id)).filter((i) => i !== null)
-          : [];
+      const questions =
+        slug === QUIZ_BANK_TOPIC ? this.questions : slug === QUANT_TOPIC ? this.quant : [];
       return QuizBank.parse({
-        topic: { slug: topic.slug, title: topic.title, description: topic.description },
-        items,
+        topic: {
+          slug: topic.slug,
+          title: topic.title,
+          description: topic.description,
+          track: topic.track,
+        },
+        items: questions.map((q) => this.item(q.id)).filter((i) => i !== null),
       });
     }
     m = path.match(/^\/api\/quiz\/questions\/([^/]+)(\/answers)?$/);
@@ -98,7 +111,7 @@ export class MockQuizBank {
     }
     if (m[2] && method === 'POST') {
       const { response } = SubmitStandaloneAnswerRequest.parse(body);
-      const grade = QUIZ_BANK_FEEDBACK[id];
+      const grade = QUIZ_BANK_FEEDBACK[id] ?? QUANT_FEEDBACK[id];
       if (!grade || response.type !== item.question.type)
         return new Response(
           JSON.stringify({ error: { code: 'bad_request', message: 'Wrong response type.' } }),

@@ -32,6 +32,7 @@ import boxJson from '@ipp/contracts/fixtures/problem-box-cpp.json' with { type: 
 import lruJson from '@ipp/contracts/fixtures/problem-lru-cache.json' with { type: 'json' };
 import twoSumJson from '@ipp/contracts/fixtures/problem-two-sum.json' with { type: 'json' };
 import * as Y from 'yjs';
+import { QUANT_FEEDBACK, QUANT_QUESTIONS, QUANT_TOPIC } from './fixtures-quiz-quant';
 
 export const USER = { id: 'user_ada', name: 'Ada Lovelace', email: 'ada@example.com', image: null };
 export const OTHER_USER = {
@@ -1009,6 +1010,7 @@ export const QUIZ_TOPICS = QuizTopicStats.array().parse([
   {
     slug: 'cpp',
     title: 'C++',
+    track: 'fundamentals',
     description:
       'Language rules, the standard library, object lifetime, templates, and what programs actually print.',
     questionCount: 84,
@@ -1019,6 +1021,7 @@ export const QUIZ_TOPICS = QuizTopicStats.array().parse([
   {
     slug: 'python',
     title: 'Python',
+    track: 'fundamentals',
     description: 'Language semantics, the data model, the standard library, and common gotchas.',
     questionCount: 62,
     shortCount: 15,
@@ -1028,6 +1031,7 @@ export const QUIZ_TOPICS = QuizTopicStats.array().parse([
   {
     slug: 'computer-architecture',
     title: 'Computer architecture',
+    track: 'fundamentals',
     description: 'CPUs, caches, memory hierarchy, pipelines, data representation, and performance.',
     questionCount: 40,
     shortCount: 10,
@@ -1037,6 +1041,7 @@ export const QUIZ_TOPICS = QuizTopicStats.array().parse([
   {
     slug: 'operating-systems',
     title: 'Operating systems',
+    track: 'fundamentals',
     description: 'Processes, threads, scheduling, virtual memory, file systems, and system calls.',
     questionCount: 55,
     shortCount: 13,
@@ -1046,6 +1051,7 @@ export const QUIZ_TOPICS = QuizTopicStats.array().parse([
   {
     slug: 'networking',
     title: 'Networking',
+    track: 'fundamentals',
     description: 'TCP/IP, UDP, DNS, HTTP, TLS, sockets, and how packets get from A to B.',
     questionCount: 48,
     shortCount: 12,
@@ -1055,13 +1061,28 @@ export const QUIZ_TOPICS = QuizTopicStats.array().parse([
   {
     slug: 'concurrency',
     title: 'Concurrency',
+    track: 'fundamentals',
     description: 'Threads, locks, atomics, memory models, lock-free structures, and classic bugs.',
     questionCount: 37,
     shortCount: 9,
     answered: 0,
     accuracy: null,
   },
+  // The quant track (fixtures-quiz-quant.ts): its bank is QUANT_QUESTIONS.
+  {
+    slug: QUANT_TOPIC,
+    title: 'Probability',
+    track: 'quant',
+    description: 'Counting, conditioning, expectation and the classic puzzles.',
+    questionCount: QUANT_QUESTIONS.length,
+    shortCount: QUANT_QUESTIONS.filter((q) => q.type === 'short').length,
+    answered: 0,
+    accuracy: null,
+  },
 ]);
+
+/** The topics as they are before any quant content: one track, so no track headings. */
+export const QUIZ_TOPICS_FUNDAMENTALS = QUIZ_TOPICS.filter((t) => t.track === 'fundamentals');
 
 export const QUIZ_ATTEMPT_ID = uuid(9001);
 
@@ -1215,6 +1236,7 @@ export const QUIZ_FEEDBACK: Record<string, (r: QuizResponse) => AnswerFeedback> 
       gradedBy: 'ai',
       needsSelfGrade: false,
     }),
+  ...QUANT_FEEDBACK,
 };
 
 export const QUIZ_HISTORY = QuizAttemptSummary.array().parse([

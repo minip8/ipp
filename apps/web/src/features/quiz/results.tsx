@@ -11,7 +11,7 @@ import {
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useMemo, useState } from 'react';
-import { Markdown } from '@/components/markdown';
+import { MathMarkdown, MathText } from '@/components/math-markdown';
 import { InlineError } from '@/components/states';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -30,6 +30,7 @@ import {
   type Outcome,
   outcomeOf,
   promptSummary,
+  summarySegments,
   TYPE_LABEL,
 } from './logic';
 import { OUTCOME_ICON, OUTCOME_TEXT, PHONE_FIT, QuestionCode } from './question';
@@ -77,28 +78,34 @@ function OutcomeMark({ outcome, withLabel }: { outcome: RowOutcome; withLabel?: 
 function AnswerBlock({
   label,
   text,
-  mono,
+  as = 'text',
   tone,
 }: {
   label: string;
   text: string | null;
-  mono?: boolean;
+  /**
+   * text: as written with any `$…$` typeset (a choice); plain: exactly as typed (the user's own
+   * words); mono: program output; markdown: a reference or numeric answer
+   */
+  as?: 'text' | 'plain' | 'mono' | 'markdown';
   tone?: 'ok' | 'bad';
 }) {
+  const box = cn(
+    'rounded-md border-l-2 bg-surface-2 px-3 py-2 text-sm break-words',
+    tone === 'ok' ? 'border-ok' : tone === 'bad' ? 'border-bad' : 'border-border-strong',
+  );
   return (
     <div className="min-w-0">
       <p className="mb-1 text-2xs font-medium tracking-wider text-fg-subtle uppercase">{label}</p>
       {text === null ? (
         <p className="text-sm text-fg-subtle italic">No answer</p>
+      ) : as === 'markdown' ? (
+        <div className={box}>
+          <MathMarkdown className="text-sm">{text}</MathMarkdown>
+        </div>
       ) : (
-        <p
-          className={cn(
-            'rounded-md border-l-2 bg-surface-2 px-3 py-2 text-sm break-words whitespace-pre-wrap',
-            mono && 'font-mono',
-            tone === 'ok' ? 'border-ok' : tone === 'bad' ? 'border-bad' : 'border-border-strong',
-          )}
-        >
-          {text}
+        <p className={cn(box, 'whitespace-pre-wrap', as === 'mono' && 'font-mono')}>
+          {as === 'text' ? <MathText>{text}</MathText> : text}
         </p>
       )}
     </div>
@@ -120,6 +127,8 @@ function ReviewItem({
   const [open, setOpen] = useState(outcome !== 'correct');
   const yours = formatResponse(q, attempt.responses[q.id]);
   const mono = q.type === 'output';
+  // What the user typed in an open question stays text; a choice may hold math.
+  const yoursAs = mono ? 'mono' : q.type === 'short' ? 'plain' : 'text';
   // The row already shows the prompt as one line; repeat it in full only when it has more to it.
   const showFullPrompt =
     /```|\n\s*\n/.test(q.prompt) || promptSummary(q.prompt, 10_000).length > 140;
@@ -135,7 +144,7 @@ function ReviewItem({
           {i + 1}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block text-base">{promptSummary(q.prompt)}</span>
+          <MathText className="block text-base">{summarySegments(q.prompt)}</MathText>
           <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-fg-muted">
             <span>{TYPE_LABEL[q.type]}</span>
             <span aria-hidden>·</span>
@@ -153,20 +162,22 @@ function ReviewItem({
       </button>
       {open && (
         <div className="space-y-4 px-4 pb-5 sm:pl-13 max-sm:px-3">
-          {showFullPrompt && <Markdown className="text-base">{q.prompt}</Markdown>}
+          {showFullPrompt && <MathMarkdown className="text-base">{q.prompt}</MathMarkdown>}
           {q.code && <QuestionCode q={q} />}
           <div className="grid gap-3 sm:grid-cols-2">
             <AnswerBlock
               label="Your answer"
               text={yours}
-              mono={mono}
+              as={yoursAs}
               tone={outcome === 'correct' ? 'ok' : outcome === 'unanswered' ? undefined : 'bad'}
             />
             {f && (
               <AnswerBlock
                 label={q.type === 'short' ? 'Reference answer' : 'Correct answer'}
                 text={formatCorrect(q, f)}
-                mono={mono}
+                as={
+                  mono ? 'mono' : q.type === 'short' || q.type === 'numeric' ? 'markdown' : 'text'
+                }
                 tone="ok"
               />
             )}
@@ -176,7 +187,7 @@ function ReviewItem({
               <p className="mb-1 text-2xs font-medium tracking-wider text-fg-subtle uppercase">
                 Feedback
               </p>
-              <p className="text-sm">{f.feedback}</p>
+              <MathMarkdown className="text-sm">{f.feedback}</MathMarkdown>
             </div>
           )}
           {f?.explanation && (
@@ -184,7 +195,7 @@ function ReviewItem({
               <p className="mb-1 text-2xs font-medium tracking-wider text-fg-subtle uppercase">
                 Why
               </p>
-              <Markdown className="text-sm">{f.explanation}</Markdown>
+              <MathMarkdown className="text-sm">{f.explanation}</MathMarkdown>
             </div>
           )}
           {f && <p className="text-xs text-fg-subtle">{GRADED_BY_LABEL[f.gradedBy]}</p>}

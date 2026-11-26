@@ -2,6 +2,7 @@ export const QUIZ_TOPIC = {
   slug: 'test-topic',
   title: 'Test topic',
   description: 'Questions for the API tests',
+  track: 'fundamentals' as const,
 };
 
 const base = { topic: 'test-topic', subtopic: 'basics', difficulty: 'easy', tags: [] };

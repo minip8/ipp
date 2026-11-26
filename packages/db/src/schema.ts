@@ -15,6 +15,7 @@ import type {
   QuizQuestion,
   QuizResponse,
   QuizRoadmapNode,
+  QuizTrack,
   Report,
   ReportAssessment,
   TestCase,
@@ -332,6 +333,8 @@ export const quizTopics = pgTable('quiz_topics', {
   description: text('description').notNull(),
   /** Study order (the order of quiz/topics.yaml); the roadmap lists topics by it. */
   position: integer('position').notNull().default(0),
+  /** Which part of the site the topic belongs to (`QUIZ_TRACKS`), from quiz/topics.yaml. */
+  track: text('track').$type<QuizTrack>().notNull().default('fundamentals'),
   /** The topic's study areas from quiz/roadmap.yaml; empty when it has none. */
   roadmap: jsonb('roadmap').$type<QuizRoadmapNode[]>().notNull().default([]),
 });

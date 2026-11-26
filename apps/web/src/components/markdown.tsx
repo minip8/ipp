@@ -1,6 +1,6 @@
 'use client';
 import { memo } from 'react';
-import ReactMarkdown, { type Components } from 'react-markdown';
+import ReactMarkdown, { type Components, type Options } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { cn } from '@/lib/utils';
 import { CodeBlock } from './code-block';
@@ -8,8 +8,11 @@ import { CodeBlock } from './code-block';
 /**
  * Markdown without raw HTML (react-markdown ignores HTML unless rehype-raw is added, and we never
  * add it). Used for problem statements, quiz prompts/explanations and interviewer messages.
+ *
+ * No LaTeX here: a chat message like "costs $5 and $10" stays text. Quiz surfaces use
+ * `MathMarkdown` (math-markdown.tsx), which adds it and keeps KaTeX out of every other bundle.
  */
-const components: Components = {
+export const markdownComponents: Components = {
   a: ({ href, children }) => (
     <a href={href} target="_blank" rel="noopener noreferrer nofollow">
       {children}
@@ -32,6 +35,8 @@ const components: Components = {
   img: () => null,
 };
 
+const remarkPlugins: Options['remarkPlugins'] = [remarkGfm];
+
 export const Markdown = memo(function Markdown({
   children,
   className,
@@ -41,7 +46,7 @@ export const Markdown = memo(function Markdown({
 }) {
   return (
     <div className={cn('prose-ipp', className)}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components} skipHtml>
+      <ReactMarkdown remarkPlugins={remarkPlugins} components={markdownComponents} skipHtml>
         {children}
       </ReactMarkdown>
     </div>

@@ -183,6 +183,7 @@ export async function seed(db: Db, opts: SeedOptions = {}): Promise<SeedReport> 
       const set = {
         title: t.title,
         description: t.description,
+        track: t.track,
         position,
         ...(roadmap ? { roadmap: roadmap[t.slug] ?? [] } : {}),
       };

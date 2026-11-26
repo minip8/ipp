@@ -277,7 +277,7 @@
       text: "cpu.max lowers the threads' scheduling priority"
   answer: a
   explanation: |
-    `cpu.max` is "$MAX $PERIOD": the cgroup may use 200 ms of CPU time per 100 ms period, **summed across all CPUs**. Eight threads running in parallel use up 200 ms in about 25 ms of wall time, and then the whole cgroup is throttled for the remaining ~75 ms of the period. Requests that arrive during that time see the stall, even though the *average* use stays well under the limit. Check `nr_throttled`/`throttled_usec` in `cpu.stat`.
+    `cpu.max` is "\$MAX \$PERIOD": the cgroup may use 200 ms of CPU time per 100 ms period, **summed across all CPUs**. Eight threads running in parallel use up 200 ms in about 25 ms of wall time, and then the whole cgroup is throttled for the remaining ~75 ms of the period. Requests that arrive during that time see the stall, even though the *average* use stays well under the limit. Check `nr_throttled`/`throttled_usec` in `cpu.stat`.
 
     Fixes: raise the limit or remove it (use `cpu.weight`, the share-based control, instead), cut down the threads that are runnable at once, use cpusets to pin to dedicated cores, or try a shorter period.
 

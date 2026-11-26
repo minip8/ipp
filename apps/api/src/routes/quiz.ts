@@ -117,6 +117,7 @@ export function quizRoutes(ctx: Ctx) {
         slug: quizTopics.slug,
         title: quizTopics.title,
         description: quizTopics.description,
+        track: quizTopics.track,
         questionCount:
           sql<number>`count(${quizQuestions.id}) filter (where ${quizQuestions.active})`.mapWith(
             Number,
@@ -171,7 +172,8 @@ export function quizRoutes(ctx: Ctx) {
         and(
           scope,
           eq(quizQuestions.active, true),
-          // Practice and exam are graded automatically; open questions belong to a discussion.
+          // Practice and exam are graded automatically (every type but short, numeric included);
+          // open questions belong to a discussion.
           body.mode === 'discussion'
             ? eq(quizQuestions.type, 'short')
             : ne(quizQuestions.type, 'short'),

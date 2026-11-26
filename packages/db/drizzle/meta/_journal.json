@@ -50,6 +50,13 @@
       "when": 1795655604172,
       "tag": "0006_quiz_roadmap",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1795668471232,
+      "tag": "0007_quiz_topic_track",
+      "breakpoints": true
     }
   ]
 }

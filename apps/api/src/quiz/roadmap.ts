@@ -70,7 +70,10 @@ export function progressOf(
   };
 }
 
-type TopicRow = Pick<typeof quizTopics.$inferSelect, 'slug' | 'title' | 'description' | 'roadmap'>;
+type TopicRow = Pick<
+  typeof quizTopics.$inferSelect,
+  'slug' | 'title' | 'description' | 'track' | 'roadmap'
+>;
 
 /** Topics (already in study order) with their nodes and progress. */
 export function roadmapTopics(
@@ -99,6 +102,7 @@ export function roadmapTopics(
       slug: t.slug,
       title: t.title,
       description: t.description,
+      track: t.track,
       // The whole topic, including any subtopic not (yet) on its roadmap.
       ...progressOf([...of.values()]),
       nodes,
@@ -112,6 +116,7 @@ export async function loadRoadmapTopics(db: Db, slugs?: string[]): Promise<Topic
       slug: quizTopics.slug,
       title: quizTopics.title,
       description: quizTopics.description,
+      track: quizTopics.track,
       roadmap: quizTopics.roadmap,
     })
     .from(quizTopics)

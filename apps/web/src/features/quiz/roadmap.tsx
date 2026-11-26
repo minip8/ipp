@@ -34,6 +34,7 @@ import { qk, useAiKey } from '@/lib/queries';
 import { storage } from '@/lib/storage';
 import { cn } from '@/lib/utils';
 import { bankHref, DEFAULT_FILTERS } from './bank-logic';
+import { groupByTrack } from './logic';
 import { NodeBar, RoadmapGraph, StateIcon } from './roadmap-graph';
 import {
   browseSubtopic,
@@ -110,11 +111,11 @@ function TopicSwitcher({
   value: string;
   onChange: (slug: string) => void;
 }) {
-  // Phones: the row scrolls, so bring the chosen topic into it (the row only, never the page).
-  const row = useRef<HTMLDivElement>(null);
+  // Phones: a row scrolls, so bring the chosen topic into it (the row only, never the page).
+  const root = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const el = row.current;
-    const on = el?.querySelector<HTMLElement>(`[data-topic="${CSS.escape(value)}"]`);
+    const on = root.current?.querySelector<HTMLElement>(`[data-topic="${CSS.escape(value)}"]`);
+    const el = on?.closest<HTMLElement>('[data-topic-row]');
     if (!el || !on || el.scrollWidth <= el.clientWidth) return;
     const left = on.offsetLeft - el.offsetLeft;
     const right = left + on.offsetWidth;
@@ -122,51 +123,66 @@ function TopicSwitcher({
     if (left < el.scrollLeft) el.scrollLeft = Math.max(0, left - 16);
     else if (right > el.scrollLeft + el.clientWidth) el.scrollLeft = right + 16 - el.clientWidth;
   }, [value]);
+  // Phones: one row that scrolls on its own; wider: a grid.
+  const rowClass =
+    '-mx-4 -my-1 flex gap-2 overflow-x-auto overscroll-x-contain px-4 py-1 sm:m-0 sm:flex-wrap sm:overflow-visible sm:p-0';
+  // More than one track: a row per track under its name (one radio group all the same).
+  const tracks = groupByTrack(topics);
   return (
     <ToggleGroup.Root
-      ref={row}
+      ref={root}
       type="single"
       value={value}
       onValueChange={(v) => v && onChange(v)}
       aria-label="Roadmap topic"
+      data-topic-row={tracks.length > 1 ? undefined : ''}
+      className={tracks.length > 1 ? 'space-y-4' : rowClass}
+    >
+      {tracks.length > 1
+        ? tracks.map((g) => (
+            <div key={g.track} data-testid="roadmap-track">
+              <p className="mb-2 text-xs font-medium text-fg-muted">{g.label}</p>
+              <div data-topic-row className={rowClass}>
+                {g.items.map((t) => (
+                  // A track of one topic would stretch it across the row.
+                  <TopicChip key={t.slug} t={t} className="sm:max-w-72" />
+                ))}
+              </div>
+            </div>
+          ))
+        : topics.map((t) => <TopicChip key={t.slug} t={t} />)}
+    </ToggleGroup.Root>
+  );
+}
+
+function TopicChip({ t, className }: { t: QuizRoadmapTopic; className?: string }) {
+  const sum = summarise(t.nodes);
+  const answered = t.questionCount ? t.answered / t.questionCount : 0;
+  return (
+    <ToggleGroup.Item
+      value={t.slug}
+      data-topic={t.slug}
+      aria-label={`${t.title}: ${sum.complete} of ${plural(sum.total, 'area')} complete, ${formatPercent(answered)} answered`}
       className={cn(
-        // Phones: one row that scrolls on its own; wider: a grid.
-        '-mx-4 -my-1 flex gap-2 overflow-x-auto overscroll-x-contain px-4 py-1 sm:m-0 sm:flex-wrap sm:overflow-visible sm:p-0',
+        'group flex min-w-36 shrink-0 flex-col gap-2 rounded-lg border bg-surface px-3 py-2.5 text-left transition-[border-color,box-shadow,background-color] focus-visible:outline-offset-[-2px] sm:min-w-40 sm:flex-[1_1_auto]',
+        'data-[state=off]:border-border data-[state=off]:hover:border-border-strong data-[state=off]:hover:shadow-pop',
+        'data-[state=on]:border-accent data-[state=on]:bg-accent-soft/30 data-[state=on]:ring-1 data-[state=on]:ring-accent',
+        className,
       )}
     >
-      {topics.map((t) => {
-        const sum = summarise(t.nodes);
-        const answered = t.questionCount ? t.answered / t.questionCount : 0;
-        return (
-          <ToggleGroup.Item
-            key={t.slug}
-            value={t.slug}
-            data-topic={t.slug}
-            aria-label={`${t.title}: ${sum.complete} of ${plural(sum.total, 'area')} complete, ${formatPercent(answered)} answered`}
-            className={cn(
-              'group flex min-w-36 shrink-0 flex-col gap-2 rounded-lg border bg-surface px-3 py-2.5 text-left transition-[border-color,box-shadow,background-color] focus-visible:outline-offset-[-2px] sm:min-w-40 sm:flex-[1_1_auto]',
-              'data-[state=off]:border-border data-[state=off]:hover:border-border-strong data-[state=off]:hover:shadow-pop',
-              'data-[state=on]:border-accent data-[state=on]:bg-accent-soft/30 data-[state=on]:ring-1 data-[state=on]:ring-accent',
-            )}
-          >
-            <span className="flex items-baseline justify-between gap-2">
-              <span className="truncate text-sm font-medium whitespace-nowrap text-fg">
-                {t.title}
-              </span>
-              <span className="shrink-0 text-2xs text-fg-muted tabular">
-                {sum.complete}/{sum.total}
-              </span>
-            </span>
-            <NodeBar
-              questionCount={t.questionCount}
-              answered={t.answered}
-              correct={t.correct}
-              complete={sum.total > 0 && sum.complete === sum.total}
-            />
-          </ToggleGroup.Item>
-        );
-      })}
-    </ToggleGroup.Root>
+      <span className="flex items-baseline justify-between gap-2">
+        <span className="truncate text-sm font-medium whitespace-nowrap text-fg">{t.title}</span>
+        <span className="shrink-0 text-2xs text-fg-muted tabular">
+          {sum.complete}/{sum.total}
+        </span>
+      </span>
+      <NodeBar
+        questionCount={t.questionCount}
+        answered={t.answered}
+        correct={t.correct}
+        complete={sum.total > 0 && sum.complete === sum.total}
+      />
+    </ToggleGroup.Item>
   );
 }
 

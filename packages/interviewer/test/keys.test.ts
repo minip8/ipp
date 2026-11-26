@@ -24,6 +24,8 @@ const SHORT_Q = {
   type: 'short' as const,
   reference: 'Because.',
   keyPoints: ['a'],
+  hints: [],
+  followUps: [],
 };
 
 const apiError = (status: number, body: object, message = 'x') =>

@@ -77,7 +77,12 @@ export function quizBankRoutes(ctx: Ctx) {
     const latest = await latestAnswerMap(db, user.id, { questionIds: questions.map((q) => q.id) });
     // Public projection and status only: answers and explanations come with a recorded response.
     const out: QuizBank = {
-      topic: { slug: topic.slug, title: topic.title, description: topic.description },
+      topic: {
+        slug: topic.slug,
+        title: topic.title,
+        description: topic.description,
+        track: topic.track,
+      },
       items: questions.map((q) => itemOf(q, latest.get(q.id))),
     };
     return c.json(out);

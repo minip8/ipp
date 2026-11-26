@@ -12,7 +12,8 @@
  *                   harness.<ext>   optional test harness appended to the candidate's code for
  *                                   judged runs; defines the signature's class (server-only)
  *   Starter, harness and solution files may exist only for the problem's languages.
- *   quiz/topics.yaml                QuizTopic[]
+ *   quiz/topics.yaml                QuizTopic[] in study order; `track` (fundamentals | quant)
+ *                                   defaults to fundamentals
  *   quiz/<topic>/<anything>.yaml    QuizQuestion[] (topic must equal the directory name)
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs';

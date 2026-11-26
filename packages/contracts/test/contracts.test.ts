@@ -67,6 +67,7 @@ describe('question bank', () => {
         prompt: 'Pick one',
         choices: [{ id: 'a', text: 'A' }],
         code: null,
+        unit: null,
       },
       status: 'unanswered',
       score: null,
@@ -224,6 +225,7 @@ describe('quiz roadmap', () => {
       slug: 'cpp',
       title: 'C++',
       description: 'd',
+      track: 'fundamentals',
       ...progress,
       nodes: [
         {

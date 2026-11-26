@@ -17,6 +17,7 @@ import {
 import type * as React from 'react';
 import { useEffect, useRef } from 'react';
 import { DifficultyBadge } from '@/components/domain';
+import { MathText } from '@/components/math-markdown';
 import { EmptyState } from '@/components/states';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -42,7 +43,7 @@ import {
   type SubtopicSummary,
   type TypeFilter,
 } from './bank-logic';
-import { promptSummary } from './logic';
+import { summarySegments } from './logic';
 import { OUTCOME_ICON, OUTCOME_TEXT, PHONE_FIELD } from './question';
 
 export const TYPE_SHORT: Record<Exclude<TypeFilter, 'all'>, string> = {
@@ -50,6 +51,7 @@ export const TYPE_SHORT: Record<Exclude<TypeFilter, 'all'>, string> = {
   multiple: 'Multiple choice',
   output: 'Program output',
   short: 'Open question',
+  numeric: 'Numeric',
 };
 
 /** A plain left click: anything else (new tab, new window) is left to the browser. */
@@ -420,6 +422,7 @@ export function SubtopicPanel({
             {items.map((i) => {
               const q = i.question;
               const current = q.id === selected;
+              const summary = summarySegments(q.prompt, 110);
               return (
                 <li key={q.id}>
                   <a
@@ -440,7 +443,7 @@ export function SubtopicPanel({
                     <StatusIcon status={i.status} className="mt-0.5 shrink-0" />
                     <span className="min-w-0 flex-1">
                       <span className="line-clamp-2 text-sm text-fg">
-                        {promptSummary(q.prompt, 110) || TYPE_SHORT[q.type]}
+                        <MathText>{summary.length ? summary : TYPE_SHORT[q.type]}</MathText>
                       </span>
                       <span className="mt-1 flex items-center gap-2 text-2xs text-fg-subtle">
                         <DifficultyBadge difficulty={q.difficulty} />

@@ -32,6 +32,7 @@ import { cn } from '@/lib/utils';
 import { bankHref } from './bank-logic';
 import {
   DISCUSSION_COUNTS,
+  groupByTrack,
   MODE_HINT,
   MODE_LABEL,
   parseSetup,
@@ -400,6 +401,15 @@ export function QuizHub() {
       questions: list.reduce((s, t) => s + t.questionCount, 0),
     };
   }, [topics.data]);
+  const tracks = useMemo(() => groupByTrack(topics.data ?? []), [topics.data]);
+  const card = (t: QuizTopicStats) => (
+    <TopicCard
+      key={t.slug}
+      t={t}
+      selected={selected.includes(t.slug)}
+      onToggle={() => toggle(t.slug)}
+    />
+  );
   // Phones: the bar that leads to the setup gives way once the setup itself is in view.
   const setupColumn = useRef<HTMLDivElement>(null);
   const setupOnScreen = useOnScreen(setupColumn);
@@ -419,7 +429,9 @@ export function QuizHub() {
         <div className="min-w-0">
           <h1 className="text-xl font-semibold tracking-tight">Quizzes</h1>
           <p className="mt-1 text-sm text-fg-muted">
-            Short drills on the fundamentals interviewers like to probe.
+            {tracks.length > 1
+              ? 'Short drills on what developer and quant interviewers like to probe.'
+              : 'Short drills on the fundamentals interviewers like to probe.'}
           </p>
         </div>
         {topics.data && topics.data.length > 0 && (
@@ -464,17 +476,27 @@ export function QuizHub() {
                     The question bank has not been loaded on this server.
                   </EmptyState>
                 </Card>
-              ) : (
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {topics.data.map((t) => (
-                    <TopicCard
-                      key={t.slug}
-                      t={t}
-                      selected={selected.includes(t.slug)}
-                      onToggle={() => toggle(t.slug)}
-                    />
+              ) : tracks.length > 1 ? (
+                // Headed by track, once there is more than one.
+                <div className="space-y-7">
+                  {tracks.map((g) => (
+                    <section
+                      key={g.track}
+                      aria-labelledby={`track-${g.track}`}
+                      data-testid="topic-track"
+                    >
+                      <div className="mb-3 space-y-0.5">
+                        <h3 id={`track-${g.track}`} className="text-sm font-semibold">
+                          {g.label}
+                        </h3>
+                        <p className="text-xs text-fg-muted">{g.description}</p>
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">{g.items.map(card)}</div>
+                    </section>
                   ))}
                 </div>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2">{topics.data.map(card)}</div>
               )}
             </div>
             <div ref={setupColumn} className="min-w-0 lg:sticky lg:top-20">

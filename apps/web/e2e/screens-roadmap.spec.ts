@@ -3,7 +3,8 @@
  *   SCREENS=1 playwright test screens-roadmap      (ONLY=roadmap-cpp,... narrows it)
  */
 import { expect, type Page, test } from '@playwright/test';
-import { QUIZ_ROADMAP_FRESH } from './fixtures-quiz-roadmap';
+import { QUIZ_TOPICS_FUNDAMENTALS } from './fixtures';
+import { QUIZ_ROADMAP_FRESH, QUIZ_ROADMAP_FUNDAMENTALS } from './fixtures-quiz-roadmap';
 import { shoot as rawShoot, setup } from './helpers';
 
 test.skip(!process.env.SCREENS, 'set SCREENS=1 to capture screenshots');
@@ -24,6 +25,7 @@ const TOPICS = [
   'operating-systems',
   'concurrency',
   'networking',
+  'probability',
 ];
 
 for (const width of WIDTHS) {
@@ -41,6 +43,19 @@ for (const width of WIDTHS) {
         await shoot(page, name);
       });
     }
+
+    // Before any quant content: one track, no headings (compare with roadmap-cpp of old).
+    test('roadmap-fundamentals', async ({ page }) => {
+      test.skip(!want('roadmap-fundamentals'));
+      await setup(page, (b) => {
+        b.quizRoadmap = QUIZ_ROADMAP_FUNDAMENTALS;
+        b.quizTopics = QUIZ_TOPICS_FUNDAMENTALS;
+      });
+      await page.goto('/quiz?view=roadmap&roadmap=cpp');
+      await expect(page.getByTestId('roadmap-node').first()).toBeVisible();
+      await page.waitForTimeout(300);
+      await shoot(page, 'roadmap-fundamentals');
+    });
 
     test('roadmap-fresh', async ({ page }) => {
       test.skip(!want('roadmap-fresh'));

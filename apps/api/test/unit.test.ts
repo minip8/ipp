@@ -4,7 +4,7 @@ import { JudgeResult, QuizQuestion } from '@ipp/contracts';
 import { describe, expect, it } from 'vitest';
 import type { Ctx } from '../src/context';
 import { clientIp, jsonDeeperThan } from '../src/http/app';
-import { gradeAuto, normalizeOutput, publicQuestion } from '../src/quiz/grade';
+import { correctAnswer, gradeAuto, normalizeOutput, publicQuestion } from '../src/quiz/grade';
 import {
   coarseMs,
   hiddenFailures,
@@ -142,6 +142,32 @@ describe('quiz grading', () => {
       score: 0,
       correct: false,
     });
+  });
+  it('numeric questions are right or wrong, and reveal answerText or the number', () => {
+    const q = QuizQuestion.parse({
+      id: 'n',
+      topic: 't',
+      subtopic: 's',
+      difficulty: 'easy',
+      type: 'numeric',
+      prompt: 'p',
+      explanation: 'EXPLAIN',
+      answer: '1/3',
+      unit: 'm',
+      hints: ['HINT'],
+    });
+    const grade = (value: string) => gradeAuto(q, { type: 'numeric', value });
+    expect(grade('2/6')).toEqual({ score: 1, correct: true });
+    expect(grade('0.333')).toEqual({ score: 1, correct: true });
+    expect(grade('0.33')).toEqual({ score: 0, correct: false });
+    expect(grade('33/100')).toEqual({ score: 0, correct: false });
+    expect(gradeAuto(q, { type: 'single', choice: 'a' })).toBeNull();
+    expect(correctAnswer(q)).toBe('1/3');
+    if (q.type !== 'numeric') throw new Error('not numeric');
+    expect(correctAnswer({ ...q, answerText: '$\\frac13$' })).toBe('$\\frac13$');
+    expect(publicQuestion(q)).toMatchObject({ type: 'numeric', unit: 'm', choices: null });
+    expect(JSON.stringify(publicQuestion(q))).not.toMatch(/HINT|EXPLAIN|"answer"/);
+    expect(publicQuestion(question('tq-single')).unit).toBeNull();
   });
   it('public questions carry no answers', () => {
     for (const q of Object.values(qs)) {

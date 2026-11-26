@@ -24,9 +24,20 @@ test.describe('quiz roadmap', () => {
     await expect(tabs).toHaveText([/^Start a quiz/, /^Roadmap/, /^History/]);
     await page.getByRole('tab', { name: 'Roadmap' }).click();
     await expect(page).toHaveURL(/\/quiz\?view=roadmap$/);
-    // Topics in study order, the first chosen; its graph and overview.
+    // Topics by track and in study order within each, the first chosen; its graph and overview.
     const switcher = page.getByRole('radiogroup', { name: 'Roadmap topic' });
-    await expect(switcher.getByRole('radio')).toHaveCount(6);
+    await expect(switcher.getByRole('radio')).toHaveCount(7);
+    const tracks = switcher.getByTestId('roadmap-track');
+    await expect(tracks).toHaveCount(2);
+    await expect(tracks.nth(0).getByRole('radio')).toHaveText([
+      /^C\+\+/,
+      /^Python/,
+      /^Computer architecture/,
+      /^Operating systems/,
+      /^Concurrency/,
+      /^Networking/,
+    ]);
+    await expect(tracks.nth(1).getByRole('radio')).toHaveText([/^Probability/]);
     await expect(switcher.getByRole('radio').first()).toHaveAccessibleName(
       /^C\+\+: 3 of 15 areas complete/,
     );
@@ -271,6 +282,8 @@ test.describe('quiz roadmap on a phone', () => {
       ['operating-systems', 'Operating systems'],
       ['concurrency', 'Concurrency'],
       ['networking', 'Networking'],
+      // In a row of its own, under its track.
+      ['probability', 'Probability'],
     ]) {
       await page.goto(`/quiz?view=roadmap&roadmap=${topic}`);
       await expect(page.getByTestId('roadmap-node').first()).toBeVisible();

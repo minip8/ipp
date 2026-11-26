@@ -1,0 +1,1 @@
+ALTER TABLE "quiz_topics" ADD COLUMN "track" text DEFAULT 'fundamentals' NOT NULL;

@@ -16,7 +16,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeftIcon, ArrowRightIcon, FlagIcon, SendIcon } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Markdown } from '@/components/markdown';
+import { MathMarkdown } from '@/components/math-markdown';
 import { InlineError, useRetryCountdown } from '@/components/states';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -229,13 +229,19 @@ export function DiscussionFlow({
         <ol className="mt-3 space-y-3" aria-label="Conversation">
           <Bubble who="interviewer">
             <div id={`q-${q.id}`}>
-              <Markdown className="text-md text-fg">{q.prompt}</Markdown>
+              <MathMarkdown className="text-md text-fg">{q.prompt}</MathMarkdown>
             </div>
           </Bubble>
           {said.map((t, i) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: turns are only ever appended
             <Bubble key={i} who={t.role}>
-              <p className="text-base break-words whitespace-pre-wrap">{t.text}</p>
+              {/* The interviewer writes Markdown and may use math; the candidate's words stay
+                  exactly as typed. */}
+              {t.role === 'interviewer' ? (
+                <MathMarkdown className="text-base break-words">{t.text}</MathMarkdown>
+              ) : (
+                <p className="text-base break-words whitespace-pre-wrap">{t.text}</p>
+              )}
             </Bubble>
           ))}
           {sending && (
