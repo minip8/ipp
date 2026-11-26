@@ -1,0 +1,81 @@
+# A market-making game played live in a trader round (ARCHITECTURE §8.3). The server draws the
+# dice, keeps the books and settles; the interviewer only trades and reveals. The counterparty is
+# informed from the first quote; the candidate is not told so and should infer it from the trades.
+id: mm-game-four-dice-informed
+topic: betting-market-making
+title: Sum of four dice
+difficulty: hard
+prompt: |
+  Four fair six-sided dice have been rolled. I rolled them myself, and I will not tell you whether
+  I looked. A contract settles at their sum, $D_1 + D_2 + D_3 + D_4$.
+
+  Make me a two-sided market on it: a bid, an offer and a size of up to 5 contracts, in steps of
+  0.5. I may buy from you, sell to you, or ask for another market. I will show you Die 1 and then
+  Die 2; each time your market is withdrawn and you make a new one. Dice 3 and 4 are shown only at
+  the end, when the contract settles.
+components:
+  - { label: Die 1, faces: [1, 2, 3, 4, 5, 6] }
+  - { label: Die 2, faces: [1, 2, 3, 4, 5, 6] }
+  - { label: Die 3, faces: [1, 2, 3, 4, 5, 6] }
+  - { label: Die 4, faces: [1, 2, 3, 4, 5, 6] }
+payoff: sum
+reveal: [0, 1]
+tick: 0.5
+maxSize: 5
+counterparty: |
+  Your books show the public fair value and standard deviation, the true value and your edge
+  against both at the candidate's bid and offer. Never say the fair value, a hidden die or the
+  candidate's P&L, and never say whether you have looked: if asked, say they will have to work
+  that out.
+
+  You are informed from the first quote to the last, and you trade on one rule only: lift the
+  offer for the quote's full size if it is below the true value, hit the bid for the full size if
+  it is above the true value, and pass (ask for another market) if the true value is between the
+  bid and the offer, inclusive. Never make a trade that loses against the true value, never ask
+  for a tighter market, and do not trade one lot "to be friendly": the pattern of your trades is
+  the whole lesson.
+
+  Stage 1, nothing shown (fair 14, sd 3.42): apply the rule to each market. After the second
+  trade on the same side, ask what they make of my buying (or selling) again. After a pass, ask
+  what the pass tells them. Reveal Die 1 after your first pass, or after the third market of this
+  stage, whichever comes first.
+
+  Stage 2, Die 1 shown: the same rule. Ask whether the die shown fits what my trades have told
+  them so far, and where they now think the total is. Reveal Die 2 after a pass or after the
+  second market of this stage.
+
+  Stage 3, Dice 1 and 2 shown: the same rule. By now a good candidate has moved their market
+  toward where your trades point, widened it or cut the size, and noticed that you only ever
+  trade when they lose. Ask who they think they are trading with and how they would quote
+  someone who knows the answer. There is no reveal left: close after a pass in this stage or
+  after its second market, or when time is short.
+hints:
+  - What is the fair value of four dice if nobody has seen them?
+  - If I only buy when your offer is too low, what does my buying tell you about the total?
+  - After I pass, where must the total be?
+explanation: |
+  To someone who knows nothing, the sum of four dice is worth 14, with standard deviation
+  $\sqrt{4 \times 35/12} \approx 3.42$ and range 4 to 24. After Die 1 shows $d$ the public fair
+  value is $d + 10.5$ (standard deviation 2.96), and after Dice 1 and 2 show $d_1, d_2$ it is
+  $d_1 + d_2 + 7$ (standard deviation 2.42).
+
+  The counterparty, though, had looked at every die and traded only when the market was wrong.
+  Against that, the textbook opening of 13 at 15 is traded two times in three: the sum is 16 or
+  more with probability $145/432 \approx 33.6\%$, 12 or less with the same probability, and the
+  expected loss is about 1.86 a contract on each such market (9.3 on a market for 5). A
+  quote's fill is information: given that the offer at 15 was lifted, the total is 16 or more
+  and its expected value is $2576/145 \approx 17.77$, almost four points above 14; given that the
+  bid at 13 was hit, it is about 10.23; and given a pass, it is between 13 and 15, worth 14.
+
+  The lesson is adverse selection. Every trade the counterparty made was against the candidate,
+  and the fair value that matters is not the public one but the one implied by who trades with
+  you. The good responses are to move the market in the direction of each fill (by far more than
+  a tick), to widen and cut the size until the fills stop, and to use the passes to locate the
+  value. A candidate who keeps re-centring on the public fair value loses on almost every
+  trade while each trade's edge against that public value looks fair; the realised P&L at the
+  true value, shown next to it, is what the counterparty's knowledge cost.
+expect:
+  fair: 14
+  sd: 3.416
+  min: 4
+  max: 24

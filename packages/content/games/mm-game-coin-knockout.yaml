@@ -1,0 +1,82 @@
+# A market-making game played live in a trader round (ARCHITECTURE §8.3). The server draws the
+# coin and the dice, keeps the books and settles; the interviewer only trades and reveals. The
+# coin is a factor of the product (1 for heads, 0 for tails), and it is never revealed: it is
+# the risk left at the settlement.
+id: mm-game-coin-knockout
+topic: betting-market-making
+title: Two dice and a knockout coin
+difficulty: medium
+prompt: |
+  Two fair six-sided dice have been rolled and a fair coin tossed, where neither of us can see
+  them. A contract settles at the product of the dice, $D_1 \times D_2$, if the coin is heads, and
+  at 0 if it is tails: it settles at $C \times D_1 \times D_2$, where $C$ is 1 for heads and 0 for
+  tails.
+
+  Make me a two-sided market on it: a bid, an offer and a size of up to 5 contracts, in steps of
+  0.25. I may buy from you, sell to you, or ask for another market. I will show you Die 1 and
+  then Die 2; each time your market is withdrawn and you make a new one. The coin is shown only
+  at the end, when the contract settles.
+components:
+  - { label: Coin, faces: [0, 1] }
+  - { label: Die 1, faces: [1, 2, 3, 4, 5, 6] }
+  - { label: Die 2, faces: [1, 2, 3, 4, 5, 6] }
+payoff: product
+reveal: [1, 2]
+tick: 0.25
+maxSize: 5
+counterparty: |
+  Your books show the public fair value and standard deviation, the true value and your edge
+  against both at the candidate's bid and offer. Never say the fair value, the coin, a hidden die
+  or the candidate's P&L.
+
+  Stage 1, nothing shown (fair 6.125, sd 8.80): you are uninformed and trade only on the public
+  fair value. The traps are 12.25 (forgetting the coin) and 0 (the most likely value: half the
+  time it settles at 0). If the market is wider than 6, ask for a tighter one (at most twice,
+  then trade it anyway). If the fair value is outside the market, trade the full size against
+  it. Otherwise trade one lot on either side. Ask how often this contract settles at 0, and
+  whether it can ever settle near their mid. Then reveal Die 1.
+
+  Stage 2, Die 1 shown: still uninformed, against the new public fair value (1.75 times the die).
+  Whenever fair is outside the market, trade the full size against it. If Die 1 is a 4, 5 or 6
+  and the size is under 5, ask for a market in 5 first (once), then trade the full size of the
+  quote on the side of your choice; after a lower die trade one lot. Ask what their worst case
+  is now, and whether a high die made the contract more or less risky. Then reveal Die 2.
+
+  Stage 3, both dice shown: only the coin is left, and you know it. The contract is now worth
+  either the product of the dice or 0. Trade on the true value: lift the offer for the full size
+  if it is below the true value, hit the bid for the full size if it is above it, pass
+  otherwise. After your first trade here, ask what they think you know and let them requote once;
+  trade that market on the same rule. Ask how they would quote a contract that is worth either 0
+  or the product, against someone who might have seen the coin. There is no reveal left: close
+  once you have passed a market in this stage or traded two, or when time is short.
+hints:
+  - The coin and the dice are independent. What is the expected value of a product of independent factors?
+  - How often does the contract settle at 0? Is the distribution anywhere near symmetric?
+  - Once both dice are shown, the contract is worth either their product or 0. What are its mean and standard deviation?
+explanation: |
+  The coin and dice are independent, so the fair value is
+  $E[C]\,E[D_1]\,E[D_2] = \tfrac12 \times 3.5^2 = 49/8 = 6.125$. Half the time the contract settles
+  at 0, and otherwise at a product from 1 to 36. Its second moment is
+  $\tfrac12 \times (91/6)^2 \approx 115.0$, so the variance is about 77.5 and the standard
+  deviation about 8.80, more than the fair value itself. A sensible opening is centred on 6.125,
+  not on 0 or 12.25, and wide: 4.75 at 7.5, say.
+
+  When Die 1 shows $d$, the contract is $d \times C \times D_2$: fair value $1.75d$ and standard
+  deviation $d\sqrt{217/48} \approx 2.13d$. That is 1.75 and 2.13 after a 1, but 10.5 and 12.76
+  after a 6: a high die **raises** the risk above where it started (8.80). When both dice show
+  and their product is $p$, the contract is $p$ or 0 with even chances: fair value $p/2$ and
+  standard deviation $p/2$ as well (18 and 18 after two sixes, 1 and 1 after a 1 and a 2). That
+  risk never shrinks; it is settled only by the coin.
+
+  The lesson is that a reveal can make a contract riskier, and that some risk cannot be quoted
+  away. Against an uninformed counterparty the edge is the distance from the mid to $p/2$
+  whatever the width, but each contract held carries a standard deviation of $p/2$ into the
+  settlement, so size, not width, is the lever: a good candidate cuts the size as the stake
+  grows. Against someone who has seen the coin, any market inside 0 to $p$ is traded the wrong
+  way for the full size, so the right answer in the last stage is a small size or a market close
+  to 0 at $p$.
+expect:
+  fair: 49/8
+  sd: 8.803
+  min: 0
+  max: 36
