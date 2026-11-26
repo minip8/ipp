@@ -141,6 +141,20 @@ const CONTENT = [
   },
 ];
 
+/** The `related` links of roadmap.yaml (each written on one side, as there). */
+const RELATED: Record<string, string[]> = {
+  'cpp-build-model': ['os-linking'],
+  'cpp-memory-performance': ['ca-caches', 'os-allocators'],
+  'cpp-concurrency': ['cc-races', 'cc-atomics', 'cc-memory-ordering'],
+  'py-concurrency': ['cc-python', 'cc-asyncio'],
+  'os-virtual-memory': ['ca-memory-hierarchy'],
+  'cc-threads': ['os-processes'],
+  'cc-memory-ordering': ['ca-coherence'],
+  'cc-scaling': ['ca-caches', 'ca-coherence'],
+  'cc-event-loops': ['net-sockets'],
+  'net-sockets': ['os-files'],
+};
+
 /** answered and correct as fractions of the node's questions. */
 const PROGRESS: Record<string, [answered: number, correct: number]> = {
   'cpp-initialization': [1, 0.88],
@@ -191,6 +205,7 @@ function build(progress: Record<string, [number, number]>) {
           title: node.title,
           description: node.description,
           requires: node.requires,
+          related: RELATED[node.id] ?? [],
           subtopics,
           questionCount: total,
           shortCount: sum(subtopics, (s) => s.shortCount),

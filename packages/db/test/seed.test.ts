@@ -151,7 +151,16 @@ describe('seed', () => {
         {
           slug: 'cpp',
           position: 0,
-          roadmap: [{ id: 'cpp-s', title: 'S', description: 'd', subtopics: ['s'], requires: [] }],
+          roadmap: [
+            {
+              id: 'cpp-s',
+              title: 'S',
+              description: 'd',
+              subtopics: ['s'],
+              requires: [],
+              related: [],
+            },
+          ],
         },
         { slug: 'py', position: 1, roadmap: [] },
       ]);

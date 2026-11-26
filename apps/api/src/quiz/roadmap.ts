@@ -89,6 +89,8 @@ export function roadmapTopics(
         title: n.title,
         description: n.description,
         requires: n.requires,
+        // Absent on a roadmap stored before the field existed (until the next seed).
+        related: n.related ?? [],
         subtopics,
         ...progressOf(n.subtopics.map((s) => of.get(s) ?? EMPTY)),
       };

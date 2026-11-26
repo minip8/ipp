@@ -272,6 +272,12 @@ export const QuizRoadmapNode = z.object({
   /** Exactly the `subtopic` strings of the questions this node covers. */
   subtopics: z.array(z.string().min(1)).min(1),
   requires: z.array(Slug).default([]),
+  /**
+   * Nodes of *other* topics that go with this one (background it leans on, or the same ground
+   * from another side). A link is written on one of its two nodes and shown on both; it draws no
+   * edge and has no say in what is "next up".
+   */
+  related: z.array(Slug).default([]),
 });
 export type QuizRoadmapNode = z.infer<typeof QuizRoadmapNode>;
 

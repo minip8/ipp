@@ -231,6 +231,7 @@ describe('quiz roadmap', () => {
           title: 'A',
           description: 'd',
           requires: [],
+          related: ['cc-b'],
           subtopics: [{ subtopic: 's', ...progress }],
           ...progress,
         },

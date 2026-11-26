@@ -7,11 +7,20 @@ import { Client, flushRedis, type Harness, startApi } from './helpers/harness';
 let h: Harness;
 
 const TOPIC = 'rm-topic';
+const area = (
+  id: string,
+  title: string,
+  subtopics: string[],
+  requires: string[] = [],
+  related: string[] = [],
+): QuizRoadmapNode => ({ id, title, description: 'd', subtopics, requires, related });
 const ROADMAP: QuizRoadmapNode[] = [
-  { id: 'rm-basics', title: 'Basics', description: 'd', subtopics: ['one', 'two'], requires: [] },
-  { id: 'rm-next', title: 'Next', description: 'd', subtopics: ['three'], requires: ['rm-basics'] },
+  area('rm-basics', 'Basics', ['one', 'two'], [], ['other-topic-area']),
+  area('rm-next', 'Next', ['three'], ['rm-basics']),
   // On the roadmap but without questions (the seed tolerates it; the content check does not).
-  { id: 'rm-empty', title: 'Empty', description: 'd', subtopics: ['none'], requires: ['rm-next'] },
+  area('rm-empty', 'Empty', ['none'], ['rm-next']),
+  // Stored before `related` existed: served as having none.
+  (({ related: _, ...old }) => old)(area('rm-old', 'Old', ['none-either'])) as QuizRoadmapNode,
 ];
 
 const q = (id: string, subtopic: string, type: 'single' | 'short' = 'single') =>
@@ -135,10 +144,11 @@ describe('GET /api/quiz/roadmap', () => {
       correct: 0,
       accuracy: null,
     });
-    expect(t?.nodes.map((n) => [n.id, n.questionCount, n.requires])).toEqual([
-      ['rm-basics', 3, []],
-      ['rm-next', 2, ['rm-basics']],
-      ['rm-empty', 0, ['rm-next']],
+    expect(t?.nodes.map((n) => [n.id, n.questionCount, n.requires, n.related])).toEqual([
+      ['rm-basics', 3, [], ['other-topic-area']],
+      ['rm-next', 2, ['rm-basics'], []],
+      ['rm-empty', 0, ['rm-next'], []],
+      ['rm-old', 0, [], []],
     ]);
     expect(t?.nodes[0]?.subtopics).toEqual([
       { subtopic: 'one', questionCount: 2, shortCount: 1, answered: 0, correct: 0, accuracy: null },

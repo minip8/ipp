@@ -10,6 +10,7 @@ import {
   nodeState,
   pickTopic,
   readingOrder,
+  relatedAreas,
   relations,
   roadmapStatuses,
   stepFrom,
@@ -261,6 +262,27 @@ describe('relations', () => {
     expect(requires.get('b')).toEqual(['a']);
     expect(leadsTo.get('a')).toEqual(['b', 'c']);
     expect(leadsTo.get('c')).toEqual([]);
+  });
+});
+
+describe('relatedAreas', () => {
+  const n = (id: string, ...related: string[]) => ({ id, related });
+  const topics = [
+    { slug: 'x', nodes: [n('x1', 'z1', 'y2'), n('x2', 'x1', 'gone')] },
+    { slug: 'y', nodes: [n('y1', 'x1'), n('y2')] },
+    { slug: 'z', nodes: [n('z1'), n('z2', 'y1')] },
+  ];
+  const ids = (id: string) => relatedAreas(topics, id).map((r) => `${r.topic.slug}:${r.node.id}`);
+
+  it('follows a link from either side, in topic then roadmap order', () => {
+    expect(ids('x1')).toEqual(['y:y1', 'y:y2', 'z:z1']);
+    expect(ids('y1')).toEqual(['x:x1', 'z:z2']);
+    expect(ids('z1')).toEqual(['x:x1']);
+  });
+
+  it('leaves out unknown ids and areas of the same topic', () => {
+    expect(ids('x2')).toEqual([]);
+    expect(ids('nowhere')).toEqual([]);
   });
 });
 

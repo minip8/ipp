@@ -13,8 +13,8 @@ import {
   roadmapGaps,
 } from '../src';
 
-const node = (id: string, subtopics: string[], requires: string[] = []) =>
-  QuizRoadmapNode.parse({ id, title: id, description: 'd', subtopics, requires });
+const node = (id: string, subtopics: string[], requires: string[] = [], related: string[] = []) =>
+  QuizRoadmapNode.parse({ id, title: id, description: 'd', subtopics, requires, related });
 
 describe('the authored roadmap', () => {
   const roadmap = loadQuizRoadmap();
@@ -41,6 +41,14 @@ describe('the authored roadmap', () => {
         `${t.slug} has a starting point`,
       ).toBe(true);
     }
+  });
+  it('keeps cross-topic links few', () => {
+    // They are pointers a learner is glad of, not a second graph.
+    const links = Object.values(roadmap).flatMap((nodes) => nodes.flatMap((n) => n.related));
+    expect(links.length).toBeGreaterThan(0);
+    expect(links.length).toBeLessThanOrEqual(24);
+    for (const nodes of Object.values(roadmap))
+      for (const n of nodes) expect(n.related.length, n.id).toBeLessThanOrEqual(3);
   });
   it('lists only direct prerequisites', () => {
     // An edge implied by another path only adds clutter to the graph.
@@ -87,6 +95,26 @@ describe('roadmapErrors', () => {
       'a a-1: requires unknown node "nope"',
       'a a-2: requires "b-1" from b; stay in a',
       'a a-2: requires "a-1" twice',
+    ]);
+  });
+  it('accepts related links to other topics, written on one side', () => {
+    const rm: QuizRoadmap = {
+      a: [node('a-1', ['x'], [], ['b-1', 'c-1'])],
+      b: [node('b-1', ['y'], [], ['c-1'])],
+      c: [node('c-1', ['z'])],
+    };
+    expect(roadmapErrors(rm, ['a', 'b', 'c'])).toEqual([]);
+  });
+  it('rejects bad related links', () => {
+    const rm: QuizRoadmap = {
+      a: [node('a-1', ['x'], [], ['a-2', 'nope', 'b-1', 'b-1']), node('a-2', ['y'])],
+      b: [node('b-1', ['z'], [], ['a-1'])],
+    };
+    expect(roadmapErrors(rm, ['a', 'b'])).toEqual([
+      'a a-1: related to "a-2" of the same topic; related is for other topics (use requires)',
+      'a a-1: related to unknown node "nope"',
+      'a a-1: related to "b-1" twice',
+      'b b-1: related to "a-1", which already lists it; write a link on one side',
     ]);
   });
   it('rejects a cycle and names it', () => {
