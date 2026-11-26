@@ -189,7 +189,7 @@ test.describe('joining by the invite link', () => {
   });
 
   test('a guest is asked to sign in for anything but the room', async ({ page }) => {
-    await setup(page, (b) => {
+    const backend = await setup(page, (b) => {
       b.signedIn = false;
       candidateRoom(b);
     });
@@ -199,6 +199,8 @@ test.describe('joining by the invite link', () => {
     await expect(page).toHaveURL(new RegExp(`/pads/${ROOM_PAD_ID}$`));
     await page.goto('/dashboard');
     await expect(page).toHaveURL(/\/sign-in\?next=%2Fdashboard$/);
+    // The header's account menu does not ask for a key a guest cannot have (403 on the API).
+    expect(backend.requests.filter((r) => r.path.startsWith('/api/ai-key'))).toEqual([]);
   });
 });
 
