@@ -28,13 +28,33 @@ MACHINE_JUDGE=${MACHINE_JUDGE:-e2-standard-2}
 IMAGE=(--image-family=ubuntu-2404-lts-amd64 --image-project=ubuntu-os-cloud)
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 
-# Unpacks a tarball of the repository into /opt/ipp-src on one VM. Files are added and replaced,
-# never removed (infra/deploy/.env.prod lives there).
+# Unpacks a tarball of the repository into /opt/ipp-src on one VM. Files are added and replaced;
+# nothing is removed (infra/deploy/.env.prod lives there) except the paths listed in `removed`,
+# when given: one path per line, relative to the repository. Only a regular file or a link at
+# such a path is removed, before unpacking.
 push_to() {
-  local vm=$1 tarball=$2
+  local vm=$1 tarball=$2 removed=${3:-}
   gcloud compute scp --quiet --zone "$ZONE" --tunnel-through-iap "$tarball" "$vm:/tmp/ipp.tgz"
+  if [ -n "$removed" ]; then
+    gcloud compute scp --quiet --zone "$ZONE" --tunnel-through-iap "$removed" "$vm:/tmp/ipp-removed.txt"
+  fi
   gcloud compute ssh "$vm" --quiet --zone "$ZONE" --tunnel-through-iap --command \
-    'sudo mkdir -p /opt/ipp-src && sudo tar -xzf /tmp/ipp.tgz -C /opt/ipp-src && sudo chown -R "$USER" /opt/ipp-src && rm /tmp/ipp.tgz'
+    'sudo mkdir -p /opt/ipp-src && cd /opt/ipp-src && if [ -f /tmp/ipp-removed.txt ]; then while IFS= read -r p; do if [ -f "$p" ] || [ -L "$p" ]; then sudo rm -f -- "$p" && echo "removed $p (no longer in the repository)"; fi; done < /tmp/ipp-removed.txt; rm -f /tmp/ipp-removed.txt; fi && sudo tar -xzf /tmp/ipp.tgz -C /opt/ipp-src && sudo chown -R "$USER" /opt/ipp-src && rm /tmp/ipp.tgz'
+}
+
+# Every path this commit's history once had and the commit no longer has, one per line: what a
+# copy unpacked over an older one still holds and should not. Never an env file, and nothing that
+# could leave the repository's directory. From a shallow clone the list is only what its history
+# shows, so it may be short, never wrong.
+removed_paths() {
+  local dir
+  dir=$(mktemp -d)
+  git -C "$ROOT" -c core.quotePath=false log --pretty=format: --name-only --no-renames HEAD \
+    | LC_ALL=C sort -u > "$dir/ever"
+  git -C "$ROOT" -c core.quotePath=false ls-tree -r --name-only HEAD | LC_ALL=C sort > "$dir/now"
+  LC_ALL=C comm -23 "$dir/ever" "$dir/now" \
+    | grep -Ev '^$|^/|(^|/)\.\.(/|$)|(^|/)\.env[^/]*$' || true
+  rm -rf "$dir"
 }
 
 app_internal_ip() { gcloud compute instances describe "$APP" --zone "$ZONE" --format='value(networkInterfaces[0].networkIP)'; }
@@ -82,7 +102,14 @@ case "${1:-}" in
     echo "Deploying $(git -C "$ROOT" log -1 --format='%h %s') to $APP ($host)"
     tmp=$(mktemp -d)
     git -C "$ROOT" archive --format=tar.gz -o "$tmp/ipp.tgz" HEAD
-    push_to "$APP" "$tmp/ipp.tgz"
+    # The VM's copy is unpacked over the last one, so a file deleted from the repository would
+    # stay there and still be built: a deleted page stays a route, and one that imports something
+    # since removed fails the build. Take those away first.
+    if [ "$(git -C "$ROOT" rev-parse --is-shallow-repository)" = true ]; then
+      echo "warning: shallow clone; files deleted before its history began stay on the VM." >&2
+    fi
+    removed_paths > "$tmp/removed.txt"
+    push_to "$APP" "$tmp/ipp.tgz" "$tmp/removed.txt"
     rm -rf "$tmp"
     # IPP_NO_SECRET_OUTPUT: setup-app.sh does not print the judge's Redis URL (this output may be a CI log).
     gcloud compute ssh "$APP" --quiet --zone "$ZONE" --tunnel-through-iap \
