@@ -298,11 +298,15 @@ export const QUANT_GAME_ENDED_STARTED_AT = iso(-86400 + 1800);
 /** What the scripted interviewer says in a game. */
 export const GAME_LINES = {
   tighten: "That's a bit wide for me. Can you tighten it up?",
-  /** The interviewer's side: "I buy 2 at 11.5." */
+  /**
+   * The interviewer's side, as the platform states it before the model's words (`tradeLine` in
+   * packages/interviewer/src/quant/game.ts): "I buy 2 at your offer of 11.5."
+   */
   trade: (side: 'buy' | 'sell', quantity: number, price: string) =>
-    `I ${side} ${quantity} at ${price}.`,
+    `I ${side} ${quantity} at your ${side === 'buy' ? 'offer' : 'bid'} of ${price}.`,
   again: 'Make me a new market.',
-  shown: (label: string, value: number) => `Now ${label}: it is a ${value}.`,
+  /** `revealLine`: "Die 1 shows 6." */
+  shown: (label: string, value: number) => `${label} shows ${value}.`,
   withdrawn: 'Your market is withdrawn; make me a new one.',
   nothingLeft: 'Nothing more is shown before the end.',
 } as const;

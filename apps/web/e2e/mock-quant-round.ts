@@ -394,18 +394,21 @@ export class MockQuantRounds {
         },
         { at: 100, candidate: 'Each die averages 3.5, so the sum is 10.5. I will go 9.5 at 11.5.' },
         { at: 104, step: quote(9.5, 11.5, 2) },
-        { at: 118, step: turn(1, 'I buy 2 at 11.5.', buy(2)) },
-        { at: 150, step: turn(1, 'Now Die 1: it is a 6. Make me a market.', { reveal: true }) },
+        { at: 118, step: turn(1, 'I buy 2 at your offer of 11.5.', buy(2)) },
+        { at: 150, step: turn(1, 'Die 1 shows 6. Make me a market.', { reveal: true }) },
         { at: 190, step: quote(11, 12.5, 2) },
-        { at: 200, step: turn(1, 'I buy 2 at 12.5.', buy(2)) },
+        { at: 200, step: turn(1, 'I buy 2 at your offer of 12.5.', buy(2)) },
         { at: 230, candidate: 'You keep buying. Die 1 is a 6, so the other two average 7: 13.' },
         { at: 236, step: quote(12.5, 13.5, 2) },
         {
           at: 250,
-          step: turn(1, 'I buy 1 at 13.5. Now Die 2: it is a 2.', { ...buy(1), reveal: true }),
+          step: turn(1, 'I buy 1 at your offer of 13.5. Die 2 shows 2.', {
+            ...buy(1),
+            reveal: true,
+          }),
         },
         { at: 300, step: quote(11, 12, 1) },
-        { at: 312, step: turn(1, 'I buy 1 at 12.', buy(1)) },
+        { at: 312, step: turn(1, 'I buy 1 at your offer of 12.', buy(1)) },
         {
           at: 380,
           step: {
@@ -413,7 +416,7 @@ export class MockQuantRounds {
             version: 0,
             index: 1,
             kind: 'chat',
-            say: 'Die 3 is a 5, so it settles at 13. Let’s look at how that went in the report.',
+            say: 'That settles the game at 13 (Die 1: 6, Die 2: 2, Die 3: 5). You finish short 6, a loss of 4.5. Let’s look at how that went in the report.',
             by: 'interviewer',
             verdict: {
               score: 0.6,
