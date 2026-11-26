@@ -233,6 +233,17 @@ function applyEvent(state: PadState, ev: ServerEvent): PadState {
         },
       };
     }
+    case 'message.discarded': {
+      // Only ever a stream: a message that was created stays.
+      if (!state.streaming[ev.messageId]) return state;
+      const streaming = { ...state.streaming };
+      delete streaming[ev.messageId];
+      return {
+        ...state,
+        streaming,
+        order: state.order.filter((k) => k !== `s:${ev.messageId}`),
+      };
+    }
     case 'message.created': {
       const m = ev.message;
       const streaming = { ...state.streaming };

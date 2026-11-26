@@ -18,7 +18,16 @@
  * verdict; a candidate message aborts an in-flight clock turn and its reply does what the clock
  * required; a step refused because the round moved on (`stale`, …) posts nothing, and one refused
  * for its own content gets the canned reply.
+ *
+ * Streaming: replies and the opening stream their `message` as it is written (`message.delta`,
+ * read out of the partial JSON by `MessageStream`) under an id the posted message then takes
+ * (`QuantStep.messageId`, or `NewMessage.id` for a canned reply or an after-round message), so it
+ * replaces the streamed text in place. Whenever nothing is posted under that id (the call was
+ * aborted, the turn is silent, the step was refused because the round moved on, the key failed),
+ * `message.discarded` drops the streamed text from every client. Proactive turns (nudges, closes
+ * for time, stalls) are not streamed: they are often discarded when the candidate speaks.
  */
+import { randomUUID } from 'node:crypto';
 import type {
   AiProvider,
   Pad,
@@ -51,6 +60,7 @@ import {
   replyTask,
   stallTask,
 } from './prompts';
+import { MessageStream } from './stream';
 import {
   normaliseTurn,
   parseTurn,
@@ -176,14 +186,24 @@ export interface QuantCore<R extends QuantPad> {
   voiceSettleMs: number;
 }
 
-type CallResult =
+/** A call's message as it was streamed: `shown` once a delta went out under `id`. */
+interface Streamed {
+  id: string;
+  shown: boolean;
+}
+
+type CallResult = (
   | { ok: true; turn: QuantTurn; res: ModelResponse }
   | {
       ok: false;
       why: 'aborted' | 'failed' | 'refused' | 'invalid' | 'key';
       error?: ModelError;
       res?: ModelResponse;
-    };
+    }
+) & { stream: Streamed | null };
+
+/** The id a posted message takes: the stream's, when something was streamed under it. */
+const streamedId = (s: Streamed | null | undefined) => (s?.shown ? s.id : undefined);
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -290,11 +310,29 @@ export function createQuantRuntime<R extends QuantPad>(core: QuantCore<R>) {
     rt: R,
     ctx: QuantContext,
     key: UsableKey,
-    o: { task: string; inflight: 'reply' | 'decision'; extra?: QuantPad['replyQueue'] },
+    o: {
+      task: string;
+      inflight: 'reply' | 'decision';
+      extra?: QuantPad['replyQueue'];
+      /** Stream the turn's message to the pad as it is written. */
+      stream?: boolean;
+    },
   ): Promise<CallResult> {
     const abort = new AbortController();
     rt.inflight = abort;
     rt.inflightKind = o.inflight;
+    const stream: Streamed | null = o.stream ? { id: randomUUID(), shown: false } : null;
+    const reader = stream ? new MessageStream() : null;
+    // Local only: the request the provider gets is the same with or without it.
+    const onText =
+      stream && reader
+        ? (chunk: string) => {
+            const delta = reader.push(chunk);
+            if (!delta || abort.signal.aborted || rt.released) return;
+            stream.shown = true;
+            deps.emit(rt.padId, { type: 'message.delta', messageId: stream.id, delta });
+          }
+        : undefined;
     try {
       const res = await core.callModel(
         { padId: rt.padId },
@@ -306,24 +344,34 @@ export function createQuantRuntime<R extends QuantPad>(core: QuantCore<R>) {
           ...QUANT_CALLS.turn,
           schema: QuantTurnSchema,
           signal: abort.signal,
+          ...(onText ? { onText } : {}),
         },
         core.padModel(rt, ctx, key),
       );
-      if (res.refused) return { ok: false, why: 'refused', res };
+      if (res.refused) return { ok: false, why: 'refused', res, stream };
       const turn = parseTurn(res.text);
-      return turn ? { ok: true, turn, res } : { ok: false, why: 'invalid', res };
+      return turn ? { ok: true, turn, res, stream } : { ok: false, why: 'invalid', res, stream };
     } catch (err) {
       const e = err instanceof ModelError ? err : new ModelError('transient', String(err));
-      if (e.kind === 'aborted') return { ok: false, why: 'aborted', error: e };
+      if (e.kind === 'aborted') return { ok: false, why: 'aborted', error: e, stream };
       if (e.keyFailure && e.keyFailure !== 'rate_limited') {
+        // The notice is a message of its own: what was streamed goes first.
+        discard(rt, stream);
         await core.keyRejectedNotice(rt, key);
-        return { ok: false, why: 'key', error: e };
+        return { ok: false, why: 'key', error: e, stream };
       }
-      return { ok: false, why: 'failed', error: e };
+      return { ok: false, why: 'failed', error: e, stream };
     } finally {
       rt.inflight = null;
       rt.inflightKind = null;
     }
+  }
+
+  /** What was streamed under this id will not be posted: every client drops it. */
+  function discard(rt: R, s: Streamed | null | undefined): void {
+    if (!s?.shown) return;
+    s.shown = false;
+    deps.emit(rt.padId, { type: 'message.discarded', messageId: s.id });
   }
 
   const perf = (r: CallResult | null) => {
@@ -405,14 +453,18 @@ export function createQuantRuntime<R extends QuantPad>(core: QuantCore<R>) {
     return res;
   }
 
-  /** The step a move asks for. A close without a closing line gets a canned one. */
+  /**
+   * The step a move asks for. A close without a closing line gets a canned one. `messageId`: the
+   * id the message was streamed under, which the posted message takes.
+   */
   function stepOf(
     ctx: QuantContext,
     move: Exclude<QuantMove, { type: 'silent' } | { type: 'invalid' }>,
-    o: { kind: 'chat' | 'proactive'; nudge: boolean; note: string },
+    o: { kind: 'chat' | 'proactive'; nudge: boolean; note: string; messageId?: string },
   ): QuantStep {
     const entry = ctx.questions[0] as QuantContext['questions'][number];
     const note = o.note.trim() || undefined;
+    const id = o.messageId ? { messageId: o.messageId } : {};
     if (move.type === 'close') {
       return {
         type: 'close',
@@ -423,6 +475,7 @@ export function createQuantRuntime<R extends QuantPad>(core: QuantCore<R>) {
         say: move.say || cannedClose(ctx, move.by),
         verdict: move.verdict,
         note,
+        ...id,
       };
     }
     return {
@@ -435,18 +488,30 @@ export function createQuantRuntime<R extends QuantPad>(core: QuantCore<R>) {
       ...(move.action === 'hint' ? { hintRung: move.hintRung ?? 0 } : {}),
       ...(o.nudge ? { nudge: true } : {}),
       note,
+      ...id,
     };
   }
 
   const cannedClose = (ctx: QuantContext, by: 'interviewer' | 'timeout' | 'round_time') =>
     cannedCloseLine(by, ctx.round.clock, ctx.round.total, core.now());
 
-  async function saveCanned(rt: R, text: string): Promise<void> {
+  /**
+   * Posts a plain message (no step): a canned reply, or a reply after the round. It takes the id
+   * of what was streamed, which it replaces; that is dropped if the message cannot be posted.
+   */
+  async function saveCanned(rt: R, text: string, stream: Streamed | null = null): Promise<void> {
+    const id = streamedId(stream);
     try {
-      await deps.saveMessage(rt.padId, { kind: 'chat', intent: 'answer', text });
+      await deps.saveMessage(rt.padId, {
+        ...(id ? { id } : {}),
+        kind: 'chat',
+        intent: 'answer',
+        text,
+      });
       policy.onInterviewerMessage(rt.policy, core.now(), false);
     } catch (err) {
       deps.log.warn({ padId: rt.padId, err: String(err) }, 'saveMessage failed');
+      discard(rt, stream);
     }
   }
 
@@ -543,11 +608,13 @@ export function createQuantRuntime<R extends QuantPad>(core: QuantCore<R>) {
         task: replyTask({ via, voice, nudge, forced }),
         inflight: 'reply',
         extra: queued,
+        stream: true,
       });
-      if (rt.released) return;
+      const s = r.stream;
+      if (rt.released) return discard(rt, s);
       const base = { trigger: 'reply', ...perf(r) };
       if (!r.ok) {
-        if (r.why === 'aborted') return;
+        if (r.why === 'aborted') return discard(rt, s);
         core.trace(rt.padId, {
           type: 'quant',
           ...base,
@@ -556,20 +623,21 @@ export function createQuantRuntime<R extends QuantPad>(core: QuantCore<R>) {
           turn: null,
         });
         if (forced) {
-          // The clock does not wait for the model.
-          await apply(
+          // The clock does not wait for the model: its canned line replaces what was streamed.
+          const res = await apply(
             rt,
             stepOf(
               ctx,
               { type: 'close', by: forced, say: '', verdict: null },
-              { kind: 'chat', nudge: false, note: '' },
+              { kind: 'chat', nudge: false, note: '', messageId: streamedId(s) },
             ),
             base,
             true,
           );
+          if (!res?.ok) discard(rt, s);
           return;
         }
-        if (r.why === 'key') return;
+        if (r.why === 'key') return discard(rt, s);
         await saveCanned(
           rt,
           r.why === 'refused'
@@ -577,6 +645,7 @@ export function createQuantRuntime<R extends QuantPad>(core: QuantCore<R>) {
             : r.error?.keyFailure === 'rate_limited'
               ? core.messages.rateLimited(key.provider)
               : core.messages.replyFailed,
+          s,
         );
         return;
       }
@@ -589,10 +658,11 @@ export function createQuantRuntime<R extends QuantPad>(core: QuantCore<R>) {
           why: move.why,
           turn: r.turn,
         });
-        await saveCanned(rt, core.messages.replyFailed);
+        await saveCanned(rt, core.messages.replyFailed, s);
         return;
       }
       if (move.type === 'silent') {
+        discard(rt, s);
         if (r.turn.note.trim()) await core.note(rt.padId, r.turn.note.trim());
         core.trace(rt.padId, { type: 'quant', ...base, outcome: 'silent', turn: r.turn });
         return;
@@ -603,15 +673,18 @@ export function createQuantRuntime<R extends QuantPad>(core: QuantCore<R>) {
           kind: 'chat',
           nudge: nudge && move.type === 'turn',
           note: r.turn.note,
+          messageId: streamedId(s),
         }),
         { ...base, turn: r.turn },
       );
       // The round could not be written at all, or it refused the step for a reason of its own
-      // (a hint the books do not allow, say): still answer them. When the round has simply moved
-      // on (another write won, the question closed, the pad ended) someone has just spoken, and a
-      // "say that again" under the next question would only confuse.
+      // (a hint the books do not allow, say): still answer them, in place of what was streamed.
+      // When the round has simply moved on (another write won, the question closed, the pad
+      // ended) someone has just spoken, and a "say that again" under the next question would
+      // only confuse: what was streamed is dropped.
       if (res === null || (res.ok === false && !MOVED_ON.has(res.reason)))
-        await saveCanned(rt, core.messages.replyFailed);
+        await saveCanned(rt, core.messages.replyFailed, s);
+      else if (!res.ok) discard(rt, s);
     } finally {
       thinking(rt, false);
     }
@@ -635,22 +708,26 @@ export function createQuantRuntime<R extends QuantPad>(core: QuantCore<R>) {
         // The greeting moment gives way to a candidate message, whose reply opens instead.
         inflight: queued.length > 0 ? 'reply' : 'decision',
         extra: queued,
+        stream: true,
       });
-      if (r.ok === false && r.why === 'aborted') return;
-      if (queued.length === 0 && (rt.epoch !== epoch || rt.replyQueue.length > 0)) return;
+      if (r.ok === false && r.why === 'aborted') return discard(rt, r.stream);
+      if (queued.length === 0 && (rt.epoch !== epoch || rt.replyQueue.length > 0))
+        return discard(rt, r.stream);
       if (r.ok) {
         const text = sayOf(r.turn.message);
         if (text) say = text;
         note = r.turn.note.trim() || undefined;
       }
     }
-    if (rt.released || rt.policy.ended) return;
-    await apply(
+    if (rt.released || rt.policy.ended) return discard(rt, r?.stream);
+    const id = streamedId(r?.stream);
+    const res = await apply(
       rt,
-      { type: 'start', version: ctx.round.version, say, note },
+      { type: 'start', version: ctx.round.version, say, note, ...(id ? { messageId: id } : {}) },
       { trigger: 'opening', ...perf(r), turn: r?.ok ? r.turn : null },
       !r?.ok,
     );
+    if (!res?.ok) discard(rt, r?.stream);
   }
 
   /** After the round: a plain reply (no step: the round's books are closed). */
@@ -666,13 +743,15 @@ export function createQuantRuntime<R extends QuantPad>(core: QuantCore<R>) {
       task: afterRoundTask({ via, voice }),
       inflight: 'reply',
       extra: queued,
+      stream: true,
     });
-    if (rt.released) return;
+    if (rt.released) return discard(rt, r.stream);
     if (!r.ok) {
-      if (r.why === 'aborted' || r.why === 'key') return;
+      if (r.why === 'aborted' || r.why === 'key') return discard(rt, r.stream);
       await saveCanned(
         rt,
         r.why === 'refused' ? QUANT_MESSAGES.refused : core.messages.replyFailed,
+        r.stream,
       );
       return;
     }
@@ -684,10 +763,11 @@ export function createQuantRuntime<R extends QuantPad>(core: QuantCore<R>) {
         outcome: 'silent',
         ...perf(r),
       });
-      if (!text && via === 'text') await saveCanned(rt, core.messages.replyFailed);
+      if (!text && via === 'text') await saveCanned(rt, core.messages.replyFailed, r.stream);
+      else discard(rt, r.stream);
       return;
     }
-    await saveCanned(rt, text);
+    await saveCanned(rt, text, r.stream);
     core.trace(rt.padId, {
       type: 'quant',
       trigger: 'after_round',

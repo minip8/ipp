@@ -120,15 +120,21 @@ export function privateTokens(i: number): string[] {
 }
 export const promptToken = (i: number) => `PROMPT-${N[i]}`;
 
-export const turn = (t: Partial<QuantTurn> & { action: QuantTurn['action'] }): string =>
+/** A turn as the model writes it, its keys in the schema's order (as structured output does). */
+export const turn = ({
+  reason = 'test',
+  action,
+  ...rest
+}: Partial<QuantTurn> & { action: QuantTurn['action'] }): string =>
   JSON.stringify({
-    reason: 'test',
+    reason,
+    action,
     hint_rung: 0,
     message: '',
     score: 0,
     summary: '',
     note: '',
-    ...t,
+    ...rest,
   });
 
 /** The kind of call, from the task in the final system message ("reply", "nudge", "timeout", …). */
@@ -361,7 +367,13 @@ export function quantHarness(opts: QuantHarnessOptions = {}) {
     platform.version = adv.version;
     const e = adv.effects;
     if (e.say)
-      post({ role: 'interviewer', kind: e.say.kind, intent: e.say.intent, text: e.say.text });
+      post({
+        id: e.say.messageId,
+        role: 'interviewer',
+        kind: e.say.kind,
+        intent: e.say.intent,
+        text: e.say.text,
+      });
     if (e.reveal)
       post({
         id: e.reveal.messageId,

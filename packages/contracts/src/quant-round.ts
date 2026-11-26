@@ -373,7 +373,8 @@ export function quantClock(state: QuantRoundState, roundEndsAt: Date | number): 
  * What the interviewer asks the round to do (`InterviewerDeps.applyQuantStep`). Every step names
  * the round's `version` it was decided on; a step on an older version is refused as `stale` and
  * its message dropped. `say` is the interviewer's message, posted before anything the step
- * reveals (null: say nothing). `note` is a private note to itself.
+ * reveals (null: say nothing). `note` is a private note to itself. `messageId` (optional) is the id
+ * the message was streamed under (`message.delta`), which the posted message then takes.
  *
  *  start    the round begins: the first question is revealed (only while pending)
  *  turn     the conversation goes on with the current question: `stay`, a `hint` (with the rung
@@ -386,7 +387,7 @@ export function quantClock(state: QuantRoundState, roundEndsAt: Date | number): 
  *  verdict  the judgement of a question closed without one (any phase, the round finished included)
  */
 export type QuantStep =
-  | { type: 'start'; version: number; say: string | null; note?: string }
+  | { type: 'start'; version: number; say: string | null; note?: string; messageId?: string }
   | {
       type: 'turn';
       version: number;
@@ -398,6 +399,7 @@ export type QuantStep =
       hintRung?: number;
       nudge?: boolean;
       note?: string;
+      messageId?: string;
     }
   | {
       type: 'close';
@@ -408,6 +410,7 @@ export type QuantStep =
       by: 'interviewer' | 'timeout' | 'round_time';
       verdict: QuantVerdict | null;
       note?: string;
+      messageId?: string;
     }
   | { type: 'verdict'; version: number; index: number; verdict: QuantVerdict };
 
@@ -456,8 +459,13 @@ export type QuantStepResult =
 
 /** What the caller of `advanceRound` must do, in this order, in the same transaction as the write. */
 export interface QuantEffects {
-  /** Post the interviewer's message (role interviewer). */
-  say: { text: string; kind: 'chat' | 'proactive'; intent: MessageIntent } | null;
+  /** Post the interviewer's message (role interviewer), with id `messageId` when there is one. */
+  say: {
+    text: string;
+    kind: 'chat' | 'proactive';
+    intent: MessageIntent;
+    messageId?: string;
+  } | null;
   /**
    * Post the revealed question: a proactive interviewer message with intent `question`, id
    * `messageId` and exactly `text` (the bank prompt), and a `question` timeline event.
@@ -634,6 +642,7 @@ export function advanceRound(
         text: step.say,
         kind: step.type === 'start' ? 'proactive' : step.kind,
         intent: sayIntent(step, effects.finished),
+        ...(step.messageId ? { messageId: step.messageId } : {}),
       };
     }
     if (step.note) effects.note = step.note;

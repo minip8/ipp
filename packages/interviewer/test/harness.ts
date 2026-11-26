@@ -48,7 +48,11 @@ export type Reply =
   | string
   | { text: string; refused?: boolean }
   | { error: 'transient' | 'permanent'; keyFailure?: KeyFailure; status?: number }
-  | { wait: Promise<string>; ignoreAbort?: boolean };
+  /**
+   * Waits for the text. `partial` is streamed before the wait (then the rest of the text, if it
+   * goes on from there), as a model that is cut off, fails or is refused mid-stream would.
+   */
+  | { wait: Promise<string>; ignoreAbort?: boolean; partial?: string; refused?: boolean };
 
 /** Scripted model: `respond` decides per request; records every request. */
 export class FakeModel implements ModelClient {
@@ -62,9 +66,17 @@ export class FakeModel implements ModelClient {
     const r = this.respond(req, this.calls.length);
     let text: string;
     let refused = false;
+    let sent = '';
+    const stream = (t: string) => {
+      for (const chunk of t.match(/.{1,12}/gs) ?? []) req.onText?.(chunk);
+    };
     if (typeof r === 'string') text = r;
     else if ('error' in r) throw new ModelError(r.error, `fake ${r.error}`, r.status, r.keyFailure);
     else if ('wait' in r) {
+      if (r.partial) {
+        stream(r.partial);
+        sent = r.partial;
+      }
       text = await new Promise<string>((resolve, reject) => {
         if (!r.ignoreAbort) {
           req.signal?.addEventListener('abort', () => {
@@ -74,12 +86,13 @@ export class FakeModel implements ModelClient {
         }
         r.wait.then(resolve, reject);
       });
+      refused = !!r.refused;
     } else {
       text = r.text;
       refused = !!r.refused;
     }
-    if (req.onText && !refused)
-      for (const chunk of text.match(/.{1,12}/gs) ?? []) req.onText(chunk);
+    if (!refused)
+      stream(sent && text.startsWith(sent) ? text.slice(sent.length) : sent ? '' : text);
     return {
       text,
       stopReason: refused ? 'refusal' : 'end_turn',

@@ -161,6 +161,49 @@ describe('padReducer', () => {
     expect(s.thinking).toBe(false);
   });
 
+  it('replaces a stream in its own slot, with the final text, when it is created', () => {
+    let s = initPadState(detail, 'me');
+    const id = msg({}).id;
+    s = padReducer(s, {
+      type: 'event',
+      event: { type: 'message.delta', messageId: id, delta: 'Half $\\fr' },
+    });
+    const later = msg({ id: '00000000-0000-4000-8000-0000000000bb', text: 'Later' });
+    s = padReducer(s, { type: 'event', event: { type: 'message.created', message: later } });
+    s = padReducer(s, {
+      type: 'event',
+      event: { type: 'message.created', message: msg({ text: 'Whole $\\frac{1}{2}$.' }) },
+    });
+    // One item for the streamed message, where it started, now with the posted text.
+    expect(chatItems(s).map((i) => (i.kind === 'message' ? i.message.text : i.kind))).toEqual([
+      'Whole $\\frac{1}{2}$.',
+      'Later',
+    ]);
+  });
+
+  it('drops a discarded stream from the chat, and never a message that was created', () => {
+    let s = initPadState(detail, 'me');
+    const id = msg({}).id;
+    s = padReducer(s, { type: 'event', event: { type: 'interviewer.thinking', active: true } });
+    s = padReducer(s, {
+      type: 'event',
+      event: { type: 'message.delta', messageId: id, delta: 'Let me' },
+    });
+    expect(chatItems(s)).toHaveLength(1);
+    s = padReducer(s, { type: 'event', event: { type: 'message.discarded', messageId: id } });
+    expect(chatItems(s)).toEqual([]);
+    expect(s.streaming).toEqual({});
+    expect(s.order).toEqual([]);
+    // Still thinking: the reply that follows has not arrived yet.
+    expect(s.thinking).toBe(true);
+    s = padReducer(s, { type: 'event', event: { type: 'message.created', message: msg({}) } });
+    const after = padReducer(s, {
+      type: 'event',
+      event: { type: 'message.discarded', messageId: id },
+    });
+    expect(after).toBe(s);
+  });
+
   it('ignores late deltas for a message that is already final', () => {
     let s = initPadState(detail, 'me');
     s = padReducer(s, { type: 'event', event: { type: 'message.created', message: msg({}) } });

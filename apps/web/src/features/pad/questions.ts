@@ -3,6 +3,7 @@
  * interviewer message with intent `question` and the bank's exact prompt (Markdown with LaTeX).
  */
 import type { Message, QuantRoundView } from '@ipp/contracts';
+import { speechOf } from './voice/math-speech';
 
 type RoundLike = Pick<QuantRoundView, 'questions' | 'total' | 'phase'>;
 
@@ -24,10 +25,11 @@ export function questionNumber(round: RoundLike | null, messageId: string): numb
 /**
  * What voice mode says for an interviewer message. A posed question is not read out: its LaTeX
  * spoken symbol by symbol is useless, so it is pointed to instead ("Question 2 is on your
- * screen."). Everything else is spoken as written.
+ * screen."). The interviewer's other messages in a round are said in words, whatever mathematics
+ * or markup the model wrote (`speechOf`); a coding pad's are spoken as written.
  */
 export function spokenText(m: Message, round: RoundLike | null): string {
-  if (m.intent !== 'question') return m.text;
+  if (m.intent !== 'question') return round ? speechOf(m.text) : m.text;
   const n = questionNumber(round, m.id);
   return n ? `Question ${n} is on your screen.` : 'The next question is on your screen.';
 }

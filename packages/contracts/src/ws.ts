@@ -18,8 +18,16 @@ export const ServerEvent = z.discriminatedUnion('type', [
   z.object({ type: z.literal('run.finished'), run: Run }),
   /** A complete message (candidate echo to other participants, or a proactive interviewer message). */
   z.object({ type: z.literal('message.created'), message: Message }),
-  /** Streaming interviewer reply: zero or more deltas, then message.created with the same id. */
+  /**
+   * Streaming interviewer reply: zero or more deltas, then message.created with the same id (which
+   * replaces the streamed text), or message.discarded.
+   */
   z.object({ type: z.literal('message.delta'), messageId: Id, delta: z.string() }),
+  /**
+   * What was streamed under this id will not be posted (the turn was aborted, refused or stayed
+   * silent): drop it. Never sent for a message that was created.
+   */
+  z.object({ type: z.literal('message.discarded'), messageId: Id }),
   z.object({ type: z.literal('interviewer.thinking'), active: z.boolean() }),
   /** The pad owner's API key changed state (saved, deleted, expired, rejected by its provider). */
   z.object({

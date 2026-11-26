@@ -76,9 +76,11 @@ export type MessageText = ComponentType<{ children: string; className?: string }
 const ChatCtx = createContext<{
   Text: MessageText;
   questionNumber: (messageId: string) => number | null;
+  streamingText: (text: string) => string;
 }>({
   Text: Markdown,
   questionNumber: () => null,
+  streamingText: (text) => text,
 });
 
 const INTENT_LABEL: Partial<Record<NonNullable<Message['intent']>, string>> = {
@@ -239,7 +241,7 @@ function Thinking() {
 
 function Item({ item }: { item: ChatItem }) {
   const { me, retryPending } = usePad();
-  const { Text } = useContext(ChatCtx);
+  const { Text, streamingText } = useContext(ChatCtx);
   if (item.kind === 'streaming')
     return (
       <div className="flex gap-2.5" data-testid="streaming-message">
@@ -247,7 +249,7 @@ function Item({ item }: { item: ChatItem }) {
         <div className="min-w-0 flex-1">
           <p className="mb-0.5 text-2xs font-medium text-fg-muted">Interviewer</p>
           <div className="relative">
-            <Text className="text-[13.5px] leading-relaxed">{item.text}</Text>
+            <Text className="text-[13.5px] leading-relaxed">{streamingText(item.text)}</Text>
             <span
               aria-hidden
               className="ml-0.5 inline-block h-3.5 w-1.5 translate-y-0.5 animate-pulse rounded-[1px] bg-accent align-baseline"
@@ -444,10 +446,17 @@ function KeyNeeded() {
   );
 }
 
+const asWritten = (text: string) => text;
+
 export type ChatPanelProps = {
   className?: string;
   /** Renders interviewer messages; the plain `Markdown` unless given (a quant pad typesets math). */
   Text?: MessageText;
+  /**
+   * What of a message still streaming is shown (all of it unless given; a quant pad holds back
+   * a formula until it closes).
+   */
+  streamingText?: (text: string) => string;
   /** The interviewer cannot be turned off here (a quant pad's round needs it). */
   lockInterviewer?: boolean;
   /** The composer's placeholder while the interviewer is available. */
@@ -460,6 +469,7 @@ export const ChatPanel = forwardRef<ChatHandle, ChatPanelProps>(function ChatPan
   {
     className,
     Text = Markdown,
+    streamingText = asWritten,
     lockInterviewer = false,
     placeholder = 'Ask a question or explain your approach…',
     emptyState = {
@@ -480,8 +490,8 @@ export const ChatPanel = forwardRef<ChatHandle, ChatPanelProps>(function ChatPan
   const items = useMemo(() => chatItems(state), [state]);
   const round = state.round;
   const ctx = useMemo(
-    () => ({ Text, questionNumber: (id: string) => questionNumber(round, id) }),
-    [Text, round],
+    () => ({ Text, streamingText, questionNumber: (id: string) => questionNumber(round, id) }),
+    [Text, streamingText, round],
   );
   const enabled = state.pad.interviewer.enabled;
   const available = state.interviewerAvailable && enabled;

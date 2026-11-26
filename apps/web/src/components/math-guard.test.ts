@@ -4,7 +4,13 @@ import ReactMarkdown from 'react-markdown';
 import rehypeKatex from 'rehype-katex';
 import remarkMath from 'remark-math';
 import { describe, expect, it } from 'vitest';
-import { escapeOutsideMath, isMathSpan, rehypeMathGuard, splitMath } from './math-guard';
+import {
+  escapeOutsideMath,
+  isMathSpan,
+  rehypeMathGuard,
+  settledMath,
+  splitMath,
+} from './math-guard';
 
 /** The pipeline MathMarkdown uses (without GFM), as HTML. */
 const render = (md: string) =>
@@ -94,6 +100,38 @@ describe('escapeOutsideMath', () => {
     expect(visible(render(escapeOutsideMath(text)))).toBe(
       '# 1. __init__ *x* [a](b) &lt;i&gt; &amp; so [P(A) = 0.5] for $5',
     );
+  });
+});
+
+describe('settledMath: a streaming message without its half-written formula', () => {
+  it('holds back a formula until it closes', () => {
+    expect(settledMath('So $\\frac{5}{')).toBe('So ');
+    expect(settledMath('So $\\frac{5}{36}$ and $x')).toBe('So $\\frac{5}{36}$ and ');
+    expect(settledMath('So $\\frac{5}{36}$.')).toBe('So $\\frac{5}{36}$.');
+    expect(settledMath('Display $$\\sum_{i')).toBe('Display ');
+    expect(settledMath('Display $$\\sum_i$$ done')).toBe('Display $$\\sum_i$$ done');
+    expect(settledMath('Trailing $')).toBe('Trailing ');
+    expect(settledMath('Trailing \\')).toBe('Trailing ');
+  });
+
+  it('never holds back what is not a formula', () => {
+    expect(settledMath('It costs \\$10 and \\$')).toBe('It costs \\$10 and \\$');
+    expect(settledMath('A $ sign, then more')).toBe('A $ sign, then more');
+    expect(settledMath('Line $5\nnext line')).toBe('Line $5\nnext line');
+    expect(settledMath('Code `echo $HOME` here')).toBe('Code `echo $HOME` here');
+    const long = `Pay $5 ${'and so on '.repeat(25)}`;
+    expect(settledMath(long)).toBe(long);
+  });
+
+  it('only ever grows as the text does (what was shown stays shown)', () => {
+    const final = 'Since $P(A) = \\frac{1}{6}$ and $$E[X] = 3.5$$, it costs \\$2: `$x`.';
+    let shown = '';
+    for (let i = 0; i <= final.length; i++) {
+      const s = settledMath(final.slice(0, i));
+      expect(s.startsWith(shown)).toBe(true);
+      shown = s;
+    }
+    expect(shown).toBe(final);
   });
 });
 
