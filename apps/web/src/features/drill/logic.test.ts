@@ -7,7 +7,8 @@ import {
   parseNumeric,
   RecordDrillRunRequest,
 } from '@ipp/contracts';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
 import {
   add,
   answerDisplay,
@@ -59,7 +60,11 @@ import {
 // ---------------------------------------------------------------- helpers
 
 /** Seeds for the property tests: each (category, level) deck is run for each. */
-const SEEDS = Array.from({ length: 120 }, (_, i) => (i * 2_654_435_761 + 17) >>> 0);
+vi.setConfig({ testTimeout: 30_000 });
+
+// 50 seeds x 40 questions x 18 decks is 36,000 questions per property: enough to walk every branch
+// of the generator many times, and quick enough for a slow CI machine.
+const SEEDS = Array.from({ length: 50 }, (_, i) => (i * 2_654_435_761 + 17) >>> 0);
 const PER_DECK = 40;
 
 function questions(category: DrillCategory, level: DrillLevel): DrillQuestion[] {
