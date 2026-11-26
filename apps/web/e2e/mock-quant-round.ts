@@ -1038,7 +1038,10 @@ export class MockQuantRounds {
   }
 }
 
-/** The mock's assessment of a quant round: the five quant dimensions, with math in the summary. */
+/**
+ * The mock's assessment of a quant round: the five quant dimensions, with math in the summary, an
+ * evidence line, a strength and an improvement (a live model writes it in all of them).
+ */
 export const QUANT_ASSESSMENT = {
   recommendation: 'lean_hire',
   summary:
@@ -1052,7 +1055,8 @@ export const QUANT_ASSESSMENT = {
     {
       dimension: 'correctness',
       score: 3,
-      evidence: 'The one finished answer was right; the capped game was on track.',
+      evidence:
+        'The one finished answer, $\\frac{5}{36}$, was right; the capped game was on track.',
     },
     {
       dimension: 'communication',
@@ -1070,9 +1074,12 @@ export const QUANT_ASSESSMENT = {
       evidence: 'Asked for a hint early on the ropes and needed the second rung as well.',
     },
   ],
-  strengths: ['Counts outcomes before reaching for formulas', 'Clear working on the scratchpad'],
+  strengths: [
+    'Counts outcomes before reaching for formulas: $6 \\times 6 = 36$ cases',
+    'Clear working on the scratchpad',
+  ],
   improvements: [
     'Try a minute of your own ideas before asking for a hint',
-    'Say the answer, with its unit, before moving to checks',
+    'Say the answer, with its unit, before moving to checks: $E = 4$ minutes, not just 4',
   ],
 } as const;
