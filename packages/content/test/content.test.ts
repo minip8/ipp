@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -6,6 +7,7 @@ import {
   PROBLEM_CATEGORIES,
   QUANT_PATH_INFO,
   QUANT_PATHS,
+  QuizQuestion,
   TOPIC_GROUPS,
 } from '@ipp/contracts';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -20,7 +22,7 @@ import {
   resultsEqual,
   untaxonomizedTags,
 } from '../src';
-import { quantGameMathErrors } from '../src/math';
+import { quantGameMathErrors, quizMathErrors } from '../src/math';
 
 let cached: ReturnType<typeof loadProblems> | undefined;
 const problems = () => {
@@ -114,6 +116,98 @@ describe('quiz loading', () => {
     expect(() => loadQuizQuestions(root)).toThrow(/not a number/);
     writeFileSync(file, numeric('answer: 1/3, tolerance: {}'));
     expect(() => loadQuizQuestions(root)).toThrow(/tolerance/);
+  });
+});
+
+describe('topics shown in another site track (also)', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ipp-also-'));
+  afterAll(() => rmSync(root, { recursive: true, force: true }));
+  mkdirSync(join(root, 'quiz'), { recursive: true });
+  mkdirSync(join(root, 'games'), { recursive: true });
+  const topicsFile = join(root, 'quiz', 'topics.yaml');
+  const topics = (f: string, q = '') =>
+    writeFileSync(
+      topicsFile,
+      `- { slug: f, title: F, description: d${f} }\n- { slug: q, title: Q, description: d, track: quant${q} }\n`,
+    );
+
+  it('reads also, none by default', () => {
+    topics(', also: [quant]', ', also: [software]');
+    expect(loadQuizTopics(root).map((t) => [t.slug, t.track, t.also])).toEqual([
+      ['f', 'fundamentals', ['quant']],
+      ['q', 'quant', ['software']],
+    ]);
+    topics('');
+    expect(loadQuizTopics(root).map((t) => t.also)).toEqual([[], []]);
+    topics(', also: [physics]');
+    expect(() => loadQuizTopics(root)).toThrow(/quiz\/topics.yaml/);
+  });
+  it("refuses an also that names the home's own site track, or repeats one", () => {
+    topics(', also: [software]');
+    expect(() => loadQuizTopics(root)).toThrow(
+      /topics.yaml f: also lists "software", the site track of its home/,
+    );
+    topics('', ', also: [quant]');
+    expect(() => loadQuizTopics(root)).toThrow(/topics.yaml q: also lists "quant"/);
+    topics(', also: [quant, quant]');
+    expect(() => loadQuizTopics(root)).toThrow(/topics.yaml f: also repeats a track/);
+  });
+  it('a fundamentals topic with also: [quant] keeps the fundamentals maths rule', () => {
+    topics(', also: [quant]');
+    const trackOf = new Map(loadQuizTopics(root).map((t) => [t.slug, t.track]));
+    const question = (topic: string) =>
+      QuizQuestion.parse({
+        id: `${topic}-1`,
+        topic,
+        subtopic: 's',
+        difficulty: 'easy',
+        type: 'numeric',
+        prompt: 'What is $x$?',
+        explanation: 'e',
+        answer: '1',
+      });
+    expect(quizMathErrors([question('f'), question('q')], trackOf)).toEqual([
+      expect.stringMatching(/^f-1 prompt: .* is read as mathematics/),
+    ]);
+  });
+  it('a fundamentals topic with also: [quant] is not a quant topic for games or quant checks', () => {
+    topics(', also: [quant]');
+    writeFileSync(
+      join(root, 'games', 'g-1.yaml'),
+      `id: g-1
+topic: f
+title: Two coins
+difficulty: easy
+prompt: Make me a market on the number of heads.
+components: [{ label: Coin 1, faces: [0, 1] }, { label: Coin 2, faces: [0, 1] }]
+payoff: sum
+reveal: [0]
+tick: 0.25
+maxSize: 2
+counterparty: Uninformed.
+explanation: Fair is 1.
+expect: { fair: 1, sd: 0.7071, min: 0, max: 2 }
+`,
+    );
+    expect(() => loadQuantGames(root)).toThrow(/topic "f" is not a quant topic/);
+    // The topics scripts/verify-quant-quiz.py recomputes (and so requires checks for).
+    const script = [
+      'import importlib.util, json, sys',
+      "spec = importlib.util.spec_from_file_location('v', sys.argv[1])",
+      'm = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)',
+      'print(json.dumps(m.quant_topics(sys.argv[2])))',
+    ].join('\n');
+    const out = execFileSync(
+      'python3',
+      ['-c', script, join(CONTENT_ROOT, 'scripts', 'verify-quant-quiz.py'), topicsFile],
+      { encoding: 'utf8' },
+    );
+    expect(JSON.parse(out)).toEqual(['q']);
+  });
+  it('the authored topics: Python also shows in the Quant track and is still not a quant topic', () => {
+    const python = loadQuizTopics().find((t) => t.slug === 'python');
+    expect(python).toMatchObject({ track: 'fundamentals', also: ['quant'] });
+    expect(loadQuantGames().some((g) => g.topic === 'python')).toBe(false);
   });
 });
 
