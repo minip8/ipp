@@ -498,13 +498,22 @@ a fresh start for stalls and the unanswered count, as after a step of its own.
   close on a tentative number, to run market-making and betting questions as a dialogue with the
   authored follow-ups as its next moves, to write mathematics as LaTeX in `$...$` with a literal
   dollar as `\$` (backslashes doubled in the JSON), and on voice to say mathematics in words.
+  Three rules come from reading live transcripts (`scripts/simulate.ts --quant`): anything that
+  points at the next step is a `hint`, however it is phrased, so the books count it, and a
+  `stay` probe only asks about what the candidate already has; a candidate already past the next
+  rung gets a hint in the interviewer's own words (rung 0), no bigger than a rung; and on a
+  market-making or betting question (`DIALOGUE_TOPICS`) the recorded follow-up is only the first
+  move, after which the dialogue goes on with `stay` turns while the question's time allows (the
+  per-turn books say so, outside the cached prefix).
 - **The books in code** (`normaliseTurn`, `quant/turn.ts`), so a step is never one the server would
   refuse for its own reasons: a forced turn is a close whatever the model chose; a hint records the
   next unused authored rung (a higher rung is clamped down, a rung already given or a hint past
   the ladder is 0, the interviewer's own words), never skipping one; a second follow-up is a plain
   `stay`; the score is clamped to 0..1 and an empty summary means no verdict; `silent` is honoured
   on a proactive turn and on a reply to a spoken message only. A typed message with nothing to say
-  is a failed call.
+  is a failed call. `parseTurn` first strips the JSON a model sometimes writes inside the last
+  string field it closes (`stripJsonDebris`: a trailing `"}`, an unbalanced closing quote, a
+  trailing `<br>`).
 - **LaTeX in JSON** (`quant/latex.ts`): a single backslash inside a JSON string turns `\frac`,
   `\binom`/`\beta`, `\times`/`\text`, `\rho`/`\right`, `\nu`/`\neq` into control characters, and
   `\alpha` or `\$` into invalid JSON. Unparseable output is re-parsed with every backslash that
