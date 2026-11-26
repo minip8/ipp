@@ -182,7 +182,8 @@ function EventRow({ event }: { event: TimelineEvent['event'] }) {
       return (
         <span className="flex items-center gap-2 font-medium text-fg" data-testid="question-event">
           <HelpCircleIcon className="size-4 text-accent-text" aria-hidden /> Question{' '}
-          {event.index + 1} of {event.total}
+          {event.index + 1}
+          {event.total === null ? '' : ` of ${event.total}`}
         </span>
       );
     case 'game':

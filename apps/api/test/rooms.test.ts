@@ -509,6 +509,7 @@ describe('host only', () => {
     expect(HostView.parse((await host.get(`/api/pads/${pad.id}/host`)).json)).toEqual({
       problem: null,
       notes: 'Strong start. Missed duplicates.',
+      round: null,
     });
   });
 

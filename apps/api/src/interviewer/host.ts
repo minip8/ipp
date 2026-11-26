@@ -16,6 +16,7 @@ import {
   type PadFormat,
   type ProblemContent,
   quantClock,
+  quantMode,
   quantPhase,
   quantRoundEndsAt,
   quantTimeSec,
@@ -25,6 +26,7 @@ import { aiUsage, interviewerNotes, messages, pads, problems, runs, timelineEven
 import { and, asc, count, desc, eq, gte, inArray, sql } from '@ipp/db/orm';
 import type { Limits } from '../config';
 import type { Ctx } from '../context';
+import { bankEntries } from '../quant/room';
 import { applyStep, bankQuestions, gameContent, loadRound } from '../quant/round';
 import { toInterviewerRun } from '../runs/redact';
 import { messageView, padView, storedRun } from '../views';
@@ -38,6 +40,7 @@ import type {
   NewMessage,
   QuantContext,
   QuantQuestion,
+  QuantRoomContext,
   QuizQuestionShort,
   ResolvedKey,
   RoomContext,
@@ -283,6 +286,7 @@ export class InterviewerHost {
       loadContext: (padId) => this.loadContext(padId),
       loadRoomContext: (padId) => this.loadRoomContext(padId),
       loadQuantContext: (padId, scope) => this.loadQuantContext(padId, scope),
+      loadQuantRoomContext: (padId) => this.loadQuantRoomContext(padId),
       applyQuantStep: (padId, step) => applyStep(ctx, padId, step),
       saveMessage: (padId, message) => this.saveMessage(padId, message),
       appendPrivateNote: async (padId, note) => {
@@ -531,6 +535,63 @@ export class InterviewerHost {
       transcript: transcript.reverse().map(messageView),
       scratch: cut(texts.notes, QUANT_SCRATCH_CHARS),
       privateNotes: notes.map((n) => n.note).reverse(),
+      now: new Date(),
+    };
+  }
+
+  /**
+   * A quant room as its host's adviser sees it (§8.4); null for any other pad. Every question
+   * the host posed with the bank question in full (they are the host's to read), the whole
+   * transcript, the scratchpad and the host's notes. Never the queue: what the host plans to ask
+   * next is nobody's business but theirs.
+   */
+  async loadQuantRoomContext(padId: string): Promise<QuantRoomContext | null> {
+    const { db } = this.ctx;
+    const [pad] = await db.select().from(pads).where(eq(pads.id, padId));
+    if (pad?.kind !== 'room' || pad.format !== 'quant') return null;
+    const row = await loadRound(this.ctx, padId);
+    if (!row || quantMode(row.state) !== 'hosted') return null;
+    const { state } = row;
+    const posed = state.questions.flatMap((q, index) => (q.posedAt ? [{ q, index }] : []));
+    const [bank, texts, transcript] = await Promise.all([
+      bankEntries(
+        this.ctx,
+        posed.map(({ q }) => q.questionId),
+      ),
+      this.ctx.collab.readTexts(padId),
+      db
+        .select()
+        .from(messages)
+        .where(eq(messages.padId, padId))
+        .orderBy(desc(messages.createdAt))
+        .limit(TRANSCRIPT_LIMIT),
+    ]);
+    const phase = quantPhase(state);
+    return {
+      pad: padView(pad, null),
+      questions: posed.map(({ q, index }) => {
+        const b = bank.get(q.questionId)?.question ?? null;
+        return {
+          index,
+          question: b,
+          prompt: q.prompt,
+          topic: q.topic,
+          topicTitle: q.topicTitle ?? q.topic,
+          difficulty: q.difficulty,
+          type: q.type ?? b?.type ?? 'short',
+          posedAt: q.posedAt ?? '',
+          posedMessageId: q.posedMessageId,
+          closedAt: q.closedAt,
+          closedBy: q.closedBy,
+          hintRungs: [...q.hintRungs],
+          followUpAsked: q.followUpAsked,
+          verdict: q.verdict ? { score: q.verdict.score, summary: q.verdict.summary } : null,
+        };
+      }),
+      open: phase === 'asking' ? state.current : null,
+      transcript: transcript.reverse().map(messageView),
+      scratch: cut(texts.notes, QUANT_SCRATCH_CHARS),
+      hostNotes: pad.hostNotes,
       now: new Date(),
     };
   }

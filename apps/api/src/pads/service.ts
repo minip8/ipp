@@ -241,9 +241,13 @@ export async function generateAssessment(ctx: Ctx, pad: PadRow): Promise<void> {
     try {
       // A quant pad's is over the quant dimensions, and first judges any question closed
       // without a verdict (written back to the round with `verdict` steps).
+      // A quant room's is the host's adviser's, over the questions the host posed and the
+      // host's verdicts (it never writes a verdict back).
       assessment =
         pad.kind === 'room'
-          ? await ctx.ai.interviewer.generateRoomAssessment(pad.id)
+          ? pad.format === 'quant'
+            ? await ctx.ai.interviewer.generateQuantRoomAssessment(pad.id)
+            : await ctx.ai.interviewer.generateRoomAssessment(pad.id)
           : pad.format === 'quant'
             ? await ctx.ai.interviewer.generateQuantAssessment(pad.id)
             : await ctx.ai.interviewer.generateAssessment(pad.id);

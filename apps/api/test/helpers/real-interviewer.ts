@@ -466,6 +466,8 @@ export class RealInterviewerRig {
     generateRoomAssessment: (padId) => this.iv.generateRoomAssessment(padId),
     generateQuantAssessment: (padId) => this.iv.generateQuantAssessment(padId),
     reviewSolution: (padId, question) => this.iv.reviewSolution(padId, question),
+    reviewQuantRoom: (padId, opts) => this.iv.reviewQuantRoom(padId, opts),
+    generateQuantRoomAssessment: (padId) => this.iv.generateQuantRoomAssessment(padId),
     gradeShortAnswer: (userId, question, answer) =>
       this.iv.gradeShortAnswer(userId, question, answer),
     discussShortAnswer: (userId, question, turns, final) =>

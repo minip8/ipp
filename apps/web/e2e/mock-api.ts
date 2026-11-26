@@ -534,10 +534,10 @@ export class MockBackend {
           (p) =>
             (!req.random?.difficulty || p.difficulty === req.random.difficulty) &&
             (!req.random?.tag || p.tags.includes(req.random.tag)) &&
-            p.languages.includes(req.language),
+            p.languages.includes(req.language ?? 'python'),
         )?.slug ??
         'two-sum';
-      const refusal = this.languageRefusal(slug, req.language);
+      const refusal = this.languageRefusal(slug, req.language ?? 'python');
       if (refusal) return refusal;
       const id = uuid();
       const detail = makePadDetail({
@@ -627,6 +627,7 @@ export class MockBackend {
           const view: HostView = {
             problem: pad.pad.problemSlug ? (HOST_VIEWS[pad.pad.problemSlug] ?? null) : null,
             notes: this.hostNotes.get(id) ?? '',
+            round: null,
           };
           return view;
         }
