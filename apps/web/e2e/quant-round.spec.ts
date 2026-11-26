@@ -112,13 +112,17 @@ test.describe('starting a round', () => {
   }
 
   test('starts and opens the pad, where the interviewer greets and asks', async ({ page }) => {
-    const b = await setup(page);
+    // The spec starts the round itself, so the state before the greeting can be looked at.
+    const b = await setup(page, (x) => {
+      x.quant.autoStart = false;
+    });
     await page.goto('/quant?path=researcher');
     await page.getByRole('button', { name: 'Start the round' }).click();
     await expect(page).toHaveURL(/\/pads\/[0-9a-f-]{36}$/);
     await expect(page.getByTestId('round-pending')).toContainText(
       'The interviewer is about to start',
     );
+    b.quant.start(new URL(page.url()).pathname.split('/').at(-1) as string);
     await expect(page.getByTestId('proactive-message').first()).toContainText(LINES.greeting);
     await expect(heading(page)).toHaveText('Question 1 of 4');
     await expect(page.getByTestId('question-message')).toContainText(PROMPT_1.slice(0, 20));
