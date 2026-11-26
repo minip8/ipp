@@ -4,6 +4,8 @@ import {
   type InterviewerSettings,
   type Language,
   type PadDetail,
+  type PostQuantQuoteRequest,
+  type QuantRoundView,
   type Run,
   type RunMode,
   YDOC,
@@ -61,6 +63,8 @@ export type PadSession = {
   /** The owner just saved a key here; do not wait for the socket to say so. */
   setInterviewerKey: (key: PadDetail['interviewerKey']) => void;
   endPad: () => Promise<boolean>;
+  /** A quant round's game: post a market; the round it returns is applied. Throws on refusal. */
+  postQuote: (body: PostQuantQuoteRequest) => Promise<QuantRoundView>;
   telemetry: (kind: 'paste' | 'blur', amount: number) => void;
   reconnect: () => void;
   source: (lang?: Language) => string;
@@ -372,6 +376,16 @@ export function PadSessionProvider({
     }
   }, [padId, qc]);
 
+  const postQuote = useCallback(
+    async (body: PostQuantQuoteRequest) => {
+      const round = await api.postQuote(padId, body);
+      // As a round.updated: the newest version wins, whichever of the two arrives first.
+      dispatch({ type: 'event', event: { type: 'round.updated', round } });
+      return round;
+    },
+    [padId],
+  );
+
   const telemetry = useCallback((kind: 'paste' | 'blur', amount: number) => {
     socketRef.current?.send(
       kind === 'paste'
@@ -422,6 +436,7 @@ export function PadSessionProvider({
       updateInterviewer,
       setInterviewerKey,
       endPad,
+      postQuote,
       telemetry,
       reconnect,
       source,
@@ -447,6 +462,7 @@ export function PadSessionProvider({
       updateInterviewer,
       setInterviewerKey,
       endPad,
+      postQuote,
       telemetry,
       reconnect,
       source,

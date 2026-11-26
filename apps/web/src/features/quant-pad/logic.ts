@@ -111,3 +111,22 @@ export function clearQuantUnread(unread: QuantUnread, pane: QuantPane): QuantUnr
   if (pane === 'question' && unread.question) return { ...unread, question: false };
   return unread;
 }
+
+/**
+ * The game of the question closed last, once settled: the next question is posed in the same
+ * step, so the panel keeps the settlement in view rather than only in the collapsed list.
+ */
+export function lastSettledGame(round: QuantRoundView): QuantQuestionView | null {
+  const last = earlierQuestions(round).at(-1);
+  return last?.game?.settlement ? last : null;
+}
+
+/**
+ * The interviewer's moves in the current question's game so far (trades, reveals and the
+ * settlement; not the candidate's own quotes): when it grows on another pane, the question tab
+ * is marked.
+ */
+export function gameMoves(round: QuantRoundView | null): number {
+  const game = round?.questions.at(-1)?.game;
+  return game ? game.log.filter((e) => e.kind !== 'quote').length : 0;
+}
