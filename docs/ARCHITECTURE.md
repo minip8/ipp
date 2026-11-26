@@ -75,6 +75,7 @@ Better Auth owns `user`, `session`, `account`, `verification` (text ids). App ta
 | `reports` | pad_id pk, status, stats jsonb, assessment jsonb, generated_at |
 | `quiz_topics` | slug pk, title, description, track (`fundamentals` or `quant`), position (study order), roadmap jsonb (`QuizRoadmapNode[]`) |
 | `quiz_questions` | id pk (slug), topic, subtopic, difficulty, type, data jsonb (`QuizQuestion`) |
+| `quant_games` | id pk (slug), topic, difficulty, data jsonb (`QuantGame`, server-only), active — market-making games for quant rounds (§8.3) |
 | `quiz_attempts` | id, user_id, mode, topics, question_ids, transcript jsonb (discussion turns per question), status, score, started_at, finished_at |
 | `quiz_answers` | attempt_id, question_id, response jsonb, score, correct, feedback, graded_by, answered_at |
 | `quiz_standalone_answers` | user_id, question_id (pk together), same grading columns — question-bank answers outside attempts, latest per question |
@@ -656,7 +657,8 @@ joining by the link, as on any practice pad) see exactly what the owner sees.
   (a round stored before titles were copied has none, and is shown with the topic's slug).
 - **State** (`quant_rounds.state`, server-only) changes only through `advanceRound`
   (`packages/contracts/src/quant-round.ts`): `start`, `turn`, `close`, `verdict` from the
-  interviewer (`InterviewerDeps.applyQuantStep`) and `end` from the API. `apps/api/src/quant/round.ts`
+  interviewer (`InterviewerDeps.applyQuantStep`) and `end` from the API (and, for a slot that
+  holds a market-making game, `quote` from the API and a game move on `turn`: §8.3). `apps/api/src/quant/round.ts`
   applies a step in one transaction: a share lock on the pad (so ending it waits, or the step sees
   it ended), the next state behind a compare-and-swap on `version`, the interviewer's message,
   the revealed question's message (intent `question`, the bank's exact prompt, `createdAt` 1 ms
@@ -727,6 +729,149 @@ joining by the link, as on any practice pad) see exactly what the owner sees.
   characters. A later question is in it in no form.
 - **Refused on a quant pad**: runs and a language change (409 / WS `error` `wrong_format`), the
   room-only endpoints (403 as for any practice pad; `POST …/problem` also checks the format).
+
+### 8.3 Market-making games
+
+A trader round may hold a **market-making game** in one slot instead of a bank question: a
+contract on hidden values the server draws and keeps, on which the candidate makes markets
+(bid, ask, size) and the interviewer trades. All the bookkeeping a model cannot be trusted with
+(the dice, the quotes, the position, the P&L) is code. This version covers markets on a value
+built from independent discrete components; sequential betting games (bankroll and stakes) are
+out of scope, and nothing below depends on the payoff being one of today's four.
+
+The pieces, and what is **built** and **not yet built**:
+
+| | where | state |
+|---|---|---|
+| content format, loader, checks, two sample games | `packages/content/games/`, `src/load.ts`, `src/games.ts` | built |
+| engine, view, books, review | `packages/contracts/src/quant-game.ts` | built |
+| steps and refusals in the round | `packages/contracts/src/quant-round.ts` (`advanceRound`) | built |
+| `quant_games` table and seed | `packages/db` | built |
+| report builder takes a game | `buildQuantReport(state, bank, games)` in `apps/api/src/quant/round.ts` | built; `quantReport` does not load the games yet (explanation empty) |
+| the quote route or event, the effects' I/O | `apps/api` | **not yet** |
+| the assembly rule (one game in a trader round's second slot) and `includeGame` | `apps/api/src/quant/assemble.ts` | **not yet** (the flag parses and is ignored) |
+| the interviewer's moves, its books in the prompt, a quote as a trigger | `packages/interviewer/src/quant/` | **not yet** |
+| the quote widget, the blotter, the report's game section | `apps/web` | **not yet** |
+
+Until those land a round never contains a game, and a round without one behaves exactly as
+before (its stored state is byte-for-byte what it was).
+
+- **Content** (`QuantGame`): one YAML file per game, `packages/content/games/<id>.yaml`, the id
+  the file name and distinct from every quiz question id (a round names either by
+  `questionId`). `topic` is a quant topic (`betting-market-making` for now); `title`,
+  `difficulty`, `prompt` (Markdown with KaTeX, posted word for word as the question message, as a
+  bank prompt is). The mechanics: `components`, 1 to 8 hidden values `{ label, faces }`, each
+  drawn uniformly and independently from its faces (a die is `[1, 2, 3, 4, 5, 6]`, a coin
+  `[0, 1]`; a repeated face weights it), at most 1,000 faces each and at most 200,000 outcomes in
+  all; `payoff` (`sum`, `product`, `max`, `min`); `reveal`, the order in which components may be
+  shown during play (indices, each once, possibly empty; a component not listed stays hidden
+  until settlement); `tick` (a multiple of 0.001, so prices have at most three decimals) and
+  `maxSize` (1 to 1,000). Faces and the contract's range lie within ±100,000. Interviewer-only:
+  `counterparty` (how to trade: informed or not, when to ask for a tighter market, when to
+  reveal), `hints` (a ladder, as a question's). For the report: `explanation`. `expect` holds the
+  authored fair value, standard deviation, minimum and maximum before anything is shown (fair,
+  min and max exact, as `parseNumeric` reads them, e.g. `49/4`; sd to four significant figures).
+  Optional `source`. `counterparty`, `hints` and `expect` never leave the server.
+- **Storage**: `quant_games` (id pk, topic → `quiz_topics`, difficulty, data jsonb `QuantGame`,
+  active), seeded idempotently like `quiz_questions`: a broken file is skipped and reported, and
+  a game removed from content is marked inactive (only when every game file loaded). A game is
+  not a quiz question: it is never in the question bank, an attempt, the stats or the roadmap,
+  and a verdict on it is never a quiz answer (`recordAnswers` only records ids found in
+  `quiz_questions`).
+- **The engine** (`quant-game.ts`, pure). `drawGame(spec, rand)` draws the values from the
+  assembler's seeded PRNG; `createGameState(game, values)` snapshots the mechanics and the title
+  (never the counterparty, hints, explanation or expect) into a `QuantGameState`;
+  `quantGamePick(game, topicTitle, rand)` (in `quant-round.ts`) makes the slot's `QuantPick`.
+  `gameValue`, `gameStats` (unconditional) and `gameConditional(spec, values, revealedCount)` /
+  `gameFair` (given the components shown so far: the **public fair value** quotes are judged
+  against) are exact, computed from the components' distributions by independence (the tests
+  check them against enumerating every outcome). Transitions, each returning a new state or a
+  refusal: `postQuote` (validated by `quoteProblem`: finite, within ±1,000,000, both prices whole
+  multiples of the tick, forgiving floating point, bid below ask, size a whole number in
+  1..maxSize; stored snapped to the tick; it replaces the live quote; at most 100 quotes per game),
+  `tradeQuote` (a whole quantity in 1..the quote's size; the quote is consumed whatever the
+  quantity), `revealNext` (the next component of `reveal`; withdraws the live quote, made on less
+  information), `settleGame` (the true value and P&L = cash + position × value).
+- **Sign convention**: a stored trade, and the interviewer's move, name the **interviewer's**
+  side (`interviewerSide`): `buy` lifts the candidate's offer (pays the ask: the candidate
+  sells), `sell` hits the bid (the candidate buys). Everything else is from the **candidate's**
+  side: `position` (contracts, positive long), `cash` (positive received, kept to three
+  decimals so decimal ticks stay exact), `candidateSide` in every public entry
+  (`candidateSideOf`), and every edge in the review.
+- **In the round**: `QuantRoundQuestion.game` holds the state (absent for a bank question and
+  in every round stored before games, read as null; `questionId` is the game's id, `prompt` its
+  prompt, `unit` null, `hintsAvailable` its hints). `advanceRound` plays it:
+  - `{ type: 'quote', index, bid, ask, size }` (`QuantQuoteStep`), raised by the API when the
+    candidate posts a market (`PostQuantQuoteRequest`); not versioned, like `end`. Valid only
+    while `index` is the current question and a game. Effects: `quote: { index, text }` with
+    `text = formatQuote(quote)` ("9.5 bid, 11.5 offered, 1 lot", of the quote as snapped), to
+    post as the candidate's chat message, and the quote's game entry.
+  - a `turn` may carry `game: { trade?: { interviewerSide, quantity }, reveal?: true }`
+    (`QuantGameMove`): a trade against the live quote, a reveal, or a trade then a reveal ("I buy
+    one at your offer. Now the first die: it is a 6."). It combines with any `action` (a hint may
+    ride along) and the whole step is refused when any part of it is. An empty move is no move.
+  - every close settles an open game: `close` for `interviewer`, `timeout` or `round_time`, and
+    the API's `end`. A game never posed is never settled.
+  - new refusals (nothing changes, nothing is posted): `not_game` (a quote or a move on a
+    question that is not a game), `bad_quote`, `quote_limit`, `no_quote` (a trade with no live
+    quote), `bad_quantity`, `nothing_to_reveal`, `game_settled` (unreachable through the round);
+    a trade side that is neither `buy` nor `sell` is `invalid`; a quote on another question is
+    `wrong_index`, while pending `wrong_phase`, after the round `ended`.
+  - effects gain `quote` (above) and `game: { index, entries }`: what the step did to question
+    `index`'s game, in order (`QuantGameEntry`: quote, trade, reveal, settle). The API records
+    each as a timeline event `{ type: 'game', index, entry }` (`TimelineEvent`), in the step's
+    transaction, after `say` (and after the quote's candidate message) and before the next
+    question's `reveal`.
+- **What the browser sees**: `QuantQuestionView.game` is `gameView(state)` (null for a bank
+  question), built field by field: the title, each component's label with its value only once
+  shown (all once settled), payoff, tick, maxSize, the live quote, the log (quotes, trades from
+  the candidate's side, reveals with their values, the settlement), position, cash, the
+  settlement and the quotes left. Never a hidden value, the public fair value, a standard
+  deviation or a mark-to-market figure: working out the fair value is the candidate's task. The
+  browser may check a quote with `quoteProblem` before sending it.
+- **What the interviewer sees** (`gameBooks(state)`, privately, to put in the per-turn books):
+  everything: every value and whether it is shown, the next reveal, the public fair value, sd
+  and range now, the true value, the live quote with its mid, width, whether fair is inside it
+  and the interviewer's edge per contract at the bid (`hitBid`) and the offer (`liftOffer`)
+  against both fair and true value, the candidate's position and cash marked to both, the log
+  and the quotes left. The counterparty notes and hints come from the content.
+- **The report** (`QuantQuestionReview` with `type: 'game'`, only after the pad ended):
+  `subtopic` empty, `solution` the figures before anything was shown (`gameSolution`: "Fair value
+  10.5, standard deviation 2.96, from 3 to 18"), `keyPoints` empty, `explanation` the game's,
+  and `game` its `gameReview(state)` (`quantGameReview(q)`; null for a game never posed): the
+  components and the true value; per quote the public fair value and sd at the time, mid, width,
+  whether fair was inside and whether it was traded; per trade the candidate's side, price,
+  quantity, the public fair value and the candidate's edge (per contract and in total); per reveal
+  the fair value before and after and the mids of the last quote before and the first after;
+  the final and the largest absolute position, the expected edge in total and the realised P&L.
+  Quote quality, updating on information, risk taken and P&L, with luck the difference between
+  the last two. The counterparty notes and hints never appear.
+- **Verification**: `pnpm --filter @ipp/content check` parses every game (`loadQuantGames`: id =
+  file name, a quant topic), fails when `expect` differs from what the engine computes from the
+  game's own components (`quantGameErrors`), when its prompt or explanation does not typeset
+  (`quantGameMathErrors`) and when a quiz question has its id; and
+  `scripts/verify-quant-quiz.py` runs `scripts/quant_checks/games.py`, one `@check("<game id>")`
+  per game that recomputes the fair value and sd (optionally min and max) by its own enumeration
+  or simulation from the game as its prompt describes it, returned as `GameFigures`. A game
+  without a check fails the check and a content test, as a numeric question does.
+- **To build next** (specified, not implemented):
+  - API: the quote route or event (`PostQuantQuoteRequest` → a `quote` step through `applyStep`,
+    refusing a pad that is not a quant pad with 409 `wrong_format`; post `effects.quote` as the
+    candidate's message with the poster's user id, then the game timeline events; then feed the
+    interviewer a trigger so it answers the quote); record `effects.game` from every step;
+    `quantReport` loads the round's games from `quant_games` for `buildQuantReport`; the
+    assembler puts one active game of the path's topics in a trader round's second slot when
+    one exists (`includeGame` absent or true; false for none; a researcher round has none unless
+    asked), drawing it with the round's seeded PRNG through `quantGamePick`. The browser tests'
+    mock (`apps/web/e2e/mock-quant-round.ts`) must mirror the route and post the same
+    `formatQuote` text.
+  - Interviewer: `gameBooks` in the per-turn books and the game's counterparty notes and hints in
+    the question's system block; the turn schema gains the trade and reveal; `normaliseTurn`
+    keeps a move the server would refuse out of the step (no live quote, a quantity beyond the
+    size, nothing left to reveal), so a step is never refused for the books' sake.
+  - Web: a quote widget (bid, ask, size, checked with `quoteProblem`), the components and the
+    blotter from `QuantQuestionView.game`, and the report's game section from
+    `QuantQuestionReview.game`.
 
 ## 9. Security checklist
 
