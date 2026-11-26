@@ -142,7 +142,10 @@ test.describe('focus rings', () => {
       expect(await ring(other)).toEqual({ focused: true, focusVisible: false, outline: 'none' });
       await start.click();
       expect(await ring(start)).toEqual({ focused: true, focusVisible: false, outline: 'none' });
-      expect(await ring(page.getByRole('tabpanel'))).toMatchObject({ focusVisible: false });
+      // The page's own panel (the library has tabs of its own inside it).
+      expect(await ring(page.getByRole('tabpanel', { name: first }))).toMatchObject({
+        focusVisible: false,
+      });
 
       // From the first tab, ArrowLeft wraps to the last one however many tabs there are.
       await page.keyboard.press('ArrowLeft');
