@@ -146,6 +146,8 @@ export const DrillHistory = z.object({
   totalRuns: z.int(),
 });
 export type DrillHistory = z.infer<typeof DrillHistory>;
+// `DELETE /api/drill/runs/:id` (one of the caller's runs) and `DELETE /api/drill/runs` (all of
+// them) answer with the `DrillHistory` left, bests recomputed.
 
 /**
  * `POST /api/drill/runs` answers with the stored run and whether it set a new best (always false

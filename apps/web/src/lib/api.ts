@@ -8,10 +8,12 @@ import {
   type AiProvider,
   AnswerFeedback,
   ApiError,
+  ClearQuizHistoryResponse,
   type CreateAttemptRequest,
   type CreatePadRequest,
   type CreateQuantPadRequest,
   type CreateRunRequest,
+  DeleteAttemptResponse,
   DeletePadResponse,
   type DiscussionReplyRequest,
   DiscussionReplyResponse,
@@ -25,6 +27,7 @@ import {
   Playback,
   type PostQuantQuoteRequest,
   ProblemDetail,
+  ProblemProgress,
   ProblemSummary,
   QuantRoundView,
   QuizAttempt,
@@ -163,6 +166,8 @@ export const api = {
   problems: (f: { difficulty?: string; tag?: string; q?: string } = {}) =>
     request(`/problems${qs(f)}`, z.array(ProblemSummary)),
   problem: (slug: string) => request(`/problems/${encodeURIComponent(slug)}`, ProblemDetail),
+  /** The signed-in user's own standing on the problems they have tried (the rest are new). */
+  problemProgress: () => request('/progress/problems', ProblemProgress),
   createPad: (body: z.input<typeof CreatePadRequest>) =>
     request('/pads', Pad, { method: 'POST', body }),
   /** A live quant round: a pad of format `quant` on one path, run by the AI interviewer. */
@@ -214,6 +219,11 @@ export const api = {
     request('/quiz/attempts', QuizAttempt, { method: 'POST', body }),
   attempts: () => request('/quiz/attempts', z.array(QuizAttemptSummary)),
   attempt: (id: string) => request(`/quiz/attempts/${id}`, QuizAttempt),
+  /** One of the user's own attempts, any mode, running or finished, with its answers. */
+  deleteAttempt: (id: string) =>
+    request(`/quiz/attempts/${id}`, DeleteAttemptResponse, { method: 'DELETE' }),
+  /** Every attempt and every question-bank answer of the user's. */
+  clearQuizHistory: () => request('/quiz/history', ClearQuizHistoryResponse, { method: 'DELETE' }),
   submitAnswer: (id: string, body: { questionId: string; response: QuizResponse }) =>
     request(`/quiz/attempts/${id}/answers`, z.union([AnswerFeedback, RecordedResponse]), {
       method: 'POST',
@@ -237,6 +247,9 @@ export const api = {
   drillRuns: () => request('/drill/runs', DrillHistory),
   recordDrillRun: (body: RecordDrillRunRequest) =>
     request('/drill/runs', RecordDrillRunResponse, { method: 'POST', body }),
+  /** Deleting one run, or all of them: the history left comes back, bests recomputed. */
+  deleteDrillRun: (id: string) => request(`/drill/runs/${id}`, DrillHistory, { method: 'DELETE' }),
+  clearDrillHistory: () => request('/drill/runs', DrillHistory, { method: 'DELETE' }),
 };
 
 /** Human message for any error, with rate-limit timing when known. */

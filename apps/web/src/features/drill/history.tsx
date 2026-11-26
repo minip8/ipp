@@ -6,14 +6,21 @@ import {
   DRILL_LEVELS,
   type DrillConfig,
   type DrillHistory,
+  type DrillRun,
 } from '@ipp/contracts';
 import type { UseQueryResult } from '@tanstack/react-query';
-import { TimerIcon } from 'lucide-react';
+import { TimerIcon, Trash2Icon } from 'lucide-react';
 import { useState } from 'react';
 import { EmptyState, ErrorState } from '@/components/states';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  ConfirmDeleteDialog,
+  DeleteRowButton,
+} from '@/features/delete-history/confirm-delete-dialog';
+import { useClearDrillHistory, useDeleteDrillRun } from '@/features/delete-history/hooks';
+import { clearDrillHistoryCopy, drillRunDeleteCopy } from '@/features/delete-history/logic';
 import { formatPercent, formatRelative, plural } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { bestFor, DURATION_LABEL, runAccuracy, setupLabel } from './logic';
@@ -74,6 +81,10 @@ export function DrillHistoryPanel({
   config: DrillConfig;
 }) {
   const [showAll, setShowAll] = useState(false);
+  const [toDelete, setToDelete] = useState<DrillRun | null>(null);
+  const [clearing, setClearing] = useState(false);
+  const deleteRun = useDeleteDrillRun();
+  const clearAll = useClearDrillHistory();
   const data = history.data;
   const runs = data ? (showAll ? data.runs : data.runs.slice(0, RECENT)) : [];
   return (
@@ -81,7 +92,17 @@ export function DrillHistoryPanel({
       <CardHeader>
         <CardTitle id="drill-history-heading">Your runs</CardTitle>
         {data && data.totalRuns > 0 && (
-          <span className="text-xs text-fg-subtle tabular">{plural(data.totalRuns, 'run')}</span>
+          <span className="ml-auto flex items-center gap-2">
+            <span className="text-xs text-fg-subtle tabular">{plural(data.totalRuns, 'run')}</span>
+            <Button
+              variant="ghost"
+              size="xs"
+              className="hover:bg-bad-soft hover:text-bad-text max-sm:h-9"
+              onClick={() => setClearing(true)}
+            >
+              <Trash2Icon /> Clear
+            </Button>
+          </span>
         )}
       </CardHeader>
       {history.isPending ? (
@@ -117,7 +138,7 @@ export function DrillHistoryPanel({
               {runs.map((r) => {
                 const acc = runAccuracy(r);
                 return (
-                  <li key={r.id} className="flex items-center gap-4 px-4 py-2.5">
+                  <li key={r.id} className="flex items-center gap-4 py-2.5 pr-2 pl-4">
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-medium">
                         {setupLabel(r.config)}
@@ -131,6 +152,12 @@ export function DrillHistoryPanel({
                       <span className="block text-base font-semibold tabular">{r.score}</span>
                       <span className="block text-2xs text-fg-subtle">score</span>
                     </span>
+                    <DeleteRowButton
+                      action="Delete run"
+                      name={`${setupLabel(r.config)}, ${formatRelative(r.finishedAt)}`}
+                      onClick={() => setToDelete(r)}
+                      className="-ml-2 shrink-0 max-sm:size-10 max-sm:[&_svg]:size-4"
+                    />
                   </li>
                 );
               })}
@@ -145,6 +172,20 @@ export function DrillHistoryPanel({
           </section>
         </>
       )}
+      <ConfirmDeleteDialog
+        copy={toDelete && data ? drillRunDeleteCopy(toDelete, data.bests) : null}
+        confirmKey={toDelete?.id ?? null}
+        onConfirm={async () => {
+          if (toDelete) await deleteRun(toDelete.id);
+        }}
+        onClose={() => setToDelete(null)}
+      />
+      <ConfirmDeleteDialog
+        copy={clearing && data ? clearDrillHistoryCopy(data.totalRuns) : null}
+        confirmKey={clearing ? 'all' : null}
+        onConfirm={clearAll}
+        onClose={() => setClearing(false)}
+      />
     </Card>
   );
 }

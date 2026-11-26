@@ -197,9 +197,11 @@ export const CodeEditor = forwardRef<
           lineHeight: 1.6,
           padding: { top: 12, bottom: 12 },
           scrollBeyondLastLine: false,
-          smoothScrolling: true,
-          cursorBlinking: 'smooth',
-          cursorSmoothCaretAnimation: 'on',
+          // The caret jumps straight to where it goes and blinks normally: gliding to each new
+          // position (and easing the scroll that follows it) made the editor feel slow.
+          smoothScrolling: false,
+          cursorBlinking: 'blink',
+          cursorSmoothCaretAnimation: 'off',
           renderLineHighlight: 'all',
           bracketPairColorization: { enabled: true },
           guides: { indentation: true, bracketPairs: false },

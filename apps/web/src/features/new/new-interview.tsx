@@ -5,6 +5,7 @@ import {
   LANGUAGES,
   type Language,
   PROBLEM_CATEGORIES,
+  type ProblemStatus,
   type ProblemSummary,
 } from '@ipp/contracts';
 import { useMutation, useQuery } from '@tanstack/react-query';
@@ -30,6 +31,7 @@ import {
 import { CategoryBadge, DifficultyBadge, LANG_LABEL } from '@/components/domain';
 import { Markdown } from '@/components/markdown';
 import { EmptyState, ErrorState, InlineError } from '@/components/states';
+import { PROBLEM_STATUS_LABEL, ProblemStatusIcon } from '@/components/status-icon';
 import { Button } from '@/components/ui/button';
 import { Input, Label } from '@/components/ui/input';
 import { Segmented } from '@/components/ui/segmented';
@@ -50,7 +52,7 @@ import { rejectedTitle } from '@/features/ai-key/logic';
 import { api } from '@/lib/api';
 import { humanize } from '@/lib/format';
 import { loadStartPrefs, type StartPrefs, saveStartPrefs } from '@/lib/prefs';
-import { qk, useAiKey } from '@/lib/queries';
+import { qk, useAiKey, useProblemProgress } from '@/lib/queries';
 import { cn } from '@/lib/utils';
 import { InterviewerOptions, useSpeechSupported } from './interviewer-options';
 import {
@@ -68,9 +70,13 @@ import {
   parseCategory,
   parseDifficulty,
   pickRandom,
+  progressMap,
   randomPool,
   restrictionLabel,
+  type StatusFilter,
   saveShowTopics,
+  statusCounts,
+  statusOf,
   subtopicOptions,
 } from './logic';
 
@@ -87,12 +93,15 @@ const CATEGORY_TABS: { value: CategoryFilter; label: string; description: string
 
 function ProblemRow({
   p,
+  status,
   selected,
   onSelect,
   showCategory,
   showTopics,
 }: {
   p: ProblemSummary;
+  /** null while the user's progress is unknown (loading, or it could not be loaded) */
+  status: ProblemStatus | null;
   selected: boolean;
   onSelect: () => void;
   showCategory: boolean;
@@ -116,8 +125,10 @@ function ProblemRow({
             : 'border-l-transparent hover:bg-surface-2',
         )}
       >
+        {status && <ProblemStatusIcon status={status} className="shrink-0" />}
         <span className="min-w-0 flex-1">
           <span className="block truncate font-medium">{p.title}</span>
+          {status && <span className="sr-only">. {PROBLEM_STATUS_LABEL[status]}.</span>}
           {details.length > 0 && (
             <span className="mt-0.5 block truncate text-xs text-fg-muted">
               {details.join(' · ')}
@@ -128,6 +139,23 @@ function ProblemRow({
         <DifficultyBadge difficulty={p.difficulty} />
       </button>
     </li>
+  );
+}
+
+/** "Solved" or "Attempted" beside the chosen problem; nothing for one never tried. */
+function StatusNote({ status }: { status: ProblemStatus | null }) {
+  if (!status || status === 'new') return null;
+  return (
+    <span
+      data-testid="selected-problem-status"
+      className={cn(
+        'inline-flex items-center gap-1 text-xs font-medium whitespace-nowrap',
+        status === 'solved' ? 'text-ok-text' : 'text-warn-text',
+      )}
+    >
+      <ProblemStatusIcon status={status} className="size-3.5" />
+      {status === 'solved' ? 'Solved' : 'Attempted'}
+    </span>
   );
 }
 
@@ -270,6 +298,7 @@ export function NewInterview() {
   );
   const [group, setGroup] = useState<string>(ALL);
   const [subtopic, setSubtopic] = useState<string>(ALL);
+  const [status, setStatus] = useState<StatusFilter>(ALL);
   const [showTopics, setShowTopics] = useState(false);
   useEffect(() => setShowTopics(loadShowTopics()), []);
   // Nothing is selected until the user picks a problem (or asks for a random one).
@@ -294,12 +323,26 @@ export function NewInterview() {
   // Load the whole library once and filter locally: it is small and filtering feels instant.
   const problems = useQuery({ queryKey: qk.problems({}), queryFn: () => api.problems() });
   const library = useMemo(() => problems.data ?? [], [problems.data]);
+  // The user's own solved and attempted problems: marks and a filter once they are here.
+  const progressQuery = useProblemProgress();
+  const known = progressQuery.data !== undefined;
+  const progress = useMemo(() => progressMap(progressQuery.data), [progressQuery.data]);
   const filters = useMemo<LibraryFilters>(
-    () => ({ query: deferredQuery, category, difficulty, group, subtopic, showTopics }),
-    [deferredQuery, category, difficulty, group, subtopic, showTopics],
+    () => ({ query: deferredQuery, category, difficulty, group, subtopic, showTopics, status }),
+    [deferredQuery, category, difficulty, group, subtopic, showTopics, status],
   );
-  const filtered = useMemo(() => filterProblems(library, filters), [library, filters]);
-  const counts = useMemo(() => categoryCounts(library, filters), [library, filters]);
+  const filtered = useMemo(
+    () => filterProblems(library, filters, progress),
+    [library, filters, progress],
+  );
+  const counts = useMemo(
+    () => categoryCounts(library, filters, progress),
+    [library, filters, progress],
+  );
+  const byStatus = useMemo(
+    () => statusCounts(library, filters, progress),
+    [library, filters, progress],
+  );
   const groups = useMemo(() => groupOptions(library), [library]);
   const subtopics = useMemo(() => subtopicOptions(library, group), [library, group]);
   const current = library.find((p) => p.slug === selected);
@@ -376,13 +419,19 @@ export function NewInterview() {
   });
 
   const filtersActive =
-    query !== '' || category !== ALL || difficulty !== ALL || group !== ALL || subtopic !== ALL;
+    query !== '' ||
+    category !== ALL ||
+    difficulty !== ALL ||
+    group !== ALL ||
+    subtopic !== ALL ||
+    status !== ALL;
   const clearFilters = () => {
     setQuery('');
     setCategory(ALL);
     setDifficulty(ALL);
     setGroup(ALL);
     setSubtopic(ALL);
+    setStatus(ALL);
   };
   const toggleTopics = (on: boolean) => {
     setShowTopics(on);
@@ -493,6 +542,28 @@ export function NewInterview() {
                     </SelectContent>
                   </Select>
                 )}
+                {known && (
+                  <Segmented<StatusFilter>
+                    aria-label="Status"
+                    className={cn('max-sm:flex max-sm:w-full', TOUCH_SEGMENTS)}
+                    value={status}
+                    onValueChange={setStatus}
+                    options={[
+                      { value: 'all', label: `All ${byStatus.all}` },
+                      { value: 'new', label: `New ${byStatus.new}`, hint: 'Not attempted yet' },
+                      {
+                        value: 'attempted',
+                        label: `Attempted ${byStatus.attempted}`,
+                        hint: 'Started or run, not solved yet',
+                      },
+                      {
+                        value: 'solved',
+                        label: `Solved ${byStatus.solved}`,
+                        hint: 'An accepted submission in one of your interviews',
+                      },
+                    ]}
+                  />
+                )}
                 <div
                   className="ml-auto flex items-center gap-2 max-sm:min-h-10"
                   title={TOPICS_HINT}
@@ -562,6 +633,7 @@ export function NewInterview() {
                   <ProblemRow
                     key={p.slug}
                     p={p}
+                    status={known ? statusOf(progress, p.slug) : null}
                     selected={selected === p.slug}
                     onSelect={() => {
                       setSelected(p.slug);
@@ -676,6 +748,7 @@ export function NewInterview() {
                     <DifficultyBadge difficulty={current.difficulty} />
                     <CategoryBadge category={current.category} />
                     <RestrictionBadge p={current} />
+                    <StatusNote status={known ? statusOf(progress, current.slug) : null} />
                   </div>
                   {rolled && (
                     <Button

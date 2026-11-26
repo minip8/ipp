@@ -149,6 +149,94 @@ test.describe('problem library', () => {
     });
   });
 
+  test('solved and attempted problems are marked, and a status filter narrows the library', async ({
+    page,
+  }) => {
+    await setup(page);
+    await page.goto('/new');
+    const row = (name: RegExp) =>
+      page.getByRole('region', { name: 'Problem library' }).getByRole('button', { name });
+    const mark = (name: RegExp) => row(name).getByTestId('problem-status');
+    await expect(mark(/^LRU Cache/)).toHaveAttribute('data-status', 'solved');
+    await expect(mark(/^Two Sum/)).toHaveAttribute('data-status', 'attempted');
+    await expect(mark(/^Word Ladder/)).toHaveAttribute('data-status', 'new');
+    // Said, not only drawn.
+    await expect(row(/^LRU Cache/)).toHaveAccessibleName(/^LRU Cache \. Solved\./);
+    await expect(row(/^Two Sum/)).toHaveAccessibleName(/^Two Sum \. Attempted, not solved\./);
+    await expect(row(/^Word Ladder/)).toHaveAccessibleName(/^Word Ladder \. Not attempted\./);
+
+    const status = page.getByRole('radiogroup', { name: 'Status' });
+    await expect(status.getByRole('radio')).toHaveText([
+      'All 15',
+      'New 10',
+      'Attempted 3',
+      'Solved 2',
+    ]);
+    await status.getByRole('radio', { name: /^Solved/ }).click();
+    expect(await titles(page)).toEqual(['LRU Cache', 'Merge Intervals']);
+    // The category tabs count what the status leaves.
+    await expect(page.getByRole('tab', { name: /^Data structures/ })).toContainText('1');
+    await status.getByRole('radio', { name: /^Attempted/ }).click();
+    expect(await titles(page)).toEqual(['Number of Islands', 'Trapping Rain Water', 'Two Sum']);
+    // And the status counts follow the other filters.
+    await page.getByRole('radio', { name: 'Hard', exact: true }).click();
+    await expect(status.getByRole('radio')).toHaveText([
+      'All 4',
+      'New 3',
+      'Attempted 1',
+      'Solved 0',
+    ]);
+    expect(await titles(page)).toEqual(['Trapping Rain Water']);
+
+    // The chosen problem says where the user stands on it.
+    await row(/^Trapping Rain Water/).click();
+    await expect(page.getByTestId('selected-problem-status')).toHaveText('Attempted');
+    await status.getByRole('radio', { name: /^New/ }).click();
+    await row(/^Word Ladder/).click();
+    await expect(page.getByTestId('selected-problem-status')).toHaveCount(0);
+
+    // Clearing the filters clears the status too.
+    await status.getByRole('radio', { name: /^Solved/ }).click();
+    await expect(page.getByText('No problems match these filters')).toBeVisible();
+    await page.getByRole('button', { name: 'Clear filters' }).click();
+    await expect(rows(page)).toHaveCount(15);
+    await expect(status.getByRole('radio', { name: /^All/ })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+  });
+
+  test('a newcomer sees every problem as new; without progress the library works unmarked', async ({
+    page,
+  }) => {
+    await setup(page, (b) => {
+      b.problemProgress = [];
+    });
+    await page.goto('/new');
+    await expect(page.getByTestId('problem-status').first()).toBeVisible();
+    await expect(
+      page.locator('[data-testid="problem-status"]:not([data-status="new"])'),
+    ).toHaveCount(0);
+    await expect(page.getByRole('radiogroup', { name: 'Status' }).getByRole('radio')).toHaveText([
+      'All 15',
+      'New 15',
+      'Attempted 0',
+      'Solved 0',
+    ]);
+
+    await setup(page, (b) =>
+      b.fail(/^GET \/api\/progress\/problems/, 500, {
+        error: { code: 'internal', message: 'boom' },
+      }),
+    );
+    await page.reload();
+    await expect(rows(page)).toHaveCount(15);
+    await expect(page.getByTestId('problem-status')).toHaveCount(0);
+    await expect(page.getByRole('radiogroup', { name: 'Status' })).toHaveCount(0);
+    await page.getByRole('button', { name: /^Two Sum/ }).click();
+    await expect(page.getByRole('button', { name: 'Start interview' })).toBeEnabled();
+  });
+
   test('the interview problem panel hides topics until revealed', async ({ page }) => {
     await setup(page);
     await page.goto(`/pads/${ACTIVE_PAD_ID}`);

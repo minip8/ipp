@@ -101,6 +101,8 @@ export interface Limits {
   problemChange: { userBurst: RateLimit };
   /** Recording a finished mental math drill run (each stores a row; a full run lasts a minute or more). */
   drillRuns: { userBurst: RateLimit; userDaily: RateLimit };
+  /** Deleting quiz attempts and drill runs from the user's own history (one or all at a time). */
+  historyDeletes: { userBurst: RateLimit };
   /** Hard cap on interviewer messages per pad (spend guard). */
   interviewerMessagesPerPad: number;
   /**
@@ -145,6 +147,7 @@ export const DEFAULT_LIMITS: Limits = {
   review: { userBurst: { limit: 6, windowSec: 60 }, userDaily: { limit: 150, windowSec: 86_400 } },
   invites: { ipBurst: { limit: 30, windowSec: 60 }, ipDaily: { limit: 600, windowSec: 86_400 } },
   problemChange: { userBurst: { limit: 10, windowSec: 60 } },
+  historyDeletes: { userBurst: { limit: 30, windowSec: 60 } },
   drillRuns: {
     userBurst: { limit: 6, windowSec: 60 },
     userDaily: { limit: 200, windowSec: 86_400 },

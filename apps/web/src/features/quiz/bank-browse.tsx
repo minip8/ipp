@@ -3,13 +3,12 @@
  * Finding a question in the bank: the filter bar, the overview of subtopics, and one subtopic's
  * question list (shown beside the open question).
  */
-import type { QuizBankItem, QuizQuestionStatus } from '@ipp/contracts';
+import type { QuizBankItem } from '@ipp/contracts';
 import {
   ArrowRightIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   CircleCheckIcon,
-  CircleDashedIcon,
   SearchIcon,
   SearchXIcon,
   XIcon,
@@ -19,6 +18,7 @@ import { useEffect, useRef } from 'react';
 import { DifficultyBadge } from '@/components/domain';
 import { MathText } from '@/components/math-markdown';
 import { EmptyState } from '@/components/states';
+import { StatusIcon } from '@/components/status-icon';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Kbd } from '@/components/ui/kbd';
@@ -44,7 +44,7 @@ import {
   type TypeFilter,
 } from './bank-logic';
 import { summarySegments } from './logic';
-import { OUTCOME_ICON, OUTCOME_TEXT, PHONE_FIELD } from './question';
+import { PHONE_FIELD } from './question';
 
 export const TYPE_SHORT: Record<Exclude<TypeFilter, 'all'>, string> = {
   single: 'Single choice',
@@ -57,19 +57,6 @@ export const TYPE_SHORT: Record<Exclude<TypeFilter, 'all'>, string> = {
 /** A plain left click: anything else (new tab, new window) is left to the browser. */
 export function isPlainClick(e: React.MouseEvent) {
   return !(e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0);
-}
-
-export function StatusIcon({
-  status,
-  className,
-}: {
-  status: QuizQuestionStatus;
-  className?: string;
-}) {
-  if (status === 'unanswered')
-    return <CircleDashedIcon aria-hidden className={cn('size-4 text-fg-subtle', className)} />;
-  const Icon = OUTCOME_ICON[status];
-  return <Icon aria-hidden className={cn('size-4', OUTCOME_TEXT[status], className)} />;
 }
 
 /** Correct / missed / new as one stacked bar. */
