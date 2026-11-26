@@ -33,10 +33,31 @@ export type QuantTurn = z.infer<typeof QuantTurnSchema>;
 /** A verdict on its own (the assessment judging a question closed without one). */
 export const QuantVerdictSchema = z.object({ score: z.number(), summary: z.string() });
 
+/**
+ * A string field with the JSON that closed it written inside it: the model sometimes escapes the
+ * quote that should end the string and then closes it properly, so the decoded text ends in `"}`
+ * or a stray `"` (seen in live runs on the last field, `note`), and once a trailing `<br>`. Only an
+ * unbalanced trailing quote is debris: a message that ends by closing a quotation keeps it.
+ */
+export function stripJsonDebris(text: string): string {
+  const s = text.replace(/(?:\s*<br\s*\/?>)+\s*$/i, '');
+  const quotes = (s.match(/"/g) ?? []).length;
+  if (quotes % 2 === 0) return s;
+  return s.replace(/\s*"\s*}?\s*$/, '');
+}
+
 /** The turn in the model's text, or null when it is not valid JSON of the right shape. */
 export function parseTurn(text: string): QuantTurn | null {
   const parsed = QuantTurnSchema.safeParse(parseModelJson(text));
-  return parsed.success ? parsed.data : null;
+  if (!parsed.success) return null;
+  const t = parsed.data;
+  return {
+    ...t,
+    reason: stripJsonDebris(t.reason),
+    message: stripJsonDebris(t.message),
+    summary: stripJsonDebris(t.summary),
+    note: stripJsonDebris(t.note),
+  };
 }
 
 /** The books of the current question that a turn must respect. */
@@ -100,7 +121,7 @@ export const clampScore = (score: number): number =>
 
 /** A verdict from a score and a summary; no summary, no verdict. */
 export function verdictOf(score: number, summary: string): QuantVerdict | null {
-  const s = repairLatexEscapes(summary).trim();
+  const s = repairLatexEscapes(stripJsonDebris(summary)).trim();
   return s ? { score: clampScore(score), summary: s } : null;
 }
 

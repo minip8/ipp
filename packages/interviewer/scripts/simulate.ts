@@ -7,7 +7,9 @@
  *
  * `--quant` plays a 20-minute quant round instead (scripts/simulate-quant.ts): three bank
  * questions, thinking aloud, a hint, a follow-up, a stall, a close for time, a market to make,
- * then the verdicts and the assessment. `--no-assessment` skips the assessment in both.
+ * then the verdicts and the assessment. `--no-assessment` skips the assessment in both. With
+ * `--quant`, `--dump <file>` appends every model request and its raw output to a JSONL file (no
+ * key in it), for diffing prompts between turns.
  *
  * Reads ANTHROPIC_API_KEY or ANTHROPIC_KEY from the environment or the repo-root .env.
  * The key is never printed. Uses a virtual clock: time jumps between scripted steps, so a
@@ -459,7 +461,7 @@ async function main() {
 }
 
 (args.includes('--quant')
-  ? simulateQuant({ config, devKey, settings, skipAssessment })
+  ? simulateQuant({ config, devKey, settings, skipAssessment, dump: flag('dump', '') || undefined })
   : main()
 ).catch((err) => {
   console.error(err);

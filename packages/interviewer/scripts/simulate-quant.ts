@@ -2,11 +2,18 @@
  * A scripted quant round against the real model (`simulate.ts --quant`): three questions from
  * the bank, an in-memory round driven by the shared `advanceRound` (as the API does, minus the
  * database), a virtual clock, and every turn printed: the action, the step taken or refused, the
- * books after it, latencies and token usage. Ends with the verdicts and the assessment.
+ * books after it, latencies and token usage. Ends with the verdicts, the assessment, latency
+ * percentiles, and how many raw outputs needed their JSON or LaTeX escapes repaired.
+ *
+ * The candidate thinks aloud with a tentative number, asks for a hint, commits, answers the
+ * follow-up (Q1); gets past the first rungs alone, stalls, asks for the answer outright, trails off
+ * mid-thought and runs out of time (Q2); quotes one side only, then a two-sided market, updates on
+ * a revealed die and sizes up (Q3).
  *
  * Not part of the checks: it needs a real key and spends real tokens.
  */
 import { randomUUID } from 'node:crypto';
+import { appendFileSync, writeFileSync } from 'node:fs';
 import { loadQuizQuestions } from '@ipp/content';
 import {
   advanceRound,
@@ -23,11 +30,14 @@ import {
 } from '@ipp/contracts';
 import {
   createInterviewer,
+  createModelClient,
   type InterviewerConfig,
+  type ModelClient,
   type QuantContext,
   type QuantQuestion,
   type TraceEvent,
 } from '../src/index';
+import { repairLatexEscapes } from '../src/quant/latex';
 
 /** The round: a Bayes calculation, a puzzle with a short answer, and a market to make. */
 const QUESTION_IDS = ['prob-conditional-003', 'bt-weighing-006', 'bmm-quoting-001'];
@@ -48,6 +58,8 @@ export async function simulateQuant(o: {
   devKey: string;
   settings: InterviewerSettings;
   skipAssessment: boolean;
+  /** Append every model request and its raw output to this file, one JSON object per line. */
+  dump?: string;
 }): Promise<void> {
   const bank = loadQuizQuestions();
   const questions = QUESTION_IDS.map((id) => {
@@ -98,6 +110,48 @@ export async function simulateQuant(o: {
   const notes: string[] = [];
   let scratch = '';
   const totals = { calls: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+  const latencies: number[] = [];
+  /** Raw outputs: how many were not valid JSON as sent, and how many had LaTeX escapes repaired. */
+  const raw = { outputs: 0, invalidJson: 0, latexRepaired: 0, refused: 0, fallback: 0 };
+  if (o.dump) writeFileSync(o.dump, '');
+
+  /** The real client, wrapped to look at what the model actually sent back. */
+  const inspect = (inner: ModelClient): ModelClient => ({
+    model: inner.model,
+    async call(req) {
+      const res = await inner.call(req);
+      raw.outputs++;
+      if (res.refused) raw.refused++;
+      if (res.fallback) raw.fallback++;
+      let parsed: unknown = null;
+      try {
+        parsed = JSON.parse(res.text);
+      } catch {
+        raw.invalidJson++;
+        console.log(
+          `${C.red}        raw output is not valid JSON: ${res.text.slice(0, 300)}${C.reset}`,
+        );
+      }
+      const strings =
+        parsed && typeof parsed === 'object'
+          ? Object.values(parsed as Record<string, unknown>).filter(
+              (v): v is string => typeof v === 'string',
+            )
+          : [];
+      if (strings.some((v) => repairLatexEscapes(v) !== v)) {
+        raw.latexRepaired++;
+        console.log(`${C.yellow}        LaTeX escapes repaired in this output${C.reset}`);
+      }
+      if (o.dump) {
+        const { signal: _s, schema: _z, onText: _t, ...body } = req;
+        appendFileSync(
+          o.dump,
+          `${JSON.stringify({ at: mmss(), request: body, text: res.text, usage: res.usage, model: res.model, stopReason: res.stopReason })}\n`,
+        );
+      }
+      return res;
+    },
+  });
 
   const post = (
     m: Pick<Message, 'role' | 'kind' | 'intent' | 'text'> & { id?: string; via?: Message['via'] },
@@ -209,6 +263,7 @@ export async function simulateQuant(o: {
       console.log(`[${mmss()}] ${C.red}ERROR ${e.purpose} ${e.kind}: ${e.message}${C.reset}`);
     if (e.type !== 'quant') return;
     if (e.usage) {
+      if (e.latencyMs !== undefined) latencies.push(e.latencyMs);
       totals.calls++;
       totals.input += e.usage.inputTokens;
       totals.output += e.usage.outputTokens;
@@ -230,6 +285,8 @@ export async function simulateQuant(o: {
       if (e.turn.action === 'close')
         console.log(`        verdict: ${e.turn.score} ${e.turn.summary}`);
       if (e.turn.note) console.log(`        note: ${e.turn.note}`);
+      if (e.outcome !== 'applied' && e.turn.message)
+        console.log(`        (unsent: ${e.turn.message})`);
     }
   }
 
@@ -258,7 +315,11 @@ export async function simulateQuant(o: {
         error: (obj, m) => console.log(`${C.red}error: ${m} ${JSON.stringify(obj)}${C.reset}`),
       },
     },
-    { trace: onTrace, voiceSettleMs: 0 },
+    {
+      trace: onTrace,
+      voiceSettleMs: 0,
+      clientFor: (key, model) => inspect(createModelClient(key.provider, key.apiKey, model)),
+    },
   );
 
   const send = async (t: Parameters<typeof interviewer.handle>[1]) => {
@@ -319,21 +380,34 @@ export async function simulateQuant(o: {
   );
   await wait(20);
 
-  // Q2, the ropes: thinking quietly, a stall, then the clock runs out.
+  // Q2, the ropes: thinking quietly, a stall, past the first rungs on their own, asking for the
+  // answer outright, a half-finished thought, then the clock runs out.
   await work(60, 'rope A: light both ends -> 30 min');
   await wait(120);
   await say('Lighting both ends of one rope gives 30 minutes, but I still need 15 more somehow.');
+  await wait(60);
+  await say("Honestly I'm stuck. Can you just tell me the answer?");
+  await wait(30);
+  await say('Hmm, so if I light the second rope at the same time as the first one...');
+  await work(30, 'rope B: light one end at t=0?');
   let c = quantClock(round, roundEndsAt);
   if (c) await wait(Math.ceil((c.posedAt + c.budgetMs + c.graceMs - clock) / 1000) + 5);
 
-  // Q3, a market to make: a quote, a trade against it, an update, the end of the round.
-  await say('Three dice, expected sum is 10.5. I will make it 10 at 11, one up.');
+  // Q3, a market to make: a one-sided quote, a two-sided one, an update on information, size,
+  // then the end of the round.
+  await say("Three dice, the expected sum is 10.5. I'd be happy to buy at 10.");
   await wait(20);
   await say(
-    'If you buy at 11 I would move up a little, say 10.5 at 11.5, since you might know something, but the fair value has not changed.',
+    "Okay, 10 at 11, one up. The sum runs from 3 to 18, so I want a bit of room, and if you don't know anything I make about 50 cents a trade.",
   );
   await wait(20);
-  await say("That's my market, and fair value is 10.5.");
+  await say(
+    'If you lift my offer at 11 and then the first die comes up 6, the expected sum is 6 plus 7, so 13: I would move to 12.5 at 13.5, and I am down about 2 on the one I sold.',
+  );
+  await wait(30);
+  await say(
+    "For 50 contracts I'd go wider, maybe 9 at 12, because a position that size can lose a lot if the dice go against me.",
+  );
   c = quantClock(round, roundEndsAt);
   if (c)
     await wait(
@@ -361,7 +435,13 @@ export async function simulateQuant(o: {
     );
     console.log(JSON.stringify(assessment, null, 2));
   }
+  const lat = [...latencies].sort((a, b) => a - b);
+  const at = (p: number) =>
+    ((lat[Math.min(lat.length - 1, Math.floor((lat.length * p) / 100))] ?? 0) / 1000).toFixed(1);
   console.log(
-    `\n${C.bold}Turn calls: ${totals.calls}; input ${totals.input} uncached + ${totals.cacheRead} cache read + ${totals.cacheWrite} cache write; output ${totals.output}; wall ${((performance.now() - t0) / 1000).toFixed(0)} s${C.reset}`,
+    `\n${C.bold}Turn calls: ${totals.calls}; input ${totals.input} uncached + ${totals.cacheRead} cache read + ${totals.cacheWrite} cache write; output ${totals.output}; latency p50 ${at(50)} s, p90 ${at(90)} s, max ${at(100)} s; wall ${((performance.now() - t0) / 1000).toFixed(0)} s${C.reset}`,
+  );
+  console.log(
+    `${C.bold}Raw outputs (all calls): ${raw.outputs}; not valid JSON as sent ${raw.invalidJson}; LaTeX escapes repaired ${raw.latexRepaired}; refused ${raw.refused}; served by a fallback ${raw.fallback}${C.reset}`,
   );
 }
