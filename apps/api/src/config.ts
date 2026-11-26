@@ -184,6 +184,11 @@ export interface Config {
   /** Timers; overridable in tests. */
   timing: {
     tickMs: number;
+    /**
+     * How often the API closes overdue questions of quant rounds nobody is connected to
+     * (`quant/sweeper.ts`); 0 turns it off.
+     */
+    quantSweepMs: number;
     watchdogMs: number;
     /** Extra time on top of the job's totalMs before the watchdog fails a run. */
     runGraceMs: number;
@@ -254,6 +259,7 @@ export function loadConfig(overrides: Partial<Config> = {}): Config {
     limits: DEFAULT_LIMITS,
     timing: {
       tickMs: 5000,
+      quantSweepMs: 15_000,
       watchdogMs: 5000,
       runGraceMs: 30_000,
       collabDebounceMs: 2000,

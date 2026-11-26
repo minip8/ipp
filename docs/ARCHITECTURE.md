@@ -78,6 +78,7 @@ Better Auth owns `user`, `session`, `account`, `verification` (text ids). App ta
 | `quiz_attempts` | id, user_id, mode, topics, question_ids, transcript jsonb (discussion turns per question), status, score, started_at, finished_at |
 | `quiz_answers` | attempt_id, question_id, response jsonb, score, correct, feedback, graded_by, answered_at |
 | `quiz_standalone_answers` | user_id, question_id (pk together), same grading columns — question-bank answers outside attempts, latest per question |
+| `quant_round_answers` | id, user_id (the pad's owner), pad_id (set null when the pad is deleted; unique with question_id), question_id, same grading columns (always `ai`), answered_at (when the question closed) — the judged questions of an ended quant round (§8.2) |
 | `drill_runs` | id, user_id, duration_sec, level, categories text[], full_mix, by_category jsonb, correct, wrong, skipped, score, elapsed_ms, finished_at — one finished mental math drill run (§8.1) |
 | `ai_usage` | user_id, day, messages, input_tokens, output_tokens — spend guard |
 
@@ -463,7 +464,11 @@ coding pad, which then behaves exactly as before) and hands the pad to
 `packages/interviewer/src/quant/round.ts`. The server keeps every book of the round; the
 interviewer only decides what to say and which step to ask for, and each trigger ends in at most
 one model call and at most one `applyQuantStep`. It keeps a mirror of the round's version, phase
-and clock, refreshed from every context load and step result.
+and clock, refreshed from every context load and step result, so a round that moved on without it
+(closed by the API's sweeper while nobody was connected, §8.2) is picked up as it now is when
+someone returns: a clock action due on the old mirror finds nothing due in the context it loads
+and does nothing, a reply is decided on the current question, and a question posed meanwhile is
+a fresh start for stalls and the unanswered count, as after a step of its own.
 
 - **Each pass of the pump**, in order: a queued candidate message (a `turn` or a `close`; before
   the first question the opening and `start`; after the round a plain message through
@@ -581,8 +586,9 @@ overview of the subtopics (a card each, with progress); a subtopic (`?subtopic=`
 questions, and an open question (`?question=`) sits beside its subtopic's list, where Next walks
 on through the filtered bank from one subtopic into the next. Answering again
 replaces the previous standalone answer. Status, stats and selection all use the latest
-*countable* answer per question across standalone answers, practice and discussion answers and finished
-exams (a running exam never shows up).
+*countable* answer per question across standalone answers, practice and discussion answers, finished
+exams (a running exam never shows up) and the judged questions of the user's ended quant rounds
+(§8.2), in one query (`latestAnswers` in `apps/api/src/quiz/answers.ts`).
 
 The roadmap (the Quizzes page's Roadmap view, `?view=roadmap&roadmap=<topic>&node=<id>`) draws each
 topic as a layered graph of study areas. `quiz/roadmap.yaml` maps each topic to its nodes
@@ -646,16 +652,40 @@ joining by the link, as on any practice pad) see exactly what the owner sees.
   it ended), the next state behind a compare-and-swap on `version`, the interviewer's message,
   the revealed question's message (intent `question`, the bank's exact prompt, `createdAt` 1 ms
   after the message before it, its id recorded as `posedMessageId`) with a `question` timeline
-  event, and the interviewer's private note. After the commit the room gets `message.created` for
+  event, and the interviewer's private note. Every time a step writes (its `now`, so `posedAt`,
+  `nudgedAt`, `closedAt`, and its messages' `created_at`) is the database's clock, read in the
+  transaction after the lock (`clock_timestamp()` rounded up to the millisecond, `Ctx.dbNow`):
+  the clock Postgres stamps every other message and `pads.started_at` with, so the round's
+  messages sort among the candidate's whatever the API host's clock says. After the commit the room gets `message.created` for
   each message, then `round.updated`. A step decided on an older version (`stale`), or refused by
   the transition (`QuantRefusal`), posts nothing; once the pad has ended only `end` and `verdict`
   are accepted. The interviewer's message counts against the owner's daily AI messages; a posted
   question counts against neither that nor the per-pad cap.
 - **Clock**: the round ends at `startedAt + durationMin`; each question's budget is set when it is
-  posed (`quantBudgetSec`, unused time rolls forward). The round finishing (last question closed,
-  or closed for `round_time`) does not end the pad; the owner does. Ending the pad
-  (`endPad`) closes the open question as `ended` before `session_ended`, and the assessment
-  (`generateQuantAssessment`, quant dimensions) first judges questions closed without a verdict.
+  posed (`quantBudgetSec`, unused time rolls forward). All of these are on the database's clock;
+  the interviewer decides when the clock is due on the API's (`deps.now`), and a close for time
+  it asks for up to `QUANT_CLOCK_SKEW_MS` (5 s) early is accepted, so a small skew either way
+  only moves a close by that much: an API behind closes a little late, one ahead by more than
+  that is refused `too_early` and retries after 30 s (a timeout also has its grace, 30 to 90 s,
+  in hand). The browser counts down from `posedAt` on its own clock, as before. The round
+  finishing (last question closed, or closed for `round_time`) does not end the pad; the owner
+  does. Ending the pad (`endPad`) closes the open question as `ended` before `session_ended`, and
+  the assessment (`generateQuantAssessment`, quant dimensions) first judges questions closed
+  without a verdict.
+- **Nobody there** (`apps/api/src/quant/sweeper.ts`): the interviewer applies the clock on its
+  ticks, which reach only pads someone is connected to, so the API also sweeps every
+  `timing.quantSweepMs` (15 s; 0 turns it off, as the tests do): in each active quant pad nobody
+  is connected to (by event socket or collab document, the set the ticks reach, checked again
+  just before acting) whose open question is past its budget and grace, or whose round's clock
+  has run out, it applies the close the interviewer's failure path would (`timeout` or
+  `round_time`, the same canned line from `cannedCloseLine`, no verdict) on the database's clock,
+  with no model call, so nobody's key is spent while nobody is there; it never nudges. A pad
+  someone is on is left to its interviewer, so a turn in flight there is never pre-empted, and
+  the compare-and-swap makes a double close impossible anyway. An unattended round therefore runs
+  to its end question by question (each close poses the next with a fresh budget, closed in turn);
+  a round never started stays pending until someone comes. The sweeper starts and stops with the
+  server (`createApi` / `stop`, which waits for a pass in progress) and its timer is unref'd. One
+  sweeper sees every live pad because the API is a single instance.
 - **What the browser sees**: `PadDetail.round` and `round.updated` carry `publicRound(state,
   version)`, the posed questions only (topic and its title, difficulty, prompt, unit, times, how a
   question closed, hints given as a count, and the id of the `question` message that posed it,
@@ -670,6 +700,18 @@ joining by the link, as on any practice pad) see exactly what the owner sees.
   `submissions` and `accepted` null (the API nulls them too in reports stored when they were
   0 / 0 / false); the report shows the round's figures instead, derived from `Report.quant` in
   the web app.
+- **In the quiz**: once the pad has ended, each question with a verdict is one of the owner's quiz
+  answers (`quant_round_answers`; collaborators get none), as a discussion records one: AI-graded,
+  score and feedback from the verdict, the response a short answer holding everything the owner
+  said while the question was open (the last 4,000 characters; a numeric question's too, as what
+  was said is not a number), answered when it closed. It is
+  written in the transaction that finishes the round (or, when the round had already finished,
+  the one the pad's end runs) and by every later `verdict` step, once per pad and question (a
+  second end or assessment neither duplicates nor overwrites it), and it stays when the pad is
+  deleted. Nothing is written while the pad is active, so a verdict never shows in the question
+  bank, the stats or the roadmap mid-round (it would also name the bank question); unjudged and
+  unposed questions record nothing. It takes part in the latest countable answer per question
+  (§8) by its time like any other answer, so the round assembler's "weak first" sees it too.
 - **What the interviewer sees** (`InterviewerHost.loadQuantContext`): the current question in full
   (scope `all`, for the assessment: every posed one), a code-built summary of the closed ones, the
   transcript from the latest posed question's message on, and the scratchpad cut at 8,000
@@ -737,7 +779,9 @@ a regression test.
 - A rejected key is not re-checked: after topping up credit the user saves the key again.
 - CSP styles still allow `'unsafe-inline'` (Monaco and React inline styles).
 - The queue-depth check is not atomic and can overshoot under concurrent submissions.
-- Pads do not end automatically when the timer reaches zero; the interviewer calls time. (A pad
+- Pads do not end automatically when the timer reaches zero; the interviewer calls time (in a
+  quant round the API's sweeper also closes overdue questions nobody is there for, §8.2, but the
+  pad still waits for its owner to end it). (A pad
   created with `durationMin: null` has no time limit: its clock shows the time elapsed, and the
   interviewer raises no clock checkpoints and is told not to bring up the time.)
 

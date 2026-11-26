@@ -1,3 +1,22 @@
+import type { Db } from '@ipp/db';
+import { sql } from '@ipp/db/orm';
+
+/**
+ * The database's clock as it is now (`clock_timestamp()`: inside a transaction, not its start),
+ * rounded up to the millisecond, so a row stamped with it never sorts before one Postgres
+ * stamped (`now()`, microseconds) a moment earlier. A quant round's steps stamp their messages
+ * and the round's times with it, so they share one clock with every message Postgres stamps and
+ * with `pads.started_at`, wherever the API runs (`Ctx.dbNow`).
+ */
+export async function readDbClock(q: Pick<Db, 'execute'>): Promise<Date> {
+  const rows = await q.execute<{ ms: number }>(
+    sql`select ceil(extract(epoch from clock_timestamp()) * 1000)::float8 as ms`,
+  );
+  const ms = Number(rows[0]?.ms);
+  if (!Number.isFinite(ms)) throw new Error('could not read the database clock');
+  return new Date(ms);
+}
+
 /**
  * Postgres error checks. Drizzle wraps driver errors (DrizzleQueryError), so the SQLSTATE can
  * sit on the error itself or further down its `cause` chain.

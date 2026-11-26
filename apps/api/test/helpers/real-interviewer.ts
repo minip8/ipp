@@ -7,12 +7,13 @@
  *   `ScriptedModel` chosen by the API key it runs on, so each test account (its own key) has its
  *   own script and its own record of requests. `restart()` swaps in a fresh interviewer over the
  *   same deps (an API restart, as far as the interviewer is concerned).
- * - `TestClock` moves the whole process's clock: the round service (`new Date()`), the host
- *   (`deps.now`) and the interviewer (which reads `deps.now`) all read the global `Date`, so a
- *   process-wide offset is the one clock all three honour. Timers are untouched (sockets, ticks
- *   and the harness keep real time). Postgres stamps some rows with its own `now()` (a message's
- *   `created_at`, a pad's `started_at`); a trigger in the test database adds the same offset to
- *   those, so every timestamp in a round comes from one clock, as it does in production.
+ * - `TestClock` moves the whole process's clock: the host (`deps.now`) and the interviewer
+ *   (which reads `deps.now`) read the global `Date`, so a process-wide offset is the one clock
+ *   both honour. Timers are untouched (sockets, ticks and the harness keep real time). Postgres
+ *   stamps some rows with its own `now()` (a message's `created_at`, a pad's `started_at`); a
+ *   trigger in the test database adds the same offset to those, and the round service and the
+ *   sweeper read the database's clock through `ctx.dbNow`, which the clock shifts too, so every
+ *   timestamp in a round comes from one clock, as it does in production.
  */
 import type { AiProvider } from '@ipp/contracts';
 import { sql } from '@ipp/db/orm';
@@ -39,7 +40,11 @@ const RealDate = globalThis.Date;
 export class TestClock {
   private offsetMs = 0;
   private installed = false;
-  constructor(private readonly db: Ctx['db']) {}
+  private readonly db: Ctx['db'];
+  private realDbNow: Ctx['dbNow'] | null = null;
+  constructor(private readonly ctx: Ctx) {
+    this.db = ctx.db;
+  }
 
   get offset() {
     return this.offsetMs;
@@ -65,6 +70,9 @@ export class TestClock {
       },
     });
     globalThis.Date = Shifted as DateConstructor;
+    const realDbNow = this.ctx.dbNow;
+    this.realDbNow = realDbNow;
+    this.ctx.dbNow = async (q) => new RealDate((await realDbNow(q)).getTime() + self.offsetMs);
     this.installed = true;
     await this.db.execute(sql`drop table if exists ipp_test_clock cascade`);
     await this.db.execute(
@@ -97,6 +105,7 @@ export class TestClock {
   async uninstall(): Promise<void> {
     if (!this.installed) return;
     globalThis.Date = RealDate;
+    if (this.realDbNow) this.ctx.dbNow = this.realDbNow;
     this.installed = false;
     this.offsetMs = 0;
     for (const table of ['messages', 'pads']) {

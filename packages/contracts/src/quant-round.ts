@@ -42,6 +42,13 @@ export const QUANT_BUDGET_MAX_FACTOR = 1.5;
 /** The grace after a question's budget before it is closed for time: a quarter, at most this. */
 export const QUANT_GRACE_MAX_SEC = 90;
 
+/**
+ * How far ahead of the round's clock a close for time may be asked for. The round runs on the
+ * database's clock and the interviewer decides on the API's, so a close it asks for as the time
+ * runs out could otherwise be refused as `too_early` by a clock a moment behind its own.
+ */
+export const QUANT_CLOCK_SKEW_MS = 5_000;
+
 /** When the round's clock runs out: the pad's start plus the round's length (the top bar's clock). */
 export const quantRoundEndsAt = (startedAt: Date | string, durationMin: number): Date =>
   new Date(new Date(startedAt).getTime() + durationMin * 60_000);
@@ -424,6 +431,7 @@ export type QuantRoundStep = QuantStep | QuantEndStep;
  *  follow_up_used  the question's one follow-up was already asked
  *  nudged          the question was already nudged
  *  too_early       `close` for `timeout` before the budget is up, or `round_time` before the clock
+ *                  (by more than `QUANT_CLOCK_SKEW_MS`)
  *  not_closed      `verdict` for a question that is open or was never posed
  *  has_verdict     `verdict` for a question that already has one
  *  invalid         a verdict outside 0..1, or a rung that is not a whole number
@@ -591,7 +599,8 @@ export function advanceRound(
       if (step.verdict !== null && !QuantVerdict.safeParse(step.verdict).success) {
         return refuse('invalid');
       }
-      const now = env.now.getTime();
+      // A clock a little ahead of the round's may ask for it (`QUANT_CLOCK_SKEW_MS`).
+      const now = env.now.getTime() + QUANT_CLOCK_SKEW_MS;
       if (step.by === 'timeout' && now < Date.parse(q.posedAt) + (q.budgetSec ?? 0) * 1000) {
         return refuse('too_early');
       }

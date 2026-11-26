@@ -16,11 +16,19 @@ import {
   type ServerEvent,
   YDOC,
 } from '@ipp/contracts';
-import { messages, quantRounds, quizQuestions, quizStandaloneAnswers, quizTopics } from '@ipp/db';
+import {
+  messages,
+  quantRoundAnswers,
+  quantRounds,
+  quizQuestions,
+  quizStandaloneAnswers,
+  quizTopics,
+} from '@ipp/db';
 import { asc, eq, inArray } from '@ipp/db/orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { WebSocket } from 'ws';
 import * as Y from 'yjs';
+import { sweepQuantRounds } from '../src/quant/sweeper';
 import {
   Client,
   EventSocket,
@@ -112,7 +120,7 @@ beforeAll(async () => {
   await flushRedis();
   rig = new RealInterviewerRig(testConfig());
   h = await startApi({ interviewerFactory: rig.factory, captureLogs: true });
-  clock = new TestClock(h.api.ctx.db);
+  clock = new TestClock(h.api.ctx);
   await clock.install();
   const db = h.api.ctx.db;
   await db
@@ -139,6 +147,7 @@ afterAll(async () => {
   const db = h?.api.ctx.db;
   if (db) {
     const ids = FIXTURES.map((q) => q.id);
+    await db.delete(quantRoundAnswers).where(inArray(quantRoundAnswers.questionId, ids));
     await db.delete(quizStandaloneAnswers).where(inArray(quizStandaloneAnswers.questionId, ids));
     await db.delete(quizQuestions).where(inArray(quizQuestions.id, ids));
     await db.delete(quizTopics).where(
@@ -1034,6 +1043,88 @@ describe('a quant round with the real interviewer', () => {
     s.close();
   });
 
+  // ---------------------------------------------------------------- nobody there
+
+  it('runs the clock of a round nobody is on, without a model; the interviewer carries on when they return', {
+    timeout: 60_000,
+  }, async () => {
+    const { a, id, s, model: m } = await started('Away');
+    // The scratchpad stays open after the event channel closes, then closes too: only the last
+    // event socket releases the pad's interviewer, so it keeps its mirror of the round as it was.
+    const doc = new Y.Doc();
+    const socket = new HocuspocusProviderWebsocket({
+      url: `${h.wsBase}/collab`,
+      WebSocketPolyfill: WebSocket,
+    });
+    const provider = new HocuspocusProvider({
+      websocketProvider: socket,
+      name: YDOC.name(id),
+      document: doc,
+      token: () => a.ticket(id),
+    });
+    provider.attach();
+    await new Promise<void>((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error('collab sync timed out')), 10_000);
+      provider.on('synced', () => {
+        clearTimeout(t);
+        resolve();
+      });
+    });
+    await rig.idle(id);
+    s.close();
+    await eventually(() => h.api.ctx.rooms.count(id) === 0, 10_000, 'the socket closed');
+    provider.destroy();
+    socket.destroy();
+    await eventually(() => h.api.ctx.collab.connectionCount(id) === 0, 10_000, 'collab closed');
+    const calls = m.calls.length;
+
+    // Nobody is there when the question's budget and grace run out: no tick reaches the pad, and
+    // the sweep closes it (only this pad: the others in the database belong to other tests).
+    const live = (p: string) =>
+      p !== id || h.api.ctx.rooms.count(p) > 0 || h.api.ctx.collab.connectionCount(p) > 0;
+    let state = (await roundRow(id)).state;
+    const q0 = must(state.questions[0]);
+    const budgetMs = must(q0.budgetSec ?? undefined) * 1000;
+    const graceMs = quantGraceSec(must(q0.budgetSec ?? undefined)) * 1000;
+    await clock.advanceTo(Date.parse(must(q0.posedAt ?? undefined)) + budgetMs - 1_000);
+    expect(await sweepQuantRounds(h.api.ctx, live)).toBe(0);
+    await clock.advanceTo(Date.parse(must(q0.posedAt ?? undefined)) + budgetMs + graceMs + 1_000);
+    expect(await sweepQuantRounds(h.api.ctx, live)).toBe(1);
+    expect(await sweepQuantRounds(h.api.ctx, live)).toBe(0);
+    const row = await roundRow(id);
+    state = row.state;
+    expect(row.version).toBe(2);
+    expect(state.questions[0]).toMatchObject({ closedBy: 'timeout', verdict: null });
+    expect(state.questions[1]?.posedAt).toEqual(expect.any(String));
+    const stored = await storedMessages(id);
+    expect(stored.slice(-2).map((x) => [x.intent, x.text])).toEqual([
+      ['feedback', CANNED_TIMEOUT],
+      ['question', BANK.get(must(state.questions[1]).questionId)?.prompt],
+    ]);
+    // Nobody's key was spent.
+    expect(m.calls.length).toBe(calls);
+
+    // They come back to the same interviewer, whose mirror still has question 1 overdue: the
+    // context it loads says otherwise, so it closes nothing, and answers on question 2.
+    const back = await openEvents(a, id);
+    await back.waitFor('round.updated', (e) => e.round.version === 2);
+    await ticks(id, 5);
+    expect((await roundRow(id)).version).toBe(2);
+    expect(m.calls.length).toBe(calls);
+    m.script('reply', turn({ action: 'hint', hint_rung: 1, message: 'Try a smaller case.' }));
+    const mark = say(back, 'Can I have a hint?');
+    expect((await stepEvents(back, mark, 3)).map(label)).toEqual([
+      'candidate:chat',
+      'interviewer:hint',
+      'round:3',
+    ]);
+    expect((await roundRow(id)).state.questions[1]?.hintRungs).toEqual([1]);
+    const q1 = must(state.questions[1]);
+    expect(finalTurn(must(m.of('reply').at(-1))).question).toContain(promptMarker(q1.questionId));
+    expectRequestsClean(m.calls);
+    back.close();
+  });
+
   // ---------------------------------------------------------------- ending mid-question
 
   it('ends mid-question; the assessment judges the open question and the report shows it unfinished', {
@@ -1094,6 +1185,32 @@ describe('a quant round with the real interviewer', () => {
       ...QUANT_REPORT_DIMENSIONS,
     ]);
     expect(JSON.stringify(report)).not.toContain('[HINT-');
+    // Both judged questions are now the candidate's quiz answers: the live verdict, and the one
+    // the assessment gave, each with what was said while the question was open.
+    const answers = await db()
+      .select()
+      .from(quantRoundAnswers)
+      .where(eq(quantRoundAnswers.padId, id))
+      .orderBy(asc(quantRoundAnswers.answeredAt));
+    expect(answers.map((x) => [x.questionId, x.score, x.feedback, x.response])).toEqual([
+      [
+        state.questions[0]?.questionId,
+        0.8,
+        '[VERDICT-0] Right.',
+        { type: 'short', text: 'The answer is two.' },
+      ],
+      [
+        state.questions[1]?.questionId,
+        0.35,
+        '[LATE-1] On track, unfinished.',
+        {
+          type: 'short',
+          text: 'For this one I would set up a recursion on the first toss.\n\nSo the recursion gives E = 1 + E/2.',
+        },
+      ],
+    ]);
+    const bank = await a.get(`/api/quiz/questions/${state.questions[1]?.questionId}`);
+    expect(bank.json).toMatchObject({ status: 'partial', score: 0.35 });
 
     // One verdict call, for the open question only, with its conversation and not question 3.
     const verdicts = m.of('verdict');

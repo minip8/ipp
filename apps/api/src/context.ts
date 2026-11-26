@@ -32,4 +32,9 @@ export interface Ctx {
   verifyAiKey: KeyVerifier;
   listAiModels: ModelLister;
   runs: RunService;
+  /**
+   * The database's clock (`readDbClock` in pg.ts), read with the given connection or
+   * transaction. What a quant round stamps and decides on; tests may shift it.
+   */
+  dbNow(q: Pick<Db, 'execute'>): Promise<Date>;
 }
