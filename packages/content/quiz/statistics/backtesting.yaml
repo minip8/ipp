@@ -185,9 +185,7 @@
     or an artefact of the search?
   reference: |
     The reported number is the maximum of 200 noisy estimates, so it is biased upwards even if every
-    combination is worthless. With 10 years each estimate has a standard error of about $1/\sqrt{10}
-    \approx 0.32$, and the expected maximum of 200 independent null estimates is about $2.75 \times 0.32
-    \approx 0.87$ (less if the combinations are correlated). A Sharpe ratio of 1.8 clears that bar, but
+    combination is worthless. With 10 years each estimate has a standard error of about $1/\sqrt{10} \approx 0.32$, and the expected maximum of 200 independent null estimates is about $2.75 \times 0.32 \approx 0.87$ (less if the combinations are correlated). A Sharpe ratio of 1.8 clears that bar, but
     the question is by how much, after accounting for the search.
 
     - **Deflated Sharpe ratio:** compare 1.8 with the expected maximum under the null given the
@@ -219,7 +217,7 @@
     Correlated trials reduce the selection bias, because the effective number of independent tries
     is smaller; estimating that number, for example from clustering the trials' returns, is part of
     the deflated Sharpe method.
-  source: { name: "Bailey, Borwein, López de Prado and Zhu, The Probability of Backtest Overfitting (2015)", url: "https://papers.ssrn.com/abstract=2326253" }
+  source: { name: "Bailey, Borwein, López de Prado and Zhu, The Probability of Backtest Overfitting", url: "https://papers.ssrn.com/abstract=2326253" }
 
 - id: stat-backtesting-007
   topic: statistics

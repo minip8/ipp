@@ -19,8 +19,7 @@
     A p-value is a statement about the data under the null: $P(T \ge t_{\text{obs}} \mid H_0)$ (or
     $|T|$ for a two-sided test). It is not a probability about the hypothesis.
 
-    - **a, c and e** are all the same mistake, turning $P(\text{data} \mid H_0)$ into $P(H_0 \mid
-      \text{data})$. That needs a prior: if only 1 signal in 100 that you test is real, most signals
+    - **a, c and e** are all the same mistake, turning $P(\text{data} \mid H_0)$ into $P(H_0 \mid \text{data})$. That needs a prior: if only 1 signal in 100 that you test is real, most signals
       with $p = 0.03$ are still noise.
     - **d** describes a replication probability, which depends on the true effect size and the power
       of the repeat, not just on the p-value.
@@ -235,8 +234,8 @@
   difficulty: easy
   tags: [power, significance-level]
   prompt: |
-    A one-sample test of whether a mean is 0, against a true mean of 0.2. Holding everything else
-    fixed, which changes increase the test's power? Select all that apply.
+    A two-sided one-sample test of whether a mean is 0, when the true mean is 0.2. Holding
+    everything else fixed, which changes increase the test's power? Select all that apply.
   choices:
     - { id: a, text: "More observations" }
     - { id: b, text: "A smaller significance level (1% instead of 5%)" }
@@ -390,8 +389,7 @@
       $t/\sqrt T = 1.5/\sqrt 2 \approx 1.06$, with a standard error of about $1/\sqrt T \approx 0.71$.
       A 95% interval runs from about $-0.3$ to $2.5$: consistent with no edge, and also with a very
       good strategy.
-    - Even a genuine Sharpe-1 strategy would have an expected t-statistic of only $1 \cdot \sqrt 2
-      \approx 1.4$ after two years, so it would usually fail this test. The test cannot tell.
+    - Even a genuine Sharpe-1 strategy would have an expected t-statistic of only $1 \cdot \sqrt 2 \approx 1.4$ after two years, so it would usually fail this test. The test cannot tell.
     - The decision should weigh the prior plausibility and economic rationale of the signal, its
       correlation with existing strategies, and the cost of waiting; options include collecting more
       data, running it at small size, or combining it with related evidence.

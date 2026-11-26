@@ -14,8 +14,7 @@
 
     $$\sum_i (x_i - \bar x)^2 = \sum_i (x_i - \mu)^2 - n(\bar x - \mu)^2.$$
 
-    Taking expectations for i.i.d. data, $E\left[\sum (x_i - \bar x)^2\right] = n\sigma^2 - n \cdot
-    \frac{\sigma^2}{n} = (n - 1)\sigma^2$. So dividing by $n - 1$ makes $s^2$ unbiased for $\sigma^2$,
+    Taking expectations for i.i.d. data, $E\left[\sum (x_i - \bar x)^2\right] = n\sigma^2 - n \cdot \frac{\sigma^2}{n} = (n - 1)\sigma^2$. So dividing by $n - 1$ makes $s^2$ unbiased for $\sigma^2$,
     for any distribution with finite variance. One degree of freedom has been used up estimating the
     mean.
 
@@ -62,8 +61,7 @@
 
     $$\ell(\lambda) = \sum_i \left(\log\lambda - \lambda x_i\right) = n\log\lambda - \lambda\sum_i x_i,$$
 
-    and setting $\ell'(\lambda) = n/\lambda - \sum x_i = 0$ gives $\hat\lambda = n / \sum x_i =
-    1/\bar x = 4/20 = 0.2$ per minute.
+    and setting $\ell'(\lambda) = n/\lambda - \sum x_i = 0$ gives $\hat\lambda = n / \sum x_i = 1/\bar x = 4/20 = 0.2$ per minute.
 
     The usual slip is to answer 5, the estimated *mean* gap, rather than the rate. Two further
     points interviewers like: by invariance the MLE of the mean gap is $1/\hat\lambda = 5$, and
@@ -95,8 +93,7 @@
     $$\hat N = m + \frac{m}{k} - 1 = 60 + \frac{60}{4} - 1 = 74.$$
 
     The intuition: the $k$ observed numbers split the range into $k + 1$ gaps of equal expected size,
-    and the average gap below the sample maximum is about $m/k$ (precisely, $E[m] = \frac{k}{k+1}(N +
-    1)$, which inverts to the formula). So you add one average gap beyond the largest serial.
+    and the average gap below the sample maximum is about $m/k$ (precisely, $E[m] = \frac{k}{k+1}(N + 1)$, which inverts to the formula). So you add one average gap beyond the largest serial.
 
     The common wrong answers are 60 (the maximum-likelihood estimate, which is biased low because the
     maximum can never exceed $N$) and $2\bar x - 1 = 79.5$ (unbiased, but much noisier because it
@@ -221,8 +218,7 @@
     the best *linear* unbiased estimator under the Gauss-Markov assumptions, whatever the error
     distribution, but it is no longer the MLE and can be far from efficient with heavy tails.
 
-    MAP adds the log prior to the log-likelihood: an independent normal prior $\beta_j \sim N(0,
-    \tau^2)$ gives ridge regression with penalty $\lambda = \sigma^2/\tau^2$, and a Laplace prior gives
+    MAP adds the log prior to the log-likelihood: an independent normal prior $\beta_j \sim N(0, \tau^2)$ gives ridge regression with penalty $\lambda = \sigma^2/\tau^2$, and a Laplace prior gives
     the lasso. With a flat prior MAP equals the MLE.
   keyPoints:
     - With i.i.d. normal errors, maximising the likelihood is minimising squared residuals, so OLS is the MLE
@@ -355,8 +351,7 @@
 
     The common answers 285.7 (the Lincoln-Petersen estimate $50 \cdot 40 / 7$, which is not a whole
     number) and 286 (rounding it) miss that the likelihood is only defined at whole numbers and that
-    its maximum is the floor. The idea is the same as matching the tagged fraction, $7/40 \approx
-    50/N$.
+    its maximum is the floor. The idea is the same as matching the tagged fraction, $7/40 \approx 50/N$.
   source: { name: "Capture-recapture estimation (Lincoln-Petersen; e.g. Feller, vol. 1)" }
 
 - id: stat-estimation-011

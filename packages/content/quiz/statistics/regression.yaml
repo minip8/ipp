@@ -122,7 +122,7 @@
     The question looks trivial but tests whether the candidate knows which parts of the output come
     from the point estimate and which from the assumed amount of information. The practical link to
     overlapping observations is what interviewers are after.
-  source: { name: "Widely reported interview question (Citadel, Glassdoor)" }
+  source: { name: "Widely reported interview question (attributed to Citadel on interview-prep sites)" }
 
 - id: stat-regression-005
   topic: statistics
@@ -165,7 +165,7 @@
     determined) from prediction (unchanged), and explain the near-collinear case through the
     variance of individual coefficients versus the variance of their sum. In practice this is the
     situation of several overlapping momentum or value signals.
-  source: { name: "Widely reported regression interview question (QuantNet and Glassdoor)" }
+  source: { name: "Common regression interview question (perfect and near multicollinearity)" }
 
 - id: stat-regression-006
   topic: statistics
@@ -382,6 +382,7 @@
     $\frac{1}{1 + 0.25} = 0.8$
   hints:
     - The slope is $\operatorname{Cov}(y, x)/\operatorname{Var}(x)$. Which of these does the measurement error change?
+    - The noise $u$ is independent of everything else. What does it add to $\operatorname{Var}(x)$, and to $\operatorname{Cov}(y, x)$?
   followUps:
     - What happens to the slope if instead $y$ is measured with error?
     - How could you correct the slope if you had a second, independent noisy measurement of $x^*$?

@@ -42,7 +42,7 @@
   prompt: |
     You have 100 independent pairs of observations from a bivariate normal distribution whose true
     correlation is 0. Roughly how large must the sample correlation $|r|$ be to be significant at the
-    two-sided 5% level? Use 2 for the $z$-value; answers within 0.01 of the exact value are accepted.
+    two-sided 5% level? Use 2 for the $z$-value; answers from 0.19 to 0.21 are accepted.
   answer: 0.2
   answerText: |-
     $2/\sqrt{100} = 0.2$ (the exact critical value is about 0.197)
@@ -182,7 +182,8 @@
   answerText: |-
     $\frac{1 + 1}{\sqrt{1 + 1 + 2 \cdot 0.5}} = \frac{2}{\sqrt3} \approx 1.155$
   hints:
-    - Scale both strategies to volatility 1. What are the mean and the variance of their sum?
+    - The Sharpe ratio does not change when you scale a strategy. Put both at volatility 1.
+    - What are the mean and the variance of the sum of the two scaled strategies?
   followUps:
     - What is the combined Sharpe ratio if the correlation is 0? If it is $-0.5$?
     - With $n$ such strategies, all pairwise correlated at 0.5, what is the limit as $n$ grows?
