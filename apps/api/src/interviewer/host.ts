@@ -423,9 +423,11 @@ export class InterviewerHost {
       }
       const question: QuantQuestion = {
         ...b,
-        // What was posed, should the bank have changed since.
+        // What was posed, should the bank have changed since. The round's books allow only the
+        // authored hints it was built with (`hintsAvailable`): a ladder grown since would have
+        // the interviewer ask for a rung the round refuses, leaving the candidate unanswered.
         prompt: q.prompt,
-        hints: b.hints ?? [],
+        hints: (b.hints ?? []).slice(0, q.hintsAvailable),
         followUps: b.followUps ?? [],
       };
       questions.push({
