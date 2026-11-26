@@ -1,7 +1,7 @@
 /**
  * A market-making game's slot in `QuantContext.questions` (`QuantGameSlotEntry`, ARCHITECTURE
- * §8.3) until the interviewer can trade: the prompts treat it as a conversation about its prompt
- * with the hint ladder, and carry none of its books, counterparty notes or explanation.
+ * §8.3): read like any entry through the accessors; its material in the question's (cached)
+ * system block, its books in the per-turn state.
  */
 import {
   createGameState,
@@ -59,6 +59,7 @@ function gameEntry(state: QuantGameState): QuantGameSlotEntry {
       mechanics: state.spec,
     },
     books: gameBooks(state),
+    state,
     hintRungs: [1],
     followUpAsked: false,
   };
@@ -133,20 +134,48 @@ describe('a game entry', () => {
     }
   });
 
-  it('is a conversation about the prompt with the hint ladder: no books, notes or explanation', () => {
+  it('its system block has the prompt, mechanics, playbook, explanation and ladder, and no state', () => {
     const ctx = ctxOf(entry);
     const block = questionBlock(entry, 3);
     expect(block).toContain('question 2 of 3 (betting market making, medium)');
     expect(block).toContain('a market-making game, "Two hidden numbers"');
     expect(block).toContain('[PROMPT]');
+    expect(block).toContain('[COUNTERPARTY]');
+    expect(block).toContain('[EXPLAIN]');
     expect(block).toContain('1. [HINT-1]');
     expect(block).toContain('2. [HINT-2]');
-    expect(block).toContain('you cannot trade or show a hidden value');
+    expect(block).toContain('1. First: 12345.678 or 23456.789, equally likely.');
+    expect(block).toContain('in this order only: First. Second stays hidden until the settlement.');
+    // The block is cached for the whole question: nothing that changes with play is in it, and
+    // the drawn values are in it only as faces (both are faces here).
+    expect(JSON.stringify(quantSystem(ctx))).toBe(
+      JSON.stringify(quantSystem(ctxOf(gameEntry(createGameState(GAME, [12345.678, 45678.912]))))),
+    );
     const books = booksText(ctx, T0 + 60_000).join('\n');
     expect(books).toContain('1 of 2 authored rungs given');
     expect(books).toContain('the next is rung 2');
-    const all = [JSON.stringify(quantSystem(ctx)), books].join('\n');
-    for (const secret of ['[COUNTERPARTY]', '[EXPLAIN]', '58024.6', '23456.789', '34567.891'])
-      expect(all.includes(secret), secret).toBe(false);
+    expect(books).toContain('Follow-up: a game has none');
+    expect(books).toContain('GAME BOOKS');
+    expect(books).toContain('True value (the contract settles at it): 58024.68');
+  });
+
+  it('a bank question’s prompt is unchanged by games', () => {
+    const q = QuizQuestion.parse({
+      id: 'q',
+      topic: 'probability',
+      subtopic: 's',
+      difficulty: 'easy',
+      type: 'short',
+      prompt: 'P',
+      reference: 'R',
+      keyPoints: ['K'],
+      explanation: 'E',
+      hints: ['H'],
+      followUps: ['F'],
+    });
+    const ctx = ctxOf({ index: 1, question: q, hintRungs: [], followUpAsked: false } as never);
+    const books = booksText(ctx, T0 + 60_000).join('\n');
+    expect(books).not.toMatch(/GAME|game/);
+    expect(questionBlock(ctx.questions[0] as never, 3)).not.toMatch(/game|Mechanics/i);
   });
 });

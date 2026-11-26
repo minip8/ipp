@@ -8,14 +8,21 @@ import { randomUUID } from 'node:crypto';
 import {
   advanceRound,
   createQuantRound,
+  gameBooks,
   type InterviewerSettings,
   type Message,
   type Pad,
+  QuantGame,
+  type QuantGameEntry,
+  type QuantGameState,
+  type QuantPick,
   type QuantRoundState,
+  type QuantRoundStep,
   type QuantStep,
   type QuantStepResult,
   QuizQuestion,
   quantClock,
+  quantGamePick,
   quantPhase,
   quantRoundEndsAt,
   quantTimeSec,
@@ -124,18 +131,49 @@ export const promptToken = (i: number) => `PROMPT-${N[i]}`;
 export const turn = ({
   reason = 'test',
   action,
-  ...rest
+  trade = 'none',
+  quantity = 0,
+  reveal = false,
+  hint_rung = 0,
+  message = '',
+  score = 0,
+  summary = '',
+  note = '',
 }: Partial<QuantTurn> & { action: QuantTurn['action'] }): string =>
   JSON.stringify({
     reason,
     action,
-    hint_rung: 0,
-    message: '',
-    score: 0,
-    summary: '',
-    note: '',
-    ...rest,
+    trade,
+    quantity,
+    reveal,
+    hint_rung,
+    message,
+    score,
+    summary,
+    note,
   });
+
+/**
+ * A game whose every private field carries a token (`[GAME-COUNTERPARTY]`, …), and whose hidden
+ * values are numbers no visible figure contains (the dice of the tests are drawn 6, 2, 5).
+ */
+export const GAME = QuantGame.parse({
+  id: 'mm-harness-game',
+  topic: 'betting-market-making',
+  title: 'Three dice',
+  difficulty: 'medium',
+  prompt: 'GAME-PROMPT: three dice are rolled; make me a market on their sum, up to 5 lots.',
+  components: [1, 2, 3].map((i) => ({ label: `Die ${i}`, faces: [1, 2, 3, 4, 5, 6] })),
+  payoff: 'sum',
+  reveal: [0, 1],
+  tick: 0.5,
+  maxSize: 5,
+  counterparty:
+    '[GAME-COUNTERPARTY] Stage 1: uninformed. Stage 2: reveal Die 1 after a trade. Stage 3: informed.',
+  hints: ['[GAME-HINT-1] the mean of one die', '[GAME-HINT-2] the new expected sum'],
+  explanation: '[GAME-EXPLAIN] fair 10.5 before anything is shown.',
+  expect: { fair: 10.5, sd: 2.958, min: 3, max: 18 },
+});
 
 /** The kind of call, from the task in the final system message ("reply", "nudge", "timeout", …). */
 export function taskOf(req: ModelRequest): string {
@@ -203,6 +241,8 @@ export interface QuantHarnessOptions {
   budget?: () => { ok: true } | { ok: false; reason: string };
   clientFor?: InterviewerOptions['clientFor'];
   voiceSettleMs?: number;
+  /** Put a market-making game in slot `game.slot` (default `GAME` in slot 1, dice 6, 2, 5). */
+  game?: { slot?: number; game?: QuantGame; values?: number[] };
 }
 
 export interface RecordedCall {
@@ -241,22 +281,33 @@ export function quantHarness(opts: QuantHarnessOptions = {}) {
     endedAt: null,
   };
   const roundEndsAt = quantRoundEndsAt(pad.startedAt, durationMin);
+  const gameSlot = opts.game ? (opts.game.slot ?? 1) : -1;
+  const game = opts.game?.game ?? GAME;
+  const picks: QuantPick[] = bank.map((q) => ({
+    questionId: q.id,
+    topic: q.topic,
+    topicTitle: q.topic,
+    difficulty: q.difficulty,
+    prompt: q.prompt,
+    unit: q.type === 'numeric' ? (q.unit ?? null) : null,
+    hintsAvailable: (q.hints ?? []).length,
+  }));
+  if (gameSlot >= 0) {
+    const values = opts.game?.values ?? [6, 2, 5];
+    let k = 0;
+    // Draws that land on `values`' faces.
+    picks[gameSlot] = quantGamePick(game, 'Market making', () => {
+      const c = game.components[k];
+      const v = values[k++] as number;
+      return ((c?.faces.indexOf(v) ?? 0) + 0.5) / (c?.faces.length ?? 1);
+    });
+  }
   const platform = {
-    round: createQuantRound(
-      'trader',
-      durationMin,
-      bank.map((q) => ({
-        questionId: q.id,
-        topic: q.topic,
-        topicTitle: q.topic,
-        difficulty: q.difficulty,
-        prompt: q.prompt,
-        unit: q.type === 'numeric' ? (q.unit ?? null) : null,
-        hintsAvailable: (q.hints ?? []).length,
-      })),
-    ) as QuantRoundState,
+    round: createQuantRound('trader', durationMin, picks) as QuantRoundState,
     version: 0,
   };
+  /** Every game entry the round recorded (the API's `game` timeline events), in order. */
+  const gameLog: QuantGameEntry[] = [];
   const model = new FakeModel(opts.respond ?? defaultQuantRespond);
   const calls: RecordedCall[] = [];
   const transcript: Message[] = [];
@@ -285,6 +336,26 @@ export function quantHarness(opts: QuantHarnessOptions = {}) {
   function entry(i: number): QuantContext['questions'][number] {
     const q = platform.round.questions[i];
     if (!q) throw new Error(`no question ${i}`);
+    if (q.game)
+      return {
+        kind: 'game',
+        index: i,
+        game: {
+          id: game.id,
+          topic: game.topic,
+          title: game.title,
+          difficulty: game.difficulty,
+          prompt: q.prompt,
+          counterparty: game.counterparty,
+          hints: game.hints.slice(0, q.hintsAvailable),
+          explanation: game.explanation,
+          mechanics: q.game.spec,
+        },
+        books: gameBooks(q.game),
+        state: q.game,
+        hintRungs: [...q.hintRungs],
+        followUpAsked: q.followUpAsked,
+      };
     return {
       index: i,
       question: bank[i] as QuantQuestion,
@@ -355,7 +426,7 @@ export function quantHarness(opts: QuantHarnessOptions = {}) {
     return msg;
   }
 
-  function applyStep(step: QuantStep | { type: 'end' }): QuantStepResult {
+  function applyStep(step: QuantRoundStep): QuantStepResult {
     const adv = advanceRound(platform.round, step, {
       version: platform.version,
       now: new Date(state.clock),
@@ -374,6 +445,22 @@ export function quantHarness(opts: QuantHarnessOptions = {}) {
         intent: e.say.intent,
         text: e.say.text,
       });
+    if (e.quote) {
+      // As the API: the poster's chat message, at the step's time.
+      const m: Message = {
+        id: randomUUID(),
+        padId,
+        role: 'candidate',
+        kind: 'chat',
+        intent: null,
+        text: e.quote.text,
+        via: 'text',
+        userId: 'u1',
+        createdAt: iso(),
+      };
+      transcript.push(m);
+    }
+    if (e.game) gameLog.push(...e.game.entries);
     if (e.reveal)
       post({
         id: e.reveal.messageId,
@@ -554,6 +641,28 @@ export function quantHarness(opts: QuantHarnessOptions = {}) {
     bumpVersion() {
       platform.version += 1;
     },
+    /**
+     * The candidate posts a market through the quote box, as the API's quote route does: the
+     * `quote` step (its candidate message posted), with no trigger yet.
+     */
+    postQuote(bid: number, ask: number, size = 1): QuantStepResult {
+      return applyStep({ type: 'quote', index: platform.round.current, bid, ask, size });
+    },
+    /** `postQuote`, then the trigger the API raises for it (a typed candidate message). */
+    async quote(bid: number, ask: number, size = 1) {
+      const r = h.postQuote(bid, ask, size);
+      if (!r.ok) throw new Error(`quote refused: ${r.reason}`);
+      const text = transcript.at(-1)?.text ?? '';
+      await h.send({ type: 'candidate_message', text, via: 'text', userId: 'u1' });
+      return text;
+    },
+    /** The game in slot `i` (the default game slot), as the round holds it. */
+    game(i = gameSlot): QuantGameState {
+      const g = platform.round.questions[i]?.game;
+      if (!g) throw new Error(`no game in slot ${i}`);
+      return g;
+    },
+    gameLog,
     /** The current question's clock (epoch ms), throws unless asking. */
     clock() {
       const c = quantClock(platform.round, roundEndsAt);

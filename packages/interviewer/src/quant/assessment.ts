@@ -16,7 +16,14 @@ import {
 import { z } from 'zod';
 import { clock, duration, neutralise, truncate } from '../prompts';
 import type { QuantContext } from '../types';
-import { entryDifficulty, entryHints, entryPrompt, entryTopic, entryType } from './entry';
+import {
+  entryDifficulty,
+  entryHints,
+  entryPrompt,
+  entryTopic,
+  entryType,
+  isGameEntry,
+} from './entry';
 import { repairLatexEscapes } from './latex';
 import { QUANT_CORE, QUANT_LIMITS, questionBlock, scratchBlock, topicName } from './prompts';
 
@@ -199,8 +206,10 @@ export function roundTable(ctx: QuantContext, verdicts: ReadonlyMap<number, Quan
 
 // ---------------------------------------------------------------- the forced verdict
 
-export const verdictTask = (closedBy: string | null | undefined) =>
-  `TASK (verdict): this question was closed without a verdict (${closedBy ? (closedByText[closedBy] ?? closedBy) : 'closed'}). Judge what the candidate did on it, from the conversation while it was open and the scratchpad, as you would have at a close: "score" from 0 to 1 (as in "Your answer each turn"; work that was on track but unfinished earns partial credit, a committed correct answer full credit less what the hints cost) and "summary", one paragraph for the written report about the candidate in the third person: their approach, what was right, what was missing, the hints they needed. Answer with JSON: "score" and "summary"; double every backslash inside the JSON strings.`;
+export const verdictTask = (closedBy: string | null | undefined, game = false) =>
+  game
+    ? `TASK (verdict): this market-making game was closed without a verdict (${closedBy ? (closedByText[closedBy] ?? closedBy) : 'closed'}). Judge the candidate's decisions in it from the game as played (the code-built review in the system block), the conversation while it was open and the scratchpad, as "The verdict on a game" says: the centring and width of their markets against the public fair value and its standard deviation, how they moved after reveals and fills, size and inventory, what they made of the pattern of trades; never the realised P&L, which is luck plus edge. "score" from 0 to 1 (a game cut short earns credit for what it showed) and "summary", one paragraph for the written report about the candidate in the third person, citing the review's figures where they make the point. Answer with JSON: "score" and "summary"; double every backslash inside the JSON strings.`
+    : `TASK (verdict): this question was closed without a verdict (${closedBy ? (closedByText[closedBy] ?? closedBy) : 'closed'}). Judge what the candidate did on it, from the conversation while it was open and the scratchpad, as you would have at a close: "score" from 0 to 1 (as in "Your answer each turn"; work that was on track but unfinished earns partial credit, a committed correct answer full credit less what the hints cost) and "summary", one paragraph for the written report about the candidate in the third person: their approach, what was right, what was missing, the hints they needed. Answer with JSON: "score" and "summary"; double every backslash inside the JSON strings.`;
 
 export function verdictRequest(
   ctx: QuantContext,
@@ -217,12 +226,15 @@ export function verdictRequest(
     ctx.privateNotes.length
       ? `Your private notes:\n${ctx.privateNotes.map((n) => `- ${truncate(n, 600)}`).join('\n')}`
       : 'No private notes.',
-    verdictTask(closed?.closedBy),
+    verdictTask(closed?.closedBy, isGameEntry(entry)),
   ].join('\n\n');
   return {
     system: [
       { type: 'text', text: QUANT_CORE, cache_control: { type: 'ephemeral' } },
-      { type: 'text', text: questionBlock(entry, ctx.round.total, 'The question to judge') },
+      {
+        type: 'text',
+        text: questionBlock(entry, ctx.round.total, 'The question to judge', { startedAt }),
+      },
     ],
     messages: finalTurn(messages, open, events, startedAt, ctx.scratch, books),
   };
@@ -230,7 +242,7 @@ export function verdictRequest(
 
 // ---------------------------------------------------------------- the assessment
 
-export function quantAssessmentTask(): string {
+export function quantAssessmentTask(games = false): string {
   return `TASK (assessment): the round is over. Write the assessment for the candidate's report, as a fair, experienced quant interviewer would after this round. Ground every statement in the transcript, the scratchpad, the table of questions and your private notes, and back each score with evidence: quote what they said, or cite times like [12:30] and questions like Q2. Don't invent things that did not happen; if the round was short or the candidate barely engaged, say so and score accordingly. The round is over, so you may now discuss the solutions.
 
 Scores (1-4) per dimension:
@@ -241,7 +253,13 @@ Scores (1-4) per dimension:
 - independence: how much help it took: hints used against hints available (see the table), how quickly they recovered from a hint, whether they needed prompting to finish.
 Scale: 1 = significant concerns, 2 = below the bar, 3 = meets the bar, 4 = clearly strong. If a dimension could not be judged (e.g. no question was answered), score it 2 and say so.
 Recommendation: strong_hire / hire / lean_hire / lean_no_hire / no_hire for a quant role at this level of question.
-Summary: three to five sentences, written to the candidate ("you"). Strengths and improvements: two to four specific items each, written to the candidate, each concrete and actionable (a technique to practise, a habit to build). Mathematics as LaTeX between dollar signs, with every backslash doubled inside the JSON strings.`;
+Summary: three to five sentences, written to the candidate ("you"). Strengths and improvements: two to four specific items each, written to the candidate, each concrete and actionable (a technique to practise, a habit to build). Mathematics as LaTeX between dollar signs, with every backslash doubled inside the JSON strings.${
+    games
+      ? `
+
+A market-making game (type "game" in the table) has no answer to be right or wrong: judge it from its review (the game as played, in the system block) on its decisions: where the markets were centred against the public fair value at the time, their width against its standard deviation, how far and how fast they moved after reveals and fills, size and inventory, and what was made of the pattern of trades. It counts toward structuring (pricing the contract before quoting), correctness (sound fair values and updates), communication and speed as any question does. The realised P&L is luck plus edge (the review gives both): never score the luck.`
+      : ''
+  }`;
 }
 
 export function quantAssessmentRequest(
@@ -272,9 +290,9 @@ export function quantAssessmentRequest(
     ctx.privateNotes.length
       ? `Your private notes:\n${ctx.privateNotes.map((n) => `- ${truncate(n, 600)}`).join('\n')}`
       : 'No private notes.',
-    quantAssessmentTask(),
+    quantAssessmentTask(posed.some(isGameEntry)),
   ].join('\n\n');
-  const blocks = posed.map((e) => questionBlock(e, ctx.round.total, 'Posed'));
+  const blocks = posed.map((e) => questionBlock(e, ctx.round.total, 'Posed', { startedAt }));
   return {
     system: [
       { type: 'text', text: QUANT_CORE, cache_control: { type: 'ephemeral' } },

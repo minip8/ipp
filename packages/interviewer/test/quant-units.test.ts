@@ -97,6 +97,9 @@ describe('repairLatexEscapes', () => {
 
 const T = (t: Partial<QuantTurn> & { action: QuantTurn['action'] }): QuantTurn => ({
   reason: 'r',
+  trade: 'none',
+  quantity: 0,
+  reveal: false,
   hint_rung: 0,
   message: '',
   score: 0,

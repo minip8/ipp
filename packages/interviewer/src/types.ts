@@ -17,6 +17,7 @@ import type {
   QuantClosedBy,
   QuantGameBooks,
   QuantGameMechanics,
+  QuantGameState,
   QuantPath,
   QuantPhase,
   QuantStep,
@@ -132,14 +133,17 @@ export interface QuantBankEntry extends QuantEntryBase {
 /**
  * A slot that holds a market-making game. `books` is `gameBooks(state)`, the interviewer's private
  * view of the game as it is now: every hidden value, the public fair value, the true value, the
- * live quote with the edges against it, position and cash marked to both. It must never be said
- * or written where the candidate can see it, and while the interviewer has no game moves it is
- * not put into any prompt either.
+ * live quote with the edges against it, position and cash marked to both. `state` is the game's
+ * state itself, as the round holds it at the context load: the interviewer plays its moves on it
+ * with the engine's own transitions (`tradeQuote`, `revealNext`, `settleGame`), so the facts it
+ * posts are the figures the server then records, and builds `gameReview(state)` from it for the
+ * verdict and the assessment. Neither may ever be said or written where the candidate can see it.
  */
 export interface QuantGameSlotEntry extends QuantEntryBase {
   kind: 'game';
   game: QuantGameContent;
   books: QuantGameBooks;
+  state: QuantGameState;
 }
 
 /**

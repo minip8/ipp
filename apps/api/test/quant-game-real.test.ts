@@ -1,9 +1,10 @@
 /**
- * A market-making game (ARCHITECTURE §8.3) with the real interviewer, before it can trade: the
- * API, database, socket and interviewer are real, only the model is scripted. The interviewer
- * treats the game as a conversation about its prompt with the hint ladder, answers a quote as a
- * typed message, makes no game move, and never has a hidden value, the fair value or the
- * counterparty notes in any request; the books are in its context only.
+ * A market-making game (ARCHITECTURE §8.3) played by the real interviewer: the API, database,
+ * socket and interviewer are real, only the model is scripted. Quotes go through the quote route;
+ * the interviewer trades, reveals and closes through its steps, the platform's facts open its
+ * messages, and the books in the database are what those messages say. What a browser socket
+ * receives never holds a hidden value, a fair value, a mark or the playbook before the game
+ * settles.
  */
 import { randomUUID } from 'node:crypto';
 import { gameBooks, type Pad, QuantGame, QuizQuestion } from '@ipp/contracts';
@@ -121,8 +122,8 @@ async function roundRow(padId: string) {
   return row;
 }
 
-describe('a game slot with the real interviewer, before it trades', () => {
-  it('is a conversation about the prompt: a quote is answered, nothing hidden is in a request', {
+describe('a game played by the real interviewer', () => {
+  it('trades, reveals and closes through the real API; the socket never carries a hidden figure', {
     timeout: 60_000,
   }, async () => {
     const a = new Client(h.base, '100.71.0.1');
@@ -150,60 +151,119 @@ describe('a game slot with the real interviewer, before it trades', () => {
     await s.waitFor('round.updated', (e) => e.round.version === 2, 15_000);
     expect((await roundRow(id)).state.current).toBe(1);
 
-    // A quote: posted as the candidate's message, answered like one.
-    const from = m.calls.length;
-    m.script('reply', turn({ action: 'stay', message: 'How did you choose that width?' }));
-    const posted = await a.post(`/api/pads/${id}/round/quote`, {
-      index: 1,
-      bid: 50000,
-      ask: 60000,
-      size: 1,
-    });
-    expect(posted.status).toBe(200);
-    expect(posted.json.version).toBe(3);
-    const call = await m.next('reply', from, 15_000);
-    await s.waitFor('round.updated', (e) => e.round.version === 4, 15_000);
-    await rig.idle(id);
-    const said = s.events.flatMap((e) =>
-      e.type === 'message.created' && e.message.role === 'interviewer' ? [e.message.text] : [],
-    );
-    expect(said.at(-1)).toBe('How did you choose that width?');
+    const said = () =>
+      s.events.flatMap((e) =>
+        e.type === 'message.created' && e.message.role === 'interviewer' ? [e.message.text] : [],
+      );
+    const quote = async (bid: number, ask: number, size: number) => {
+      const posted = await a.post(`/api/pads/${id}/round/quote`, { index: 1, bid, ask, size });
+      expect(posted.status).toBe(200);
+      return posted.json.version as number;
+    };
 
-    // The request: the game's prompt, its hints and the quote; nothing hidden.
-    const text = requestText(call.req);
-    expect(text).toContain('[GAME-PROMPT]');
-    expect(text).toContain('[GAME-HINT-1]');
-    expect(text).toContain('50000 bid, 60000 offered, 1 lot');
-    expect(text).toContain('a market-making game');
-    for (const secret of [
-      '[COUNTERPARTY]',
-      '[GAME-EXPLAIN]',
-      'mm-qgame-real',
-      '23456.789',
-      '34567.891',
-      '58024.6',
-      // Earlier questions in numbers only.
-      '[GQ-',
-    ])
-      expect(text.includes(secret), `${secret} in the request`).toBe(false);
-
-    // The interviewer made no game move: the game holds only the quote.
-    const { state } = await roundRow(id);
-    expect(state.questions[1]?.game?.events.map((e) => e.kind)).toEqual(['quote']);
-    expect(state.questions[1]?.game?.position).toBe(0);
-    // …though its context carries the books.
+    // The context carries the game's state and books (the interviewer's private view).
     const ctx = await rig.deps.loadQuantContext?.(id);
     const entry = ctx?.questions[0];
     expect(entry?.kind).toBe('game');
     if (entry?.kind === 'game') {
+      const { state } = await roundRow(id);
       const g = state.questions[1]?.game;
       if (!g) throw new Error('no game');
       expect(entry.books).toEqual(gameBooks(g));
+      expect(entry.state).toEqual(g);
       expect(entry.game.counterparty).toBe(GAME.counterparty);
     }
 
-    // Ending mid-game: the assessment judges the game (no verdict yet) without a hitch, and the
-    // verdict is no quiz answer.
+    // Quote 1: the interviewer lifts the offer for one and shows the first number.
+    let from = m.calls.length;
+    m.script(
+      'reply',
+      turn({ action: 'stay', trade: 'buy', quantity: 1, reveal: true, message: 'Where now?' }),
+    );
+    const v1 = await quote(50000, 60000, 2);
+    expect(v1).toBe(3);
+    const call1 = await m.next('reply', from, 15_000);
+    await s.waitFor('round.updated', (e) => e.round.version === 4, 15_000);
+    await rig.idle(id);
+    expect(said().at(-1)).toBe('I buy 1 at your offer of 60000. First shows 23456.789. Where now?');
+    let g = (await roundRow(id)).state.questions[1]?.game;
+    expect(g).toMatchObject({ position: -1, cash: 60000, revealed: 1, quote: null });
+
+    // The request: the game's material and books, the quote marked as posted; never earlier
+    // questions' private material.
+    const text = requestText(call1.req);
+    for (const x of [
+      '[GAME-PROMPT]',
+      '[GAME-HINT-1]',
+      '[COUNTERPARTY]',
+      '[GAME-EXPLAIN]',
+      'GAME BOOKS',
+      'True value (the contract settles at it): 58024.68.',
+      '50000 bid, 60000 offered, 2 lots',
+      'source=\\"quote\\"',
+    ])
+      expect(text, x).toContain(x);
+    expect(text).not.toContain('[GQ-');
+
+    // Quote 2: the interviewer, informed, hits a bid above the true value. This one streams.
+    from = m.calls.length;
+    m.script(
+      'reply',
+      turn({ action: 'stay', trade: 'sell', quantity: 1, message: 'What do you make of that?' }),
+    );
+    await quote(63000, 64000, 1);
+    await m.next('reply', from, 15_000);
+    await s.waitFor('round.updated', (e) => e.round.version === 6, 15_000);
+    await rig.idle(id);
+    expect(said().at(-1)).toBe('I sell 1 at your bid of 63000. What do you make of that?');
+    const streamed = s.events
+      .flatMap((e) => (e.type === 'message.delta' ? [e.delta] : []))
+      .join('');
+    expect(streamed).toContain('I sell 1 at your bid of 63000. What do you make of that?');
+    g = (await roundRow(id)).state.questions[1]?.game;
+    expect(g).toMatchObject({ position: 0, cash: -3000 });
+
+    // Until the game closes, nothing the browser got holds a hidden value, a fair value, a mark,
+    // the playbook or the explanation (the first number only once it was shown).
+    const shownAt = s.events.findIndex(
+      (e) => e.type === 'message.created' && e.message.text.includes('First shows'),
+    );
+    expect(shownAt).toBeGreaterThan(0);
+    const before = s.events.map((e) => JSON.stringify(e));
+    const never = [
+      '34567.891',
+      '58024.68',
+      '58024.635',
+      // The public fair value after the first reveal, and the marks.
+      '63580.19',
+      '[COUNTERPARTY]',
+      '[GAME-EXPLAIN]',
+      '[GAME-HINT',
+      'GAME BOOKS',
+      'mm-qgame-real',
+    ];
+    before.forEach((json, i) => {
+      for (const x of never) expect(json.includes(x), `${x} in event ${i}`).toBe(false);
+      if (i < shownAt)
+        expect(json.includes('23456.789'), `the first number in event ${i}`).toBe(false);
+    });
+
+    // The close settles the game; the platform states the settlement.
+    from = m.calls.length;
+    m.script('reply', turn({ action: 'close', message: 'Thanks.', score: 0.5, summary: 'Fair.' }));
+    s.send({ type: 'chat.send', text: "I think I'm done." });
+    await m.next('reply', from, 15_000);
+    await s.waitFor('round.updated', (e) => e.round.version === 7, 15_000);
+    await rig.idle(id);
+    expect(said()).toContain(
+      'That settles the game: First is 23456.789 and Second is 34567.891, so the contract is worth 58024.68. You finish flat, a loss of 3000. Thanks.',
+    );
+    const closed = (await roundRow(id)).state;
+    expect(closed.current).toBe(2);
+    expect(closed.questions[1]?.game?.settlement).toMatchObject({ value: 58024.68, pnl: -3000 });
+    expect(closed.questions[1]?.verdict).toEqual({ score: 0.5, summary: 'Fair.' });
+
+    // Ending the pad: the report, and the game's verdict is no quiz answer.
     expect((await a.post(`/api/pads/${id}/end`)).status).toBe(200);
     await eventually(
       async () => (await a.get(`/api/pads/${id}/report`)).json?.status === 'ready',

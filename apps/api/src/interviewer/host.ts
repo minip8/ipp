@@ -391,7 +391,7 @@ export class InterviewerHost {
    * in it in full (`all`, for the assessment: every posed one), and nothing at all about the
    * questions still to come: they are not in the transcript either, as they have not been posed.
    * A game's slot (§8.3) is a `kind: 'game'` entry: its content from `quant_games` (counterparty
-   * notes, hints, explanation) and `gameBooks` of its state, the hidden values included.
+   * notes, hints, explanation), its state and `gameBooks` of it, the hidden values included.
    */
   async loadQuantContext(
     padId: string,
@@ -445,6 +445,7 @@ export class InterviewerHost {
             mechanics: q.game.spec,
           },
           books: gameBooks(q.game),
+          state: q.game,
           hintRungs: [...q.hintRungs],
           followUpAsked: q.followUpAsked,
         });
