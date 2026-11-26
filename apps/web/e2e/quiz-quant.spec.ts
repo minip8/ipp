@@ -4,12 +4,22 @@
  * only once there is more than one track.
  */
 import { expect, type Page, test } from '@playwright/test';
-import { ACTIVE_PAD_ID, QUIZ_TOPICS_FUNDAMENTALS } from './fixtures';
+import { ACTIVE_PAD_ID, QUIZ_TOPICS_FUNDAMENTALS, QUIZ_TOPICS_QUANT } from './fixtures';
 import { QUANT_FOLLOW_UP, QUANT_TOPIC } from './fixtures-quiz-quant';
 import { QUIZ_ROADMAP_FUNDAMENTALS } from './fixtures-quiz-roadmap';
 import { setup } from './helpers';
 
 const BANK = `/quiz/topics/${QUANT_TOPIC}`;
+
+/** The quant topics' card names start with their titles, in study order. */
+const QUANT_TITLES = [
+  /^Probability/,
+  /^Brainteasers/,
+  /^Betting & market making/,
+  /^Options & finance/,
+  /^Statistics/,
+  /^Linear algebra & calculus/,
+];
 
 const answersSent = (b: { requests: { path: string; body: unknown }[] }) =>
   b.requests.filter((r) => r.path.endsWith('/answers')).map((r) => r.body);
@@ -310,7 +320,7 @@ test.describe('tracks', () => {
       /^Networking/,
       /^Concurrency/,
     ]);
-    await expect(tracks.nth(1).getByRole('button')).toHaveText([/^Probability/]);
+    await expect(tracks.nth(1).getByRole('button')).toHaveText(QUANT_TITLES);
     // Topics of both tracks go into one quiz.
     await tracks
       .nth(1)
@@ -339,7 +349,9 @@ test.describe('tracks', () => {
     const list = page.getByRole('listbox');
     await expect(list.getByRole('group')).toHaveCount(2);
     await expect(list.getByRole('group').nth(1)).toContainText('Quant');
-    await expect(list.getByRole('group').nth(1).getByRole('option')).toHaveText(['Probability']);
+    await expect(list.getByRole('group').nth(1).getByRole('option')).toHaveText(
+      QUIZ_TOPICS_QUANT.map((t) => t.title),
+    );
   });
 
   test('with one track (today), nothing is headed', async ({ page }) => {

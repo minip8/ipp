@@ -1,8 +1,11 @@
 # interview++
 
-Practice interviews in the browser: CoderPad-style coding pads (C++, Python, Java) with an AI
-interviewer that speaks up on its own, plus knowledge quizzes (C++, Python, computer architecture,
-operating systems, networking, concurrency).
+Practice for quant and software interviews in the browser: CoderPad-style coding pads (C++,
+Python, Java) with an AI interviewer that speaks up on its own; quant question banks (probability,
+brainteasers, betting and market making, options, statistics, linear algebra and calculus) with
+numeric answers checked exactly and open questions talked through with the interviewer, laid out
+as trader and researcher paths; and fundamentals quizzes for developers (C++, Python, computer
+architecture, operating systems, networking, concurrency).
 
 Design and security model: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Deployment: [docs/DEPLOY.md](docs/DEPLOY.md).
 

@@ -106,3 +106,27 @@ test('quiz math (KaTeX styles and fonts) loads from this origin with no violatio
   expect(failed).toEqual([]);
   expect(await violations()).toEqual([]);
 });
+
+test('the landing page: math typeset on the server, its fonts from this origin, no violation', async ({
+  page,
+}) => {
+  await setup(page, (b) => {
+    b.signedIn = false;
+  });
+  const violations = await watchViolations(page);
+  const failed: string[] = [];
+  page.on('requestfailed', (r) => failed.push(r.url()));
+  await page.goto('/');
+  await expect(page.getByTestId('quant-preview').locator('.katex').first()).toBeVisible();
+  await page.evaluate(() => document.fonts.ready);
+  const fonts = await page.evaluate(() =>
+    performance
+      .getEntriesByType('resource')
+      .map((e) => e.name)
+      .filter((n) => /KaTeX_.*\.(woff2?|ttf)/.test(n)),
+  );
+  expect(fonts.length).toBeGreaterThan(0);
+  for (const f of fonts) expect(new URL(f).origin).toBe(new URL(page.url()).origin);
+  expect(failed).toEqual([]);
+  expect(await violations()).toEqual([]);
+});

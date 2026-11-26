@@ -86,7 +86,11 @@ test('the home page is reachable when signed in and leads into the app', async (
   await expect(page).toHaveURL('/');
   await expect(page.getByRole('link', { name: 'Sign in' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Account menu' })).toBeVisible();
-  await page.getByRole('link', { name: 'Start a practice interview' }).click();
+  // One way into each side of the app.
+  await expect(
+    page.getByRole('main').getByRole('link', { name: 'Quant questions' }),
+  ).toHaveAttribute('href', '/quant');
+  await page.getByRole('link', { name: 'Start a coding interview' }).click();
   await expect(page).toHaveURL('/dashboard');
   await expect(page.getByRole('heading', { name: 'Problem library' })).toBeAttached();
 });

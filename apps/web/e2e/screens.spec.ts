@@ -47,6 +47,17 @@ for (const width of WIDTHS) {
         await page.waitForTimeout(300);
         await shoot(page, 'dashboard-history', { fullPage: true });
       }
+      // The Quant page, on each path (`ONLY=quant-page`).
+      if (want('quant-page')) {
+        await page.goto('/quant');
+        await page.getByTestId('quant-step').first().waitFor();
+        await page.waitForTimeout(300);
+        await shoot(page, 'quant-page-trader', { fullPage: true });
+        await page.goto('/quant?path=researcher');
+        await page.getByTestId('quant-step').first().waitFor();
+        await page.waitForTimeout(300);
+        await shoot(page, 'quant-page-researcher', { fullPage: true });
+      }
       if (want('new')) {
         await page.goto('/dashboard');
         await page.getByRole('button', { name: /^Two Sum/ }).click();

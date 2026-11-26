@@ -33,7 +33,7 @@ function NewInterviewModel() {
 const USES = [
   { icon: BotIcon, text: 'The AI interviewer in your pads (collaborators you invite use it too)' },
   { icon: ClipboardCheckIcon, text: 'The written assessment at the end of an interview' },
-  { icon: ListChecksIcon, text: 'Grading short answers in quizzes' },
+  { icon: ListChecksIcon, text: 'Quiz discussions, and grading open answers in quizzes' },
 ];
 
 export function AiKeySettings() {

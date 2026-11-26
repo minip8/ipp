@@ -429,6 +429,14 @@
   margin-top: 0.75em;
 }
 
+/* The landing page's quant preview: formulas typeset on the server, sized as in a quiz. */
+.landing-math .katex {
+  font-size: 1.1em;
+}
+.landing-math-display .katex-display {
+  margin: 0.5em 0 0;
+}
+
 /* Shiki dual themes: light colours inline, dark via CSS variables. */
 .dark .shiki,
 .dark .shiki span {

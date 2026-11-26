@@ -360,7 +360,8 @@ export const MODE_LABEL: Record<QuizMode, string> = {
 };
 
 export const MODE_HINT: Record<QuizMode, string> = {
-  practice: 'Multiple choice and "what does this print". You see the answer after each question.',
+  practice:
+    'Multiple choice, numeric answers and "what does this print". You see the answer after each question.',
   exam: 'The same kind of questions, with the answers held back until you finish.',
   discussion:
     'Open questions, talked through with an AI interviewer who asks follow-ups and then grades you.',
@@ -369,6 +370,10 @@ export const MODE_HINT: Record<QuizMode, string> = {
 export const QUIZ_COUNTS = ['5', '10', '20', '30'] as const;
 /** A discussion question takes a few minutes, so fewer of them. */
 export const DISCUSSION_COUNTS = ['3', '5', '10'] as const;
+
+/** Rounds started in one click (a roadmap area, a topic on the Quant page): how many questions. */
+export const PRACTICE_ROUND = 10;
+export const DISCUSSION_ROUND = 5;
 
 /** What the hub remembers between visits (kept in this browser). */
 export interface QuizSetup {

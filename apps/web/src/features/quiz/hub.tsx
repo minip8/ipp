@@ -1,6 +1,6 @@
 'use client';
 import type { QuizAttemptSummary, QuizTopicStats } from '@ipp/contracts';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import {
   ArrowRightIcon,
   CheckIcon,
@@ -11,7 +11,7 @@ import {
   PlayIcon,
 } from 'lucide-react';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { type RefObject, useEffect, useMemo, useRef, useState } from 'react';
 import { PageTabPanel, PageTabs, usePageView } from '@/components/page-tabs';
 import { EmptyState, ErrorState, InlineError, useRetryCountdown } from '@/components/states';
@@ -23,10 +23,9 @@ import { Segmented } from '@/components/ui/segmented';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
 import { Switch } from '@/components/ui/switch';
-import { AiKeyPrompt } from '@/features/ai-key/ai-key-prompt';
 import { api } from '@/lib/api';
 import { formatPercent, formatRelative, plural } from '@/lib/format';
-import { qk, useAiKey } from '@/lib/queries';
+import { qk } from '@/lib/queries';
 import { storage } from '@/lib/storage';
 import { cn } from '@/lib/utils';
 import { bankHref } from './bank-logic';
@@ -42,6 +41,8 @@ import {
   SETUP_STORAGE_KEY,
 } from './logic';
 import { QuizRoadmap } from './roadmap';
+import { DiscussionKeyPrompt, useDiscussionKey, useStartAttempt } from './start';
+import { TopicProgress } from './topic-progress';
 
 /** The page's views; the first is the default and keeps `?view=` out of the URL. */
 const VIEWS = ['start', 'roadmap', 'history'] as const;
@@ -64,17 +65,6 @@ function useOnScreen(ref: RefObject<HTMLElement | null>) {
   return onScreen;
 }
 
-function ProgressBar({ value }: { value: number }) {
-  return (
-    <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-3" aria-hidden>
-      <div
-        className="h-full rounded-full bg-accent"
-        style={{ width: `${Math.round(Math.min(1, value) * 100)}%` }}
-      />
-    </div>
-  );
-}
-
 function TopicCard({
   t,
   selected,
@@ -84,7 +74,6 @@ function TopicCard({
   selected: boolean;
   onToggle: () => void;
 }) {
-  const coverage = t.questionCount ? t.answered / t.questionCount : 0;
   return (
     <div
       className={cn(
@@ -117,12 +106,7 @@ function TopicCard({
             {selected && <CheckIcon className="size-3" strokeWidth={3} />}
           </span>
         </span>
-        <span className="mt-4 block text-xs text-fg-muted tabular">
-          {t.answered} of {plural(t.questionCount, 'question')} answered
-        </span>
-        <span className="mt-2 block">
-          <ProgressBar value={coverage} />
-        </span>
+        <TopicProgress t={t} className="mt-4" />
       </button>
       <Link
         href={bankHref(t.slug)}
@@ -167,31 +151,14 @@ function SetupPanel({
   setup: QuizSetup;
   update: (patch: Partial<QuizSetup>) => void;
 }) {
-  const router = useRouter();
-  const qc = useQueryClient();
-  const aiKey = useAiKey();
   const { mode, difficulty, focusWeak } = setup;
   const selected = setup.topics;
   const discussion = mode === 'discussion';
   const count = discussion ? setup.discussionCount : setup.count;
   // A discussion is a conversation with the model, so it cannot start without a working key.
-  const keyState = aiKey.data?.state;
-  const needsKey = discussion && (keyState === 'missing' || keyState === 'rejected');
-  const start = useMutation({
-    mutationFn: () =>
-      api.createAttempt({
-        topics: selected,
-        mode,
-        difficulty: difficulty === 'any' ? undefined : difficulty,
-        count: Number(count),
-        focusWeak,
-      }),
-    onSuccess: (a) => {
-      qc.setQueryData(qk.attempt(a.id), a);
-      qc.invalidateQueries({ queryKey: qk.attempts });
-      router.push(`/quiz/${a.id}`);
-    },
-  });
+  const { missing } = useDiscussionKey();
+  const needsKey = discussion && missing !== null;
+  const start = useStartAttempt();
   const wait = useRetryCountdown(start.error);
   const chosen = topics.filter((t) => selected.includes(t.slug));
   const available = chosen.reduce((n, t) => n + questionsFor(t, mode), 0);
@@ -260,17 +227,8 @@ function SetupPanel({
             onCheckedChange={(v) => update({ focusWeak: v })}
           />
         </div>
-        {needsKey && (
-          <AiKeyPrompt
-            size="sm"
-            testId="discussion-key-prompt"
-            state={keyState}
-            title={
-              keyState === 'rejected'
-                ? 'Your API key was rejected'
-                : 'A discussion runs on your own AI API key'
-            }
-          />
+        {discussion && missing && (
+          <DiscussionKeyPrompt state={missing} testId="discussion-key-prompt" />
         )}
         <InlineError error={start.error} />
         <div>
@@ -279,7 +237,15 @@ function SetupPanel({
             size="lg"
             className="w-full"
             disabled={selected.length === 0 || needsKey || start.isPending || wait > 0}
-            onClick={() => start.mutate()}
+            onClick={() =>
+              start.mutate({
+                topics: selected,
+                mode,
+                difficulty: difficulty === 'any' ? undefined : difficulty,
+                count: Number(count),
+                focusWeak,
+              })
+            }
           >
             {start.isPending ? <Spinner /> : discussion ? <MessagesSquareIcon /> : <PlayIcon />}
             {wait > 0 ? `Try again in ${wait}s` : discussion ? 'Start discussion' : 'Start quiz'}

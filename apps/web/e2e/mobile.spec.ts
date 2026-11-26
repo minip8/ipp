@@ -40,12 +40,15 @@ test('sign-in: fields bring up the right keyboards and fit', async ({ page }) =>
   await expectNoHorizontalOverflow(page);
 });
 
-test('app header: logo, both nav links, theme and account menu on one line', async ({ page }) => {
+test('app header: logo, the three nav links, theme and account menu on one line', async ({
+  page,
+}) => {
   await setup(page);
   await page.goto('/dashboard');
   await expect(page.getByRole('heading', { level: 1, name: 'Interviews' })).toBeVisible();
   const nav = page.getByRole('navigation', { name: 'Main' });
   const quizzes = nav.getByRole('link', { name: 'Quizzes' });
+  await expect(nav.getByRole('link')).toHaveText(['Interviews', 'Quant', 'Quizzes']);
   const menu = page.getByRole('button', { name: 'Account menu' });
   await expect(quizzes).toBeVisible();
   await expect(menu).toBeVisible();

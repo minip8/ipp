@@ -32,7 +32,7 @@ import boxJson from '@ipp/contracts/fixtures/problem-box-cpp.json' with { type: 
 import lruJson from '@ipp/contracts/fixtures/problem-lru-cache.json' with { type: 'json' };
 import twoSumJson from '@ipp/contracts/fixtures/problem-two-sum.json' with { type: 'json' };
 import * as Y from 'yjs';
-import { QUANT_FEEDBACK, QUANT_QUESTIONS, QUANT_TOPIC } from './fixtures-quiz-quant';
+import { QUANT_FEEDBACK, QUANT_TOPIC } from './fixtures-quiz-quant';
 
 export const USER = { id: 'user_ada', name: 'Ada Lovelace', email: 'ada@example.com', image: null };
 export const OTHER_USER = {
@@ -1068,18 +1068,81 @@ export const QUIZ_TOPICS = QuizTopicStats.array().parse([
     answered: 0,
     accuracy: null,
   },
-  // The quant track (fixtures-quiz-quant.ts): its bank is QUANT_QUESTIONS.
+  // The quant track, in the study order of quiz/topics.yaml, with counts like the real banks'
+  // (as for the fundamentals, the bank behind a topic is a small fixture: probability's is
+  // QUANT_QUESTIONS in fixtures-quiz-quant.ts, the others have none). Progress is a made-up mix
+  // that gives each Quant page path a different "next up": probability complete; brainteasers
+  // under way (next on the trader path); statistics fully answered but under the roadmap's 70%,
+  // so not complete (next on the researcher path); options untouched.
   {
     slug: QUANT_TOPIC,
     title: 'Probability',
     track: 'quant',
-    description: 'Counting, conditioning, expectation and the classic puzzles.',
-    questionCount: QUANT_QUESTIONS.length,
-    shortCount: QUANT_QUESTIONS.filter((q) => q.type === 'short').length,
+    description:
+      'Counting, conditioning, expectation, distributions, random walks and the classic interview problems.',
+    questionCount: 84,
+    shortCount: 18,
+    answered: 84,
+    accuracy: 0.82,
+  },
+  {
+    slug: 'brainteasers',
+    title: 'Brainteasers',
+    track: 'quant',
+    description:
+      'Logic puzzles, strategy games, invariants and estimation, where the reasoning is what gets marked.',
+    questionCount: 66,
+    shortCount: 24,
+    answered: 23,
+    accuracy: 0.61,
+  },
+  {
+    slug: 'betting-market-making',
+    title: 'Betting & market making',
+    track: 'quant',
+    description:
+      'Fair value, bet sizing, quoting two-sided markets, adverse selection and trading games.',
+    questionCount: 72,
+    shortCount: 20,
+    answered: 5,
+    accuracy: 0.4,
+  },
+  {
+    slug: 'options',
+    title: 'Options & finance',
+    track: 'quant',
+    description:
+      'Payoffs, put-call parity, arbitrage bounds, the Greeks, volatility and pricing under no arbitrage.',
+    questionCount: 88,
+    shortCount: 17,
     answered: 0,
     accuracy: null,
   },
+  {
+    slug: 'statistics',
+    title: 'Statistics',
+    track: 'quant',
+    description: 'Estimation, testing, regression, time series and the ways a backtest fools you.',
+    questionCount: 81,
+    shortCount: 19,
+    answered: 81,
+    accuracy: 0.64,
+  },
+  {
+    slug: 'algebra-calculus',
+    title: 'Linear algebra & calculus',
+    track: 'quant',
+    description:
+      'Matrices, eigenvalues, covariance and projections, plus the calculus and series research interviews lean on.',
+    questionCount: 68,
+    shortCount: 14,
+    answered: 12,
+    accuracy: 0.75,
+  },
 ]);
+
+/** The quant topics, in study order. */
+export const QUIZ_TOPICS_QUANT = QUIZ_TOPICS.filter((t) => t.track === 'quant');
 
 /** The topics as they are before any quant content: one track, so no track headings. */
 export const QUIZ_TOPICS_FUNDAMENTALS = QUIZ_TOPICS.filter((t) => t.track === 'fundamentals');
