@@ -7,6 +7,7 @@ import {
   JudgeResult,
   limitsForTests,
   ProblemContent,
+  ProblemProgress,
 } from '../src';
 
 const fixture = (name: string) =>
@@ -24,6 +25,26 @@ describe('fixtures match the schemas (the Rust judge parses the same files)', ()
   });
   it.each(['problem-two-sum', 'problem-lru-cache'])('%s', (name) => {
     expect(() => ProblemContent.parse(fixture(name))).not.toThrow();
+  });
+});
+
+describe('problem progress', () => {
+  const at = '2026-11-20T10:00:00.000Z';
+  it('lists only problems that are not new', () => {
+    expect(
+      ProblemProgress.parse([
+        { slug: 'two-sum', status: 'solved', lastActivityAt: at },
+        { slug: 'lru-cache', status: 'attempted', lastActivityAt: at },
+      ]),
+    ).toHaveLength(2);
+    // New is what a missing problem means, never an entry.
+    expect(
+      ProblemProgress.safeParse([{ slug: 'two-sum', status: 'new', lastActivityAt: at }]).success,
+    ).toBe(false);
+    expect(
+      ProblemProgress.safeParse([{ slug: 'Two Sum', status: 'solved', lastActivityAt: at }])
+        .success,
+    ).toBe(false);
   });
 });
 

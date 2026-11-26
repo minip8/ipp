@@ -24,6 +24,7 @@ import {
   PadSummary,
   Playback,
   ProblemDetail,
+  ProblemProgress,
   ProblemSummary,
   QuizAttempt,
   QuizAttemptSummary,
@@ -161,6 +162,8 @@ export const api = {
   problems: (f: { difficulty?: string; tag?: string; q?: string } = {}) =>
     request(`/problems${qs(f)}`, z.array(ProblemSummary)),
   problem: (slug: string) => request(`/problems/${encodeURIComponent(slug)}`, ProblemDetail),
+  /** The signed-in user's own standing on the problems they have tried (the rest are new). */
+  problemProgress: () => request('/progress/problems', ProblemProgress),
   createPad: (body: z.input<typeof CreatePadRequest>) =>
     request('/pads', Pad, { method: 'POST', body }),
   /** A live quant round: a pad of format `quant` on one path, run by the AI interviewer. */

@@ -105,6 +105,7 @@ Every body is validated with the contracts schema named below.
 | `GET /api/ai-key/models` | | `AiModelList` (`provider`, `defaultModel`, `models[] {id, label, default}`, `source` live / fallback); 409 `ai_key_missing` without a usable key; 429 |
 | `GET /api/problems?difficulty=&tag=&q=` | | `ProblemSummary[]` |
 | `GET /api/problems/:slug` | | `ProblemDetail` |
+| `GET /api/progress/problems` | | `ProblemProgress` (the caller's problems that are not new, latest activity first: `solved` with an accepted submission of theirs in any pad, else `attempted` with any run of theirs or a practice interview of their own on it) |
 | `POST /api/pads` | `CreatePadRequest` (`kind: 'room'` hosts an interview; a room may be `blank`) | `Pad` |
 | `POST /api/pads/quant` | `CreateQuantPadRequest` (`path`, `durationMin` 20 / 30 / 45, `interviewer` without `enabled`, `title?`) | `Pad` (`format: 'quant'`, §8.2); 409 `ai_key_missing` without a usable key, 409 `quant_unavailable` when the path has too few questions, 429 (the `POST /api/pads` allowance) |
 | `GET /api/pads` | | `PadSummary[]` (mine, newest first, with `format`, and `quantPath` for a quant pad) |
@@ -146,7 +147,13 @@ four characters). `PadDetail.interviewerAvailable` / `interviewerKey` describe t
 state and `PadDetail.interviewerModel` the model the interviewer runs on (which implies the key's
 provider); collaborators learn nothing else about it.
 Problem responses never contain hidden tests, interviewer notes or reference solutions; the one
-exception is `GET /api/pads/:id/host`, for the host of a room. Nothing a member reads about an
+exception is `GET /api/pads/:id/host`, for the host of a room. The library itself
+(`GET /api/problems`) is the same for everyone; the viewer's own standing on it comes separately
+from `GET /api/progress/problems`, which needs an account and reads only the caller's runs and
+pads, so a room's host is not credited with the candidate's submissions (nor the other way
+round). The web app marks each problem in the library and in a room's problem picker with the
+question bank's marks (solved as right, attempted as part-way, new as unanswered) and filters the
+library by them; a pad deleted takes its runs, and so its progress, with it. Nothing a member reads about an
 active quant pad contains a question's id, answer, explanation, hints or follow-ups, a verdict, or
 any question not yet posed (§8.2).
 

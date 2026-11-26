@@ -1,8 +1,8 @@
 'use client';
 import type { PublicQuizQuestion } from '@ipp/contracts';
+import { OUTCOME_ICON } from '@/components/status-icon';
 import { cn } from '@/lib/utils';
 import { OUTCOME_LABEL, type Outcome } from './logic';
-import { OUTCOME_ICON } from './question';
 
 export type SegState = Outcome | 'answered' | 'empty';
 

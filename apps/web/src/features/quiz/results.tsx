@@ -13,6 +13,7 @@ import { useRouter } from 'next/navigation';
 import { useCallback, useMemo, useState } from 'react';
 import { MathMarkdown, MathText } from '@/components/math-markdown';
 import { InlineError } from '@/components/states';
+import { OUTCOME_ICON, OUTCOME_TEXT } from '@/components/status-icon';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
@@ -33,7 +34,7 @@ import {
   summarySegments,
   TYPE_LABEL,
 } from './logic';
-import { OUTCOME_ICON, OUTCOME_TEXT, PHONE_FIT, QuestionCode } from './question';
+import { PHONE_FIT, QuestionCode } from './question';
 
 type RowOutcome = Outcome | 'unanswered';
 

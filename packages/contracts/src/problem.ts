@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { Identifier, Json, LANGUAGES, Language, Slug } from './common';
+import { Identifier, IsoDate, Json, LANGUAGES, Language, Slug } from './common';
 import { ProblemCategory } from './taxonomy';
 
 /**
@@ -191,6 +191,28 @@ export const ProblemSummary = z.object({
     .default([...LANGUAGES]),
 });
 export type ProblemSummary = z.infer<typeof ProblemSummary>;
+
+/**
+ * Where the signed-in user stands on a library problem, from their own pads and runs:
+ *  solved     they have an accepted submission on it (any pad, any language)
+ *  attempted  they ran code on it, or started a practice interview on it, without solving it
+ *  new        neither (never sent: a problem missing from `ProblemProgress` is new)
+ */
+export const ProblemStatus = z.enum(['new', 'attempted', 'solved']);
+export type ProblemStatus = z.infer<typeof ProblemStatus>;
+
+/**
+ * `GET /api/progress/problems`: the caller's problems that are not new, most recent first.
+ * `lastActivityAt` is their latest run on it or practice interview started on it.
+ */
+export const ProblemProgress = z.array(
+  z.object({
+    slug: Slug,
+    status: ProblemStatus.exclude(['new']),
+    lastActivityAt: IsoDate,
+  }),
+);
+export type ProblemProgress = z.infer<typeof ProblemProgress>;
 
 /**
  * What the browser may see: no hidden tests, notes, reference solutions or harness.

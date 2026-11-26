@@ -1,4 +1,7 @@
-/** Pure helpers for the problem library: filtering, counts, topic options and random picks. */
+/**
+ * Pure helpers for the problem library: filtering, counts, topic options, random picks, and the
+ * user's own standing on each problem.
+ */
 import {
   type Difficulty,
   groupOfTag,
@@ -8,6 +11,8 @@ import {
   type Language,
   PROBLEM_CATEGORIES,
   type ProblemCategory,
+  type ProblemProgress,
+  type ProblemStatus,
   type ProblemSummary,
   type Subtopic,
   subtopicLabel,
@@ -20,6 +25,7 @@ import { storage } from '@/lib/storage';
 export const ALL = 'all';
 export type CategoryFilter = typeof ALL | ProblemCategory;
 export type DifficultyFilter = typeof ALL | Difficulty;
+export type StatusFilter = typeof ALL | ProblemStatus;
 
 export interface LibraryFilters {
   query: string;
@@ -31,6 +37,8 @@ export interface LibraryFilters {
   subtopic: string;
   /** Tags are spoilers: only searched when the user has chosen to see them. */
   showTopics: boolean;
+  /** The user's own standing on the problem (see `ProblemStatus`); absent means 'all'. */
+  status?: StatusFilter;
 }
 
 export const NO_FILTERS: Omit<LibraryFilters, 'showTopics'> = {
@@ -39,7 +47,37 @@ export const NO_FILTERS: Omit<LibraryFilters, 'showTopics'> = {
   difficulty: ALL,
   group: ALL,
   subtopic: ALL,
+  status: ALL,
 };
+
+// ---------------------------------------------------------------- the user's progress
+
+/** slug -> status, for the problems that are not new. */
+export type ProgressMap = ReadonlyMap<string, ProblemStatus>;
+export const NO_PROGRESS: ProgressMap = new Map();
+
+export const progressMap = (list: ProblemProgress | undefined): ProgressMap =>
+  list ? new Map(list.map((p) => [p.slug, p.status])) : NO_PROGRESS;
+
+export const statusOf = (progress: ProgressMap, slug: string): ProblemStatus =>
+  progress.get(slug) ?? 'new';
+
+/** How many problems the status filter would show for each status, the other filters applied. */
+export function statusCounts(
+  problems: readonly ProblemSummary[],
+  f: LibraryFilters,
+  progress: ProgressMap,
+): Record<StatusFilter, number> {
+  const rest = filterProblems(problems, { ...f, status: ALL }, progress);
+  const counts: Record<StatusFilter, number> = {
+    all: rest.length,
+    new: 0,
+    attempted: 0,
+    solved: 0,
+  };
+  for (const p of rest) counts[statusOf(progress, p.slug)]++;
+  return counts;
+}
 
 export const parseCategory = (v: string | null): CategoryFilter =>
   PROBLEM_CATEGORIES.includes(v as ProblemCategory) ? (v as ProblemCategory) : ALL;
@@ -69,12 +107,15 @@ function matchesQuery(p: ProblemSummary, text: string, showTopics: boolean): boo
 export function filterProblems(
   problems: readonly ProblemSummary[],
   f: LibraryFilters,
+  progress: ProgressMap = NO_PROGRESS,
 ): ProblemSummary[] {
   const text = f.query.trim().toLowerCase();
+  const status = f.status ?? ALL;
   return problems.filter(
     (p) =>
       (f.category === ALL || p.category === f.category) &&
       (f.difficulty === ALL || p.difficulty === f.difficulty) &&
+      (status === ALL || statusOf(progress, p.slug) === status) &&
       matchesTopic(p, f.group, f.subtopic) &&
       matchesQuery(p, text, f.showTopics),
   );
@@ -84,8 +125,9 @@ export function filterProblems(
 export function categoryCounts(
   problems: readonly ProblemSummary[],
   f: LibraryFilters,
+  progress: ProgressMap = NO_PROGRESS,
 ): Record<CategoryFilter, number> {
-  const rest = filterProblems(problems, { ...f, category: ALL });
+  const rest = filterProblems(problems, { ...f, category: ALL }, progress);
   const counts = { all: rest.length } as Record<CategoryFilter, number>;
   for (const c of PROBLEM_CATEGORIES) counts[c] = rest.filter((p) => p.category === c).length;
   return counts;

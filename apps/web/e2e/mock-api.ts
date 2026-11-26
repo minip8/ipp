@@ -34,6 +34,7 @@ import {
   type Pad,
   type PadDetail,
   type PadSummary,
+  type ProblemProgress,
   QuizAttempt,
   type QuizRoadmapTopic,
   type QuizTopicStats,
@@ -65,6 +66,7 @@ import {
   makeRoomDetail,
   PAD_SUMMARIES,
   PROBLEM_DETAILS,
+  PROBLEM_PROGRESS,
   PROBLEMS,
   QUIZ_FEEDBACK,
   QUIZ_HISTORY,
@@ -125,6 +127,8 @@ export class MockBackend {
   summaries: PadSummary[] = structuredClone(PAD_SUMMARIES);
   /** Pad ids deleted (owner) or left (collaborator), in order. */
   deleted: string[] = [];
+  /** GET /api/progress/problems: the user's solved and attempted problems (`[]` for a newcomer). */
+  problemProgress: ProblemProgress = structuredClone(PROBLEM_PROGRESS);
   quizMode: 'practice' | 'exam' = 'practice';
   /** Question bank state (answers given outside attempts). */
   quizBank = new MockQuizBank();
@@ -430,6 +434,7 @@ export class MockBackend {
       this.me.guest &&
       (path === '/api/pads' ||
         path.startsWith('/api/ai-key') ||
+        path.startsWith('/api/progress') ||
         path.startsWith('/api/quiz') ||
         path.startsWith('/api/drill'))
     )
@@ -485,6 +490,7 @@ export class MockBackend {
           (!text || p.title.toLowerCase().includes(text)),
       );
     }
+    if (path === '/api/progress/problems' && method === 'GET') return this.problemProgress;
     let r = m(/^\/api\/problems\/([a-z0-9-]+)$/);
     if (r) {
       const slug = r[1] ?? '';
