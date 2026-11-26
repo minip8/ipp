@@ -137,13 +137,13 @@ function Quotes({ game }: { game: QuantGameReview }) {
             {rows.map((r) => (
               <tr key={r.n} data-testid="review-quote" data-side={r.side}>
                 <td className={td}>
-                  <span className="font-medium">{marketText(r)}</span>
+                  <span className="font-medium whitespace-nowrap">{marketText(r)}</span>
                   <span className="block text-xs text-fg-subtle">{lots(r.size)}</span>
                 </td>
                 <td className={td}>
                   {num(r.width)}
                   {r.widthSd !== null && (
-                    <span className="block text-xs text-fg-subtle">
+                    <span className="block text-xs whitespace-nowrap text-fg-subtle">
                       {num(Number(r.widthSd.toFixed(2)))} sd
                     </span>
                   )}
