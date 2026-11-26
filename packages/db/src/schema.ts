@@ -27,6 +27,7 @@ import type {
   ReportAssessment,
   TestCase,
   TimelineEvent,
+  Track,
 } from '@ipp/contracts';
 import { sql } from 'drizzle-orm';
 import {
@@ -64,6 +65,11 @@ export const user = pgTable('user', {
   image: text('image'),
   /** Better Auth's anonymous plugin: a guest who joined a room by its link with just a name. */
   isAnonymous: boolean('is_anonymous').notNull().default(false),
+  /**
+   * The site track the user chose in the header switch (`PUT /api/me/track`); null until they
+   * choose. Ours, not Better Auth's: its adapter ignores it (it is not declared to Better Auth).
+   */
+  track: text('track').$type<Track>(),
   createdAt: tsz('created_at').notNull().defaultNow(),
   updatedAt: tsz('updated_at').notNull().defaultNow(),
 });
@@ -358,8 +364,10 @@ export const quizTopics = pgTable('quiz_topics', {
   description: text('description').notNull(),
   /** Study order (the order of quiz/topics.yaml); the roadmap lists topics by it. */
   position: integer('position').notNull().default(0),
-  /** Which part of the site the topic belongs to (`QUIZ_TRACKS`), from quiz/topics.yaml. */
+  /** The topic's home (`QUIZ_TRACKS`), from quiz/topics.yaml: its content rules and quant rounds. */
   track: text('track').$type<QuizTrack>().notNull().default('fundamentals'),
+  /** The other site tracks the topic also shows in (`QuizTopic.also`), from quiz/topics.yaml. */
+  also: text('also').array().$type<Track[]>().notNull().default(sql`'{}'::text[]`),
   /** The topic's study areas from quiz/roadmap.yaml; empty when it has none. */
   roadmap: jsonb('roadmap').$type<QuizRoadmapNode[]>().notNull().default([]),
 });

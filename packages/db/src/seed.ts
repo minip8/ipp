@@ -117,6 +117,7 @@ function loadGamesTolerant(
   topics: readonly QuizTopic[],
   skipped: SeedReport['skipped'],
 ): QuantGame[] {
+  // Home quant topics only: `also: [quant]` does not let a game name a topic.
   const quant = new Set(topics.filter((t) => t.track === 'quant').map((t) => t.slug));
   const out: QuantGame[] = [];
   for (const file of listQuantGameFiles(root)) {
@@ -206,6 +207,7 @@ export async function seed(db: Db, opts: SeedOptions = {}): Promise<SeedReport> 
         title: t.title,
         description: t.description,
         track: t.track,
+        also: t.also,
         position,
         ...(roadmap ? { roadmap: roadmap[t.slug] ?? [] } : {}),
       };
