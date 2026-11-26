@@ -111,8 +111,8 @@
   tags: [second-price-auction, vickrey, dominant-strategy]
   prompt: |
     In a sealed-bid **second-price** auction, the highest bidder wins but pays the second-highest bid.
-    An item is worth exactly \$100 to you and to nobody else in particular (other bidders have their
-    own private values). What should you bid?
+    An item is worth exactly \$100 to you; the other bidders have their own private values, which you
+    do not know. What should you bid?
   choices:
     - { id: a, text: "Exactly 100, whatever the others do" }
     - { id: b, text: "Somewhat less than 100, to leave yourself a profit" }

@@ -62,7 +62,7 @@
 
     $$\text{odds} = 9:1, \qquad P = \tfrac{9}{10}, \qquad \text{offer} = 90.$$
 
-    (The first offer was 75 and the second bid is $100 \times \tfrac{3}{3 + 3} = 50$.)
+    (The first offer was 75. A sell has likelihood ratio $\tfrac13$, so the second bid is back at odds of 1:1, a price of 50.)
 
     The common wrong answer is 75: candidates update once, to $\tfrac34$, and forget that the new offer
     must also condition on the next trade being a buy. Thinking in odds makes repeated updates easy:
