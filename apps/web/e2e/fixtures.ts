@@ -17,6 +17,7 @@ import {
   Playback,
   ProblemContent,
   ProblemDetail,
+  ProblemProgress,
   ProblemSummary,
   problemScaffolds,
   QuizAttempt,
@@ -498,6 +499,18 @@ export const PAD_SUMMARIES = PadSummary.array().parse([
     accepted: false,
     role: 'collaborator',
   },
+]);
+
+/**
+ * The user's standing on the library (`GET /api/progress/problems`), consistent with the pads
+ * above: solved where a pad has an accepted submission, attempted where one does not.
+ */
+export const PROBLEM_PROGRESS = ProblemProgress.parse([
+  { slug: 'two-sum', status: 'attempted', lastActivityAt: iso(-13 * 60) },
+  { slug: 'lru-cache', status: 'solved', lastActivityAt: iso(-86400 * 2 + 2400) },
+  { slug: 'trapping-rain-water', status: 'attempted', lastActivityAt: iso(-86400 * 5 + 2600) },
+  { slug: 'merge-intervals', status: 'solved', lastActivityAt: iso(-86400 * 9 + 1900) },
+  { slug: 'number-of-islands', status: 'attempted', lastActivityAt: iso(-86400 * 12 + 2300) },
 ]);
 
 // ---------- runs ----------
@@ -1312,6 +1325,7 @@ export const QUIZ_HISTORY = QuizAttemptSummary.array().parse([
     startedAt: iso(-86400),
     finishedAt: iso(-86400 + 900),
     questionCount: 10,
+    answeredCount: 10,
   },
   {
     id: uuid(9003),
@@ -1322,6 +1336,7 @@ export const QUIZ_HISTORY = QuizAttemptSummary.array().parse([
     startedAt: iso(-86400 * 3),
     finishedAt: iso(-86400 * 3 + 700),
     questionCount: 8,
+    answeredCount: 8,
   },
   {
     id: uuid(9004),
@@ -1332,6 +1347,7 @@ export const QUIZ_HISTORY = QuizAttemptSummary.array().parse([
     startedAt: iso(-86400 * 4),
     finishedAt: null,
     questionCount: 10,
+    answeredCount: 3,
   },
 ]);
 

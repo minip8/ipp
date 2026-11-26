@@ -63,6 +63,43 @@ for (const width of WIDTHS) {
         await page.getByRole('button', { name: /^Two Sum/ }).click();
         await page.waitForTimeout(600);
         await shoot(page, 'new', { fullPage: true });
+        // The library narrowed to what the user has solved.
+        await page
+          .getByRole('radiogroup', { name: 'Status' })
+          .getByRole('radio', { name: /^Solved/ })
+          .click();
+        await page.getByRole('button', { name: /^LRU Cache/ }).click();
+        await page.waitForTimeout(400);
+        await shoot(page, 'new-solved');
+      }
+      // Past quizzes with their delete buttons, and the confirmation (`ONLY=quiz-history`).
+      if (want('quiz-history')) {
+        await page.goto('/quiz?view=history');
+        await page.getByRole('region', { name: 'Past quizzes' }).waitFor();
+        await page.waitForTimeout(300);
+        await shoot(page, 'quiz-history', { fullPage: true });
+        await page.getByRole('button', { name: /^Delete exam: / }).click();
+        await page.getByRole('dialog').waitFor();
+        await page.waitForTimeout(300);
+        await shoot(page, 'quiz-history-delete');
+        await page.keyboard.press('Escape');
+        await page.getByRole('button', { name: 'Clear history' }).click();
+        await page.getByRole('dialog').waitFor();
+        await page.waitForTimeout(300);
+        await shoot(page, 'quiz-history-clear');
+      }
+      if (want('drill-history')) {
+        await page.goto('/quant/drill');
+        await page.getByTestId('drill-runs').waitFor();
+        await page
+          .getByTestId('drill-runs')
+          .getByRole('listitem')
+          .nth(2)
+          .getByRole('button', { name: /^Delete run: / })
+          .click();
+        await page.getByRole('dialog').waitFor();
+        await page.waitForTimeout(300);
+        await shoot(page, 'drill-history-delete');
       }
     });
   });

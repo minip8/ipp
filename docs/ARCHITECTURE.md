@@ -106,6 +106,7 @@ Every body is validated with the contracts schema named below.
 | `GET /api/ai-key/models` | | `AiModelList` (`provider`, `defaultModel`, `models[] {id, label, default}`, `source` live / fallback); 409 `ai_key_missing` without a usable key; 429 |
 | `GET /api/problems?difficulty=&tag=&q=` | | `ProblemSummary[]` |
 | `GET /api/problems/:slug` | | `ProblemDetail` |
+| `GET /api/progress/problems` | | `ProblemProgress` (the caller's problems that are not new, latest activity first: `solved` with an accepted submission of theirs in any pad, else `attempted` with any run of theirs or a practice interview of their own on it) |
 | `POST /api/pads` | `CreatePadRequest` (`kind: 'room'` hosts an interview; a room may be `blank`) | `Pad` |
 | `POST /api/pads/quant` | `CreateQuantPadRequest` (`path`, `durationMin` 20 / 30 / 45, `interviewer` without `enabled`, `title?`, `includeGame?`: a market-making game in the second slot, §8.3; absent, a trader round has one) | `Pad` (`format: 'quant'`, §8.2); 409 `ai_key_missing` without a usable key, 409 `quant_unavailable` when the path has too few questions, 429 (the `POST /api/pads` allowance) |
 | `POST /api/pads/:id/round/quote` | `PostQuantQuoteRequest` (`index`, `bid`, `ask`, `size`; any member) | `QuantRoundView` (the quote posted as the poster's chat message, §8.3); 409 `wrong_format` on a pad that is not a quant pad, 409 with the round's refusal as the code (`bad_quote`, `quote_limit`, `wrong_index`, `not_game`, `wrong_phase`, `ended`, …), 429 (the chat allowance) |
@@ -130,8 +131,10 @@ Every body is validated with the contracts schema named below.
 | `GET /api/quiz/topics` | | `QuizTopicStats[]` |
 | `GET /api/quiz/roadmap` | | `QuizRoadmapTopic[]` (topics in study order, each node with the caller's progress per node and subtopic) |
 | `POST /api/quiz/attempts` | `CreateAttemptRequest` (optional `nodes` narrows topics to roadmap nodes) | `QuizAttempt` |
-| `GET /api/quiz/attempts` | | `QuizAttemptSummary[]` |
+| `GET /api/quiz/attempts` | | `QuizAttemptSummary[]` (with `answeredCount`) |
 | `GET /api/quiz/attempts/:id` | | `QuizAttempt` |
+| `DELETE /api/quiz/attempts/:id` | | `DeleteAttemptResponse` (one of the caller's attempts, any mode, running or finished, with its answers; 404 for anyone else's id; 429) |
+| `DELETE /api/quiz/history` | | `ClearQuizHistoryResponse` (counts: every attempt of the caller's with its answers, and every question-bank answer; 429) |
 | `POST /api/quiz/attempts/:id/answers` | `SubmitAnswerRequest` | practice: `AnswerFeedback`; exam: `{ recorded: true }` |
 | `POST /api/quiz/attempts/:id/discussion` | `DiscussionReplyRequest` | `DiscussionReplyResponse` (discussion mode: the turns so far, and `AnswerFeedback` once the question is closed) |
 | `POST /api/quiz/attempts/:id/finish` | | `QuizAttempt` (all feedback present) |
@@ -140,6 +143,8 @@ Every body is validated with the contracts schema named below.
 | `POST /api/quiz/questions/:id/answers` | `SubmitStandaloneAnswerRequest` | `AnswerFeedback` (graded like attempt answers; same rate limit) |
 | `POST /api/drill/runs` | `RecordDrillRunRequest` (config, results per category, `elapsedMs`) | `RecordDrillRunResponse` (the stored `DrillRun`, totals and score computed by the server, and `newBest`); 429 |
 | `GET /api/drill/runs` | | `DrillHistory` (the latest `DRILL_HISTORY_LIMIT` runs newest first, bests per duration and level, `totalRuns`) |
+| `DELETE /api/drill/runs/:id` | | `DrillHistory` left, bests recomputed (one of the caller's runs; 404 for anyone else's id; 429) |
+| `DELETE /api/drill/runs` | | `DrillHistory` (empty: every run of the caller's, and so every best; 429) |
 | `GET /healthz`, `GET /readyz` | | liveness / dependencies reachable |
 
 Authorization: a pad is visible to its members only. Runs and chat require membership and an active pad.
@@ -148,7 +153,13 @@ four characters). `PadDetail.interviewerAvailable` / `interviewerKey` describe t
 state and `PadDetail.interviewerModel` the model the interviewer runs on (which implies the key's
 provider); collaborators learn nothing else about it.
 Problem responses never contain hidden tests, interviewer notes or reference solutions; the one
-exception is `GET /api/pads/:id/host`, for the host of a room. Nothing a member reads about an
+exception is `GET /api/pads/:id/host`, for the host of a room. The library itself
+(`GET /api/problems`) is the same for everyone; the viewer's own standing on it comes separately
+from `GET /api/progress/problems`, which needs an account and reads only the caller's runs and
+pads, so a room's host is not credited with the candidate's submissions (nor the other way
+round). The web app marks each problem in the library and in a room's problem picker with the
+question bank's marks (solved as right, attempted as part-way, new as unanswered) and filters the
+library by them; a pad deleted takes its runs, and so its progress, with it. Nothing a member reads about an
 active quant pad contains a question's id, answer, explanation, hints or follow-ups, a verdict, or
 any question not yet posed (§8.2), nor a game's hidden values, fair value, marks, counterparty
 notes or hints (§8.3).
@@ -718,6 +729,16 @@ replaces the previous standalone answer. Status, stats and selection all use the
 exams (a running exam never shows up) and the judged questions of the user's ended quant rounds
 (§8.2), in one query (`latestAnswers` in `apps/api/src/quiz/answers.ts`).
 
+A user can delete their own history: one attempt of any mode, running or finished, from the
+History list or its own page (`DELETE /api/quiz/attempts/:id`, its answers cascade), or all of
+it at once (`DELETE /api/quiz/history`: every attempt and every question-bank answer). Nothing is
+recomputed on delete: status, stats, the roadmap and "focus weak" simply read the latest
+countable answer that is left, which the confirmation says (a running exam's answers never
+counted, so deleting one changes nothing). The judged questions of quant rounds are not part of
+the quiz history and stay; they are kept even when the round's pad is deleted. Both routes need
+an account, act only on the caller's rows (anyone else's id is a 404, as is a repeat) and share
+the `historyDeletes` limit with the drill's deletes.
+
 The roadmap (the Quizzes page's Roadmap view, `?view=roadmap&roadmap=<topic>&node=<id>`) draws each
 topic as a layered graph of study areas. `quiz/roadmap.yaml` maps each topic to its nodes
 (`QuizRoadmapNode`: id, short title, one-line description, the question `subtopics` it groups,
@@ -752,7 +773,10 @@ best: the highest score per duration and level, the earliest run on a tie. `newB
 is true when a full-mix run scores strictly higher than every earlier full-mix run of its duration
 and level (the first one when it scores above 0). Both routes need an account (a guest gets
 `account_required`) and act only on the caller's runs; recording is limited per user
-(`limits.drillRuns`: 6 a minute, 200 a day).
+(`limits.drillRuns`: 6 a minute, 200 a day). A run can be deleted from the history
+(`DELETE /api/drill/runs/:id`), or all of them (`DELETE /api/drill/runs`); both answer with the
+history left, so a deleted best falls to the next highest full-mix run of its duration and level
+(or to none) with no second request (`limits.historyDeletes`: 30 a minute).
 
 ### 8.2 Live quant round
 

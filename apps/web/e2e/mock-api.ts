@@ -34,7 +34,9 @@ import {
   type Pad,
   type PadDetail,
   type PadSummary,
+  type ProblemProgress,
   QuizAttempt,
+  type QuizAttemptSummary,
   type QuizRoadmapTopic,
   type QuizTopicStats,
   RecordDrillRunRequest,
@@ -65,6 +67,7 @@ import {
   makeRoomDetail,
   PAD_SUMMARIES,
   PROBLEM_DETAILS,
+  PROBLEM_PROGRESS,
   PROBLEMS,
   QUIZ_FEEDBACK,
   QUIZ_HISTORY,
@@ -125,6 +128,14 @@ export class MockBackend {
   summaries: PadSummary[] = structuredClone(PAD_SUMMARIES);
   /** Pad ids deleted (owner) or left (collaborator), in order. */
   deleted: string[] = [];
+  /** GET /api/quiz/attempts; DELETE /api/quiz/attempts/:id and /api/quiz/history remove from it. */
+  quizHistory: QuizAttemptSummary[] = structuredClone(QUIZ_HISTORY);
+  /** Attempt ids deleted, in order (a deleted attempt is a 404 from then on). */
+  deletedAttempts: string[] = [];
+  /** How many times the whole quiz or drill history was cleared. */
+  cleared = { quiz: 0, drill: 0 };
+  /** GET /api/progress/problems: the user's solved and attempted problems (`[]` for a newcomer). */
+  problemProgress: ProblemProgress = structuredClone(PROBLEM_PROGRESS);
   quizMode: 'practice' | 'exam' = 'practice';
   /** Question bank state (answers given outside attempts). */
   quizBank = new MockQuizBank();
@@ -430,6 +441,7 @@ export class MockBackend {
       this.me.guest &&
       (path === '/api/pads' ||
         path.startsWith('/api/ai-key') ||
+        path.startsWith('/api/progress') ||
         path.startsWith('/api/quiz') ||
         path.startsWith('/api/drill'))
     )
@@ -485,6 +497,7 @@ export class MockBackend {
           (!text || p.title.toLowerCase().includes(text)),
       );
     }
+    if (path === '/api/progress/problems' && method === 'GET') return this.problemProgress;
     let r = m(/^\/api\/problems\/([a-z0-9-]+)$/);
     if (r) {
       const slug = r[1] ?? '';
@@ -690,13 +703,25 @@ export class MockBackend {
       return { ticket: `t_${Math.random().toString(36).slice(2)}`, expiresInSec: 30 };
 
     // mental math drill
-    if (path === '/api/drill/runs' && method === 'GET') {
-      const history: DrillHistory = {
-        runs: this.drillRuns.slice(0, DRILL_HISTORY_LIMIT),
-        bests: drillBests(this.drillRuns),
-        totalRuns: this.drillRuns.length,
-      };
-      return history;
+    const drillHistory = (): DrillHistory => ({
+      runs: this.drillRuns.slice(0, DRILL_HISTORY_LIMIT),
+      bests: drillBests(this.drillRuns),
+      totalRuns: this.drillRuns.length,
+    });
+    if (path === '/api/drill/runs' && method === 'GET') return drillHistory();
+    // As on the server: the history left comes back, bests recomputed; another id is a 404.
+    if (path === '/api/drill/runs' && method === 'DELETE') {
+      this.drillRuns = [];
+      this.cleared.drill++;
+      return drillHistory();
+    }
+    r = m(/^\/api\/drill\/runs\/([0-9a-f-]{36})$/);
+    if (r && method === 'DELETE') {
+      const id = r[1] ?? '';
+      if (!this.drillRuns.some((x) => x.id === id))
+        return this.status(404, 'not_found', 'Run not found');
+      this.drillRuns = this.drillRuns.filter((x) => x.id !== id);
+      return drillHistory();
     }
     if (path === '/api/drill/runs' && method === 'POST') {
       // As on the server: the body must pass the contract (self-consistent, humanly possible).
@@ -739,7 +764,16 @@ export class MockBackend {
       this.quizTopics,
     );
     if (bank !== undefined) return bank;
-    if (path === '/api/quiz/attempts' && method === 'GET') return QUIZ_HISTORY;
+    if (path === '/api/quiz/attempts' && method === 'GET') return this.quizHistory;
+    if (path === '/api/quiz/history' && method === 'DELETE') {
+      const res = { attempts: this.quizHistory.length, bankAnswers: this.quizBank.answers.size };
+      this.deletedAttempts.push(...this.quizHistory.map((a) => a.id));
+      this.quizHistory = [];
+      this.attempts.clear();
+      this.quizBank.answers.clear();
+      this.cleared.quiz++;
+      return res;
+    }
     if (path === '/api/quiz/attempts' && method === 'POST') {
       const req = CreateAttemptRequest.parse(body);
       // As on the server: every node must be on the roadmap of one of the topics.
@@ -773,6 +807,14 @@ export class MockBackend {
     r = m(/^\/api\/quiz\/attempts\/([0-9a-f-]{36})(\/.*)?$/);
     if (r) {
       const id = r[1] ?? '';
+      if (this.deletedAttempts.includes(id))
+        return this.status(404, 'not_found', 'Attempt not found');
+      if ((r[2] ?? '') === '' && method === 'DELETE') {
+        this.deletedAttempts.push(id);
+        this.attempts.delete(id);
+        this.quizHistory = this.quizHistory.filter((x) => x.id !== id);
+        return { attemptId: id };
+      }
       let a = this.attempts.get(id);
       if (!a) {
         a = makeAttempt({ id, mode: this.quizMode });

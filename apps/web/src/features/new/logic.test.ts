@@ -12,8 +12,11 @@ import {
   parseCategory,
   parseDifficulty,
   pickRandom,
+  progressMap,
   randomPool,
   restrictionLabel,
+  statusCounts,
+  statusOf,
   subtopicOptions,
 } from './logic';
 
@@ -47,6 +50,60 @@ const f = (over: Partial<LibraryFilters> = {}): LibraryFilters => ({
   ...over,
 });
 const slugs = (ps: ProblemSummary[]) => ps.map((p) => p.slug);
+
+const PROGRESS = progressMap([
+  { slug: 'two-sum', status: 'solved', lastActivityAt: '2026-11-01T10:00:00.000Z' },
+  { slug: 'word-ladder', status: 'attempted', lastActivityAt: '2026-11-02T10:00:00.000Z' },
+  { slug: 'lru-cache', status: 'solved', lastActivityAt: '2026-11-03T10:00:00.000Z' },
+]);
+
+describe('problem progress', () => {
+  it('a problem missing from the progress is new', () => {
+    expect(statusOf(PROGRESS, 'two-sum')).toBe('solved');
+    expect(statusOf(PROGRESS, 'word-ladder')).toBe('attempted');
+    expect(statusOf(PROGRESS, 'course-schedule')).toBe('new');
+    expect(statusOf(progressMap(undefined), 'two-sum')).toBe('new');
+  });
+
+  it('filters by status alongside the other filters', () => {
+    expect(slugs(filterProblems(LIB, f({ status: 'solved' }), PROGRESS))).toEqual([
+      'two-sum',
+      'lru-cache',
+    ]);
+    expect(slugs(filterProblems(LIB, f({ status: 'attempted' }), PROGRESS))).toEqual([
+      'word-ladder',
+    ]);
+    expect(slugs(filterProblems(LIB, f({ status: 'new', category: 'dsa' }), PROGRESS))).toEqual([
+      'number-of-islands',
+      'course-schedule',
+    ]);
+    // Without progress (not loaded, or it failed) everything is new.
+    expect(filterProblems(LIB, f({ status: 'solved' }))).toEqual([]);
+    expect(filterProblems(LIB, f({ status: 'all' }), PROGRESS)).toHaveLength(LIB.length);
+  });
+
+  it('counts each status with the other filters applied, and the tabs follow the status', () => {
+    expect(statusCounts(LIB, f(), PROGRESS)).toEqual({
+      all: 6,
+      new: 3,
+      attempted: 1,
+      solved: 2,
+    });
+    // The status filter itself does not narrow its own counts.
+    expect(statusCounts(LIB, f({ status: 'solved', difficulty: 'medium' }), PROGRESS)).toEqual({
+      all: 3,
+      new: 2,
+      attempted: 0,
+      solved: 1,
+    });
+    expect(categoryCounts(LIB, f({ status: 'solved' }), PROGRESS)).toEqual({
+      all: 2,
+      dsa: 1,
+      implementation: 0,
+      'data-structure': 1,
+    });
+  });
+});
 
 describe('filterProblems', () => {
   it('filters by category and difficulty', () => {

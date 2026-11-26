@@ -1,17 +1,11 @@
 'use client';
 import { type AnswerFeedback, NUMERIC_INPUT_MAX, type PublicQuizQuestion } from '@ipp/contracts';
-import {
-  CheckIcon,
-  CircleCheckIcon,
-  CircleDotIcon,
-  CircleHelpIcon,
-  CircleXIcon,
-  XIcon,
-} from 'lucide-react';
+import { CheckIcon, XIcon } from 'lucide-react';
 import type * as React from 'react';
 import { CodeBlock } from '@/components/code-block';
 import { DifficultyBadge, LANG_LABEL } from '@/components/domain';
 import { MathMarkdown } from '@/components/math-markdown';
+import { OUTCOME_ICON } from '@/components/status-icon';
 import { Button } from '@/components/ui/button';
 import { Input, Textarea } from '@/components/ui/input';
 import { RadioCard, RadioRoot } from '@/components/ui/radio-cards';
@@ -60,18 +54,6 @@ export function revealOnNarrow(el: HTMLElement | null) {
   el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
 
-export const OUTCOME_ICON: Record<Outcome, typeof CheckIcon> = {
-  correct: CircleCheckIcon,
-  partial: CircleDotIcon,
-  incorrect: CircleXIcon,
-  pending: CircleHelpIcon,
-};
-export const OUTCOME_TEXT: Record<Outcome, string> = {
-  correct: 'text-ok-text',
-  partial: 'text-warn-text',
-  incorrect: 'text-bad-text',
-  pending: 'text-accent-text',
-};
 export const OUTCOME_SOFT: Record<Outcome, string> = {
   correct: 'bg-ok-soft text-ok-text border-ok/40',
   partial: 'bg-warn-soft text-warn-text border-warn/50',

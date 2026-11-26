@@ -9,6 +9,7 @@ export const qk = {
   aiModels: ['ai-models'] as const,
   problems: (f: object) => ['problems', f] as const,
   problem: (slug: string) => ['problem', slug] as const,
+  problemProgress: ['progress', 'problems'] as const,
   pads: ['pads'] as const,
   pad: (id: string) => ['pad', id] as const,
   hostView: (id: string) => ['pad', id, 'host'] as const,
@@ -41,6 +42,19 @@ export function useMe() {
 
 export function useConfig() {
   return useQuery({ queryKey: qk.config, queryFn: api.config, staleTime: 10 * 60_000 });
+}
+
+/**
+ * The user's solved and attempted problems. Marks only: a failure leaves the library usable, so
+ * it is not retried and nothing waits on it.
+ */
+export function useProblemProgress(enabled = true) {
+  return useQuery({
+    queryKey: qk.problemProgress,
+    queryFn: api.problemProgress,
+    retry: false,
+    enabled,
+  });
 }
 
 /** The signed-in user's AI key status (state, last four, expiry). */

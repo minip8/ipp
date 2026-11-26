@@ -26,6 +26,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MathMarkdown } from '@/components/math-markdown';
 import { EmptyState, ErrorState, InlineError, useRetryCountdown } from '@/components/states';
+import { StatusIcon } from '@/components/status-icon';
 import { Button } from '@/components/ui/button';
 import { Kbd } from '@/components/ui/kbd';
 import {
@@ -45,14 +46,7 @@ import { formatRelative, humanize, plural } from '@/lib/format';
 import { qk, useAiKey } from '@/lib/queries';
 import { cn } from '@/lib/utils';
 import { isTyping } from './attempt';
-import {
-  BankToolbar,
-  isPlainClick,
-  ProgressBar,
-  StatusIcon,
-  SubtopicGrid,
-  SubtopicPanel,
-} from './bank-browse';
+import { BankToolbar, isPlainClick, ProgressBar, SubtopicGrid, SubtopicPanel } from './bank-browse';
 import {
   type BankFilters,
   bankHref,

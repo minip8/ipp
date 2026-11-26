@@ -32,6 +32,7 @@ import { Textarea } from '@/components/ui/input';
 import { Kbd } from '@/components/ui/kbd';
 import { Spinner } from '@/components/ui/spinner';
 import { AiKeyPrompt } from '@/features/ai-key/ai-key-prompt';
+import { DeleteAttemptButton } from '@/features/delete-history/delete-attempt-button';
 import { api } from '@/lib/api';
 import { plural } from '@/lib/format';
 import { qk, useAiKey } from '@/lib/queries';
@@ -196,10 +197,16 @@ export function DiscussionFlow({
           <ArrowLeftIcon className="size-3.5" /> Quizzes
         </Link>
         <span className="text-xs text-fg-subtle">Progress is saved</span>
+        <DeleteAttemptButton
+          attempt={attempt}
+          topics={topicLine}
+          answered={Object.keys(feedback).length}
+          className="ml-auto"
+        />
         <Button
           variant={open === 0 ? 'primary' : 'ghost'}
           size="sm"
-          className="ml-auto max-sm:h-10"
+          className="max-sm:h-10"
           onClick={() => setConfirmOpen(true)}
         >
           <FlagIcon /> Finish

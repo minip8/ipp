@@ -9,6 +9,7 @@ import {
   ListChecksIcon,
   MessagesSquareIcon,
   PlayIcon,
+  Trash2Icon,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
@@ -23,6 +24,17 @@ import { Segmented } from '@/components/ui/segmented';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
 import { Switch } from '@/components/ui/switch';
+import {
+  ConfirmDeleteDialog,
+  DeleteRowButton,
+} from '@/features/delete-history/confirm-delete-dialog';
+import { useClearQuizHistory, useDeleteAttempt } from '@/features/delete-history/hooks';
+import {
+  type AttemptTarget,
+  attemptDeleteCopy,
+  attemptTarget,
+  clearQuizHistoryCopy,
+} from '@/features/delete-history/logic';
 import { api } from '@/lib/api';
 import { formatPercent, formatRelative, plural } from '@/lib/format';
 import { qk } from '@/lib/queries';
@@ -270,12 +282,28 @@ function HistoryList({ topics }: { topics: QuizTopicStats[] }) {
   const attempts = useQuery({ queryKey: qk.attempts, queryFn: api.attempts });
   const title = (slug: string) => topics.find((t) => t.slug === slug)?.title ?? slug;
   const items = attempts.data ?? [];
+  const [toDelete, setToDelete] = useState<AttemptTarget | null>(null);
+  const [clearing, setClearing] = useState(false);
+  const { remove } = useDeleteAttempt();
+  const clearAll = useClearQuizHistory();
   return (
     <Card aria-labelledby="quiz-history-heading">
       <CardHeader>
         <CardTitle id="quiz-history-heading">Past quizzes</CardTitle>
         {items.length > 0 && (
-          <span className="text-xs text-fg-subtle tabular">{plural(items.length, 'attempt')}</span>
+          <span className="ml-auto flex items-center gap-2">
+            <span className="text-xs text-fg-subtle tabular">
+              {plural(items.length, 'attempt')}
+            </span>
+            <Button
+              variant="ghost"
+              size="xs"
+              className="hover:bg-bad-soft hover:text-bad-text max-sm:h-9"
+              onClick={() => setClearing(true)}
+            >
+              <Trash2Icon /> Clear history
+            </Button>
+          </span>
         )}
       </CardHeader>
       {attempts.isPending ? (
@@ -291,45 +319,69 @@ function HistoryList({ topics }: { topics: QuizTopicStats[] }) {
         </EmptyState>
       ) : (
         <ul className="divide-y divide-border">
-          {items.map((a: QuizAttemptSummary) => (
-            <li key={a.id}>
-              <Link
-                href={`/quiz/${a.id}`}
-                className="flex items-center gap-4 px-4 py-3 transition-colors hover:bg-surface-2 focus-visible:outline-offset-[-2px]"
-              >
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate font-medium">
-                    {a.topics.map(title).join(', ')}
-                  </span>
-                  <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-fg-muted">
-                    <Badge tone="outline">{MODE_LABEL[a.mode]}</Badge>
-                    <span>{plural(a.questionCount, 'question')}</span>
-                    <span aria-hidden>·</span>
-                    <span>{formatRelative(a.startedAt)}</span>
-                  </span>
-                </span>
-                {a.status === 'active' ? (
-                  <span className="inline-flex items-center gap-1 text-sm font-medium text-accent-text">
-                    Resume <ArrowRightIcon className="size-3.5" />
-                  </span>
-                ) : (
-                  <span className="text-right">
-                    <span
-                      className={cn(
-                        'block text-base font-semibold tabular',
-                        a.score !== null && scoreTone(a.score),
-                      )}
-                    >
-                      {formatPercent(a.score)}
+          {items.map((a: QuizAttemptSummary) => {
+            const target = attemptTarget(a, a.topics.map(title).join(', '));
+            return (
+              <li key={a.id} className="flex items-center transition-colors hover:bg-surface-2">
+                <Link
+                  href={`/quiz/${a.id}`}
+                  className="flex min-w-0 flex-1 items-center gap-4 py-3 pl-4 pr-2 focus-visible:outline-offset-[-2px]"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium">
+                      {a.topics.map(title).join(', ')}
                     </span>
-                    <span className="block text-2xs text-fg-subtle">score</span>
+                    <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-fg-muted">
+                      <Badge tone="outline">{MODE_LABEL[a.mode]}</Badge>
+                      <span>{plural(a.questionCount, 'question')}</span>
+                      <span aria-hidden>·</span>
+                      <span>{formatRelative(a.startedAt)}</span>
+                    </span>
                   </span>
-                )}
-              </Link>
-            </li>
-          ))}
+                  {a.status === 'active' ? (
+                    <span className="inline-flex items-center gap-1 text-sm font-medium text-accent-text">
+                      Resume <ArrowRightIcon className="size-3.5" />
+                    </span>
+                  ) : (
+                    <span className="text-right">
+                      <span
+                        className={cn(
+                          'block text-base font-semibold tabular',
+                          a.score !== null && scoreTone(a.score),
+                        )}
+                      >
+                        {formatPercent(a.score)}
+                      </span>
+                      <span className="block text-2xs text-fg-subtle">score</span>
+                    </span>
+                  )}
+                </Link>
+                <DeleteRowButton
+                  action={attemptDeleteCopy(target).action}
+                  name={target.topics}
+                  onClick={() => setToDelete(target)}
+                  className="mr-3 shrink-0 max-sm:size-10 max-sm:[&_svg]:size-4"
+                />
+              </li>
+            );
+          })}
         </ul>
       )}
+      <ConfirmDeleteDialog
+        copy={toDelete ? attemptDeleteCopy(toDelete) : null}
+        confirmKey={toDelete?.id ?? null}
+        toastDetail={toDelete?.topics}
+        onConfirm={async () => {
+          if (toDelete) await remove(toDelete.id);
+        }}
+        onClose={() => setToDelete(null)}
+      />
+      <ConfirmDeleteDialog
+        copy={clearing ? clearQuizHistoryCopy(items.length) : null}
+        confirmKey={clearing ? 'all' : null}
+        onConfirm={clearAll}
+        onClose={() => setClearing(false)}
+      />
     </Card>
   );
 }

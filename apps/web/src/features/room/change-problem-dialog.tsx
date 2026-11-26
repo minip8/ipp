@@ -6,6 +6,7 @@ import { FileIcon, SearchIcon } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { CategoryBadge, DifficultyBadge } from '@/components/domain';
 import { ErrorState } from '@/components/states';
+import { PROBLEM_STATUS_LABEL, ProblemStatusIcon } from '@/components/status-icon';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -18,9 +19,10 @@ import {
 } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
+import { progressMap, statusOf } from '@/features/new/logic';
 import { usePad } from '@/features/pad/session';
 import { api } from '@/lib/api';
-import { qk } from '@/lib/queries';
+import { qk, useProblemProgress } from '@/lib/queries';
 import { cn } from '@/lib/utils';
 
 const BLANK = '';
@@ -39,6 +41,10 @@ export function ChangeProblemDialog({
     queryFn: () => api.problems(),
     enabled: open,
   });
+  // The host's own solved and attempted problems, marked as in the library.
+  const progressQuery = useProblemProgress(open);
+  const progress = useMemo(() => progressMap(progressQuery.data), [progressQuery.data]);
+  const known = progressQuery.data !== undefined;
   const [query, setQuery] = useState('');
   const [picked, setPicked] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -140,7 +146,17 @@ export function ChangeProblemDialog({
                   onClick={() => setPicked(p.slug)}
                   className={row(choice === p.slug)}
                 >
-                  <span className="min-w-0 flex-1 truncate font-medium">{p.title}</span>
+                  {known && (
+                    <ProblemStatusIcon status={statusOf(progress, p.slug)} className="shrink-0" />
+                  )}
+                  <span className="min-w-0 flex-1 truncate font-medium">
+                    {p.title}
+                    {known && (
+                      <span className="sr-only">
+                        . {PROBLEM_STATUS_LABEL[statusOf(progress, p.slug)]}.
+                      </span>
+                    )}
+                  </span>
                   {p.slug === current && <span className="text-xs text-fg-subtle">current</span>}
                   <DifficultyBadge difficulty={p.difficulty} />
                   <CategoryBadge category={p.category} className="max-sm:hidden" />

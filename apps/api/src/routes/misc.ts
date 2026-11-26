@@ -1,9 +1,15 @@
-import { Difficulty, ProblemCategory, Slug, WsTicketRequest } from '@ipp/contracts';
-import { problems, problemTests } from '@ipp/db';
-import { and, arrayContains, asc, eq, ilike, or, type SQL } from '@ipp/db/orm';
+import {
+  Difficulty,
+  ProblemCategory,
+  type ProblemProgress,
+  Slug,
+  WsTicketRequest,
+} from '@ipp/contracts';
+import { pads, problems, problemTests, runs } from '@ipp/db';
+import { and, arrayContains, asc, eq, ilike, isNotNull, max, or, type SQL, sql } from '@ipp/db/orm';
 import { Hono } from 'hono';
 import type { Ctx } from '../context';
-import { type Env, parseBody, requireUser } from '../http/app';
+import { type Env, parseBody, requireAccount, requireUser } from '../http/app';
 import { badRequest, notFound, rateLimited } from '../http/errors';
 import { padForMember } from '../pads/service';
 import { problemDetail, problemSummary } from '../views';
@@ -69,6 +75,57 @@ export function miscRoutes(ctx: Ctx) {
       .where(and(...where))
       .orderBy(asc(problems.title));
     return c.json(rows.map(problemSummary));
+  });
+
+  /**
+   * The caller's own standing on each problem they have touched (`ProblemProgress`): solved with
+   * an accepted submission of theirs in any pad, attempted with any other run of theirs or a
+   * practice interview of their own on it. Only the caller's rows are read: a room's host does
+   * not get their candidate's runs, nor the candidate the host's.
+   */
+  r.get('/progress/problems', async (c) => {
+    const user = requireAccount(c);
+    const [ran, started] = await Promise.all([
+      ctx.db
+        .select({
+          slug: runs.problemSlug,
+          solved: sql<boolean>`bool_or(${runs.mode} = 'submit' and ${runs.verdict} = 'accepted')`,
+          last: max(runs.createdAt),
+        })
+        .from(runs)
+        .where(and(eq(runs.userId, user.id), isNotNull(runs.problemSlug)))
+        .groupBy(runs.problemSlug),
+      ctx.db
+        .select({ slug: pads.problemSlug, last: max(pads.startedAt) })
+        .from(pads)
+        .where(
+          and(
+            eq(pads.ownerId, user.id),
+            eq(pads.kind, 'practice'),
+            eq(pads.format, 'coding'),
+            isNotNull(pads.problemSlug),
+          ),
+        )
+        .groupBy(pads.problemSlug),
+    ]);
+    const bySlug = new Map<string, { solved: boolean; last: Date }>();
+    for (const row of [...ran, ...started]) {
+      if (!row.slug || !row.last) continue;
+      const solved = 'solved' in row && row.solved === true;
+      const seen = bySlug.get(row.slug);
+      bySlug.set(row.slug, {
+        solved: solved || (seen?.solved ?? false),
+        last: seen && seen.last > row.last ? seen.last : row.last,
+      });
+    }
+    const out: ProblemProgress = [...bySlug]
+      .map(([slug, p]) => ({
+        slug,
+        status: p.solved ? ('solved' as const) : ('attempted' as const),
+        lastActivityAt: p.last.toISOString(),
+      }))
+      .sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt));
+    return c.json(out);
   });
 
   r.get('/problems/:slug', async (c) => {

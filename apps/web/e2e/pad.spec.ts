@@ -356,6 +356,53 @@ test('editor: undo goes through the shared history, and run shortcuts work insid
   expect(source).toContain(word);
 });
 
+test('editor: the caret jumps straight to where it goes and blinks normally', async ({ page }) => {
+  await openPad(page);
+  await page.locator('.view-lines').click();
+  await page.keyboard.press('ControlOrMeta+Home');
+  const layer = page.locator('.monaco-editor .cursors-layer');
+  // None of the classes behind the fading blink or the gliding caret, and no transition.
+  await expect(layer).not.toHaveClass(/cursor-smooth/);
+  const caret = layer.locator('.cursor').first();
+  expect(await caret.evaluate((el) => getComputedStyle(el).transitionDuration)).toBe('0s');
+  // An ordinary blink (Monaco runs it from script): on and off, nothing in between.
+  const seen = await caret.evaluate(
+    (el) =>
+      new Promise<string[]>((resolve) => {
+        const states = new Set<string>();
+        const timer = setInterval(() => {
+          // The fading blink animates the layer's opacity; the plain one hides the caret.
+          const layerOpacity = el.parentElement ? getComputedStyle(el.parentElement).opacity : '1';
+          states.add(`${getComputedStyle(el).visibility}/${layerOpacity}`);
+        }, 50);
+        setTimeout(() => {
+          clearInterval(timer);
+          resolve([...states].sort());
+        }, 1800);
+      }),
+  );
+  // Fully shown or fully hidden: the fading blink would pass through other opacities.
+  expect(seen.map((s) => s.split('/')[1])).toEqual(seen.map(() => '1'));
+  expect(new Set(seen.map((s) => s.split('/')[0]))).toEqual(new Set(['hidden', 'visible']));
+
+  // Moved by the keyboard, it is at its new place two frames later, not after an animation.
+  const top = () => caret.evaluate((el) => el.getBoundingClientRect().top);
+  const start = await top();
+  await page.keyboard.press('ControlOrMeta+End');
+  const soon = await caret.evaluate(
+    (el) =>
+      new Promise<number>((resolve) =>
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => resolve(el.getBoundingClientRect().top)),
+        ),
+      ),
+  );
+  await page.waitForTimeout(300);
+  const settled = await top();
+  expect(settled).toBeGreaterThan(start);
+  expect(soon).toBe(settled);
+});
+
 test('voice mode: speech becomes a voice message and replies are spoken', async ({ page }) => {
   await page.addInitScript(() => {
     const w = window as unknown as Record<string, unknown>;
