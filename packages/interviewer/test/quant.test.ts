@@ -418,6 +418,26 @@ describe('failure rules', () => {
     expect(h.round.questions[0]?.closedBy).toBe('timeout');
   });
 
+  it('a restart before the round started opens it without a second session_started', async () => {
+    // The host raises session_started once per pad: here the opening was cut off by a restart.
+    const h = quantHarness({
+      respond: scripted({ opening: () => ({ wait: new Promise<string>(() => {}) }) }),
+    });
+    h.iv.handle(h.padId, { type: 'session_started' });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(h.tasks()).toEqual(['opening']);
+    h.restart();
+    h.model.respond = defaultQuantRespond;
+    await h.send({ type: 'tick' });
+    expect(h.tasks()).toEqual(['opening', 'opening']);
+    expect(h.applied().map((s) => s.type)).toEqual(['start']);
+    expect(h.round.current).toBe(0);
+    // Started: a further restart and tick open nothing.
+    h.restart();
+    await h.advance(10);
+    expect(h.tasks().filter((t) => t === 'opening')).toHaveLength(2);
+  });
+
   it('a restart in the middle of a question picks up its books', async () => {
     const h = quantHarness({
       respond: scripted({

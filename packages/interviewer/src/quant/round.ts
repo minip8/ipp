@@ -201,6 +201,11 @@ export function createQuantRuntime<R extends QuantPad>(core: QuantCore<R>) {
     const lastInterviewer = ctx.transcript.filter((m) => m.role === 'interviewer').at(-1);
     // A restart never greets twice: the round has started, or something was already said.
     if (ctx.round.phase !== 'pending' || said.length) s.greeted = true;
+    // Otherwise this runtime opens the round itself. The host raises `session_started` once per
+    // pad, so a runtime that starts after it (the API restarted, or the last socket closed while
+    // the opening was in flight) would otherwise leave the round unstarted, its clock running,
+    // until the candidate wrote something.
+    else policy.observe(s, { type: 'session_started' }, core.now());
     if (lastInterviewer)
       s.lastInterviewerMsgAt = Math.max(s.lastInterviewerMsgAt ?? 0, t(lastInterviewer));
     if (lastCandidate) s.lastCandidateMsgAt = Math.max(s.lastCandidateMsgAt ?? 0, t(lastCandidate));
