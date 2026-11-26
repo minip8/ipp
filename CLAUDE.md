@@ -137,7 +137,11 @@ browser ── /api/* (Next rewrite, same origin, cookie session) ──▶ apps
   `packages/contracts/src/taxonomy.ts` or be listed in its excluded tags; a content test fails
   otherwise.
 - Quiz questions are YAML arrays under `packages/content/quiz/<topic>/`; topics are declared in
-  `quiz/topics.yaml`.
+  `quiz/topics.yaml` (in study order). `quiz/roadmap.yaml` groups each topic's subtopics into the
+  roadmap's study areas, with prerequisites between areas of the same topic. Every subtopic a
+  question uses must be on exactly one area of its topic (and every listed subtopic must have
+  questions), so a question with a new subtopic fails the content check until it is placed
+  there.
 - After changing content: run the content check, then `pnpm db:seed`.
 
 ## Database

@@ -129,6 +129,51 @@ describe('seed', () => {
     expect(await h.db.select().from(quizAnswers)).toHaveLength(1);
   });
 
+  it('writes topic order and roadmaps; a broken roadmap keeps the stored one', async () => {
+    writeFileSync(
+      join(root, 'quiz', 'topics.yaml'),
+      '- { slug: cpp, title: C++, description: d }\n- { slug: py, title: Python, description: d }\n',
+    );
+    const file = join(root, 'quiz', 'roadmap.yaml');
+    writeFileSync(file, 'cpp:\n  - { id: cpp-s, title: S, description: d, subtopics: [s] }\n');
+    try {
+      const report = await seed(h.db, { root });
+      expect(report.skipped.map((s) => s.where)).not.toContain('quiz/roadmap.yaml');
+      const rows = await h.db
+        .select({
+          slug: quizTopics.slug,
+          position: quizTopics.position,
+          roadmap: quizTopics.roadmap,
+        })
+        .from(quizTopics)
+        .orderBy(quizTopics.position);
+      expect(rows).toEqual([
+        {
+          slug: 'cpp',
+          position: 0,
+          roadmap: [{ id: 'cpp-s', title: 'S', description: 'd', subtopics: ['s'], requires: [] }],
+        },
+        { slug: 'py', position: 1, roadmap: [] },
+      ]);
+
+      // A cycle: reported, and the roadmap already stored stays.
+      writeFileSync(
+        file,
+        'cpp:\n  - { id: cpp-s, title: S, description: d, subtopics: [s], requires: [cpp-s] }\n',
+      );
+      const broken = await seed(h.db, { root });
+      expect(broken.skipped.map((s) => s.where)).toContain('quiz/roadmap.yaml');
+      const [cpp] = await h.db.select().from(quizTopics).where(eq(quizTopics.slug, 'cpp'));
+      expect(cpp?.roadmap.map((n) => n.id)).toEqual(['cpp-s']);
+    } finally {
+      rmSync(file, { force: true });
+      writeFileSync(
+        join(root, 'quiz', 'topics.yaml'),
+        '- { slug: cpp, title: C++, description: d }\n',
+      );
+    }
+  });
+
   it('seeds the real content twice with identical row counts', async () => {
     // Snapshot first: content is being edited concurrently.
     const snap = mkdtempSync(join(tmpdir(), 'ipp-content-'));

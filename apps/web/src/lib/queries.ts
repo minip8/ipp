@@ -16,6 +16,7 @@ export const qk = {
   report: (id: string) => ['report', id] as const,
   playback: (id: string) => ['playback', id] as const,
   quizTopics: ['quiz', 'topics'] as const,
+  quizRoadmap: ['quiz', 'roadmap'] as const,
   attempts: ['quiz', 'attempts'] as const,
   attempt: (id: string) => ['quiz', 'attempt', id] as const,
   quizBank: (topic: string) => ['quiz', 'bank', topic] as const,

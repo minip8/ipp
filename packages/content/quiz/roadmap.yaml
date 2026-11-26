@@ -1,0 +1,412 @@
+# The quiz roadmap: per topic, the study areas drawn as a graph on the Quizzes page.
+#
+# Each node groups one or more question subtopics (the exact `subtopic` strings of the questions)
+# and `requires` the nodes of the same topic worth learning first. Prerequisites are advice; the
+# site never locks a node. Keep each graph readable: direct prerequisites only (leave out what
+# follows from them), and a title short enough for a node (28 characters at most).
+#
+# Every subtopic used by a question must be on exactly one node of its topic, and every subtopic
+# listed here must have questions: `pnpm --filter @ipp/content check` and the content tests fail
+# otherwise. So a question with a new subtopic needs a place here before it ships.
+
+cpp:
+  - id: cpp-initialization
+    title: Initialization
+    description: The many forms of initialization, what each one does, and the defaults you get.
+    subtopics: [Initialization]
+  - id: cpp-conversions
+    title: Conversions and const
+    description: Integer promotions, implicit conversions and where const really applies.
+    subtopics: [Integer promotions and conversions, const-correctness]
+  - id: cpp-object-lifetime
+    title: Object lifetime
+    description: Construction, destruction, RAII and the special member functions.
+    subtopics: [Object lifetime and special member functions]
+    requires: [cpp-initialization]
+  - id: cpp-undefined-behaviour
+    title: Undefined behaviour
+    description: What the standard leaves undefined or unspecified, and how it bites.
+    subtopics: [Undefined and unspecified behaviour]
+    requires: [cpp-initialization, cpp-conversions]
+  - id: cpp-overloading
+    title: Overloading and lookup
+    description: How a call picks its function, from name lookup to overload ranking.
+    subtopics: [Overload resolution and name lookup]
+    requires: [cpp-conversions]
+  - id: cpp-move-semantics
+    title: Move semantics
+    description: Value categories, rvalue references, std::move and what a moved-from object is.
+    subtopics: [Value categories and move semantics]
+    requires: [cpp-object-lifetime]
+  - id: cpp-virtual-dispatch
+    title: Virtual dispatch
+    description: Inheritance, vtables, slicing and the object model behind them.
+    subtopics: [Virtual dispatch and the object model]
+    requires: [cpp-object-lifetime]
+  - id: cpp-templates
+    title: Templates and constexpr
+    description: Deduction, SFINAE, concepts and evaluating code at compile time.
+    subtopics: ["Templates, deduction, SFINAE and concepts", constexpr and compile-time evaluation]
+    requires: [cpp-overloading]
+  - id: cpp-build-model
+    title: Build model and ODR
+    description: Translation units, linkage, the One Definition Rule and what the linker sees.
+    subtopics: ["Build model, ODR and linkage"]
+    requires: [cpp-overloading]
+  - id: cpp-ownership
+    title: Ownership and exceptions
+    description: Smart pointers, who owns what, and code that stays correct when something throws.
+    subtopics: [Smart pointers and ownership, Exceptions and noexcept]
+    requires: [cpp-move-semantics]
+  - id: cpp-containers
+    title: Containers and strings
+    description: Standard containers, iterator invalidation, std::string and string_view.
+    subtopics: [Containers and iterators, Strings and string_view]
+    requires: [cpp-move-semantics, cpp-templates]
+  - id: cpp-lambdas-algorithms
+    title: Lambdas and algorithms
+    description: Closures and captures, the standard algorithms and ranges.
+    subtopics: [Lambdas and closures, Algorithms and ranges]
+    requires: [cpp-containers]
+  - id: cpp-modern
+    title: Modern C++
+    description: What C++17, C++20 and C++23 added, from optional and variant to coroutines.
+    subtopics: ["C++17, C++20 and C++23 features"]
+    requires: [cpp-containers]
+  - id: cpp-memory-performance
+    title: Memory and performance
+    description: Alignment, allocation and the idioms that make C++ fast.
+    subtopics: ["Memory, alignment and allocation", Performance idioms]
+    requires: [cpp-ownership, cpp-containers]
+  - id: cpp-concurrency
+    title: Concurrency
+    description: Threads, atomics and the C++ memory model.
+    subtopics: [Concurrency and the memory model]
+    requires: [cpp-undefined-behaviour, cpp-lambdas-algorithms]
+
+python:
+  - id: py-numbers-strings
+    title: Numbers and strings
+    description: Integers, floats, text and bytes, and the surprises in each.
+    subtopics: [Numbers, Strings and bytes]
+  - id: py-scope-imports
+    title: Scope and imports
+    description: How names are bound and looked up, and how modules and packages are loaded.
+    subtopics: [Names and scope, Import system, Modules, Packages]
+  - id: py-mutability
+    title: Mutability and identity
+    description: Names as references, aliasing, copying, and is versus ==.
+    subtopics: [Mutability and aliasing, Identity and equality, Copying]
+  - id: py-functions
+    title: Functions and closures
+    description: Parameters, default arguments, closures, late binding and decorators.
+    subtopics: [Functions, Parameters, Default arguments, Closures and late binding, Decorators]
+    requires: [py-scope-imports, py-mutability]
+  - id: py-containers
+    title: Containers and hashing
+    description: Lists, dicts and sets, what makes a key hashable, and what operations cost.
+    subtopics: [Containers, Dicts, Hashing and ordering, Complexity]
+    requires: [py-numbers-strings, py-mutability]
+  - id: py-iteration
+    title: Iterators and generators
+    description: The iteration protocol, generators and comprehensions.
+    subtopics: [Iteration protocol, Iterators, Generators, Comprehensions]
+    requires: [py-functions, py-containers]
+  - id: py-classes
+    title: Classes
+    description: Class and instance attributes, inheritance and the MRO, ABCs and dataclasses.
+    subtopics: [Class and instance attributes, MRO and super, Abstract base classes, Dataclasses]
+    requires: [py-functions]
+  - id: py-exceptions
+    title: Exceptions
+    description: Raising and handling, chaining, exception groups and context managers.
+    subtopics: [Exceptions, Exception chaining, Exception groups, Context managers]
+    requires: [py-functions]
+  - id: py-data-model
+    title: Data model
+    description: Special methods, operator dispatch, attribute access and object creation.
+    subtopics: [Data model, Operator dispatch, Attribute access, Object creation]
+    requires: [py-classes]
+  - id: py-stdlib
+    title: Standard library
+    description: collections, functools, itertools, heapq, bisect and sorting.
+    subtopics: [collections, functools, itertools, heapq, bisect, Sorting, Performance]
+    requires: [py-iteration]
+  - id: py-concurrency
+    title: Concurrency and asyncio
+    description: The GIL, threads, processes, free-threading and asyncio.
+    subtopics: [GIL, Threading, Multiprocessing, Free-threading, Concurrency models, asyncio]
+    requires: [py-iteration, py-exceptions]
+  - id: py-typing
+    title: Type hints
+    description: Annotations, generics and variance, and protocols.
+    subtopics: [Type hints, Annotations, Generics and variance, Protocols]
+    requires: [py-classes]
+  - id: py-descriptors
+    title: Descriptors and metaclasses
+    description: Properties, bound methods, __slots__, descriptors and how classes are made.
+    subtopics: [Descriptors, Properties, Bound methods, __slots__, Metaclasses, Class creation]
+    requires: [py-data-model]
+  - id: py-memory
+    title: Memory and GC
+    description: Reference counting, the cycle collector and weak references.
+    subtopics: [Memory management, Garbage collection, Weak references]
+    requires: [py-data-model]
+
+computer-architecture:
+  - id: ca-data-representation
+    title: Data representation
+    description: Integers, two's complement, floating point, endianness and layout in memory.
+    subtopics: [Data representation]
+  - id: ca-latency-numbers
+    title: Latency numbers
+    description: The orders of magnitude every engineer should know, from a register to a disk.
+    subtopics: [Numbers every engineer should know]
+  - id: ca-instruction-sets
+    title: Instruction sets
+    description: What an ISA defines, and how calling conventions pass arguments and results.
+    subtopics: [Instruction sets and calling conventions]
+    requires: [ca-data-representation]
+  - id: ca-memory-hierarchy
+    title: Memory hierarchy
+    description: Registers to DRAM, virtual memory and TLBs, and memory bandwidth.
+    subtopics: [Memory hierarchy and TLBs, DRAM and bandwidth]
+    requires: [ca-latency-numbers]
+  - id: ca-pipelines
+    title: Pipelines and branches
+    description: Pipelining, hazards and how branch prediction keeps the pipeline full.
+    subtopics: [Pipelining and hazards, Branch prediction]
+    requires: [ca-instruction-sets]
+  - id: ca-simd
+    title: SIMD
+    description: Vector instructions, and writing code the compiler can vectorise.
+    subtopics: [SIMD]
+    requires: [ca-instruction-sets]
+  - id: ca-caches
+    title: Caches
+    description: Lines, associativity, replacement, write policies and access patterns.
+    subtopics: [Caches]
+    requires: [ca-memory-hierarchy]
+  - id: ca-storage
+    title: Storage and I/O
+    description: SSDs, disks, DMA and the cost of getting data in and out.
+    subtopics: [Storage and I/O]
+    requires: [ca-memory-hierarchy]
+  - id: ca-out-of-order
+    title: Out-of-order execution
+    description: Instruction-level parallelism, reordering and speculative execution.
+    subtopics: [Out-of-order and speculative execution, Instruction-level parallelism]
+    requires: [ca-pipelines]
+  - id: ca-multicore
+    title: Multicore, SMT and NUMA
+    description: Many cores, hardware threads, and memory that is nearer to some cores.
+    subtopics: [Multicore and SMT, NUMA]
+    requires: [ca-caches]
+  - id: ca-coherence
+    title: Coherence and ordering
+    description: Keeping caches coherent, and the memory orderings hardware provides.
+    subtopics: [Cache coherence and memory ordering]
+    requires: [ca-multicore]
+  - id: ca-performance
+    title: Performance analysis
+    description: Measuring, profiling and reasoning about where the time goes.
+    subtopics: [Performance analysis]
+    requires: [ca-out-of-order, ca-caches]
+
+operating-systems:
+  - id: os-kernel
+    title: Kernel and system calls
+    description: User and kernel mode, system calls, interrupts and how a machine boots.
+    subtopics: [System calls, Interrupts and exceptions, Booting, I/O devices and drivers]
+  - id: os-processes
+    title: Processes and threads
+    description: What a process and a thread are, and a process's life from start to exit.
+    subtopics: [Processes and threads, Process lifecycle]
+    requires: [os-kernel]
+  - id: os-virtual-memory
+    title: Virtual memory
+    description: Address spaces, paging, page faults, mmap, overcommit and the OOM killer.
+    subtopics: [Virtual memory, Overcommit and OOM]
+    requires: [os-kernel]
+  - id: os-process-control
+    title: fork, exec and signals
+    description: Creating processes with copy-on-write, replacing their image, and signals.
+    subtopics: [fork and exec, Signals, Signals and system calls]
+    requires: [os-processes, os-virtual-memory]
+  - id: os-files
+    title: File descriptors and I/O
+    description: A process's descriptors, reads and writes, buffering and non-blocking I/O.
+    subtopics: [File descriptors and I/O]
+    requires: [os-processes]
+  - id: os-scheduling
+    title: Scheduling
+    description: How the scheduler shares the CPUs, real-time policies and tuning for latency.
+    subtopics: [Scheduling, Real-time scheduling, Low-latency tuning]
+    requires: [os-processes]
+  - id: os-allocators
+    title: Memory allocators
+    description: malloc and free, fragmentation, and allocators built on the virtual memory system.
+    subtopics: [Memory allocators]
+    requires: [os-virtual-memory]
+  - id: os-ipc
+    title: IPC and kernel locks
+    description: Pipes, shared memory and sockets between processes, and locking in the kernel.
+    subtopics: [IPC, Kernel synchronization and deadlock]
+    requires: [os-process-control, os-files]
+  - id: os-file-systems
+    title: File systems
+    description: Inodes, directories, links, the page cache and keeping data durable.
+    subtopics: [File systems]
+    requires: [os-files]
+  - id: os-linking
+    title: Linking and loading
+    description: Static and dynamic linking, and how exec turns a file into a running program.
+    subtopics: [Linking and loading]
+    requires: [os-process-control]
+  - id: os-containers
+    title: Containers and VMs
+    description: Namespaces, cgroups and what separates a container from a virtual machine.
+    subtopics: [Containers and virtualization]
+    requires: [os-file-systems]
+  - id: os-practical-linux
+    title: Practical Linux
+    description: Finding out what a live system is doing, with the tools at hand.
+    subtopics: [Practical Linux]
+    requires: [os-ipc]
+
+concurrency:
+  - id: cc-threads
+    title: Threads and processes
+    description: Concurrency versus parallelism, a thread's life, and what limits scaling.
+    subtopics: [Threads and processes, Concurrency vs parallelism, Thread lifecycle, Thread-local storage]
+  - id: cc-races
+    title: Races and thread safety
+    description: Data races and race conditions, critical sections and what thread-safe means.
+    subtopics: [Data races, Races, Critical sections, Thread safety, Signals and reentrancy, Testing concurrent code]
+    requires: [cc-threads]
+  - id: cc-mutexes
+    title: Mutexes and locks
+    description: Mutexes, spinlocks, reader-writer locks, one-time initialisation and priority inversion.
+    subtopics: [Mutexes, Spinlocks, Reader-writer locks, One-time initialisation, Priority inversion]
+    requires: [cc-races]
+  - id: cc-atomics
+    title: Atomics and CAS
+    description: Atomic operations, compare-and-swap, and why volatile is not one of them.
+    subtopics: [Atomics, Compare-and-swap, volatile]
+    requires: [cc-races]
+  - id: cc-python
+    title: Python threads and the GIL
+    description: What the GIL does and does not protect, threads and processes in Python.
+    subtopics: [Python GIL, Python threading, Python concurrency models, Processes]
+    requires: [cc-races]
+  - id: cc-deadlock
+    title: Deadlock and liveness
+    description: The conditions for deadlock, avoiding it, and livelock and starvation.
+    subtopics: [Deadlock, Livelock and starvation]
+    requires: [cc-mutexes]
+  - id: cc-condition-variables
+    title: Condition variables
+    description: Waiting for a condition, monitors, semaphores, latches and barriers.
+    subtopics: [Condition variables, Monitors, Semaphores, Latches and barriers]
+    requires: [cc-mutexes]
+  - id: cc-memory-ordering
+    title: Memory ordering
+    description: Happens-before, acquire and release, fences and hardware memory models.
+    subtopics: [Memory ordering, Happens-before, Fences, Hardware memory models, Java memory model]
+    requires: [cc-atomics]
+  - id: cc-classic-problems
+    title: Classic problems
+    description: Producer-consumer, readers-writers and the dining philosophers.
+    subtopics: [Producer-consumer, Readers-writers, Dining philosophers]
+    requires: [cc-condition-variables, cc-deadlock]
+  - id: cc-pools-futures
+    title: Pools and futures
+    description: Thread pools, work stealing, futures and promises.
+    subtopics: [Thread pools, Work stealing, Futures and async]
+    requires: [cc-condition-variables]
+  - id: cc-lock-free
+    title: Lock-free structures
+    description: Progress guarantees, ring buffers, ABA, memory reclamation, RCU and seqlocks.
+    subtopics: [Lock-free structures, Progress guarantees, Ring buffers, ABA problem, Memory reclamation, RCU, Seqlocks, Correctness criteria, Lock-free performance]
+    requires: [cc-memory-ordering]
+  - id: cc-scaling
+    title: Scaling and contention
+    description: Amdahl's law, contended locks and atomics, false sharing and cache coherence.
+    subtopics: [Scaling, Contention, False sharing, Cache coherence]
+    requires: [cc-mutexes, cc-atomics]
+  - id: cc-event-loops
+    title: Event loops and coroutines
+    description: Event loops, green threads and coroutines, and when they beat threads.
+    subtopics: [Event loops, Coroutines]
+    requires: [cc-pools-futures]
+  - id: cc-asyncio
+    title: asyncio
+    description: Tasks, cancellation and the traps of Python's event loop.
+    subtopics: [asyncio]
+    requires: [cc-event-loops]
+
+networking:
+  - id: net-link-layer
+    title: Layers and Ethernet
+    description: The layered model, Ethernet frames, switching, ARP and VLANs.
+    subtopics: [Layered model, Ethernet and switching, ARP, VLANs]
+  - id: net-ip
+    title: IP and subnetting
+    description: IPv4 and IPv6 addresses, prefixes and subnet arithmetic.
+    subtopics: [IP addressing, Subnetting, IPv6]
+    requires: [net-link-layer]
+  - id: net-routing
+    title: Routing and NAT
+    description: How routers forward packets, ICMP and path MTU discovery, and NAT.
+    subtopics: [Routing, NAT, ICMP and PMTUD]
+    requires: [net-ip]
+  - id: net-transport
+    title: TCP and UDP
+    description: UDP, and a TCP connection from handshake to close.
+    subtopics: [UDP, TCP vs UDP, TCP connection lifecycle, TCP keepalive]
+    requires: [net-ip]
+  - id: net-tcp-performance
+    title: TCP performance
+    description: Flow and congestion control, retransmission, Nagle and head-of-line blocking.
+    subtopics: [TCP flow and congestion control, TCP retransmission, Nagle and delayed ACK, Head-of-line blocking]
+    requires: [net-transport]
+  - id: net-dns
+    title: DNS
+    description: Resolution, record types, caching and TTLs.
+    subtopics: [DNS]
+    requires: [net-transport]
+  - id: net-tls
+    title: TLS
+    description: Handshakes, certificates and what TLS does and does not protect.
+    subtopics: [TLS]
+    requires: [net-transport]
+  - id: net-sockets
+    title: Sockets API
+    description: The sockets API and its options, and multiplexing many connections.
+    subtopics: [Sockets API and options, I/O multiplexing]
+    requires: [net-tcp-performance]
+  - id: net-http
+    title: HTTP
+    description: Methods, status codes, caching, HTTP/1.1 connections and WebSockets.
+    subtopics: [HTTP semantics, HTTP/1.1, WebSockets]
+    requires: [net-dns, net-tls]
+  - id: net-http2-quic
+    title: HTTP/2 and QUIC
+    description: Multiplexed streams, and HTTP/3 over QUIC.
+    subtopics: [HTTP/2, HTTP/3 and QUIC]
+    requires: [net-http]
+  - id: net-load-balancing
+    title: Load balancers and CDNs
+    description: Layer 4 and layer 7 load balancing, proxies and content delivery networks.
+    subtopics: [Load balancing and proxies, CDNs]
+    requires: [net-http]
+  - id: net-low-latency
+    title: Multicast and low latency
+    description: Multicast, market data feeds and kernel bypass.
+    subtopics: [Multicast, Market data, Kernel bypass and low latency]
+    requires: [net-sockets]
+  - id: net-debugging
+    title: Debugging end to end
+    description: What happens when you type a URL, and the tools that show each step.
+    subtopics: [Debugging tools, What happens when you type a URL]
+    requires: [net-http, net-sockets]

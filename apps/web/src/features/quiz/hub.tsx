@@ -40,9 +40,10 @@ import {
   questionsFor,
   SETUP_STORAGE_KEY,
 } from './logic';
+import { QuizRoadmap } from './roadmap';
 
-/** The page's two views; the first is the default and keeps `?view=` out of the URL. */
-const VIEWS = ['start', 'history'] as const;
+/** The page's views; the first is the default and keeps `?view=` out of the URL. */
+const VIEWS = ['start', 'roadmap', 'history'] as const;
 
 /** Phones: segmented controls at a size a finger can hit (desktop keeps the compact size). */
 const TOUCH_SEGMENTS = 'max-sm:[&>*]:h-9';
@@ -442,6 +443,7 @@ export function QuizHub() {
         onValueChange={setView}
         tabs={[
           { value: 'start', label: 'Start a quiz' },
+          { value: 'roadmap', label: 'Roadmap' },
           { value: 'history', label: 'History', count: attempts.data?.length ?? null },
         ]}
       >
@@ -483,6 +485,9 @@ export function QuizHub() {
               )}
             </div>
           </div>
+        </PageTabPanel>
+        <PageTabPanel value="roadmap" className="mt-5">
+          <QuizRoadmap />
         </PageTabPanel>
         <PageTabPanel value="history" className="mt-5">
           <HistoryList topics={topics.data ?? []} />

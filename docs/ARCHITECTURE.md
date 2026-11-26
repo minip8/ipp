@@ -70,7 +70,7 @@ Better Auth owns `user`, `session`, `account`, `verification` (text ids). App ta
 | `timeline_events` | id, pad_id, at, event jsonb |
 | `runs` | id, pad_id, user_id, problem_slug (the pad's problem when queued), mode, language, source, status, verdict, result jsonb (full `JudgeResult`), hidden_ids text[], created_at, finished_at |
 | `reports` | pad_id pk, status, stats jsonb, assessment jsonb, generated_at |
-| `quiz_topics` | slug pk, title, description |
+| `quiz_topics` | slug pk, title, description, position (study order), roadmap jsonb (`QuizRoadmapNode[]`) |
 | `quiz_questions` | id pk (slug), topic, subtopic, difficulty, type, data jsonb (`QuizQuestion`) |
 | `quiz_attempts` | id, user_id, mode, topics, question_ids, transcript jsonb (discussion turns per question), status, score, started_at, finished_at |
 | `quiz_answers` | attempt_id, question_id, response jsonb, score, correct, feedback, graded_by, answered_at |
@@ -120,7 +120,8 @@ Every body is validated with the contracts schema named below.
 | `GET /api/runs/:id` | | `Run` |
 | `POST /api/ws-ticket` | `{ padId }` | `WsTicketResponse` |
 | `GET /api/quiz/topics` | | `QuizTopicStats[]` |
-| `POST /api/quiz/attempts` | `CreateAttemptRequest` | `QuizAttempt` |
+| `GET /api/quiz/roadmap` | | `QuizRoadmapTopic[]` (topics in study order, each node with the caller's progress per node and subtopic) |
+| `POST /api/quiz/attempts` | `CreateAttemptRequest` (optional `nodes` narrows topics to roadmap nodes) | `QuizAttempt` |
 | `GET /api/quiz/attempts` | | `QuizAttemptSummary[]` |
 | `GET /api/quiz/attempts/:id` | | `QuizAttempt` |
 | `POST /api/quiz/attempts/:id/answers` | `SubmitAnswerRequest` | practice: `AnswerFeedback`; exam: `{ recorded: true }` |
@@ -463,6 +464,20 @@ on through the filtered bank from one subtopic into the next. Answering again
 replaces the previous standalone answer. Status, stats and selection all use the latest
 *countable* answer per question across standalone answers, practice and discussion answers and finished
 exams (a running exam never shows up).
+
+The roadmap (the Quizzes page's Roadmap view, `?view=roadmap&roadmap=<topic>&node=<id>`) draws each
+topic as a layered graph of study areas. `quiz/roadmap.yaml` maps each topic to its nodes
+(`QuizRoadmapNode`: id, short title, one-line description, the question `subtopics` it groups,
+and `requires`, the nodes of the same topic to learn first); the seed stores them on
+`quiz_topics.roadmap` and the study order (the order of `quiz/topics.yaml`) on `position`.
+`GET /api/quiz/roadmap` adds progress per node and subtopic from the same latest graded answers as
+the topic stats. An area is complete when every question is answered with a mean score of at
+least 0.7, and "next up" when it is not complete and everything it requires is; nothing is ever
+locked. "Practise" starts a practice attempt with `nodes: [id]`: the server checks each node is
+on the roadmap of a requested topic and narrows that topic's pool to the node's subtopics (other
+requested topics stay whole), then selects as usual. The web client lays the graph out itself
+(`features/quiz/roadmap-logic.ts`: longest-path layers, dummy lanes for long edges, barycentre
+ordering, a least-squares x placement) and sizes it to the container, compact on phones.
 
 ## 9. Security checklist
 

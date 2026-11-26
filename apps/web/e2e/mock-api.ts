@@ -30,6 +30,7 @@ import {
   type PadDetail,
   type PadSummary,
   QuizAttempt,
+  type QuizRoadmapTopic,
   ReviewRequest,
   type Run,
   ServerEvent,
@@ -69,6 +70,7 @@ import {
   USER,
   uuid,
 } from './fixtures';
+import { QUIZ_ROADMAP } from './fixtures-quiz-roadmap';
 import { MockQuizBank } from './mock-quiz-bank';
 
 type RunScript = (id: string, mode: Run['mode']) => Run;
@@ -115,6 +117,8 @@ export class MockBackend {
   quizMode: 'practice' | 'exam' = 'practice';
   /** Question bank state (answers given outside attempts). */
   quizBank = new MockQuizBank();
+  /** GET /api/quiz/roadmap (QUIZ_ROADMAP_FRESH for a first visit). */
+  quizRoadmap: QuizRoadmapTopic[] = QUIZ_ROADMAP;
 
   constructor() {
     this.pads.set(ACTIVE_PAD_ID, makePadDetail());
@@ -627,11 +631,20 @@ export class MockBackend {
 
     // quizzes
     if (path === '/api/quiz/topics') return QUIZ_TOPICS;
+    if (path === '/api/quiz/roadmap') return this.quizRoadmap;
     const bank = this.quizBank.handle(method, path, body, this.aiKey.state === 'active');
     if (bank !== undefined) return bank;
     if (path === '/api/quiz/attempts' && method === 'GET') return QUIZ_HISTORY;
     if (path === '/api/quiz/attempts' && method === 'POST') {
       const req = CreateAttemptRequest.parse(body);
+      // As on the server: every node must be on the roadmap of one of the topics.
+      const onTopics = new Set(
+        this.quizRoadmap
+          .filter((t) => req.topics.includes(t.slug))
+          .flatMap((t) => t.nodes.map((x) => x.id)),
+      );
+      if (req.nodes?.some((id) => !onTopics.has(id)))
+        return this.status(400, 'unknown_node', 'Unknown roadmap node for these topics');
       const a = makeAttempt({
         id: uuid(),
         mode: req.mode,

@@ -114,6 +114,12 @@ export const CreateAttemptRequest = z.object({
   mode: QuizMode.default('practice'),
   /** Prefer questions the user has missed or never seen. */
   focusWeak: z.boolean().default(true),
+  /**
+   * Roadmap nodes (`QuizRoadmapNode.id`) to narrow the topics to: each must be on the roadmap of
+   * one of `topics`, and narrows that topic to its subtopics. A topic none of them is on is taken
+   * whole, as is every topic when this is absent.
+   */
+  nodes: z.array(Slug).min(1).max(20).optional(),
 });
 export type CreateAttemptRequest = z.infer<typeof CreateAttemptRequest>;
 
@@ -246,3 +252,59 @@ export type QuizBankQuestion = z.infer<typeof QuizBankQuestion>;
 /** `POST /api/quiz/questions/:id/answers`: answer outside any attempt; returns `AnswerFeedback`. */
 export const SubmitStandaloneAnswerRequest = z.object({ response: QuizResponse });
 export type SubmitStandaloneAnswerRequest = z.infer<typeof SubmitStandaloneAnswerRequest>;
+
+// ---------------------------------------------------------------- roadmap (study areas per topic)
+
+/** A node's title is drawn inside a box on the roadmap, so it stays short. */
+export const ROADMAP_TITLE_MAX = 28;
+
+/**
+ * One study area on a topic's roadmap (authored in `packages/content/quiz/roadmap.yaml`). It
+ * groups one or more question subtopics; `requires` names the nodes of the same topic worth
+ * learning first. Prerequisites are advice: nothing is ever locked.
+ */
+export const QuizRoadmapNode = z.object({
+  /** Globally unique, e.g. "cpp-move-semantics". */
+  id: Slug,
+  title: z.string().trim().min(1).max(ROADMAP_TITLE_MAX),
+  /** One line: what the area covers. */
+  description: z.string().trim().min(1).max(200),
+  /** Exactly the `subtopic` strings of the questions this node covers. */
+  subtopics: z.array(z.string().min(1)).min(1),
+  requires: z.array(Slug).default([]),
+});
+export type QuizRoadmapNode = z.infer<typeof QuizRoadmapNode>;
+
+/** The authoring format: topic slug -> that topic's nodes. */
+export const QuizRoadmapFile = z.record(Slug, z.array(QuizRoadmapNode).min(1));
+export type QuizRoadmapFile = z.infer<typeof QuizRoadmapFile>;
+
+/**
+ * The signed-in user's progress over some questions, from their latest graded answer to each
+ * (the same answers the topic stats count; a short answer waiting for a self-grade is not one).
+ */
+export const QuizProgress = z.object({
+  questionCount: z.int(),
+  /** how many of them are open (`short`) questions, answered in a discussion or the bank */
+  shortCount: z.int(),
+  answered: z.int(),
+  /** answered questions whose latest answer counts as correct */
+  correct: z.int(),
+  /** 0..1, mean score over the answered questions; null if none */
+  accuracy: z.number().nullable(),
+});
+export type QuizProgress = z.infer<typeof QuizProgress>;
+
+export const QuizRoadmapSubtopic = QuizProgress.extend({ subtopic: z.string() });
+export type QuizRoadmapSubtopic = z.infer<typeof QuizRoadmapSubtopic>;
+
+export const QuizRoadmapNodeProgress = QuizRoadmapNode.extend({
+  subtopics: z.array(QuizRoadmapSubtopic),
+}).extend(QuizProgress.shape);
+export type QuizRoadmapNodeProgress = z.infer<typeof QuizRoadmapNodeProgress>;
+
+/** `GET /api/quiz/roadmap`: every topic in study order, with its nodes and the caller's progress. */
+export const QuizRoadmapTopic = QuizTopic.extend(QuizProgress.shape).extend({
+  nodes: z.array(QuizRoadmapNodeProgress),
+});
+export type QuizRoadmapTopic = z.infer<typeof QuizRoadmapTopic>;

@@ -4,10 +4,19 @@
  * Tolerant by design: content is authored in parallel, so an invalid problem or quiz question is
  * skipped (and reported) instead of aborting the whole seed. Removing something from content never
  * deletes rows that other rows reference: problems and questions are marked inactive instead.
+ * A roadmap that does not load leaves every topic's stored roadmap as it was.
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { CONTENT_ROOT, listProblemSlugs, loadProblem, loadQuizTopics } from '@ipp/content';
+import {
+  CONTENT_ROOT,
+  listProblemSlugs,
+  loadProblem,
+  loadQuizRoadmap,
+  loadQuizTopics,
+  type QuizRoadmap,
+  ROADMAP_FILE,
+} from '@ipp/content';
 import { type ProblemContent, QuizQuestion, type QuizTopic } from '@ipp/contracts';
 import { and, eq, notInArray, sql } from 'drizzle-orm';
 import { parse as parseYaml } from 'yaml';
@@ -120,6 +129,12 @@ export async function seed(db: Db, opts: SeedOptions = {}): Promise<SeedReport> 
     skipped.push({ where: 'quiz/topics.yaml', error: firstLine(e) });
   }
   const questions = loadQuestionsTolerant(root, new Set(topics.map((t) => t.slug)), skipped);
+  let roadmap: QuizRoadmap | null = null;
+  try {
+    roadmap = loadQuizRoadmap(root);
+  } catch (e) {
+    skipped.push({ where: ROADMAP_FILE, error: firstLine(e) });
+  }
 
   await db.transaction(async (tx) => {
     // Serialize concurrent seeds (e.g. two test workers) on one advisory lock.
@@ -164,14 +179,17 @@ export async function seed(db: Db, opts: SeedOptions = {}): Promise<SeedReport> 
         .where(slugs.length ? notInArray(problems.slug, slugs) : sql`true`);
     }
 
-    for (const t of topics) {
+    for (const [position, t] of topics.entries()) {
+      const set = {
+        title: t.title,
+        description: t.description,
+        position,
+        ...(roadmap ? { roadmap: roadmap[t.slug] ?? [] } : {}),
+      };
       await tx
         .insert(quizTopics)
-        .values(t)
-        .onConflictDoUpdate({
-          target: quizTopics.slug,
-          set: { title: t.title, description: t.description },
-        });
+        .values({ slug: t.slug, ...set })
+        .onConflictDoUpdate({ target: quizTopics.slug, set });
     }
     // Batched upsert: content has on the order of a thousand questions.
     for (let i = 0; i < questions.length; i += 200) {
@@ -199,7 +217,8 @@ export async function seed(db: Db, opts: SeedOptions = {}): Promise<SeedReport> 
           },
         });
     }
-    const brokenQuiz = skipped.some((s) => s.where.startsWith('quiz/'));
+    // The roadmap has no say in which questions exist.
+    const brokenQuiz = skipped.some((s) => s.where.startsWith('quiz/') && s.where !== ROADMAP_FILE);
     if (!brokenQuiz) {
       const ids = questions.map((q) => q.id);
       await tx

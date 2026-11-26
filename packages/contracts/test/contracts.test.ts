@@ -198,3 +198,57 @@ describe('AI key requests', () => {
     ).toBeNull();
   });
 });
+
+describe('quiz roadmap', () => {
+  it('authoring: requires defaults to none, titles stay short', async () => {
+    const { QuizRoadmapFile, QuizRoadmapNode, ROADMAP_TITLE_MAX } = await import('../src');
+    const n = QuizRoadmapNode.parse({
+      id: 'cpp-move-semantics',
+      title: 'Move semantics',
+      description: 'd',
+      subtopics: ['Value categories and move semantics'],
+    });
+    expect(n.requires).toEqual([]);
+    const long = { ...n, title: 'x'.repeat(ROADMAP_TITLE_MAX + 1) };
+    expect(QuizRoadmapNode.safeParse(long).success).toBe(false);
+    expect(QuizRoadmapNode.safeParse({ ...n, subtopics: [] }).success).toBe(false);
+    expect(QuizRoadmapNode.safeParse({ ...n, id: 'Not a slug' }).success).toBe(false);
+    expect(QuizRoadmapFile.safeParse({ cpp: [n] }).success).toBe(true);
+    expect(QuizRoadmapFile.safeParse({ cpp: [] }).success).toBe(false);
+  });
+
+  it('the API shape: progress on the topic, each node and each subtopic', async () => {
+    const { QuizRoadmapTopic } = await import('../src');
+    const progress = { questionCount: 4, shortCount: 1, answered: 2, correct: 1, accuracy: 0.5 };
+    const topic = {
+      slug: 'cpp',
+      title: 'C++',
+      description: 'd',
+      ...progress,
+      nodes: [
+        {
+          id: 'cpp-a',
+          title: 'A',
+          description: 'd',
+          requires: [],
+          subtopics: [{ subtopic: 's', ...progress }],
+          ...progress,
+        },
+      ],
+    };
+    expect(QuizRoadmapTopic.parse(topic)).toEqual(topic);
+    const { accuracy: _, ...noAccuracy } = progress;
+    expect(
+      QuizRoadmapTopic.safeParse({ ...topic, ...noAccuracy, accuracy: undefined }).success,
+    ).toBe(false);
+  });
+
+  it('an attempt may be narrowed to roadmap nodes', async () => {
+    const { CreateAttemptRequest } = await import('../src');
+    expect(CreateAttemptRequest.parse({ topics: ['cpp'], nodes: ['cpp-a'] }).nodes).toEqual([
+      'cpp-a',
+    ]);
+    expect(CreateAttemptRequest.parse({ topics: ['cpp'] }).nodes).toBeUndefined();
+    expect(CreateAttemptRequest.safeParse({ topics: ['cpp'], nodes: [] }).success).toBe(false);
+  });
+});

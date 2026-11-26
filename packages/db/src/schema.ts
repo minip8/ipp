@@ -14,6 +14,7 @@ import type {
   ProblemSignature,
   QuizQuestion,
   QuizResponse,
+  QuizRoadmapNode,
   Report,
   ReportAssessment,
   TestCase,
@@ -329,6 +330,10 @@ export const quizTopics = pgTable('quiz_topics', {
   slug: text('slug').primaryKey(),
   title: text('title').notNull(),
   description: text('description').notNull(),
+  /** Study order (the order of quiz/topics.yaml); the roadmap lists topics by it. */
+  position: integer('position').notNull().default(0),
+  /** The topic's study areas from quiz/roadmap.yaml; empty when it has none. */
+  roadmap: jsonb('roadmap').$type<QuizRoadmapNode[]>().notNull().default([]),
 });
 
 export const quizQuestions = pgTable(
