@@ -169,7 +169,10 @@
 
     So the result depends on the path. If the big moves happen while the stock is far from the strike
     (low gamma) and the stock is quiet while it sits near the strike, you can lose even though realised
-    volatility over the whole period was 25%. Daily rather than continuous hedging adds further noise.
+    volatility over the whole period was 25%. For example, a steady climb from 100 to 130 over the
+    first month (small daily moves while the option is near the money) followed by daily swings of
+    about 2% around 130 realises about 25%, yet the hedged option loses money. Daily rather than
+    continuous hedging adds further noise.
     With realised equal to 25% spread evenly, you make roughly the difference between the option's
     value at 25% and at 20%.
 

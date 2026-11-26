@@ -190,8 +190,8 @@
     price, on a stock that pays no dividends, with interest rate $r \ge 0$ and volatility $\sigma > 0$?
   choices:
     - { id: a, text: "Exactly 0.5" }
-    - { id: b, text: "Slightly above 0.5" }
-    - { id: c, text: "Slightly below 0.5" }
+    - { id: b, text: "Above 0.5" }
+    - { id: c, text: "Below 0.5" }
     - { id: d, text: "It depends on the stock's expected return" }
   answer: b
   explanation: |
@@ -200,7 +200,8 @@
     $$d_1 = \frac{\ln(S/K) + (r + \tfrac12\sigma^2)T}{\sigma\sqrt{T}} = \Big(\frac{r}{\sigma} + \frac{\sigma}{2}\Big)\sqrt{T} > 0$$
 
     when $S = K$, so delta is above one half. For a one-year option at 20% volatility and zero rates,
-    $d_1 = 0.1$ and delta is about 0.54.
+    $d_1 = 0.1$ and delta is about 0.54; it moves further above one half with higher rates and longer
+    expiries.
 
     Choice a is the rule of thumb, which is exact only in the limit of short expiry (or for a strike
     slightly above spot, where $d_1 = 0$). Choice c confuses delta with $N(d_2)$, the risk-neutral
