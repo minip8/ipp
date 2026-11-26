@@ -602,6 +602,10 @@ export class MockBackend {
       if (quant && rest === '/playback') return this.quant.playback(id) ?? undefined;
       if (quant && rest === '/runs' && method === 'POST')
         return this.status(409, 'wrong_format', 'A quant pad has no code to run');
+      if (rest === '/round/quote' && method === 'POST')
+        return quant
+          ? this.quant.quote(id, body, this.detail(pad).interviewerKey === 'active')
+          : this.status(409, 'wrong_format', 'Only a quant round has markets');
       const room = pad.pad.kind === 'room';
       const hostOnly = () => this.status(403, 'forbidden', 'Only the host of a room can do this');
       if (rest === '/host' || rest === '/host/notes' || rest === '/review' || rest === '/problem') {

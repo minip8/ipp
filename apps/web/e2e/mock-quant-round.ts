@@ -8,6 +8,9 @@
  *   GET  /api/pads/:id/playback   the scratchpad's history, question events and messages
  *   WS   on connect               round.updated to that socket alone
  *   WS   chat.send                the candidate's message, then the scripted interviewer's step
+ *   POST /api/pads/:id/round/quote  a market on the current game (§8.3): 200 with the round, or
+ *                                 409 with the round's refusal; the quote's message and
+ *                                 round.updated, then the scripted interviewer's answer
  *
  * Every change to a round goes through the contract's own `advanceRound`, as on the server, and
  * a step's events go out in the API's order: the interviewer's message, the revealed question,
@@ -15,24 +18,39 @@
  * gives the next hint, "follow…" the follow-up, "answer…" closes the question with a verdict,
  * "skip…" closes it without one; anything else stays on the question. Specs can also call the
  * steps directly (`hint`, `followUp`, `close`, `nudge`, `timeout`, `finish`).
+ *
+ * A trader round has the market-making game in its second slot unless `includeGame` is false (a
+ * researcher round only when it is true), as the API's assembler. The scripted interviewer answers
+ * each quote (`gameReply`): a market wider than 3 is sent back to be tightened (it stays live);
+ * otherwise it trades on the public fair value from `gameBooks`, the full size against a quote
+ * that is off fair and one lot otherwise, and on every second trade it also shows the next die.
+ * "reveal…" or "show…" in chat shows the next die at once (withdrawing a live quote). Specs can
+ * also make a move directly (`gameMove`).
  */
 import {
   type AiKeyStatus,
   advanceRound,
   CreateQuantPadRequest,
   createQuantRound,
+  formatGameNumber,
+  gameBooks,
+  gameSolution,
+  gameStats,
   type Message,
   type PadDetail,
   type PadSummary,
   Playback,
+  PostQuantQuoteRequest,
   publicRound,
   QUANT_PATH_INFO,
+  type QuantGameMove,
   type QuantPath,
   QuantQuestionReview,
   type QuantRoundState,
   type QuantRoundStep,
   type QuantRoundView,
   type QuantVerdict,
+  quantGameReview,
   quantQuestionCount,
   quantQuestionStatus,
   quantRoundEndsAt,
@@ -47,11 +65,16 @@ import * as Y from 'yjs';
 import { makeMessage, makePadDetail, uuid } from './fixtures';
 import {
   type BankQuestion,
+  GAME_LINES,
   LINES,
   QUANT_ENDED_PAD_ID,
   QUANT_ENDED_STARTED_AT,
+  QUANT_GAME_ENDED_PAD_ID,
+  QUANT_GAME_ENDED_STARTED_AT,
+  QUANT_GAME_PAD_ID,
   QUANT_PAD_ID,
   ROUND_BANK,
+  ROUND_GAMES,
   roundPicks,
   VERDICTS,
 } from './fixtures-quant-round';
@@ -69,7 +92,7 @@ type Round = {
   padId: string;
   state: QuantRoundState;
   version: number;
-  /** `question` and `ended` timeline events, for the playback. */
+  /** `question`, `game` and `ended` timeline events, for the playback. */
   timeline: TimelineEvent[];
   /** The scratchpad's history for the playback: [seconds since start, text appended]. */
   notes: [number, string][];
@@ -110,6 +133,10 @@ export class MockQuantRounds {
   broadcast: QuantRoundView[] = [];
   /** Every step tried, and whether the shared transition accepted it. */
   log: { step: QuantRoundStep; ok: boolean; reason?: string }[] = [];
+  /** How the scripted interviewer answers a quote: `auto` (see the module comment) or not at all. */
+  gameReply: 'auto' | 'off' = 'auto';
+  /** A market wider than this is sent back to be tightened. */
+  gameMaxWidth = 3;
 
   constructor(private host: QuantHost) {
     this.seedEnded();
@@ -121,6 +148,8 @@ export class MockQuantRounds {
       startedAt: new Date(Date.now() - 100_000).toISOString(),
       script: [{ at: 8, step: { type: 'start', version: 0, say: LINES.greeting } }],
     });
+    this.seedGame();
+    this.seedGameEnded();
   }
 
   // ---------------------------------------------------------------- pads
@@ -167,6 +196,8 @@ export class MockQuantRounds {
     script: ScriptLine[];
     endedAtSec?: number;
     voice?: boolean;
+    /** A market-making game in the second slot. */
+    game?: boolean;
   }): PadDetail {
     const detail = this.makeDetail({ ...o, interviewer: { voice: o.voice ?? false } });
     this.host.pads.set(o.id, detail);
@@ -175,7 +206,7 @@ export class MockQuantRounds {
       state: createQuantRound(
         o.path,
         o.durationMin,
-        roundPicks(o.path, quantQuestionCount(o.durationMin)),
+        roundPicks(o.path, quantQuestionCount(o.durationMin), o.game ?? false),
       ),
       version: 0,
       timeline: [],
@@ -188,7 +219,9 @@ export class MockQuantRounds {
       if ('step' in line) {
         // Steps in a script name version 0; they apply to whatever the round is at.
         const step =
-          line.step.type === 'end' ? line.step : { ...line.step, version: round.version };
+          line.step.type === 'end' || line.step.type === 'quote'
+            ? line.step
+            : { ...line.step, version: round.version };
         const r = this.apply(round, step as QuantRoundStep, at(line.at), false);
         if (!r) throw new Error(`seeded step refused: ${JSON.stringify(line.step)}`);
         if (line.step.type === 'start') round.greeted = true;
@@ -289,6 +322,102 @@ export class MockQuantRounds {
     });
   }
 
+  /** A trader round whose second question, the game, was posed a minute and a half ago. */
+  private seedGame() {
+    this.seed({
+      id: QUANT_GAME_PAD_ID,
+      path: 'trader',
+      durationMin: 30,
+      startedAt: new Date(Date.now() - 170_000).toISOString(),
+      game: true,
+      script: [
+        { at: 6, step: { type: 'start', version: 0, say: LINES.greeting } },
+        { at: 60, candidate: 'Five ordered pairs give 8 out of 36, so 5/36.' },
+        {
+          at: 75,
+          step: {
+            type: 'close',
+            version: 0,
+            index: 0,
+            kind: 'chat',
+            say: LINES.close,
+            by: 'interviewer',
+            verdict: VERDICTS.good,
+          },
+        },
+      ],
+    });
+  }
+
+  /**
+   * The ended round with a game the report specs read. The dice are 6, 2 and 5 (worth 13). Markets:
+   * 9.5 – 11.5 lifted for 2; Die 1 (6) shown; 11 – 12.5, too low, lifted for 2; 12.5 – 13.5 lifted
+   * for 1 and Die 2 (2) shown; 11 – 12 lifted for 1 by a counterparty that now knows. Expected
+   * edge +2, realised −4.5: luck and an informed counterparty took 6.5.
+   */
+  private seedGameEnded() {
+    const turn = (index: number, say: string, game: QuantGameMove) =>
+      ({ type: 'turn', version: 0, index, kind: 'chat', action: 'stay', say, game }) as const;
+    const quote = (bid: number, ask: number, size: number) =>
+      ({ type: 'quote', index: 1, bid, ask, size }) as const;
+    const buy = (quantity: number) => ({ trade: { interviewerSide: 'buy' as const, quantity } });
+    this.seed({
+      id: QUANT_GAME_ENDED_PAD_ID,
+      path: 'trader',
+      durationMin: 30,
+      startedAt: QUANT_GAME_ENDED_STARTED_AT,
+      endedAtSec: 1000,
+      game: true,
+      script: [
+        { at: 6, step: { type: 'start', version: 0, say: LINES.greeting } },
+        { at: 50, candidate: 'Five ordered pairs give 8 out of 36, so 5/36.' },
+        {
+          at: 64,
+          step: {
+            type: 'close',
+            version: 0,
+            index: 0,
+            kind: 'chat',
+            say: LINES.close,
+            by: 'interviewer',
+            verdict: VERDICTS.good,
+          },
+        },
+        { at: 100, candidate: 'Each die averages 3.5, so the sum is 10.5. I will go 9.5 at 11.5.' },
+        { at: 104, step: quote(9.5, 11.5, 2) },
+        { at: 118, step: turn(1, 'I buy 2 at 11.5.', buy(2)) },
+        { at: 150, step: turn(1, 'Now Die 1: it is a 6. Make me a market.', { reveal: true }) },
+        { at: 190, step: quote(11, 12.5, 2) },
+        { at: 200, step: turn(1, 'I buy 2 at 12.5.', buy(2)) },
+        { at: 230, candidate: 'You keep buying. Die 1 is a 6, so the other two average 7: 13.' },
+        { at: 236, step: quote(12.5, 13.5, 2) },
+        {
+          at: 250,
+          step: turn(1, 'I buy 1 at 13.5. Now Die 2: it is a 2.', { ...buy(1), reveal: true }),
+        },
+        { at: 300, step: quote(11, 12, 1) },
+        { at: 312, step: turn(1, 'I buy 1 at 12.', buy(1)) },
+        {
+          at: 380,
+          step: {
+            type: 'close',
+            version: 0,
+            index: 1,
+            kind: 'chat',
+            say: 'Die 3 is a 5, so it settles at 13. Let’s look at how that went in the report.',
+            by: 'interviewer',
+            verdict: {
+              score: 0.6,
+              summary:
+                'A sound first market around $10.5$. After the 6 the market moved only half way, to $11.75$, and was lifted; the last stage traded against someone who knew.',
+            },
+          },
+        },
+        { at: 700, candidate: 'Put-call parity: P = C − S + K e^{−rT}.' },
+      ],
+    });
+  }
+
   /** The quant pads as GET /api/pads lists them (for the dashboard specs and screens). */
   summaryOf(id: string): PadSummary | null {
     const d = this.host.pads.get(id);
@@ -311,7 +440,7 @@ export class MockQuantRounds {
     };
   }
 
-  /** Puts the seeded quant pads on the dashboard. */
+  /** Puts the seeded quant pads on the dashboard (not the ones with a game). */
   listOnDashboard() {
     for (const id of [QUANT_PAD_ID, QUANT_ENDED_PAD_ID]) {
       const s = this.summaryOf(id);
@@ -346,10 +475,12 @@ export class MockQuantRounds {
       title: req.title,
     });
     this.host.pads.set(id, detail);
+    // As the API's assembler: absent, a trader round has a game and a researcher round none.
+    const game = req.includeGame ?? req.path === 'trader';
     const state = createQuantRound(
       req.path,
       req.durationMin,
-      roundPicks(req.path, quantQuestionCount(req.durationMin)),
+      roundPicks(req.path, quantQuestionCount(req.durationMin), game),
     );
     this.rounds.set(id, { padId: id, state, version: 0, timeline: [], notes: [], greeted: false });
     detail.round = publicRound(state, 0);
@@ -395,7 +526,9 @@ export class MockQuantRounds {
     r.state = res.state;
     r.version = res.version;
     const messages: Message[] = [];
-    const { say, reveal } = res.effects;
+    const { say, reveal, quote, game } = res.effects;
+    // A market posted: the poster's message, before the game's entry for it.
+    if (quote) messages.push(this.candidateMessage(r.padId, quote.text, now));
     if (say)
       messages.push(
         makeMessage({
@@ -407,6 +540,15 @@ export class MockQuantRounds {
           createdAt: now.toISOString(),
         }),
       );
+    // What the step did to a game (a quote; a trade, a reveal; the settlement), after its message
+    // and before the next question's.
+    for (const entry of game?.entries ?? [])
+      r.timeline.push({
+        id: uuid(),
+        padId: r.padId,
+        at: now.toISOString(),
+        event: { type: 'game', index: game?.index ?? 0, entry },
+      });
     if (reveal) {
       // After the message that introduced it (the API sets the two times apart explicitly).
       const at = new Date(now.getTime() + 1).toISOString();
@@ -501,6 +643,20 @@ export class MockQuantRounds {
   private replyStep(r: Round, text: string): QuantRoundStep | null {
     const index = r.state.current;
     const base = { version: r.version, index, kind: 'chat' as const };
+    const game = r.state.questions[index]?.game;
+    if (game && /^\s*(reveal|show)/i.test(text)) {
+      const books = gameBooks(game);
+      const next = books.nextReveal;
+      if (!next) return { ...base, type: 'turn', action: 'stay', say: GAME_LINES.nothingLeft };
+      const value = books.components[next.component]?.value ?? 0;
+      return {
+        ...base,
+        type: 'turn',
+        action: 'stay',
+        say: `${GAME_LINES.shown(next.label, value)} ${books.quote ? GAME_LINES.withdrawn : GAME_LINES.again}`,
+        game: { reveal: true },
+      };
+    }
     if (/^\s*hint/i.test(text)) {
       const rung = this.nextRung(r);
       return {
@@ -530,6 +686,74 @@ export class MockQuantRounds {
         say: this.isLast(r) ? LINES.wrapUp : LINES.closeNoVerdict,
       };
     return { ...base, type: 'turn', action: 'stay', say: LINES.stay };
+  }
+
+  // ---------------------------------------------------------------- the game
+
+  /**
+   * POST /api/pads/:id/round/quote on a quant pad (mock-api refuses any other pad with
+   * `wrong_format`): a `quote` step through the shared transition, its refusal as a 409 with the
+   * refusal as its code. Then, as the API feeds the interviewer the quote, its answer.
+   */
+  quote(padId: string, body: unknown, interviewerOn: boolean): Response | QuantRoundView {
+    const r = this.rounds.get(padId);
+    if (!r) return response(404, 'not_found', 'Not found');
+    const parsed = PostQuantQuoteRequest.safeParse(body);
+    if (!parsed.success)
+      return response(400, 'validation_error', parsed.error.issues[0]?.message ?? 'Invalid body');
+    const res = this.apply(r, { type: 'quote', ...parsed.data });
+    if (!res) {
+      const reason = this.log.at(-1)?.reason ?? 'invalid';
+      return response(409, reason, `The round refused the quote (${reason}).`);
+    }
+    if (interviewerOn && this.gameReply === 'auto')
+      void this.speak(padId, () => this.gameReplyStep(r));
+    return publicRound(r.state, r.version);
+  }
+
+  /** The scripted interviewer's answer to the live quote (see the module comment). */
+  private gameReplyStep(r: Round): QuantRoundStep | null {
+    const index = r.state.current;
+    const game = r.state.questions[index]?.game;
+    if (!game?.quote) return null;
+    const books = gameBooks(game);
+    const q = books.quote;
+    if (!q) return null;
+    const base = { type: 'turn', version: r.version, index, kind: 'chat', action: 'stay' } as const;
+    if (q.width > this.gameMaxWidth) return { ...base, say: GAME_LINES.tighten };
+    const [side, quantity] =
+      q.liftOffer.vsFair > 0
+        ? (['buy', q.size] as const)
+        : q.hitBid.vsFair > 0
+          ? (['sell', q.size] as const)
+          : (['buy', 1] as const);
+    const trades = books.log.filter((e) => e.kind === 'trade').length + 1;
+    const next = trades % 2 === 0 ? books.nextReveal : null;
+    const price = formatGameNumber(side === 'buy' ? q.ask : q.bid);
+    const shown = next
+      ? GAME_LINES.shown(next.label, books.components[next.component]?.value ?? 0)
+      : null;
+    return {
+      ...base,
+      say: [GAME_LINES.trade(side, quantity, price), shown, GAME_LINES.again]
+        .filter(Boolean)
+        .join(' '),
+      game: { trade: { interviewerSide: side, quantity }, ...(next ? { reveal: true } : {}) },
+    };
+  }
+
+  /** A move made directly: a trade against the live quote and/or a reveal, with what is said. */
+  gameMove(padId: string, move: QuantGameMove, say: string | null = null) {
+    const r = this.round(padId);
+    return this.speak(padId, () => ({
+      type: 'turn',
+      version: r.version,
+      index: r.state.current,
+      kind: 'proactive',
+      action: 'stay',
+      say,
+      game: move,
+    }));
   }
 
   // ---------------------------------------------------------------- steps for specs
@@ -675,6 +899,29 @@ export class MockQuantRounds {
         );
     });
     const questions = r.state.questions.map((q, index) => {
+      if (q.game)
+        // As the API's `buildQuantReport` for a game.
+        return QuantQuestionReview.parse({
+          index,
+          questionId: q.questionId,
+          topic: q.topic,
+          topicTitle: q.topicTitle ?? q.topic,
+          subtopic: '',
+          difficulty: q.difficulty,
+          type: 'game',
+          prompt: q.prompt,
+          unit: null,
+          solution: gameSolution(gameStats(q.game.spec)),
+          keyPoints: [],
+          explanation: ROUND_GAMES[q.questionId]?.explanation ?? '',
+          status: quantQuestionStatus(q),
+          verdict: q.verdict,
+          hintsGiven: q.hintRungs.length,
+          hintsAvailable: q.hintsAvailable,
+          timeSec: quantTimeSec(q),
+          budgetSec: q.budgetSec,
+          game: quantGameReview(q),
+        });
       const bank = ROUND_BANK[q.questionId] as BankQuestion;
       return QuantQuestionReview.parse({
         index,
