@@ -55,13 +55,13 @@
     The common wrong answer is 8, which is the right answer for HHT or THH. HTH overlaps itself (its
     last H can start a new HTH), and a failure from HT throws you back further than a failure in
     HHT does.
-  source: { name: "Classic pattern-waiting problem (e.g. Zhou, ch. 5)" }
+  source: { name: "Classic pattern-waiting problem (e.g. Zhou, A Practical Guide to Quantitative Finance Interviews)" }
 
 - id: prob-first-step-003
   topic: probability
   subtopic: First-step analysis and Markov chains
   type: single
-  difficulty: medium
+  difficulty: easy
   tags: [coins, patterns, waiting-time]
   prompt: |
     A fair coin is tossed repeatedly. Compare the expected number of tosses until the first **HH**
@@ -84,7 +84,7 @@
     Choice c is the natural mistake: both patterns appear with frequency $1/4$ in the long run, so the
     average spacing between occurrences is 4 for both, but HH occurrences come in clumps (HHH contains
     two overlapping HHs), so the wait for the *first* one is longer.
-  source: { name: "Classic pattern-waiting problem (e.g. Zhou, ch. 5)" }
+  source: { name: "Classic pattern-waiting problem (e.g. Zhou, A Practical Guide to Quantitative Finance Interviews)" }
 
 - id: prob-first-step-004
   topic: probability

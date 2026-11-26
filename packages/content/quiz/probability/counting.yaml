@@ -52,7 +52,7 @@
     number of people: 23 people make 253 pairs, each matching with probability $1/365$. The common
     wrong answer, 183 (half of 365), answers a different question: how many *other* people you need
     before someone shares *your* birthday with probability about a half (that one is 253).
-  source: { name: "Classic birthday problem (e.g. Zhou, ch. 4)" }
+  source: { name: "Classic birthday problem (e.g. Zhou, A Practical Guide to Quantitative Finance Interviews)" }
 
 - id: prob-counting-003
   topic: probability
@@ -90,40 +90,6 @@
 - id: prob-counting-004
   topic: probability
   subtopic: Counting and combinatorics
-  type: numeric
-  difficulty: medium
-  tags: [derangements, inclusion-exclusion, permutations]
-  prompt: |
-    Five letters are put into five addressed envelopes, one letter per envelope, with all $5!$
-    arrangements equally likely. What is the probability that **no** letter is in its own envelope?
-  answer: 11/30
-  answerText: |-
-    $11/30 \approx 0.367$
-  hints:
-    - Let $A_i$ be the event that letter $i$ is in its own envelope. You want the probability of none of them.
-    - Inclusion-exclusion over how many letters are forced into place.
-    - The probability that a given set of $k$ letters are all in place is $(5-k)!/5!$.
-  followUps:
-    - What happens as the number of letters grows?
-    - What is the expected number of letters in their own envelope, for any $n$?
-  explanation: |
-    By inclusion-exclusion, the probability that at least one letter is in place is
-    $\sum_{k \ge 1} (-1)^{k+1} \binom{5}{k} \frac{(5-k)!}{5!} = \sum_{k \ge 1} \frac{(-1)^{k+1}}{k!}$, so
-
-    $$P(\text{none}) = \sum_{k=0}^{5} \frac{(-1)^k}{k!} = 1 - 1 + \frac12 - \frac16 + \frac1{24} - \frac1{120} = \frac{44}{120} = \frac{11}{30}.$$
-
-    The 44 arrangements with no fixed point are the derangements of 5. As $n$ grows the sum tends to
-    $1/e \approx 0.368$, and it is already within $0.002$ of that at $n = 5$, which is why the answer
-    barely depends on the number of letters.
-
-    A common wrong answer is $(4/5)^5 \approx 0.33$, which treats the five events "letter $i$ is
-    misplaced" as independent. They are not: once some letters are misplaced the others are more
-    likely to be in place.
-  source: { name: "Montmort's matching problem (e.g. Blitzstein and Hwang, ch. 1)" }
-
-- id: prob-counting-005
-  topic: probability
-  subtopic: Counting and combinatorics
   type: short
   difficulty: easy
   tags: [dice, multisets, equally-likely]
@@ -159,9 +125,9 @@
     the probability of seeing $\{1,2,3\}$ is the same whether or not the dice are coloured, and with
     coloured dice it is plainly $6/216$. Leibniz famously made this mistake, claiming that sums of
     11 and 12 with two dice are equally likely because each arises "one way".
-  source: { name: "Classic counting pitfall (e.g. Blitzstein and Hwang, ch. 1)" }
+  source: { name: "Classic counting pitfall (e.g. Blitzstein and Hwang, Introduction to Probability)" }
 
-- id: prob-counting-006
+- id: prob-counting-005
   topic: probability
   subtopic: Counting and combinatorics
   type: numeric
@@ -192,9 +158,9 @@
 
     A common wrong answer is $7/12$, the chance that the *first* ballot is for A: that is necessary
     but far from sufficient.
-  source: { name: "Bertrand's ballot theorem (e.g. Zhou, ch. 4)" }
+  source: { name: "Bertrand's ballot theorem (e.g. Zhou, A Practical Guide to Quantitative Finance Interviews)" }
 
-- id: prob-counting-007
+- id: prob-counting-006
   topic: probability
   subtopic: Counting and combinatorics
   type: numeric
@@ -225,9 +191,9 @@
     let the other 4 be anything, $6^4$": that counts many outcomes several times (any outcome where
     some face appears twice is counted once per choice of which copy is "the" one), and gives a
     number above 1.
-  source: { name: "Classic occupancy problem (e.g. Blitzstein and Hwang, ch. 1)" }
+  source: { name: "Classic occupancy problem (e.g. Blitzstein and Hwang, Introduction to Probability)" }
 
-- id: prob-counting-008
+- id: prob-counting-007
   topic: probability
   subtopic: Counting and combinatorics
   type: single
@@ -258,7 +224,7 @@
     works against you here.
   source: { name: "Newton-Pepys problem (1693; e.g. Mosteller, Fifty Challenging Problems)" }
 
-- id: prob-counting-009
+- id: prob-counting-008
   topic: probability
   subtopic: Counting and combinatorics
   type: short
@@ -297,4 +263,4 @@
     sum is the expected number of colliding pairs, $\binom{n}{2}/d$. A good answer gets to
     $e^{-n^2/(2d)}$ and the $\sqrt{d}$ scaling, which is what makes the birthday bound matter for
     hashes: a 64-bit hash starts colliding after about $2^{32}$ keys, not $2^{63}$.
-  source: { name: "Birthday bound (e.g. Blitzstein and Hwang, ch. 1)" }
+  source: { name: "Birthday bound (e.g. Blitzstein and Hwang, Introduction to Probability)" }

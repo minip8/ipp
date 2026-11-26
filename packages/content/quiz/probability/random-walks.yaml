@@ -1,0 +1,242 @@
+# Random walks and martingales: gambler's ruin, hitting times, reflection, fair games and stopping.
+- id: prob-random-walks-001
+  topic: probability
+  subtopic: Random walks and martingales
+  type: short
+  difficulty: medium
+  tags: [gamblers-ruin, martingale, first-step-analysis]
+  prompt: |
+    A gambler starts with $i$ dollars and bets \$1 at a time on a fair coin, stopping when she reaches
+    $N$ dollars or goes broke ($0 < i < N$). Show, in two different ways, that the probability she
+    reaches $N$ is $i/N$.
+  reference: |
+    **First-step analysis.** Let $p_k$ be the probability of reaching $N$ from $k$. Conditioning on the
+    next bet, $p_k = \tfrac12 p_{k+1} + \tfrac12 p_{k-1}$ for $0 < k < N$, with $p_0 = 0$ and $p_N = 1$.
+    The equation says $p_{k+1} - p_k = p_k - p_{k-1}$: the increments are constant, so $p_k$ is
+    linear in $k$, and the boundary values give $p_k = k/N$.
+
+    **Martingale.** Her wealth $W_t$ is a martingale (each bet is fair), and the stopping time $T$
+    (hitting 0 or $N$) has finite expectation, with bounded wealth before it, so by optional stopping
+    $E[W_T] = W_0 = i$. But $W_T$ is $N$ with probability $p$ and 0 otherwise, so $Np = i$ and
+    $p = i/N$.
+  keyPoints:
+    - Sets up the recurrence p_k = (p_{k+1} + p_{k-1})/2 with p_0 = 0 and p_N = 1
+    - Solves it, since constant increments make p_k linear, giving k/N
+    - Uses that wealth is a martingale and applies optional stopping, E[W_T] = i
+    - Notes the condition that justifies optional stopping (bounded wealth, finite expected time)
+  hints:
+    - Condition on the outcome of the next bet.
+    - What does a fair game say about her expected wealth when she stops?
+  followUps:
+    - What is the expected number of bets until she stops?
+    - What changes if the coin favours the house slightly?
+  explanation: |
+    The two proofs show two habits worth having: write the equation for the first step, or find a
+    quantity whose expectation does not change. Candidates who use optional stopping should be able
+    to say why it applies; the same argument with an unbounded target ("stop when ahead") gives
+    nonsense, which is the subject of the doubling-strategy question.
+  source: { name: "Gambler's ruin (e.g. Zhou, A Practical Guide to Quantitative Finance Interviews)" }
+
+- id: prob-random-walks-002
+  topic: probability
+  subtopic: Random walks and martingales
+  type: numeric
+  difficulty: medium
+  tags: [gamblers-ruin, expected-duration, martingale]
+  prompt: |
+    A gambler starts with \$30 and bets \$1 at a time on a fair coin until she has \$100 or is broke.
+    What is the expected number of bets?
+  answer: 2100
+  unit: bets
+  hints:
+    - For a fair walk, $W_t^2 - t$ is a martingale.
+    - Or set up $d_k = 1 + \tfrac12 d_{k+1} + \tfrac12 d_{k-1}$ with $d_0 = d_N = 0$ and guess a quadratic.
+  followUps:
+    - Starting from \$1 with a target of \$1,000, what is the expected number of bets? What does this say about the "play until broke" strategy?
+    - What if the coin is biased?
+  explanation: |
+    For a fair walk started at $i$ and stopped at 0 or $N$, the expected duration is $i(N - i)$, so
+    here $30 \times 70 = 2100$.
+
+    One proof: $M_t = W_t^2 - t$ is a martingale, since $E[W_{t+1}^2 \mid W_t] = W_t^2 + 1$. Optional
+    stopping gives $E[W_T^2] - E[T] = i^2$, and $E[W_T^2] = N^2 \cdot \frac{i}{N} = iN$, so
+    $E[T] = iN - i^2 = i(N - i)$. Alternatively, $d_k = k(N - k)$ satisfies
+    $d_k = 1 + \frac12(d_{k+1} + d_{k-1})$ with the right boundary values.
+
+    Common wrong answers are 70 or 30 (the distance to one barrier, as if each bet moved her
+    towards it) and $70^2$ or $30^2$ (from the square-root law, but with only one barrier).
+  source: { name: "Gambler's ruin duration (e.g. Zhou, A Practical Guide to Quantitative Finance Interviews)" }
+
+- id: prob-random-walks-003
+  topic: probability
+  subtopic: Random walks and martingales
+  type: numeric
+  difficulty: medium
+  tags: [gamblers-ruin, biased-walk]
+  prompt: |
+    A gambler starts with \$5 and bets \$1 at a time; she wins each bet independently with probability
+    $0.4$. She stops when she has \$10 or is broke. What is the probability that she reaches \$10?
+  answer: 32/275
+  answerText: |-
+    $32/275 \approx 0.116$
+  hints:
+    - Find a function of her wealth that is a martingale. Try $r^{W_t}$ for a suitable $r$.
+    - With $p = 0.4$ and $q = 0.6$, $(q/p)^{W_t}$ is a martingale.
+  followUps:
+    - How does this compare with the 50% she would have with a fair coin, and why is the effect so large?
+    - Would she do better betting \$5 at a time? Why?
+  explanation: |
+    Let $r = q/p = 1.5$. Then $r^{W_t}$ is a martingale: $p\,r^{w+1} + q\,r^{w-1} = r^w(pr + q/r) =
+    r^w(q + p)$. Optional stopping with $P$ the probability of reaching 10:
+
+    $$P r^{10} + (1 - P) r^0 = r^5 \quad\Longrightarrow\quad P = \frac{r^5 - 1}{r^{10} - 1} = \frac{1}{r^5 + 1} = \frac{1}{243/32 + 1} = \frac{32}{275} \approx 0.116.$$
+
+    A small edge against you compounds over the many bets a long game needs: the chance falls from
+    $1/2$ (fair coin) to under 12%. The common wrong answer is $0.4$ or $0.5$, treating the whole game
+    like a single bet; another is $0.4^5 \approx 0.01$, which is the chance of winning five bets in a
+    row with no losses at all.
+  source: { name: "Gambler's ruin with a biased coin (e.g. Zhou, A Practical Guide to Quantitative Finance Interviews)" }
+
+- id: prob-random-walks-004
+  topic: probability
+  subtopic: Random walks and martingales
+  type: single
+  difficulty: medium
+  tags: [random-walk, hitting-time, recurrence]
+  prompt: |
+    A simple symmetric random walk starts at 0 and moves $\pm 1$ with probability $1/2$ each step.
+    Let $T$ be the first time it reaches $+1$. Which is true?
+  choices:
+    - { id: a, text: '$E[T] = 1$' }
+    - { id: b, text: '$E[T] = 2$' }
+    - { id: c, text: '$T$ is finite with probability 1, but $E[T] = \infty$' }
+    - { id: d, text: '$T$ is infinite with positive probability, so $E[T]$ is undefined' }
+  answer: c
+  explanation: |
+    $P(T < \infty) = 1$: the probability of reaching $+1$ before $-N$ is $\frac{N}{N+1}$ (gambler's
+    ruin), which tends to 1 as $N \to \infty$. But the expected time is infinite: the expected time to
+    hit $+1$ or $-N$ is $1 \cdot N$, which grows without bound, and $T$ is at least that exit time.
+    Equivalently, if $m = E[T]$ were finite, first-step analysis would give $m = 1 + \tfrac12 \cdot 0
+    + \tfrac12 \cdot 2m$ (from $-1$ you need two successive climbs), i.e. $m = 1 + m$, impossible.
+
+    - a counts only the first step.
+    - b comes from treating $T$ as geometric ("half the time you go up").
+    - d confuses this one-dimensional walk with a biased walk or a walk in three dimensions, which
+      can escape forever.
+
+    This is why "keep playing a fair game until you are ahead" is not a free lunch: you will get
+    ahead, but the expected wait (and the expected drawdown on the way) is infinite.
+  source: { name: "Standard random-walk fact (e.g. Feller, vol. 1)" }
+
+- id: prob-random-walks-005
+  topic: probability
+  subtopic: Random walks and martingales
+  type: numeric
+  difficulty: hard
+  tags: [polya-urn, exchangeability, martingale]
+  prompt: |
+    An urn starts with one red and one blue ball. Repeatedly, a ball is drawn uniformly at random and
+    put back together with one more ball of the same colour. After 98 draws the urn holds 100 balls.
+    What is the probability that exactly 50 of them are red?
+  answer: 1/99
+  hints:
+    - Compute the distribution of the number of red balls after 1 draw and after 2 draws.
+    - What is the probability of a particular sequence of draws with $k$ reds and $n - k$ blues? Does it depend on the order?
+  followUps:
+    - What is the probability that the next draw is red, given 70 red balls out of 100 in the urn?
+    - What does the fraction of red balls converge to in the long run?
+  explanation: |
+    After $n$ draws the number of red balls is uniformly distributed on $1, 2, \dots, n + 1$. Here
+    $n = 98$, so the red count is uniform on $1, \dots, 99$, and $P(50) = \frac{1}{99}$.
+
+    Why: any particular sequence of $n$ draws containing $k$ reds has probability
+
+    $$\frac{k!\,(n-k)!}{(n+1)!},$$
+
+    because the numerators run through $1, 2, \dots, k$ for the reds and $1, \dots, n-k$ for the blues,
+    and the denominators through $2, 3, \dots, n+1$, in any order. Multiplying by $\binom{n}{k}$
+    sequences gives $\frac{1}{n+1}$ for every $k$.
+
+    The common wrong answer treats the draws like fair coin flips, giving the binomial
+    $\binom{98}{49} 2^{-98} \approx 0.08$. Reinforcement makes early luck persist, so extreme
+    compositions are far more likely than for coin flips.
+  source: { name: "Pólya's urn (e.g. Blitzstein and Hwang, Introduction to Probability)" }
+
+- id: prob-random-walks-006
+  topic: probability
+  subtopic: Random walks and martingales
+  type: numeric
+  difficulty: hard
+  tags: [reflection-principle, random-walk, maximum]
+  prompt: |
+    A simple symmetric random walk starts at 0 and takes 10 steps of $\pm 1$, each with probability
+    $1/2$. What is the probability that its maximum over those 10 steps (including the start) is at
+    least 4?
+  answer: 29/128
+  answerText: |-
+    $29/128 \approx 0.227$
+  hints:
+    - Split the paths by where the walk ends (above 4, at 4, or below 4).
+    - For a path that reaches 4 and ends below 4, reflect the part after its first visit to 4.
+  followUps:
+    - What is the analogous result for Brownian motion, $P(\max_{s \le t} W_s \ge a)$?
+    - How would you price a one-touch option that pays \$1 if a level is touched before expiry, under zero rates and driftless dynamics?
+  explanation: |
+    By the reflection principle, $P(M_n \ge a) = P(S_n \ge a) + P(S_n > a)$. Paths ending at or above
+    $a$ have certainly touched $a$. A path that touches $a$ and ends below it corresponds one to one,
+    by reflecting everything after its first visit to $a$, to a path that ends above $a$.
+
+    With 10 steps, $S_{10} = 2H - 10$ where $H$ is the number of up-steps. $S_{10} \ge 4$ means
+    $H \ge 7$: $120 + 45 + 10 + 1 = 176$ paths. $S_{10} > 4$ means $H \ge 8$: 56 paths. So
+
+    $$P = \frac{176 + 56}{1024} = \frac{232}{1024} = \frac{29}{128} \approx 0.227.$$
+
+    The common wrong answer is $P(S_{10} \ge 4) = \frac{176}{1024}$, which counts only the paths that
+    are still at or above 4 at the end. Another is to double it, $2P(S_{10} \ge 4)$, which double
+    counts the paths that end exactly at 4 (they reflect to themselves).
+  source: { name: "Reflection principle (e.g. Feller, vol. 1)" }
+
+- id: prob-random-walks-007
+  topic: probability
+  subtopic: Random walks and martingales
+  type: short
+  difficulty: hard
+  tags: [martingale, doubling-strategy, optional-stopping]
+  prompt: |
+    A gambler bets \$1 on a fair coin. Whenever she loses she doubles her stake, and she stops after
+    her first win. She is then exactly \$1 ahead, whatever happened before. Does this beat a fair game?
+    Explain what goes wrong, using the bankroll she would need.
+  reference: |
+    If she wins on bet $k$, she has lost $1 + 2 + \cdots + 2^{k-2} = 2^{k-1} - 1$ and won $2^{k-1}$,
+    so she is \$1 up. With unlimited money and time she wins \$1 with probability 1.
+
+    But no real bankroll is unlimited. With a bankroll of $2^m - 1$ dollars she can afford $m$ losses
+    in a row. She then either wins \$1 (probability $1 - 2^{-m}$) or loses all $2^m - 1$ (probability
+    $2^{-m}$), and
+
+    $$E[\text{gain}] = (1 - 2^{-m}) \cdot 1 - 2^{-m}(2^m - 1) = 0.$$
+
+    She has turned a fair game into one that wins small almost always and loses big rarely, with the
+    same zero mean. In martingale terms, her wealth is a martingale, and optional stopping says the
+    expected wealth at a stopping time equals the start provided the stopping time is bounded (or
+    integrable with bounded increments). The doubling strategy relies on unbounded stakes and
+    unbounded losses before the stop, which is exactly where the theorem's conditions fail. The
+    expected size of the largest bet she must place is even infinite: $\sum_k 2^{-k} 2^{k-1} = \infty$.
+  keyPoints:
+    - Shows that a first win at bet k leaves her exactly one dollar ahead
+    - With a finite bankroll of 2^m - 1, computes that the expected gain is exactly 0
+    - Describes the trade-off as frequent small wins against rare large losses
+    - Explains that wealth is a martingale and that optional stopping fails only because stakes or losses are unbounded
+    - Notes that the required stake or bankroll has infinite expectation in the unlimited version
+  hints:
+    - How much has she lost before her first win at bet $k$?
+    - Suppose she can survive at most $m$ losses in a row. What are the outcomes and their probabilities?
+  followUps:
+    - What if the coin gives her only a 49% chance per bet (as at a roulette wheel)?
+    - Why does a market maker care about strategies that "win small almost always"?
+  explanation: |
+    The weak answer is "it works but casinos have table limits". The strong answer computes the
+    finite-bankroll expectation (exactly zero), names the payoff shape (short tail risk), and connects
+    it to optional stopping: no stopping rule turns a fair game into a favourable one unless it
+    exploits unbounded wealth or time.
+  source: { name: "The martingale betting system (e.g. Williams, Probability with Martingales)" }

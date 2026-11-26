@@ -92,12 +92,11 @@ def _():
     return Fraction(hits, total)
 
 
-@check("prob-counting-004")
 def _():
     return prob(lambda p: all(p[i] != i for i in range(5)), itertools.permutations(range(5)))
 
 
-@check("prob-counting-005")
+@check("prob-counting-004")
 def _():
     outcomes = Counter(tuple(sorted(o)) for o in dice(3))
     assert len(outcomes) == 56
@@ -106,7 +105,7 @@ def _():
     assert kinds == {1: 6, 2: 30, 3: 20}
 
 
-@check("prob-counting-006")
+@check("prob-counting-005")
 def _():
     good = total = 0
     for b_pos in itertools.combinations(range(12), 5):
@@ -121,7 +120,7 @@ def _():
     return Fraction(good, total)
 
 
-@check("prob-counting-007")
+@check("prob-counting-006")
 def _():
     # dynamic programme on the number of distinct faces seen so far
     dist = {0: Fraction(1)}
@@ -135,7 +134,7 @@ def _():
     return dist[6]
 
 
-@check("prob-counting-008")
+@check("prob-counting-007")
 def _():
     sixth = Fraction(1, 6)
     probs = {
@@ -146,7 +145,7 @@ def _():
     return max(probs, key=probs.get)
 
 
-@check("prob-counting-009")
+@check("prob-counting-008")
 def _():
     for d in (365, 10_000, 2**32):
         n = 1
@@ -396,7 +395,6 @@ def _():
     return Fraction(26, 52) * changes(25, 26, "R") + Fraction(26, 52) * changes(26, 25, "B")
 
 
-@check("prob-expectation-005")
 def _():
     # P(first ace at position k) by drawing non-aces one at a time
     mean = Fraction(0)
@@ -409,7 +407,7 @@ def _():
     return mean
 
 
-@check("prob-expectation-006")
+@check("prob-expectation-005")
 def _():
     total = Fraction(0)
     for k in range(1, 400):
@@ -417,7 +415,7 @@ def _():
     return float(total)
 
 
-@check("prob-expectation-007")
+@check("prob-expectation-006")
 def _():
     pairs = math.comb(30, 2)
     assert Fraction(pairs, 365) == Fraction(435, 365)
@@ -425,7 +423,7 @@ def _():
     assert abs(float(1 - distinct) - 0.706) < 0.001
 
 
-@check("prob-expectation-008")
+@check("prob-expectation-007")
 def _():
     def trial(rng):
         s, n = 0.0, 0
@@ -438,7 +436,7 @@ def _():
     assert abs(sim.mean - math.e) < 4 * sim.stderr, sim
 
 
-@check("prob-expectation-009")
+@check("prob-expectation-008")
 def _():
     import random
 
@@ -469,12 +467,11 @@ def _():
 # ---------------------------------------------------------------- discrete distributions
 
 
-@check("prob-discrete-001")
 def _():
     return prob(lambda o: o.count("H") == 5, itertools.product("HT", repeat=10))
 
 
-@check("prob-discrete-002")
+@check("prob-discrete-001")
 def _():
     # Poisson process as a fine binomial limit: n slots, each with probability 2/n of a call
     exact = 1 - sum(math.exp(-2) * 2**k / math.factorial(k) for k in range(2))
@@ -485,14 +482,13 @@ def _():
     return exact
 
 
-@check("prob-discrete-003")
+@check("prob-discrete-002")
 def _():
     exact = Fraction(math.comb(100, 50), 2**100)
     options = {"a": 0.5, "b": 0.25, "c": 0.08, "d": 0.01}
     return min(options, key=lambda k: abs(options[k] - float(exact)))
 
 
-@check("prob-discrete-004")
 def _():
     hits = Fraction(0)
     for o in itertools.product((0, 1), repeat=5):
@@ -502,7 +498,7 @@ def _():
     return hits
 
 
-@check("prob-discrete-005")
+@check("prob-discrete-003")
 def _():
     @lru_cache(maxsize=None)
     def win(a: int, b: int) -> Fraction:
@@ -516,12 +512,12 @@ def _():
     return win(4, 4)
 
 
-@check("prob-discrete-006")
+@check("prob-discrete-004")
 def _():
     return Fraction(sum(math.comb(400, k) for k in range(220, 401)), 2**400)
 
 
-@check("prob-discrete-007")
+@check("prob-discrete-005")
 def _():
     def trial(rng):
         while True:  # rejection: rerun histories in which a 5 came before the first 6
@@ -537,7 +533,7 @@ def _():
     return simulate(trial, n=300_000)
 
 
-@check("prob-discrete-008")
+@check("prob-discrete-006")
 def _():
     def pois(lam, k):
         return math.exp(-lam) * lam**k / math.factorial(k)
@@ -548,7 +544,7 @@ def _():
             assert math.isclose(joint, pois(3, b) * pois(7, n), rel_tol=1e-12)
 
 
-@check("prob-discrete-009")
+@check("prob-discrete-007")
 def _():
     for p in (Fraction(1, 10), Fraction(1, 2), Fraction(5, 7)):
         ht, th = p * (1 - p), (1 - p) * p
@@ -779,7 +775,17 @@ def _():
     cov = Fraction(sum((o[0] - ex) * (sum(o) - es) for o in outcomes), n)
     vx = Fraction(sum((o[0] - ex) ** 2 for o in outcomes), n)
     vs = Fraction(sum((sum(o) - es) ** 2 for o in outcomes), n)
-    return float(cov) / math.sqrt(vx * vs)
+    corr_sq = cov * cov / (vx * vs)  # exact square of the correlation, with dice
+    # and with a lopsided two-point distribution, to show it does not depend on the distribution
+    pts = {0: Fraction(9, 10), 10: Fraction(1, 10)}
+    pairs = {(x, y): p * q for x, p in pts.items() for y, q in pts.items()}
+    ex2 = sum(w * x for (x, _), w in pairs.items())
+    es2 = sum(w * (x + y) for (x, y), w in pairs.items())
+    cov2 = sum(w * (x - ex2) * (x + y - es2) for (x, y), w in pairs.items())
+    vx2 = sum(w * (x - ex2) ** 2 for (x, _), w in pairs.items())
+    vs2 = sum(w * (x + y - es2) ** 2 for (x, y), w in pairs.items())
+    assert corr_sq == cov2 * cov2 / (vx2 * vs2) and cov > 0
+    return {Fraction(1, 4): "a", Fraction(1, 2): "b", Fraction(1): "c"}[corr_sq]
 
 
 @check("prob-variance-004")
@@ -907,7 +913,17 @@ def _():
         return total  # picking seat n contributes 0
 
     # passenger 1 chooses among all n seats, the same situation as ok(1)
-    return ok(1)
+    assert ok(1) == Fraction(1, 2)
+
+    def trial(r, seats=10):
+        free = set(range(seats))
+        free.remove(r.choice(sorted(free)))  # passenger 0 has lost the pass
+        for p in range(1, seats - 1):
+            free.remove(p if p in free else r.choice(sorted(free)))
+        return seats - 1 in free
+
+    sim = simulate(trial, n=50_000)
+    assert abs(sim.mean - 0.5) < 4 * sim.stderr
 
 
 @check("prob-symmetry-003")
@@ -1118,3 +1134,244 @@ def _():
     for p in ("HHT", "HTH", "HHH", "THH", "HTHH", "HHTT"):
         assert expected_wait(p) == overlap_formula(p), p
     assert (expected_wait("HHT"), expected_wait("HTH"), expected_wait("HHH")) == (8, 10, 14)
+
+
+# ---------------------------------------------------------------- random walks and martingales
+
+
+def tridiagonal_walk(n: int, p: Fraction, step_cost: Fraction, top_value: Fraction) -> list[Fraction]:
+    """Solve x_k = c + p x_{k+1} + (1-p) x_{k-1} for 0 < k < n, x_0 = 0, x_n = top_value (Thomas algorithm)."""
+    q = 1 - p
+    m = n - 1  # unknowns x_1 .. x_{n-1}: -q x_{k-1} + x_k - p x_{k+1} = c
+    lower = [-q] * m
+    diag = [Fraction(1)] * m
+    upper = [-p] * m
+    rhs = [step_cost] * m
+    rhs[-1] += p * top_value
+    for i in range(1, m):
+        w = lower[i] / diag[i - 1]
+        diag[i] -= w * upper[i - 1]
+        rhs[i] -= w * rhs[i - 1]
+    x = [Fraction(0)] * m
+    x[-1] = rhs[-1] / diag[-1]
+    for i in range(m - 2, -1, -1):
+        x[i] = (rhs[i] - upper[i] * x[i + 1]) / diag[i]
+    return [Fraction(0)] + x + [top_value]
+
+
+@check("prob-random-walks-001")
+def _():
+    for n in (2, 5, 13):
+        win = tridiagonal_walk(n, Fraction(1, 2), Fraction(0), Fraction(1))
+        assert win == [Fraction(k, n) for k in range(n + 1)]
+
+
+@check("prob-random-walks-002")
+def _():
+    return tridiagonal_walk(100, Fraction(1, 2), Fraction(1), Fraction(0))[30]
+
+
+@check("prob-random-walks-003")
+def _():
+    return tridiagonal_walk(10, Fraction(2, 5), Fraction(0), Fraction(1))[5]
+
+
+@check("prob-random-walks-004")
+def _():
+    # P(T > k) by evolving the walk with an absorbing barrier at +1; the partial tail sums
+    # E[min(T, k)] grow like sqrt(k) without bound, while P(T > k) -> 0.
+    offset = 3000
+    dist = [0.0] * (2 * offset + 2)
+    dist[offset] = 1.0
+    alive, partial = 1.0, {}
+    total = 0.0
+    for k in range(1, 2001):
+        total += alive  # adds P(T > k - 1)
+        new = [0.0] * len(dist)
+        for i, w in enumerate(dist):
+            if w:
+                new[i - 1] += w / 2
+                if i + 1 - offset < 1:
+                    new[i + 1] += w / 2
+        dist = new
+        alive = sum(dist)
+        if k in (500, 2000):
+            partial[k] = total
+    assert alive < 0.02
+    assert partial[2000] / partial[500] > 1.9  # sqrt growth: no finite limit
+    return "c"
+
+
+@check("prob-random-walks-005")
+def _():
+    dist = {1: Fraction(1)}  # red balls, with 2 balls in the urn
+    for n in range(98):
+        balls = n + 2
+        nxt: dict[int, Fraction] = {}
+        for red, p in dist.items():
+            nxt[red + 1] = nxt.get(red + 1, 0) + p * Fraction(red, balls)
+            nxt[red] = nxt.get(red, 0) + p * Fraction(balls - red, balls)
+        dist = nxt
+    return dist[50]
+
+
+@check("prob-random-walks-006")
+def _():
+    hits = 0
+    for steps in itertools.product((1, -1), repeat=10):
+        pos = best = 0
+        for s in steps:
+            pos += s
+            best = max(best, pos)
+        hits += best >= 4
+    return Fraction(hits, 2**10)
+
+
+@check("prob-random-walks-007")
+def _():
+    for m in range(1, 12):
+        # outcomes: first win at bet k <= m gives +1; m losses lose 2^m - 1
+        ev = sum(Fraction(1, 2**k) * 1 for k in range(1, m + 1)) - Fraction(1, 2**m) * (2**m - 1)
+        assert ev == 0
+
+
+# ---------------------------------------------------------------- games and optimal stopping
+
+
+@check("prob-games-001")
+def _():
+    def trial(r):
+        turn = 0
+        while r.randint(1, 6) != 6:
+            turn ^= 1
+        return turn == 0
+
+    return simulate(trial)
+
+
+def reroll_once_value() -> Fraction:
+    """Best of all 64 keep-sets for the first roll, by enumeration."""
+    best = Fraction(0)
+    for keep in itertools.product((False, True), repeat=6):
+        v = Fraction(0)
+        for first, k in zip(DIE, keep):
+            v += Fraction(1, 6) * (first if k else Fraction(7, 2))
+        best = max(best, v)
+    return best
+
+
+@check("prob-games-002")
+def _():
+    return reroll_once_value()
+
+
+@check("prob-games-003")
+def _():
+    game_a = Fraction(sum(max(o) for o in dice(2)), 36)
+    game_b = reroll_once_value()
+    return "a" if game_a > game_b else ("b" if game_b > game_a else "c")
+
+
+@check("prob-games-004")
+def _():
+    top = 300  # far above any sensible total; beyond it, stopping is clearly optimal
+    value: dict[int, Fraction] = {}
+    for t in range(top, -1, -1):
+        cont = sum(Fraction(1, 6) * value.get(t + k, Fraction(t + k)) for k in range(2, 7))
+        value[t] = max(Fraction(t), cont)
+    stop = [t for t in range(top) if value[t] == t]
+    assert all(t in stop for t in range(stop[0], top))  # a single threshold
+    assert abs(float(value[0]) - 8.14) < 0.01
+    return stop[0]
+
+
+@check("prob-games-005")
+def _():
+    loaded = {0, 1}
+    clicks = [c for c in range(6) if c not in loaded]  # the opponent's chamber, given the click
+    no_spin = Fraction(sum((c + 1) % 6 not in loaded for c in clicks), len(clicks))
+    spin = Fraction(sum(c not in loaded for c in range(6)), 6)
+    return "a" if no_spin > spin else ("b" if spin > no_spin else "c")
+
+
+@check("prob-games-006")
+def _():
+    orders = sorted(set(itertools.permutations("RRBB")))
+    prefixes = sorted({o[:k] for o in orders for k in range(4)})
+    best = Fraction(-100)
+    for policy in itertools.product((False, True), repeat=len(prefixes)):  # True = stop here
+        stop = dict(zip(prefixes, policy))
+        total = Fraction(0)
+        for o in orders:
+            gain = 0
+            for k in range(4):
+                if stop[o[:k]]:
+                    break
+                gain += 1 if o[k] == "R" else -1
+            total += Fraction(gain, len(orders))
+        best = max(best, total)
+    return best
+
+
+@check("prob-games-007")
+def _():
+    n = 4
+
+    @lru_cache(maxsize=None)
+    def value(history: tuple[int, ...]) -> Fraction:
+        """Best success probability given the relative ranks seen (0 = best so far), before deciding on the last."""
+        i = len(history)
+        hire_now = Fraction(i, n) if history[-1] == 0 else Fraction(0)
+        if i == n:
+            return hire_now
+        cont = sum(Fraction(1, i + 1) * value(history + (r,)) for r in range(i + 1))
+        return max(hire_now, cont)
+
+    # brute-force check of the recursion's premise on all permutations, for the r = 1 rule
+    wins = 0
+    for perm in itertools.permutations(range(n)):  # larger is better
+        hired = next((x for k, x in enumerate(perm) if k >= 1 and x > max(perm[:k])), perm[-1])
+        wins += hired == n - 1
+    assert Fraction(wins, math.factorial(n)) == Fraction(11, 24)
+    return value((0,))
+
+
+@check("prob-games-008")
+def _():
+    n = 1000
+
+    def p(r):
+        return Fraction(r, n) * sum(Fraction(1, i - 1) for i in range(r + 1, n + 1)) if r else Fraction(1, n)
+
+    approx = {r: float(p(r)) for r in range(360, 380)}
+    r_best = max(approx, key=approx.get)
+    assert abs(r_best / n - 1 / math.e) < 0.005
+    assert abs(approx[r_best] - 1 / math.e) < 0.002
+
+
+@check("prob-games-009")
+def _():
+    def g(f):
+        return 0.6 * math.log(1 + f) + 0.4 * math.log(1 - f)
+
+    grid = [k / 10000 for k in range(0, 9999)]
+    f_best = max(grid, key=g)
+    assert abs(f_best - 0.2) < 1e-3
+    assert abs(g(0.2) - 0.020) < 0.001 and g(0.4) < 0
+
+
+@check("prob-games-010")
+def _():
+    # smaller amount uniform on 1..100; envelope picked at random
+    gain_by_x: dict[int, Fraction] = {}
+    weight_by_x: dict[int, Fraction] = {}
+    unconditional = Fraction(0)
+    for a in range(1, 101):
+        for mine, other in ((a, 2 * a), (2 * a, a)):
+            w = Fraction(1, 200)
+            unconditional += w * (other - mine)
+            gain_by_x[mine] = gain_by_x.get(mine, 0) + w * (other - mine)
+            weight_by_x[mine] = weight_by_x.get(mine, 0) + w
+    assert unconditional == 0
+    assert gain_by_x[3] > 0  # odd amount: surely the smaller envelope
+    assert gain_by_x[150] < 0  # above 100: surely the larger

@@ -4,27 +4,6 @@
   subtopic: Discrete distributions
   type: numeric
   difficulty: easy
-  tags: [binomial, coins]
-  prompt: |
-    A fair coin is tossed 10 times. What is the probability of exactly 5 heads?
-  answer: 63/256
-  answerText: |-
-    $63/256 \approx 0.246$
-  explanation: |
-    The number of heads is Binomial$(10, \tfrac12)$, and every sequence of 10 tosses has probability
-    $2^{-10}$. There are $\binom{10}{5} = 252$ sequences with exactly five heads, so
-
-    $$P = \frac{252}{1024} = \frac{63}{256} \approx 0.246.$$
-
-    The common wrong answer is $1/2$ ("five is half of ten"), which confuses the expected number of
-    heads with the probability of hitting it exactly. Another is $1/11$, treating the eleven possible
-    counts as equally likely.
-
-- id: prob-discrete-002
-  topic: probability
-  subtopic: Discrete distributions
-  type: numeric
-  difficulty: easy
   tags: [poisson, counting-process]
   prompt: |
     Calls arrive at a desk as a Poisson process with an average of 2 calls per minute. What is the
@@ -41,7 +20,7 @@
     Common slips are to forget the $P(1)$ term (giving $1 - e^{-2} \approx 0.865$, the probability of
     *at least one*) or to answer $1/2$ because 2 is the mean.
 
-- id: prob-discrete-003
+- id: prob-discrete-002
   topic: probability
   subtopic: Discrete distributions
   type: single
@@ -65,40 +44,7 @@
     - d treats the 101 possible counts as roughly equally likely; they are not, most of the mass is
       within a couple of standard deviations of 50.
 
-- id: prob-discrete-004
-  topic: probability
-  subtopic: Discrete distributions
-  type: numeric
-  difficulty: medium
-  tags: [binomial, parity, generating-functions]
-  prompt: |
-    A biased coin lands heads with probability $1/3$. It is tossed 5 times, independently. What is
-    the probability that the number of heads is **even** (zero counts as even)?
-  answer: 122/243
-  answerText: |-
-    $122/243 \approx 0.502$
-  hints:
-    - Consider $E[(-1)^X]$, where $X$ is the number of heads. How does it relate to $P(\text{even}) - P(\text{odd})$?
-    - $(-1)^X$ is a product of one factor per toss.
-  followUps:
-    - What happens to the answer as the number of tosses grows?
-    - What is the probability of an odd number of heads in 200 tosses of a fair coin?
-  explanation: |
-    Write $X$ for the number of heads. $(-1)^X$ is $+1$ for an even count and $-1$ for an odd one, so
-    $P(\text{even}) - P(\text{odd}) = E[(-1)^X]$. It factorises over independent tosses, each giving
-    $+1$ with probability $\tfrac23$ and $-1$ with probability $\tfrac13$:
-
-    $$E[(-1)^X] = \left(\tfrac23 - \tfrac13\right)^5 = \frac{1}{243}.$$
-
-    With $P(\text{even}) + P(\text{odd}) = 1$, $P(\text{even}) = \dfrac{1 + 1/243}{2} = \dfrac{122}{243}$.
-
-    In general $P(\text{even}) = \frac{1 + (1-2p)^n}{2}$, which tends to $1/2$; for a fair coin it is
-    exactly $1/2$ for every $n \ge 1$. Summing $\binom{5}{0}, \binom{5}{2}, \binom{5}{4}$ terms by
-    hand also works but invites arithmetic slips; the common wrong answer $1/2$ assumes the bias
-    does not matter.
-  source: { name: "Widely reported interview question (Glassdoor), generalised" }
-
-- id: prob-discrete-005
+- id: prob-discrete-003
   topic: probability
   subtopic: Discrete distributions
   type: numeric
@@ -127,9 +73,9 @@
     Summing by series length (A wins in 4, 5, 6 or 7 games, $\binom{3+j}{j} 0.6^4\, 0.4^j$ for $j$
     losses) gives the same number. The mistake to avoid is $\binom{7}{4} 0.6^4\, 0.4^3$ alone,
     or summing over lengths while forgetting that A must win the *last* game of the series.
-  source: { name: "Classic series problem (e.g. Blitzstein and Hwang, ch. 4)" }
+  source: { name: "Classic series problem (e.g. Blitzstein and Hwang, Introduction to Probability)" }
 
-- id: prob-discrete-006
+- id: prob-discrete-004
   topic: probability
   subtopic: Discrete distributions
   type: numeric
@@ -158,7 +104,7 @@
     $3\sigma \approx 0.13\%$. Common slips are to use variance 100 as if it were the standard
     deviation (so 220 looks like $0.2\sigma$) or to quote the two-sided 5%.
 
-- id: prob-discrete-007
+- id: prob-discrete-005
   topic: probability
   subtopic: Discrete distributions
   type: numeric
@@ -189,7 +135,7 @@
     histories are the ones likely to contain a 5.
   source: { name: "Variant of Elchanan Mossel's dice problem" }
 
-- id: prob-discrete-008
+- id: prob-discrete-006
   topic: probability
   subtopic: Discrete distributions
   type: short
@@ -228,9 +174,9 @@
     from the same customers". The factorisation shows otherwise, and it is a property worth knowing
     for market data: if orders arrive as a Poisson process and each is independently a buy or a
     sell, the buy and sell counts are independent Poisson processes.
-  source: { name: "Poisson thinning (e.g. Blitzstein and Hwang, ch. 7)" }
+  source: { name: "Poisson thinning (e.g. Blitzstein and Hwang, Introduction to Probability)" }
 
-- id: prob-discrete-009
+- id: prob-discrete-007
   topic: probability
   subtopic: Discrete distributions
   type: short

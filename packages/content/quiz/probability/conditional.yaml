@@ -47,7 +47,7 @@
   topic: probability
   subtopic: Conditional probability and Bayes
   type: numeric
-  difficulty: medium
+  difficulty: easy
   tags: [bayes, base-rate, medical-test]
   prompt: |
     A disease affects 1 in 1,000 people. A test detects it in 99% of people who have it, and gives a
@@ -74,7 +74,7 @@
 
     The common wrong answer is 99% (or 95%), which confuses $P(+ \mid \text{sick})$ with
     $P(\text{sick} \mid +)$ and ignores the base rate.
-  source: { name: "Classic base-rate problem (e.g. Blitzstein and Hwang, ch. 2)" }
+  source: { name: "Classic base-rate problem (e.g. Blitzstein and Hwang, Introduction to Probability)" }
 
 - id: prob-conditional-004
   topic: probability
@@ -105,7 +105,7 @@
     Ten heads in a row feels overwhelming, but it only barely overturns a 999-to-1 prior; this is
     the same base-rate effect as in a medical test. The usual wrong answers are close to 1 (ignoring
     the prior) or $1/1000$ (ignoring the evidence).
-  source: { name: "Classic interview problem (e.g. Zhou, ch. 4)" }
+  source: { name: "Classic interview problem (e.g. Zhou, A Practical Guide to Quantitative Finance Interviews)" }
 
 - id: prob-conditional-005
   topic: probability
@@ -168,7 +168,7 @@
     estimate, which ignores the prior. A neat way to see $\frac{k+1}{n+2}$: think of $p$ as a uniform
     point and each toss as another uniform point, heads when it falls below $p$. Among the $n+2$
     points (the $p$ point, the $n$ tosses and the next toss) the arrangement is uniformly random.
-  source: { name: "Laplace's rule of succession (e.g. Blitzstein and Hwang, ch. 8)" }
+  source: { name: "Laplace's rule of succession (e.g. Blitzstein and Hwang, Introduction to Probability)" }
 
 - id: prob-conditional-007
   topic: probability
@@ -260,7 +260,7 @@
     that it is the host's knowledge, and the fact that his choice is forced when you picked wrong,
     that makes the opened door informative. Writing likelihoods for "host opens door 3" under each
     prize location settles every variant.
-  source: { name: "Monty Hall problem (Selvin, 1975; e.g. Zhou, ch. 4)" }
+  source: { name: "Monty Hall problem (Selvin, 1975; e.g. Zhou, A Practical Guide to Quantitative Finance Interviews)" }
 
 - id: prob-conditional-009
   topic: probability
@@ -306,7 +306,7 @@
     rate is a mixture whose weights differ between treatments) and then makes a decision, which
     requires saying what the third variable is: a confounder to condition on, as here, or a
     mediator that should not be conditioned on.
-  source: { name: "Simpson's paradox (e.g. the 1986 kidney-stone study; Blitzstein and Hwang, ch. 2)" }
+  source: { name: "Simpson's paradox (e.g. the 1986 kidney-stone study; Blitzstein and Hwang, Introduction to Probability)" }
 
 - id: prob-conditional-010
   topic: probability

@@ -1,0 +1,356 @@
+# Games and optimal stopping: fair value, when to stop, backward induction, betting and paradoxes.
+- id: prob-games-001
+  topic: probability
+  subtopic: Games and optimal stopping
+  type: numeric
+  difficulty: easy
+  tags: [dice, alternating-game, geometric-series]
+  prompt: |
+    Alice and Bob take turns rolling a fair die, Alice first. The first to roll a 6 wins. What is the
+    probability that Alice wins?
+  answer: 6/11
+  answerText: |-
+    $6/11 \approx 0.545$
+  explanation: |
+    Let $a$ be Alice's chance of winning. She wins on her first roll with probability $\tfrac16$. If
+    she misses (probability $\tfrac56$), Bob is now in exactly Alice's original position, so Alice wins
+    from there with probability $1 - a$:
+
+    $$a = \frac16 + \frac56(1 - a) \quad\Longrightarrow\quad \frac{11}{6} a = 1 \quad\Longrightarrow\quad a = \frac{6}{11}.$$
+
+    The same comes from the geometric series $\frac16\left(1 + \left(\tfrac56\right)^2 + \left(\tfrac56\right)^4 + \cdots\right) = \frac{1/6}{1 - 25/36}$.
+
+    The common wrong answers are $\tfrac12$ (ignoring the first-mover advantage) and $\tfrac16$ (only
+    counting her first roll).
+  source: { name: "Classic alternating game" }
+
+- id: prob-games-002
+  topic: probability
+  subtopic: Games and optimal stopping
+  type: numeric
+  difficulty: easy
+  tags: [dice, optimal-stopping, fair-value]
+  prompt: |
+    You roll a fair die and are paid the number shown, in dollars. After seeing the first roll you may
+    choose to roll once more, in which case you are paid the second roll instead (you cannot go back to
+    the first). Playing optimally, what is the game worth?
+  answer: 17/4
+  answerText: |-
+    $17/4 = 4.25$ dollars
+  unit: dollars
+  explanation: |
+    Work backwards. A second roll is worth $3.5$ on average, so keep a first roll that beats $3.5$
+    (4, 5 or 6) and reroll a 1, 2 or 3:
+
+    $$\text{value} = \frac36 \cdot \frac{4 + 5 + 6}{3} + \frac36 \cdot 3.5 = 2.5 + 1.75 = 4.25.$$
+
+    The option to reroll is worth $0.75$ over a single roll. With a third roll allowed, the second
+    roll's value 4.25 becomes the threshold for the first, so keep only 5 or 6, giving
+    $\frac26 \cdot 5.5 + \frac46 \cdot 4.25 = \frac{14}{3} \approx 4.67$.
+
+    Common slips are to set the threshold at the wrong place (keeping 3 or more gives $4.17$; keeping
+    5 or more gives $4.17$ too) or to answer $3.5$, ignoring the option.
+  source: { name: "Widely reported trading interview game (e.g. Optiver, SIG; Glassdoor)" }
+
+- id: prob-games-003
+  topic: probability
+  subtopic: Games and optimal stopping
+  type: single
+  difficulty: medium
+  tags: [dice, optionality, information]
+  prompt: |
+    Which game is worth more?
+
+    - **Game A:** roll two fair dice and be paid the larger number, in dollars.
+    - **Game B:** roll one fair die; you may reroll it once (seeing the first result) and are paid the
+      final roll, in dollars.
+  choices:
+    - { id: a, text: "Game A" }
+    - { id: b, text: "Game B" }
+    - { id: c, text: "They are worth the same" }
+  answer: a
+  explanation: |
+    Game A is worth $E[\max] = \frac{161}{36} \approx \$4.47$; game B, played optimally (reroll 1, 2
+    or 3), is worth $\$4.25$.
+
+    In both games you get "the better of two rolls" in some sense, but in B you must decide to give up
+    the first roll *before* seeing the second, so you sometimes swap a 3 for a 1, or keep a 4 when a 6
+    was coming. In A you see both and pick the best, which can only be better. The difference is the
+    value of information.
+
+    Choice c is the intuition that both are "best of two". Choice b usually comes from
+    overvaluing control over the decision.
+  source: { name: "Built on the reroll game (Optiver, SIG; Glassdoor)" }
+
+- id: prob-games-004
+  topic: probability
+  subtopic: Games and optimal stopping
+  type: numeric
+  difficulty: medium
+  tags: [dice, optimal-stopping, one-step-lookahead]
+  prompt: |
+    You roll a fair die repeatedly, adding each roll to a running total. If you ever roll a 1, the game
+    ends and you get nothing. Before any roll you may instead stop and take the running total in
+    dollars. What is the smallest running total at which stopping is optimal (at least as good as any
+    way of continuing)?
+  answer: 20
+  unit: dollars
+  hints:
+    - Compare stopping now with rolling exactly once more and then stopping.
+    - With a total of $t$, what do you expect to gain from one more roll, and what do you expect to lose?
+    - Once stopping beats one more roll, can it ever pay to roll more than once?
+  followUps:
+    - What is the value of the game from a total of 0 under this policy? (Roughly.)
+    - What changes if rolling a 1 only ends the game but lets you keep half your total?
+  explanation: |
+    Look one roll ahead. With total $t$, one more roll gains $2, 3, 4, 5$ or $6$ with probability
+    $\tfrac16$ each (an expected $\tfrac{20}{6}$) and loses $t$ with probability $\tfrac16$. It is
+    worth rolling exactly when
+
+    $$\frac{20}{6} > \frac{t}{6} \quad\Longleftrightarrow\quad t < 20.$$
+
+    At $t = 20$ the two are equal, so stopping is optimal from 20 on. Looking one step ahead is enough
+    here because the problem is monotone: once the total is at least 20, any roll leaves it at least 20
+    (or ends the game), so you would stop at the next decision anyway. Under this policy the game is
+    worth about $\$8.14$ from a total of 0.
+
+    The common wrong answers come from comparing the wrong things, such as stopping when the expected
+    *next* roll ($3.33$) is less than some fraction of the total, or using the plain die average 3.5
+    including the 1, which gives 21.
+  source: { name: "Pig-style dice game (Glassdoor; techinterview.org)", url: "https://www.techinterview.org/post/3233476397/probability-brainteasers-trading-desks-still-ask/" }
+
+- id: prob-games-005
+  topic: probability
+  subtopic: Games and optimal stopping
+  type: single
+  difficulty: medium
+  tags: [conditional-probability, russian-roulette, decision]
+  prompt: |
+    A revolver has six chambers in a ring. Two bullets are loaded in **adjacent** chambers, the
+    cylinder is spun to a uniformly random position, and your opponent pulls the trigger: it clicks on
+    an empty chamber. Pulling the trigger advances the cylinder to the next chamber in the ring. It is
+    now your turn and you may either pull the trigger as it is, or spin the cylinder again first. Which
+    gives you the better chance of surviving?
+  choices:
+    - { id: a, text: "Pull without spinning" }
+    - { id: b, text: "Spin first" }
+    - { id: c, text: "It makes no difference" }
+  answer: a
+  explanation: |
+    Number the chambers so the bullets are in 1 and 2. The click tells you the chamber fired was one of
+    the four empty ones, 3, 4, 5 or 6, equally likely. Without spinning, the next chamber is 4, 5, 6 or
+    1 respectively, so only the case "the click was chamber 6" kills you: survival $\tfrac34$.
+    Spinning gives a fresh uniform chamber: survival $\tfrac46 = \tfrac23$. So don't spin.
+
+    The adjacency is what makes the difference: the empty chambers form a block, and most of them are
+    followed by another empty one. Choice c assumes the click tells you nothing; choice b treats the
+    situation as if the cylinder were still unknown but now "due" a bullet.
+  source: { name: "Russian roulette puzzle (e.g. Zhou, A Practical Guide to Quantitative Finance Interviews)" }
+
+- id: prob-games-006
+  topic: probability
+  subtopic: Games and optimal stopping
+  type: numeric
+  difficulty: medium
+  tags: [cards, backward-induction, optimal-stopping]
+  prompt: |
+    A deck of 2 red and 2 black cards is shuffled and turned over one card at a time. Each red card
+    pays you \$1 and each black card costs you \$1. You may stop at any moment (including before the
+    first card), keeping your running total; if you never stop, you see all four cards and end with
+    \$0. Playing optimally, what is the game worth?
+  answer: 2/3
+  answerText: |-
+    $2/3 \approx 0.67$ dollars
+  unit: dollars
+  hints:
+    - Let $V(r, b)$ be the value of the rest of the game with $r$ red and $b$ black cards left. What are $V(r, 0)$ and $V(0, b)$?
+    - At each point, compare stopping (worth 0 more) with turning one more card.
+    - Fill in a small table from the end backwards.
+  followUps:
+    - With 26 red and 26 black cards the value is about \$2.62. Why is it positive, when every fixed number of cards you could choose to see has expected total 0?
+    - What is the optimal rule in words?
+  explanation: |
+    Let $V(r, b)$ be the expected future gain with $r$ red and $b$ black cards left, playing optimally.
+    You can always stop, so $V \ge 0$; with only reds left you take them all, $V(r, 0) = r$, and with
+    only blacks left you stop, $V(0, b) = 0$. Otherwise
+
+    $$V(r, b) = \max\left(0,\ \tfrac{r}{r+b}\big(1 + V(r-1, b)\big) + \tfrac{b}{r+b}\big(-1 + V(r, b-1)\big)\right).$$
+
+    Then $V(1,1) = \tfrac12$, $V(1,2) = \max(0, \tfrac13 \cdot 1 + \tfrac23 \cdot (-\tfrac12)) = 0$,
+    $V(2,1) = \tfrac23 \cdot \tfrac32 + \tfrac13 \cdot 1 = \tfrac43$, and
+
+    $$V(2,2) = \tfrac12\big(1 + V(1,2)\big) + \tfrac12\big(-1 + V(2,1)\big) = \tfrac12 + \tfrac16 = \tfrac23.$$
+
+    The game is worth something even though the deck is balanced, because you can stop when you are
+    ahead: the stopping rule uses information as it arrives. The common wrong answer is 0, from "the
+    deck sums to zero"; that is the value of any rule fixed in advance, not of an adaptive one.
+  source: { name: "Red-black card game (widely asked; e.g. Zhou, A Practical Guide to Quantitative Finance Interviews)" }
+
+- id: prob-games-007
+  topic: probability
+  subtopic: Games and optimal stopping
+  type: numeric
+  difficulty: hard
+  tags: [secretary-problem, optimal-stopping, permutations]
+  prompt: |
+    Four candidates, whose qualities are all different, are interviewed one at a time in a uniformly
+    random order. After each interview you know only how the candidate ranks against those seen so far,
+    and you must hire or reject them on the spot (no recalling a rejected candidate). If you reach the
+    last candidate you may hire them. What is the largest achievable probability of hiring the best of
+    the four?
+  answer: 11/24
+  answerText: |-
+    $11/24 \approx 0.458$
+  hints:
+    - Only a candidate who is the best so far can be the best overall. So the only sensible rules are "reject the first $r$, then hire the next best-so-far".
+    - For $r = 1$, when does the rule succeed? Condition on where the best candidate is.
+    - Compare $r = 0, 1, 2, 3$.
+  followUps:
+    - What happens to the best success probability, and to the fraction of candidates rejected, as the number of candidates grows?
+    - What if you want to maximise the expected rank of the hire rather than the chance of the very best?
+  explanation: |
+    Hire only a candidate who is best so far, and the optimal rule has a threshold: reject the first
+    $r$, then hire the first candidate better than all before. It succeeds when the best is at position
+    $i > r$ and the best of the first $i - 1$ is among the first $r$, so
+
+    $$P(r) = \sum_{i=r+1}^{4} \frac14 \cdot \frac{r}{i-1}.$$
+
+    $P(0) = \tfrac14$, $P(1) = \tfrac14\left(1 + \tfrac12 + \tfrac13\right) = \tfrac{11}{24}$,
+    $P(2) = \tfrac14\left(1 + \tfrac23\right) = \tfrac{10}{24}$, $P(3) = \tfrac14$. The best is
+    $r = 1$: reject the first candidate, then hire the next one who beats everyone seen.
+
+    The common wrong answers are $\tfrac14$ (no strategy beats picking at random, which is false) and
+    $\tfrac{10}{24}$ (rejecting half, an intuitive but non-optimal cut-off).
+  source: { name: "Secretary problem (e.g. Ferguson, Who Solved the Secretary Problem?)" }
+
+- id: prob-games-008
+  topic: probability
+  subtopic: Games and optimal stopping
+  type: short
+  difficulty: hard
+  tags: [secretary-problem, optimal-stopping, asymptotics]
+  prompt: |
+    In the secretary problem with $n$ candidates (random order, only relative ranks observed, an
+    immediate and irrevocable hire-or-reject decision, and success only if you hire the very best),
+    what is the optimal strategy for large $n$, and what is its probability of success? Sketch why.
+  reference: |
+    Reject the first $r \approx n/e$ (about 37%) of the candidates, then hire the first one who is
+    better than everyone seen so far. The success probability tends to $1/e \approx 0.368$.
+
+    Sketch. Only a best-so-far candidate can be the overall best, and the optimal rule is a threshold
+    rule. With threshold $r$, the rule succeeds when the best overall is at position $i > r$ (probability
+    $1/n$ each) and the best of the first $i - 1$ falls in the first $r$ (probability $\frac{r}{i-1}$),
+    so
+
+    $$P(r) = \frac{r}{n}\sum_{i=r+1}^{n}\frac{1}{i-1} \approx x \int_x^1 \frac{dt}{t} = -x\ln x, \qquad x = \frac rn.$$
+
+    This is maximised where $\ln x = -1$, i.e. $x = 1/e$, with value $1/e$. Remarkably the success
+    probability does not go to zero as $n$ grows.
+  keyPoints:
+    - Strategy is to reject roughly the first n/e candidates and then take the first one better than all before
+    - Success probability tends to 1/e, about 37%
+    - Writes P(r) as the sum over the best candidate's position of (1/n)(r/(i-1))
+    - Approximates the sum by -x ln x and maximises at x = 1/e
+    - Notes the success probability stays bounded away from zero for large n
+  hints:
+    - Which candidates could possibly be the best overall?
+    - Fix a rule "reject the first $r$, then take the next best-so-far". When does it succeed?
+    - Turn the sum into an integral with $x = r/n$.
+  followUps:
+    - How does the answer change if you only need to hire someone in the top two?
+    - What if you observe the candidates' actual scores, known to be uniform on $[0, 1]$, rather than only ranks?
+  explanation: |
+    Most candidates remember "37%" but not the argument. The interviewer wants the threshold structure,
+    the conditioning on the best candidate's position (the best of the first $i - 1$ must be in the
+    rejected group, or someone else gets hired first), and the integral approximation. Saying the rule
+    is optimal among *all* rules, not just thresholds, is a bonus; it follows from backward induction.
+  source: { name: "Secretary problem (e.g. Ferguson, Who Solved the Secretary Problem?)" }
+
+- id: prob-games-009
+  topic: probability
+  subtopic: Games and optimal stopping
+  type: short
+  difficulty: medium
+  tags: [kelly-criterion, betting, log-utility]
+  prompt: |
+    You may repeatedly bet any fraction $f$ of your current wealth on independent even-money bets that
+    you win with probability $0.6$. To maximise the long-run growth rate of your wealth, what fraction
+    should you bet each time? Why is betting everything, which maximises the expected wealth after each
+    bet, a bad idea, and what happens if you bet more than the optimal fraction?
+  reference: |
+    After $n$ bets your wealth is $W_0 (1+f)^{S}(1-f)^{n-S}$ with $S$ the number of wins, so the
+    long-run growth rate per bet is
+
+    $$g(f) = 0.6\ln(1 + f) + 0.4\ln(1 - f).$$
+
+    Setting $g'(f) = \frac{0.6}{1+f} - \frac{0.4}{1-f} = 0$ gives $f^* = 0.6 - 0.4 = 0.2$ (the Kelly
+    fraction $p - q$ for even money), with $g(0.2) \approx 0.020$ per bet.
+
+    Betting everything maximises expected wealth ($1.2^n$ times the start) but you are ruined at the
+    first loss, which happens with probability 1 eventually; the expectation is carried by a
+    vanishingly unlikely streak. Growth is driven by the typical path, which is what the logarithm
+    measures. Over-betting is costly: $g$ falls on either side of $0.2$, and at $f = 0.4$ it is already
+    slightly negative ($\approx -0.002$), so wealth shrinks to zero almost surely even though every bet
+    has positive expected value.
+  keyPoints:
+    - Maximises the expected log growth 0.6 ln(1+f) + 0.4 ln(1-f)
+    - Optimal fraction is 0.2, that is p - q for an even-money bet
+    - Betting everything maximises the mean but leads to ruin with probability 1
+    - Explains that long-run growth follows the typical path, measured by the log, not the mean
+    - Over-betting (for example at twice Kelly) gives zero or negative growth despite a positive edge
+  hints:
+    - Write wealth after many bets as a product, and take logs.
+    - What fraction of the bets do you win in the long run?
+    - Differentiate the growth rate with respect to $f$.
+  followUps:
+    - Why might a trader deliberately bet half-Kelly?
+    - What is the Kelly fraction for a bet paying $b$ to 1 with win probability $p$?
+  explanation: |
+    The key ideas are that wealth compounds multiplicatively, so the right objective for the long run
+    is the expected log, and that the expectation and the typical outcome diverge for repeated
+    multiplicative bets. Candidates often stop at the formula; the interviewer usually pushes on
+    over-betting, because in practice estimation error in the edge makes over-betting the real risk.
+  source: { name: "Kelly criterion (Kelly, 1956)" }
+
+- id: prob-games-010
+  topic: probability
+  subtopic: Games and optimal stopping
+  type: short
+  difficulty: hard
+  tags: [two-envelopes, paradox, priors]
+  prompt: |
+    Two envelopes contain money, one twice as much as the other. You pick one at random and see that it
+    holds $x$. The argument goes: "the other holds $2x$ or $x/2$ with equal probability, so its expected
+    value is $1.25x$, so I should switch." But then the same argument says switch back. What is wrong?
+    When, if ever, should you switch after seeing $x$?
+  reference: |
+    The error is the claim that, *for every $x$*, the other envelope is equally likely to be $2x$ or
+    $x/2$. That would require the smaller amount to be "uniformly distributed" over
+    $\ldots, x/4, x/2, x, 2x, 4x, \ldots$ on every scale, and no probability distribution does that.
+    With any proper prior on the smaller amount, the conditional probability that you hold the smaller
+    envelope depends on $x$: high for small $x$, low for large $x$.
+
+    Without looking, switching is exactly neutral by symmetry: if the amounts are $a$ and $2a$, you gain
+    $a$ or lose $a$ with equal probability. After looking, the right rule depends on the prior: switch
+    when $x$ is small enough that you are probably holding the smaller envelope, keep when it is large.
+    (For a heavy-tailed prior with infinite mean, the "always switch" calculation can survive for every
+    $x$; then the expectations involved are infinite and the comparison is meaningless, which is the
+    same trap as the St Petersburg game.)
+  keyPoints:
+    - The 50/50 assumption for every observed x is the flaw
+    - No proper prior can make "smaller or larger" equally likely at every amount
+    - Unconditionally, switching is neutral by symmetry (gain a or lose a)
+    - With a proper prior, the decision depends on x, switching for small amounts and keeping for large ones
+    - Optionally notes the infinite-mean priors where the paradox persists
+  hints:
+    - Write the amounts as $a$ and $2a$. What do you gain or lose by switching, before looking?
+    - What would the distribution of the smaller amount have to look like for the 50/50 claim to hold at every $x$?
+  followUps:
+    - Suppose the smaller amount is uniform on \$1 to \$100. When should you switch?
+    - How is this paradox like the St Petersburg game?
+  explanation: |
+    The paradox is a test of whether the candidate distinguishes unconditional from conditional
+    probabilities, and whether they realise that "equally likely" needs a distribution behind it.
+    Strong answers fix the argument with a prior and give the threshold rule; weak answers say
+    "by symmetry it doesn't matter", which is true only before you look at the amount.
+  source: { name: "Two-envelope paradox (Kraitchik, 1953)" }

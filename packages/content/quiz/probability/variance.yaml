@@ -47,26 +47,30 @@
 - id: prob-variance-003
   topic: probability
   subtopic: Variance, covariance and correlation
-  type: numeric
+  type: single
   difficulty: easy
   tags: [correlation, covariance, sums]
   prompt: |
     $X$ and $Y$ are independent and identically distributed with finite positive variance. What is
     the correlation between $X$ and $X + Y$?
-  answer: 0.707107
-  answerText: |-
-    $1/\sqrt{2} \approx 0.707$
+  choices:
+    - { id: a, text: '$1/2$' }
+    - { id: b, text: '$1/\sqrt{2}$' }
+    - { id: c, text: '$1$' }
+    - { id: d, text: 'It depends on the distribution of $X$' }
+  answer: b
   explanation: |
     Let $\sigma^2$ be the common variance. Then
 
     $$\operatorname{Cov}(X, X + Y) = \operatorname{Var}(X) + \operatorname{Cov}(X, Y) = \sigma^2, \qquad \operatorname{Var}(X + Y) = 2\sigma^2,$$
 
-    so $\operatorname{Corr} = \dfrac{\sigma^2}{\sigma \cdot \sqrt{2}\,\sigma} = \dfrac{1}{\sqrt2}$.
+    so $\operatorname{Corr} = \dfrac{\sigma^2}{\sigma \cdot \sqrt{2}\,\sigma} = \dfrac{1}{\sqrt2} \approx 0.707$.
     More generally, the correlation of one term with a sum of $n$ i.i.d. terms is $1/\sqrt{n}$: its
-    share of the variance is $1/n$ and correlation is the square root of that share.
+    share of the variance is $1/n$, and correlation is the square root of that share.
 
-    The common wrong answer is $1/2$ ("$X$ is half of the sum"), which confuses correlation with the
-    share of variance $\rho^2$.
+    - a confuses correlation with the share of variance, $\rho^2 = 1/2$ ("$X$ is half of the sum").
+    - c says that because $X$ is part of the sum they move together perfectly; $Y$ adds independent noise.
+    - d: only the first two moments enter a correlation, and they cancel.
 
 - id: prob-variance-004
   topic: probability
@@ -98,7 +102,7 @@
     \tfrac34 \cdot \tfrac{39}{51}$. The common wrong answer is the binomial $13 \cdot \tfrac{3}{16}
     = \tfrac{39}{16} \approx 2.44$, which ignores the negative covariance: drawing a heart makes the
     next heart less likely.
-  source: { name: "Indicator method for the hypergeometric (e.g. Blitzstein and Hwang, ch. 7)" }
+  source: { name: "Indicator method for the hypergeometric (e.g. Blitzstein and Hwang, Introduction to Probability)" }
 
 - id: prob-variance-005
   topic: probability
@@ -128,7 +132,7 @@
     from not knowing how many dice there are, and it is the larger part. The usual mistake is to stop
     at the first term ($245/24 \approx 10.2$), as if $N$ were fixed at its mean, or to multiply
     variances, $\sigma^2 \cdot \operatorname{Var}(N)$.
-  source: { name: "Random sums (Wald's identities; e.g. Blitzstein and Hwang, ch. 9)" }
+  source: { name: "Random sums (Wald's identities; e.g. Blitzstein and Hwang, Introduction to Probability)" }
 
 - id: prob-variance-006
   topic: probability

@@ -42,13 +42,13 @@
 
     The common wrong answer is $1/2$ (each waits a quarter of the hour, "so half the time they
     overlap"), or $1/4$; drawing the square is the method.
-  source: { name: "Classic meeting problem (e.g. Zhou, ch. 4)" }
+  source: { name: "Classic meeting problem (e.g. Zhou, A Practical Guide to Quantitative Finance Interviews)" }
 
 - id: prob-continuous-003
   topic: probability
   subtopic: Continuous distributions and geometric probability
   type: numeric
-  difficulty: medium
+  difficulty: easy
   tags: [uniform, quadratic, geometric-probability]
   prompt: |
     $a$ and $b$ are independent and uniform on $[0, 1]$. What is the probability that the equation
@@ -92,14 +92,15 @@
     $y - x$, $1 - y$, and all three are below $1/2$ in a triangle of area $1/8$ inside the half-square
     $x < y$ (area $1/2$). So the probability is $\frac{1/8}{1/2} = \frac14$.
 
-    Another way: a piece is at least $1/2$ only if both break points fall in the same half beyond it;
-    each of the three pieces is "too long" with probability $1/4$, these events are disjoint, so the
-    answer is $1 - 3/4$.
+    Another way: each of the three pieces is at least $1/2$ with probability $1/4$ (the left piece
+    when both breaks fall in the right half, the right piece likewise, the middle piece when the
+    breaks are at least $1/2$ apart). At most one piece can be that long, so these events are
+    disjoint and the answer is $1 - 3/4$.
 
     A common wrong answer is $1/2$, from forgetting that *any* of the three pieces can be too long,
     not just the middle one. Be careful also to answer the process asked about: breaking once and
     then breaking the longer piece gives a different answer, $2\ln 2 - 1 \approx 0.386$.
-  source: { name: "Classic stick-breaking problem (e.g. Zhou, ch. 4)" }
+  source: { name: "Classic stick-breaking problem (e.g. Zhou, A Practical Guide to Quantitative Finance Interviews)" }
 
 - id: prob-continuous-005
   topic: probability
@@ -158,7 +159,7 @@
       variables but not for two exponentials, whose ratio can easily be lopsided.
     - c is the opposite over-correction.
     - d forgets that the rate is a scale and cancels in a ratio.
-  source: { name: "Standard result (Beta-Gamma relations; e.g. Blitzstein and Hwang, ch. 8)" }
+  source: { name: "Standard result (Beta-Gamma relations; e.g. Blitzstein and Hwang, Introduction to Probability)" }
 
 - id: prob-continuous-007
   topic: probability

@@ -49,7 +49,7 @@
     A common wrong answer is "close to 0", from the feeling that any one person rarely gets their
     hat; 100 small chances add up to one expected match. Candidates who try to find the
     distribution first tend to get stuck: for the mean you never need it.
-  source: { name: "Hat-check problem (e.g. Zhou, ch. 4)" }
+  source: { name: "Hat-check problem (e.g. Zhou, A Practical Guide to Quantitative Finance Interviews)" }
 
 - id: prob-expectation-003
   topic: probability
@@ -80,7 +80,7 @@
 
     In general it is $n H_n \approx n \ln n$. Common wrong answers are 6 (one stage only) and 36
     ($6^2$, from a vague "squared" intuition).
-  source: { name: "Coupon collector's problem (e.g. Zhou, ch. 4)" }
+  source: { name: "Coupon collector's problem (e.g. Zhou, A Practical Guide to Quantitative Finance Interviews)" }
 
 - id: prob-expectation-004
   topic: probability
@@ -117,39 +117,6 @@
   subtopic: Expectation and linearity
   type: numeric
   difficulty: medium
-  tags: [cards, indicators, symmetry]
-  prompt: |
-    A standard 52-card deck is shuffled and cards are turned over one at a time. What is the expected
-    position of the first ace (the first card is position 1)?
-  answer: 53/5
-  answerText: |-
-    $53/5 = 10.6$
-  hints:
-    - The position of the first ace is 1 plus the number of non-aces before it.
-    - Take a particular non-ace. What is the probability that it comes before all four aces?
-  followUps:
-    - What is the expected position of the second ace?
-    - What is the expected position of the last ace?
-  explanation: |
-    The first ace is at position $1 + N$, where $N$ is the number of non-aces before it. A particular
-    non-ace comes before all four aces with probability $1/5$, because among that card and the four
-    aces each is equally likely to come first. So $E[N] = 48/5$ and
-
-    $$E[\text{position}] = 1 + \frac{48}{5} = \frac{53}{5} = 10.6.$$
-
-    The same symmetry says the four aces split the 48 other cards into five gaps of equal expected
-    size, $48/5$ each, which gives the second ace at $2 + 2 \cdot \frac{48}{5}$ and so on.
-
-    A common wrong answer is 13, from "one card in 13 is an ace, so wait 13 cards". That is the
-    mean of a geometric wait *with* replacement; without replacement, the aces are spread evenly,
-    which shortens the wait.
-  source: { name: "Classic interview problem (e.g. Zhou, ch. 4)" }
-
-- id: prob-expectation-006
-  topic: probability
-  subtopic: Expectation and linearity
-  type: numeric
-  difficulty: medium
   tags: [st-petersburg, geometric-series, expected-value]
   prompt: |
     A fair coin is tossed until it first shows heads. If that happens on toss $k$, the casino owes you
@@ -178,7 +145,7 @@
     amount in practice".
   source: { name: "St Petersburg paradox (Bernoulli, 1738)" }
 
-- id: prob-expectation-007
+- id: prob-expectation-006
   topic: probability
   subtopic: Expectation and linearity
   type: short
@@ -220,7 +187,7 @@
     information, and the Markov bound goes the wrong way for that conclusion.
   source: { name: "Classic birthday problem, linearity variant" }
 
-- id: prob-expectation-008
+- id: prob-expectation-007
   topic: probability
   subtopic: Expectation and linearity
   type: short
@@ -257,7 +224,7 @@
     the last draw tends to be large because it is the one that pushed the sum over.
   source: { name: "Classic interview problem (e.g. Joshi et al., Quant Job Interview Questions and Answers)" }
 
-- id: prob-expectation-009
+- id: prob-expectation-008
   topic: probability
   subtopic: Expectation and linearity
   type: multiple

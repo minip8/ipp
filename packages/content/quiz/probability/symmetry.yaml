@@ -17,12 +17,12 @@
     (The $k$-th order statistic of $n$ uniforms has the Beta$(k, n+1-k)$ distribution, whose mean
     is the same $\frac{k}{n+1}$.) The common wrong answer is $\frac{2}{4} = \frac12$, which divides
     by $n$ instead of $n + 1$, as if the largest point were always at 1.
-  source: { name: "Uniform order statistics (e.g. Zhou, ch. 4)" }
+  source: { name: "Uniform order statistics (e.g. Zhou, A Practical Guide to Quantitative Finance Interviews)" }
 
 - id: prob-symmetry-002
   topic: probability
   subtopic: Symmetry and order statistics
-  type: numeric
+  type: short
   difficulty: medium
   tags: [airplane-seat, symmetry, recursion]
   prompt: |
@@ -30,7 +30,27 @@
     passenger has lost their boarding pass and sits in a seat chosen uniformly at random. Every later
     passenger sits in their own seat if it is free, and otherwise in a seat chosen uniformly at random
     from those still free. What is the probability that the last passenger sits in their own seat?
-  answer: 1/2
+    Explain why.
+  reference: |
+    The probability is $1/2$.
+
+    The last passenger can only end up in their own seat or in the first passenger's seat: any other
+    seat $k$ would have been taken by passenger $k$ when they boarded, if not earlier. Now look at the
+    random choices. Whenever someone chooses at random (the first passenger, or anyone displaced),
+    both the first passenger's seat and the last passenger's seat are still free, and they are treated
+    identically. The outcome is settled at the first random choice that lands on one of these two
+    seats: the first passenger's seat means everyone after sits correctly, including the last
+    passenger; the last passenger's seat means they are shut out. Each is equally likely at every
+    choice, so the answer is $1/2$ for any number of passengers from 2 up.
+
+    A recursion confirms it: with $f(n)$ the answer for $n$ seats, the first passenger picks seat 1
+    (success), seat $n$ (failure) or seat $k$, after which passenger $k$ is in the same position as
+    the first with $n - k + 1$ seats, and $f(n) = 1/2$ solves it.
+  keyPoints:
+    - The answer is 1/2
+    - The last passenger ends in either their own seat or the first passenger's seat, no other
+    - At each random choice those two seats are free and equally likely to be chosen
+    - Choosing the first passenger's seat resolves everything correctly, choosing the last one's fails, so the two outcomes are symmetric
   hints:
     - Try 2 and 3 passengers.
     - Which seats can the last passenger end up in?
@@ -39,23 +59,18 @@
     - What is the probability that the 50th passenger gets their own seat?
     - What is the expected number of passengers who do not sit in their own seat?
   explanation: |
-    The last passenger ends up in either their own seat or the first passenger's seat: any other
-    seat $k$ would have been taken by passenger $k$ when they boarded, if not before. Every time
-    someone chooses at random, the first passenger's seat and the last passenger's seat are both
-    free and treated identically, and the process is decided at the first random choice that picks
-    one of them. Picking the first passenger's seat restores order (everyone else sits correctly);
-    picking the last's dooms them. By symmetry each is equally likely, so the probability is
-    $1/2$.
-
-    The common wrong answers are $1/100$ (as if the last passenger got a random seat) and "close to
-    1" (as if only the first passenger's choice mattered).
+    Most candidates remember "one half"; the question is whether they can justify it. The two
+    observations needed are that only two seats are possible for the last passenger, and that every
+    random choice treats those two seats symmetrically. Common wrong answers are $1/100$ (as if the
+    last passenger got a random seat) and "close to 1" (as if only the first passenger's choice
+    mattered).
   source: { name: "Airplane seating puzzle (folklore; widely asked)" }
 
 - id: prob-symmetry-003
   topic: probability
   subtopic: Symmetry and order statistics
   type: numeric
-  difficulty: medium
+  difficulty: easy
   tags: [cards, symmetry, relative-order]
   prompt: |
     A standard deck is shuffled uniformly. What is the probability that all four aces appear before
@@ -209,7 +224,7 @@
     symmetry. The heads/tails argument is especially neat because it explains why the answer does
     not depend on $n$ and why it needs the extra coin: with equal numbers of coins, ties make the
     answer less than $1/2$.
-  source: { name: "Classic symmetry problem (e.g. Zhou, ch. 4)" }
+  source: { name: "Classic symmetry problem (e.g. Zhou, A Practical Guide to Quantitative Finance Interviews)" }
 
 - id: prob-symmetry-008
   topic: probability
@@ -250,4 +265,4 @@
     equally likely to be any of them. Candidates often think records come at a steady rate, or that
     the answer depends on the distribution. The follow-up has a nice answer: the record indicators
     are in fact independent, which is what makes the variance $\sum \frac1k(1 - \frac1k)$.
-  source: { name: "Record values (Rényi; e.g. Blitzstein and Hwang, ch. 4)" }
+  source: { name: "Record values (Rényi; e.g. Blitzstein and Hwang, Introduction to Probability)" }
