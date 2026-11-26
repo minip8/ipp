@@ -1,9 +1,9 @@
 /**
  * Idempotent upsert of packages/content into Postgres.
  *
- * Tolerant by design: content is authored in parallel, so an invalid problem or quiz question is
- * skipped (and reported) instead of aborting the whole seed. Removing something from content never
- * deletes rows that other rows reference: problems and questions are marked inactive instead.
+ * Tolerant by design: content is authored in parallel, so an invalid problem, quiz question or
+ * market-making game is skipped (and reported) instead of aborting the whole seed. Removing
+ * something from content never deletes rows: problems, questions and games are marked inactive.
  * A roadmap that does not load leaves every topic's stored roadmap as it was.
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
@@ -11,23 +11,26 @@ import { join } from 'node:path';
 import {
   CONTENT_ROOT,
   listProblemSlugs,
+  listQuantGameFiles,
   loadProblem,
+  loadQuantGame,
   loadQuizRoadmap,
   loadQuizTopics,
   type QuizRoadmap,
   ROADMAP_FILE,
 } from '@ipp/content';
-import { type ProblemContent, QuizQuestion, type QuizTopic } from '@ipp/contracts';
+import { type ProblemContent, type QuantGame, QuizQuestion, type QuizTopic } from '@ipp/contracts';
 import { and, eq, notInArray, sql } from 'drizzle-orm';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import type { Db } from './client';
-import { problems, problemTests, quizQuestions, quizTopics } from './schema';
+import { problems, problemTests, quantGames, quizQuestions, quizTopics } from './schema';
 
 export interface SeedReport {
   problems: number;
   topics: number;
   questions: number;
+  games: number;
   skipped: { where: string; error: string }[];
 }
 
@@ -108,6 +111,24 @@ function loadQuestionsTolerant(
   return out;
 }
 
+/** Every game file that loads (`loadQuantGame`'s rules); the others are skipped, one by one. */
+function loadGamesTolerant(
+  root: string,
+  topics: readonly QuizTopic[],
+  skipped: SeedReport['skipped'],
+): QuantGame[] {
+  const quant = new Set(topics.filter((t) => t.track === 'quant').map((t) => t.slug));
+  const out: QuantGame[] = [];
+  for (const file of listQuantGameFiles(root)) {
+    try {
+      out.push(loadQuantGame(file, quant, root));
+    } catch (e) {
+      skipped.push({ where: `games/${file}`, error: firstLine(e) });
+    }
+  }
+  return out;
+}
+
 export async function seed(db: Db, opts: SeedOptions = {}): Promise<SeedReport> {
   const root = opts.root ?? CONTENT_ROOT;
   const log = opts.log ?? (() => {});
@@ -129,6 +150,7 @@ export async function seed(db: Db, opts: SeedOptions = {}): Promise<SeedReport> 
     skipped.push({ where: 'quiz/topics.yaml', error: firstLine(e) });
   }
   const questions = loadQuestionsTolerant(root, new Set(topics.map((t) => t.slug)), skipped);
+  const games = loadGamesTolerant(root, topics, skipped);
   let roadmap: QuizRoadmap | null = null;
   try {
     roadmap = loadQuizRoadmap(root);
@@ -232,11 +254,35 @@ export async function seed(db: Db, opts: SeedOptions = {}): Promise<SeedReport> 
           ),
         );
     }
+
+    for (const g of games) {
+      const set = { topic: g.topic, difficulty: g.difficulty, data: g, active: true };
+      await tx
+        .insert(quantGames)
+        .values({ id: g.id, ...set })
+        .onConflictDoUpdate({ target: quantGames.id, set });
+    }
+    // As for questions: a broken game file must not retire a game.
+    if (!skipped.some((s) => s.where.startsWith('games/'))) {
+      const ids = games.map((g) => g.id);
+      await tx
+        .update(quantGames)
+        .set({ active: false })
+        .where(
+          and(eq(quantGames.active, true), ids.length ? notInArray(quantGames.id, ids) : sql`true`),
+        );
+    }
   });
 
   for (const s of skipped) log(`skipped ${s.where}: ${s.error}`);
   log(
-    `seeded ${loaded.length} problems, ${topics.length} quiz topics, ${questions.length} quiz questions`,
+    `seeded ${loaded.length} problems, ${topics.length} quiz topics, ${questions.length} quiz questions, ${games.length} games`,
   );
-  return { problems: loaded.length, topics: topics.length, questions: questions.length, skipped };
+  return {
+    problems: loaded.length,
+    topics: topics.length,
+    questions: questions.length,
+    games: games.length,
+    skipped,
+  };
 }
