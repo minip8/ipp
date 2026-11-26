@@ -18,6 +18,7 @@ import {
   UsersIcon,
   XIcon,
 } from 'lucide-react';
+import dynamic from 'next/dynamic';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   type RefObject,
@@ -79,6 +80,15 @@ import {
   statusOf,
   subtopicOptions,
 } from './logic';
+
+/**
+ * Setting up a quant room: its own component and chunk (it typesets math, so KaTeX loads with it
+ * and never with the coding setup).
+ */
+const QuantRoomSetup = dynamic(
+  () => import('@/features/quant-room/setup').then((m) => m.QuantRoomSetup),
+  { ssr: false, loading: () => <Skeleton className="h-[560px] w-full" /> },
+);
 
 const TOPICS_HINT = 'Topics can give away the intended approach, so they are hidden by default.';
 
@@ -308,13 +318,30 @@ export function NewInterview() {
   // being interviewed by the AI.
   const [host, setHost] = useState(params.get('mode') === 'host');
   const [blankChosen, setBlankChosen] = useState(false);
-  const setMode = (next: 'practice' | 'host') => {
-    setHost(next === 'host');
+  // A room on questions of the bank (a quant room) instead of a coding problem.
+  const [quantRoom, setQuantRoom] = useState(params.get('format') === 'quant');
+  const replaceQuery = (edit: (q: URLSearchParams) => void) => {
     const q = new URLSearchParams(window.location.search);
-    if (next === 'host') q.set('mode', 'host');
-    else q.delete('mode');
+    edit(q);
     const search = q.toString();
     window.history.replaceState(null, '', search ? `?${search}` : window.location.pathname);
+  };
+  const setMode = (next: 'practice' | 'host') => {
+    setHost(next === 'host');
+    replaceQuery((q) => {
+      if (next === 'host') q.set('mode', 'host');
+      else {
+        q.delete('mode');
+        q.delete('format');
+      }
+    });
+  };
+  const setRoomFormat = (next: 'coding' | 'quant') => {
+    setQuantRoom(next === 'quant');
+    replaceQuery((q) => {
+      if (next === 'quant') q.set('format', 'quant');
+      else q.delete('format');
+    });
   };
   const [prefs, setPrefs] = useState<StartPrefs>(() => loadStartPrefs());
   const voiceOk = useSpeechSupported();
@@ -438,6 +465,44 @@ export function NewInterview() {
     saveShowTopics(on);
   };
   const tab = CATEGORY_TABS.find((t) => t.value === category) ?? CATEGORY_TABS[0];
+
+  // First, as on the quiz page: what kind of session this is (and for a room, on what).
+  const kindSwitch = (
+    <div className="space-y-2">
+      <Segmented
+        aria-label="Kind of interview"
+        className={cn('flex w-full max-sm:[&>*]:px-1.5', TOUCH_SEGMENTS)}
+        value={host ? 'host' : 'practice'}
+        onValueChange={setMode}
+        options={[
+          { value: 'practice', label: 'Practise with the AI' },
+          { value: 'host', label: 'Interview someone' },
+        ]}
+      />
+      {host && (
+        <Segmented
+          aria-label="Interview on"
+          className={cn('flex w-full max-sm:[&>*]:px-1.5', TOUCH_SEGMENTS)}
+          value={quantRoom ? 'quant' : 'coding'}
+          onValueChange={setRoomFormat}
+          options={[
+            { value: 'coding', label: 'A coding problem' },
+            { value: 'quant', label: 'Quant questions' },
+          ]}
+        />
+      )}
+    </div>
+  );
+
+  if (host && quantRoom)
+    return (
+      <section aria-labelledby="new-interview-heading">
+        <h2 id="new-interview-heading" className="sr-only">
+          Host a quant interview
+        </h2>
+        <QuantRoomSetup header={kindSwitch} />
+      </section>
+    );
 
   return (
     <section aria-labelledby="new-interview-heading">
@@ -677,19 +742,7 @@ export function NewInterview() {
           // inside the panel and Start stays in view.
           className="min-w-0 scroll-mt-20 rounded-lg border border-border bg-surface lg:sticky lg:top-20 lg:max-h-[calc(100dvh-6rem)] lg:overflow-y-auto"
         >
-          {/* First, as on the quiz page: what kind of session this is. */}
-          <div className="border-b border-border p-4">
-            <Segmented
-              aria-label="Kind of interview"
-              className={cn('flex w-full max-sm:[&>*]:px-1.5', TOUCH_SEGMENTS)}
-              value={host ? 'host' : 'practice'}
-              onValueChange={setMode}
-              options={[
-                { value: 'practice', label: 'Practise with the AI' },
-                { value: 'host', label: 'Interview someone' },
-              ]}
-            />
-          </div>
+          <div className="border-b border-border p-4">{kindSwitch}</div>
           <div className="border-b border-border p-4">
             <h2
               id="setup-heading"
