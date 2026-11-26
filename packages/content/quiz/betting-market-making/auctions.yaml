@@ -1,0 +1,206 @@
+# Auctions and the winner's curse: conditioning on winning, shading bids, first- and second-price auctions.
+- id: bmm-auctions-001
+  topic: betting-market-making
+  subtopic: Auctions and the winner's curse
+  type: short
+  difficulty: hard
+  tags: [winners-curse, adverse-selection, bidding]
+  prompt: |
+    A company's value to its current owner is uniformly distributed between \$0 and \$100 per share;
+    the owner knows the exact value, you do not. Under your management it would be worth **1.5 times**
+    that value. You may make one take-it-or-leave-it offer per share, and the owner accepts if and only
+    if your offer is at least the current value. What should you offer? What is the expected profit of
+    offering \$60?
+  reference: |
+    Condition on the offer being accepted. If you offer $b \le 100$, the owner accepts exactly when the
+    value $V \le b$, so given acceptance $V$ is uniform on $[0, b]$ with mean $b/2$, and the company is
+    worth $1.5 \times b/2 = 0.75b$ to you. You pay $b$, so every accepted offer loses $0.25b$ on average:
+
+    $$E[\text{profit}] = P(V \le b)\,(0.75b - b) = \frac{b}{100}\cdot(-0.25b) = -\frac{b^2}{400}.$$
+
+    At \$60 that is $-9$ per share. Every positive offer loses money, so the best offer is **\$0** (do not
+    bid). The tempting reasoning, "the average value is 50, worth 75 to me, so offering 60 is a profit
+    of 15", ignores that the owner only sells when the company is worth little.
+  keyPoints:
+    - Conditions on acceptance, so the value given acceptance is uniform on 0 to b with mean b/2
+    - Worth 0.75b to you given acceptance, less than the price b
+    - Expected profit of offering 60 is minus 9 per share
+    - Concludes that any positive offer loses and the best is not to bid (offer 0)
+    - Identifies the tempting wrong argument (using the unconditional average of 50)
+  hints:
+    - The owner accepts only in some cases. What do you know about the value when they accept?
+    - Given that an offer of $b$ is accepted, what is the expected value of the company to you?
+  followUps:
+    - At what multiple (instead of 1.5) would some offers become profitable?
+    - How is this like quoting a bid on a contract to someone who has seen its value?
+  explanation: |
+    This is the "acquiring a company" game from the experimental literature on the winner's curse;
+    most people offer between 50 and 75. It is the same idea as adverse selection in market making: the
+    trade you get is the one the better-informed side is happy to do. Strong candidates write down
+    the conditional expectation before computing anything.
+  source: { name: "Acquiring a company game (Samuelson and Bazerman, 1985; e.g. Harvard Program on Negotiation)", url: "https://www.pon.harvard.edu/daily/dealmaking-daily/the-winners-curse" }
+
+- id: bmm-auctions-002
+  topic: betting-market-making
+  subtopic: Auctions and the winner's curse
+  type: numeric
+  difficulty: medium
+  tags: [winners-curse, order-statistics, common-value]
+  prompt: |
+    An oil lease has an unknown value $V$, the same for every bidder. Each of 4 bidders gets an
+    independent estimate $V + e_i$, where each error $e_i$ is uniform on $[-10, 10]$ (in millions of
+    dollars). Every bidder naively bids their own estimate in a sealed-bid auction, and the highest bid
+    wins and pays its bid. On average, by how much does the winning bid exceed the true value?
+  answer: 6
+  unit: million dollars
+  hints:
+    - The winner is the bidder with the largest error. What is the expected maximum of 4 errors?
+    - For $n$ independent uniforms on $[0, 1]$, $E[\max] = \frac{n}{n + 1}$.
+  followUps:
+    - How does the overpayment grow with the number of bidders? What is its limit?
+    - How much should each bidder shade their estimate to break even on average, if all shade the same way?
+  explanation: |
+    Each estimate is unbiased, but the winner is the most optimistic. The winning bid is $V + \max_i e_i$,
+    and with $e_i = 20U_i - 10$ for uniforms $U_i$,
+
+    $$E\left[\max_i e_i\right] = 20 \cdot \frac{4}{5} - 10 = 6.$$
+
+    So the winner overpays by 6 million on average: the **winner's curse**. With $n$ bidders the
+    overpayment is $10 \cdot \frac{n - 1}{n + 1}$, growing towards 10 as competition increases.
+
+    The common wrong answer is 0 ("everyone's estimate is unbiased"). Unbiased estimates do not give an
+    unbiased *maximum*, and you only pay when you have the maximum.
+  source: { name: "Winner's curse in common-value auctions (Capen, Clapp and Campbell, 1971, on oil lease bidding)" }
+
+- id: bmm-auctions-003
+  topic: betting-market-making
+  subtopic: Auctions and the winner's curse
+  type: numeric
+  difficulty: medium
+  tags: [first-price-auction, bidding, optimisation]
+  prompt: |
+    An item is worth \$80 to you. In a sealed-bid auction against a single rival, the highest bid wins
+    and pays its own bid. You know the rival's bid is uniformly distributed between \$0 and \$100,
+    independent of yours (they will not react to your strategy). What bid maximises your expected
+    profit?
+  answer: 40
+  unit: dollars
+  hints:
+    - If you bid $b$, what is the chance you win, and what do you make if you do?
+    - Maximise the product over $b$.
+  followUps:
+    - What is your expected profit at the best bid?
+    - What changes if the rival's bid is uniform between \$0 and \$50?
+  explanation: |
+    Bidding $b$ wins with probability $b/100$ and earns $80 - b$, so the expected profit is
+
+    $$\frac{b\,(80 - b)}{100}, \qquad \text{maximised at } b = 40,$$
+
+    with an expected profit of \$16. A higher bid wins more often but earns less each time; the optimum
+    balances the two, just like choosing the width of a market.
+
+    The common wrong answer is 80, bidding your value, which guarantees zero profit in a first-price
+    auction (bidding your value is right in a second-price auction, where you do not pay your own bid).
+  source: { name: "First-price auction best response (standard auction theory)" }
+
+- id: bmm-auctions-004
+  topic: betting-market-making
+  subtopic: Auctions and the winner's curse
+  type: single
+  difficulty: easy
+  tags: [second-price-auction, vickrey, dominant-strategy]
+  prompt: |
+    In a sealed-bid **second-price** auction, the highest bidder wins but pays the second-highest bid.
+    An item is worth exactly \$100 to you and to nobody else in particular (other bidders have their
+    own private values). What should you bid?
+  choices:
+    - { id: a, text: "Exactly 100, whatever the others do" }
+    - { id: b, text: "Somewhat less than 100, to leave yourself a profit" }
+    - { id: c, text: "Somewhat more than 100, since you will pay less than your bid anyway" }
+    - { id: d, text: "It depends on how many other bidders there are" }
+  answer: a
+  explanation: |
+    Your bid only decides *whether* you win; the price is set by someone else. Bidding your value wins
+    exactly when the price is below 100 (a profit) and loses exactly when it is above (when winning would
+    be a loss). Bidding less (b) sometimes loses an auction you would have profited from; bidding more
+    (c) sometimes wins one at a price above 100. So truthful bidding is a dominant strategy (Vickrey,
+    1961), whatever the others do (d).
+
+    Choice b is the right instinct for a first-price auction, where you pay your own bid; carrying it
+    over to a second-price auction is the usual mistake. With a common value (the item is worth the same
+    unknown amount to everyone), you would still shade for the winner's curse, but that is a different
+    question.
+  source: { name: "Vickrey (1961), Counterspeculation, auctions, and competitive sealed tenders" }
+
+- id: bmm-auctions-005
+  topic: betting-market-making
+  subtopic: Auctions and the winner's curse
+  type: numeric
+  difficulty: hard
+  tags: [first-price-auction, equilibrium, order-statistics]
+  prompt: |
+    Three bidders have private values independently uniform on \$0 to \$100, and each knows only their
+    own. In a sealed-bid first-price auction (highest bid wins and pays its bid), all bidders use the
+    same strategy, bidding a fixed fraction of their value, and no bidder can gain by deviating. Your
+    value is \$90. What do you bid?
+  answer: 60
+  unit: dollars
+  hints:
+    - Suppose the others bid $k$ times their value. If you bid $b$, what is your chance of beating both?
+    - Maximise your expected profit over $b$ and require the answer to be $k \times 90$.
+    - Alternatively, ask what the highest of the other two values is on average, given that it is below yours.
+  followUps:
+    - What is the seller's expected revenue in this auction? Compare it with a second-price auction.
+    - How does the fraction change with $n$ bidders?
+  explanation: |
+    If the other two bid $k v$, your bid $b$ beats each of them with probability $\frac{b}{100k}$, so you
+    maximise $(90 - b)\left(\frac{b}{100k}\right)^2$. Setting the derivative to zero,
+    $2b(90 - b) = b^2$, gives $b = 60 = \tfrac23 \times 90$, which is consistent with $k = \tfrac23$.
+
+    With $n$ bidders the equilibrium bid is $\frac{n - 1}{n}v$: exactly the expected highest *other* value
+    given that it is below yours, which is what you would pay in a second-price auction. With 3 bidders
+    and value 90 that is \$60.
+
+    The common wrong answers are 90 (bidding your value, a sure zero profit) and 45 (the two-bidder rule
+    $v/2$, which shades too much when there is more competition).
+  source: { name: "Symmetric first-price auction equilibrium (e.g. Krishna, Auction Theory)" }
+
+- id: bmm-auctions-006
+  topic: betting-market-making
+  subtopic: Auctions and the winner's curse
+  type: short
+  difficulty: hard
+  tags: [winners-curse, common-value, bidding]
+  prompt: |
+    A jar of coins is auctioned to 9 people in a sealed-bid auction; the highest bid wins and pays its
+    bid. Everyone's estimate of the jar's value is unbiased, with an error uniformly distributed between
+    $-20$ and $+20$ dollars, independent across people. Your estimate is \$100. How much would you bid,
+    and how would your answer change with 2 bidders instead of 9?
+  reference: |
+    You only win when your estimate is the highest of the 9, and the highest of 9 unbiased estimates
+    is too high on average. The largest of 9 errors uniform on $[-20, 20]$ has mean
+    $-20 + 40 \cdot \frac{9}{10} = 16$. So conditional on winning, your \$100 estimate overstates the
+    value by about \$16, and a bid of around \$84 would break even on average if everyone shaded the same
+    way. Since you want a profit, bid somewhat below that, say \$75 to \$80, accepting that you win less often.
+
+    With 2 bidders the expected maximum error is $-20 + 40 \cdot \frac23 \approx 6.7$, so the correction is much
+    smaller: break even around \$93, bid perhaps \$85 to \$90. More bidders mean a bigger curse, so you
+    should shade **more**, the opposite of the instinct to bid up when competition is fierce.
+  keyPoints:
+    - Recognises that winning means having the highest estimate, which is biased upwards
+    - Computes the expected maximum error for 9 bidders (about \$16) and shades by roughly that
+    - Bids below the break-even level to leave a profit, for example \$75 to \$80
+    - Shows that with 2 bidders the correction is smaller (about \$6.7)
+    - States that more bidders call for more shading, not less
+  hints:
+    - In which situations do you win the jar?
+    - What is the expected largest error among 9 bidders?
+  followUps:
+    - Everyone else bids their raw estimate. How should you bid now?
+    - How is a market maker's fill like winning this auction?
+  explanation: |
+    The jar-of-coins auction is a classroom demonstration of the winner's curse: the average bid is
+    close to the true value, but the winning bid is far above it. The idea interviewers look for is
+    conditioning on winning, and the counter-intuitive comparative static that more competition should
+    make you bid lower relative to your estimate.
+  source: { name: "Jar-of-coins auction (Bazerman and Samuelson, 1983, I won the auction but don't want the prize)" }

@@ -1,0 +1,376 @@
+# Adverse selection and updating after trades: what a fill tells you, informed flow, moving the market, managing and hedging the position.
+- id: bmm-adverse-selection-001
+  topic: betting-market-making
+  subtopic: Adverse selection and updating after trades
+  type: numeric
+  difficulty: medium
+  tags: [adverse-selection, glosten-milgrom, bayes]
+  prompt: |
+    A contract pays \$100 if an event happens and \$0 otherwise; you think the event is a 50/50
+    chance. Each trader who comes to you is, independently, **informed** with probability $0.3$
+    (knows the outcome, buys if it will pay and sells if not) or **uninformed** (buys or sells with
+    probability $\tfrac12$ each, regardless). Each trader trades one contract. At what offer price does
+    selling to whoever buys break even on average?
+  answer: 65
+  unit: dollars
+  hints:
+    - Your offer only trades when someone buys. What is the contract worth given that someone bought?
+    - Compute the probability of a buy when the event will happen and when it will not.
+  followUps:
+    - What is the break-even bid, and so the spread?
+    - How does the spread depend on the fraction of informed traders?
+    - What would you do if you also had to cover a fixed cost of \$1 per trade?
+  explanation: |
+    Price the offer at the contract's value **given that it is lifted**. A buy is more likely when the
+    event will happen:
+
+    $$P(\text{buy} \mid \text{event}) = 0.3 + 0.7 \cdot \tfrac12 = 0.65, \qquad P(\text{buy} \mid \text{no event}) = 0.35.$$
+
+    So $P(\text{event} \mid \text{buy}) = \frac{0.65}{0.65 + 0.35} = 0.65$ and the break-even offer is
+    $E[V \mid \text{buy}] = 65$. By symmetry the bid is 35, a spread of $100 \times 0.3 = 30$.
+
+    The common wrong answer is 50, the unconditional value: quoting there loses money, because the
+    trades you get are tilted towards the ones where you are wrong. This is the Glosten-Milgrom model:
+    the spread exists to pay for adverse selection, and it widens with the share of informed flow.
+  source: { name: "Glosten and Milgrom (1985), Bid, ask and transaction prices in a specialist market with heterogeneously informed traders" }
+
+- id: bmm-adverse-selection-002
+  topic: betting-market-making
+  subtopic: Adverse selection and updating after trades
+  type: numeric
+  difficulty: hard
+  tags: [adverse-selection, glosten-milgrom, bayes]
+  prompt: |
+    A contract pays \$100 if an event happens and \$0 otherwise, and you start at 50/50. Traders arrive
+    one at a time; each is independently **informed** with probability $\tfrac12$ (buys if the event
+    will happen, sells if not) or **uninformed** (buys or sells with probability $\tfrac12$ each). You
+    always quote break-even prices given everything you have seen. The first trader **buys** from you.
+    What is your break-even offer for the second trader?
+  answer: 90
+  unit: dollars
+  hints:
+    - First find your probability of the event after seeing one buy.
+    - The second offer must break even given everything so far **and** given that the second trader buys.
+  followUps:
+    - What was the first offer, and what is the second bid?
+    - If trades keep coming in as buys, how fast does your market converge to 100?
+    - In this model, do you make or lose money on the first trade on average?
+  explanation: |
+    A buy has probability $\tfrac12 + \tfrac12 \cdot \tfrac12 = \tfrac34$ if the event will happen and $\tfrac14$
+    if not, a likelihood ratio of 3. After the first buy your odds go from 1:1 to 3:1, a probability of
+    $\tfrac34$. The second offer is priced on a second buy, another factor of 3:
+
+    $$\text{odds} = 9:1, \qquad P = \tfrac{9}{10}, \qquad \text{offer} = 90.$$
+
+    (The first offer was 75 and the second bid is $100 \times \tfrac{3}{3 + 3} = 50$.)
+
+    The common wrong answer is 75: candidates update once, to $\tfrac34$, and forget that the new offer
+    must also condition on the next trade being a buy. Thinking in odds makes repeated updates easy:
+    each trade multiplies the odds by the same likelihood ratio.
+  source: { name: "Sequential trade model (Glosten and Milgrom, 1985)" }
+
+- id: bmm-adverse-selection-003
+  topic: betting-market-making
+  subtopic: Adverse selection and updating after trades
+  type: numeric
+  difficulty: easy
+  tags: [adverse-selection, expected-value, spread]
+  prompt: |
+    A stock will be worth either \$90 or \$110, equally likely. You quote **98 bid, 102 offered** for
+    one share. A quarter of the traders who come to you know the true value (and buy at 102 if it is
+    110, sell at 98 if it is 90); the rest buy or sell with probability $\tfrac12$ each, at random. Each
+    trader trades exactly once with you. What is your expected profit per trader?
+  answer: -1/2
+  answerText: |-
+    $-1/2$: an expected loss of \$0.50 per trader
+  unit: dollars
+  explanation: |
+    An uninformed trader trades at random and you earn the half-spread, \$2, against a fair value of
+    100 either way. An informed trader always trades when you are wrong by \$8 (buying at 102 something
+    worth 110, or selling at 98 something worth 90). So
+
+    $$E[\text{profit}] = \tfrac34 \times 2 - \tfrac14 \times 8 = 1.5 - 2 = -0.5.$$
+
+    You break even only if the informed share is at most $\tfrac{2}{2 + 8} = 20\%$, or with a wider
+    quote: with 25% informed, the break-even quote is 97.5 at 102.5.
+
+    The common wrong answer is $+2$: earning the half-spread on every trade, as if nobody knew more
+    than you.
+  source: { name: "Zero-profit spread example (e.g. QuantVault, market microstructure guide)", url: "https://quantvault.org/market-microstructure-interview-guide.html" }
+
+- id: bmm-adverse-selection-004
+  topic: betting-market-making
+  subtopic: Adverse selection and updating after trades
+  type: short
+  difficulty: medium
+  tags: [adverse-selection, cards, informed-counterparty]
+  prompt: |
+    I draw a card from a shuffled deck and look at it; you cannot. Make me a market on a contract that
+    pays the card's rank in dollars (ace 1, number cards at face value, jack 11, queen 12, king 13). I
+    will trade one contract against your market if and only if it makes me money.
+  reference: |
+    Fair value to me as the market maker is 7, but that is irrelevant: you know the card and trade only
+    when I am wrong. Any market inside 1 to 13 loses. For example, at **5 at 9** you sell to me whenever
+    the rank is 1 to 4 and buy from me whenever it is 10 to 13, so my expected loss is
+
+    $$\frac{(4 + 3 + 2 + 1) + (1 + 2 + 3 + 4)}{13} = \frac{20}{13} \approx 1.54 \text{ per round.}$$
+
+    Tighter markets lose more. The right answers are to decline, or to quote **1 at 13**, which you
+    will never trade against with a profit; or to change the terms (make you commit to a side before
+    seeing my prices, or charge you a fee for the information) before I quote anything sensible.
+  keyPoints:
+    - Recognises that the counterparty is perfectly informed and trades only against a mistake
+    - Shows that any market strictly inside 1 to 13 has negative expected value, with a number (20/13 for 5 at 9, or similar)
+    - Concludes to decline or quote 1 at 13 (or otherwise change the terms)
+    - Notes that the unconditional fair value of 7 does not help against an informed trader
+  hints:
+    - What does it tell you that I only trade when it makes me money?
+    - Pick a market, say 5 at 9, and work out when I trade and how much you lose.
+  followUps:
+    - Now I have to buy or sell one contract every round, but I choose which. What single price do you quote?
+    - What if I have only seen the card's colour?
+    - What if I trade against you only half the time, at random, and the rest of the time I don't look at the card?
+  explanation: |
+    The point is adverse selection in its purest form. Candidates often quote around 7 out of habit,
+    then are surprised to lose every trade. Before choosing a mid, ask what the other side knows and
+    why they would trade. Against a counterparty with full information and the choice to trade, there
+    is no market that makes money.
+  source: { name: "Peeking-interviewer card market (e.g. quantt.co.uk, market-making interview questions)", url: "https://www.quantt.co.uk/resources/market-making-interview-questions" }
+
+- id: bmm-adverse-selection-005
+  topic: betting-market-making
+  subtopic: Adverse selection and updating after trades
+  type: short
+  difficulty: medium
+  tags: [adverse-selection, updating, making-markets]
+  prompt: |
+    You are making a market on the sum of three fair dice that have been rolled under a cup. You
+    quote 9.5 at 11.5, and I lift your offer. You requote, and I lift again, five times in a row, one
+    contract each time. What do you do, and why? Does it matter whether I could have seen the dice?
+  reference: |
+    It depends on what I could know.
+
+    - **If nobody has seen the dice**, my buying carries no information: fair value stays 10.5, every
+      sale at 11.5 earns 1 on average, and being short 5 is risk, not a loss. I might nudge my market
+      up a little to slow the buying and limit the position (skewing for inventory, e.g. 10 at 12),
+      but not because the value moved.
+    - **If I might have seen the dice**, five lifts are strong evidence that the sum is high. Five
+      buys at 11.5 or higher fit a sum of 12 to 18; my fair value should move well above 11.5, perhaps
+      to 13 to 14, and the market with it (e.g. 13 at 15), and I should stop selling at a price I now
+      believe is too low. I am short 5 at 11.5, and buying back (or at least not adding) limits the
+      damage.
+
+    In general I should ask who you are and why you trade; repeated one-way flow from someone who might
+    know is the clearest signal there is.
+  keyPoints:
+    - Distinguishes an uninformed counterparty (no information in the trades) from a possibly informed one
+    - If uninformed, keeps fair value at 10.5 and treats the short position as inventory risk, skewing modestly
+    - If possibly informed, raises fair value substantially after repeated lifts and moves the whole market up
+    - States the position (short 5 at 11.5) and how to manage it
+  hints:
+    - Why might someone keep buying at 11.5?
+    - After five buys you are short five. Is that a loss, or a position?
+  followUps:
+    - Now the first die is shown and it is a 2. Where is your market?
+    - What would it tell you if I had alternated, buying then selling?
+    - How would you notice in real trading that your flow is informed?
+  explanation: |
+    The common mistakes are opposite: not moving at all ("my fair value is 10.5, I keep selling"),
+    which is right only if the counterparty cannot know anything, and over-reacting to a single trade
+    from someone who cannot know anything. A good answer says which case applies, what the trades
+    say in each, and what the resulting position is.
+  source: { name: "Common market-making interview follow-up (e.g. quantt.co.uk; techinterview.org)", url: "https://www.quantt.co.uk/resources/market-making-interview-questions" }
+
+- id: bmm-adverse-selection-006
+  topic: betting-market-making
+  subtopic: Adverse selection and updating after trades
+  type: short
+  difficulty: hard
+  tags: [adverse-selection, glosten-milgrom, spread]
+  prompt: |
+    A stock will be worth either \$90 or \$110, equally likely. Some of the traders who come to you know
+    which (and trade accordingly); the rest buy or sell at random. Work out your break-even bid and
+    offer, and the spread, if (a) none of your counterparties is informed and (b) 40% of them are.
+    What does this say about quoting to a retail broker's flow versus a hedge fund's?
+  reference: |
+    The break-even offer is the value given that someone buys. With an informed fraction $\alpha$,
+    $P(\text{buy} \mid 110) = \alpha + \frac{1 - \alpha}{2}$ and $P(\text{buy} \mid 90) = \frac{1 - \alpha}{2}$,
+    so $P(110 \mid \text{buy}) = \frac{1 + \alpha}{2}$ and
+
+    $$\text{offer} = 100 + 10\alpha, \qquad \text{bid} = 100 - 10\alpha, \qquad \text{spread} = 20\alpha.$$
+
+    (a) $\alpha = 0$: offer and bid are both 100; any spread at all is profit, and competition would
+    squeeze it to costs. (b) $\alpha = 0.4$: **96 at 104**, a spread of 8.
+
+    Flow from a retail broker is mostly uninformed, so you can quote it much tighter (this is why
+    wholesalers pay for retail order flow). A hedge fund's orders are more likely to carry information,
+    so you widen, quote less size, or update faster after their trades. Same asset, same fair value,
+    different market, because the market is priced on the trades you actually get.
+  keyPoints:
+    - Prices the offer at the expected value given a buy, and the bid given a sell
+    - Derives offer 100 + 10 alpha and bid 100 - 10 alpha, a spread of 20 alpha
+    - Gives no spread needed at alpha 0 and 96 at 104 at alpha 0.4
+    - Concludes that uninformed (retail) flow can be quoted tighter than flow likely to be informed
+  hints:
+    - Your offer trades only when someone buys. What is the stock worth given a buy?
+    - Compute $P(\text{buy})$ when the value is 110 and when it is 90.
+  followUps:
+    - Each trade also costs you \$0.50 to process. Where are your quotes now?
+    - After one trader buys at your offer in case (b), what is your new offer?
+    - Why would a market maker pay a broker for the right to trade against its customers' orders?
+  explanation: |
+    The interviewer wants the conditional-expectation pricing, the linear dependence of the spread on
+    the informed share, and the business consequence: segmenting flow by how informed it is. Candidates
+    often say "widen for informed flow" without being able to say how much; the two-value model makes it
+    concrete.
+  source: { name: "Glosten and Milgrom (1985); payment for order flow as a consequence" }
+
+- id: bmm-adverse-selection-007
+  topic: betting-market-making
+  subtopic: Adverse selection and updating after trades
+  type: short
+  difficulty: easy
+  tags: [inventory, skew, position-management]
+  prompt: |
+    You are making a market on a contract paying the sum of two fair dice that nobody has seen. You
+    have been quoting 6.5 at 7.5, and uninformed customers have lifted your offer 40 times, so you are
+    short 40 contracts. Your fair value is still 7. Where do you quote now, and why?
+  reference: |
+    I am short 40, a position with a P&L standard deviation of about $40 \times 2.42 \approx 97$, and I
+    would like to reduce it. Since the flow is uninformed, fair value has not moved; what has changed is
+    my inventory. So I **skew** the market up rather than widen it: for example **7 at 8**. The higher
+    bid makes it more attractive for customers to sell to me (buying back my short), and the higher
+    offer slows further buying. Each sale I make at 8 is still above fair value, and each purchase at 7
+    is at fair value, so I give up a little edge per trade in exchange for less risk.
+
+    If I could hedge elsewhere (buy the same risk in another market at close to 7), I could keep my
+    market centred instead.
+  keyPoints:
+    - States the position (short 40) and that the risk, not the fair value, has changed
+    - Skews both quotes up to attract sellers and discourage buyers
+    - Gives a concrete skewed market such as 7 at 8
+    - Recognises the trade-off between edge per trade and reducing inventory, or mentions hedging as an alternative
+  hints:
+    - Has the fair value changed? What has?
+    - Which customers do you want to attract now, buyers or sellers?
+  followUps:
+    - Why not simply widen to 6 at 8?
+    - Now suppose the customers who lifted you might have seen the dice. What changes?
+  explanation: |
+    Skewing for inventory is different from moving fair value for information, and interviewers check
+    that candidates know which one they are doing. Widening both sides protects you but also stops the
+    trades that would reduce your position; skewing steers the flow. Real market makers skew with
+    inventory continuously, often in small steps.
+  source: { name: "Inventory skew (e.g. quantt.co.uk, market-making interview questions)", url: "https://www.quantt.co.uk/resources/market-making-interview-questions" }
+
+- id: bmm-adverse-selection-008
+  topic: betting-market-making
+  subtopic: Adverse selection and updating after trades
+  type: numeric
+  difficulty: medium
+  tags: [hedging, covariance, dice]
+  prompt: |
+    Three fair dice $D_1, D_2, D_3$ will be rolled. You are **short 10** contracts that each pay
+    $D_2 + D_3$ dollars. The only other market is a contract paying $D_1 + D_2$ dollars. How many of
+    those contracts should you **buy** to make the variance of your total P&L as small as possible?
+  answer: 5
+  unit: contracts
+  hints:
+    - The minimum-variance hedge ratio is the covariance of the position with the hedge divided by the variance of the hedge.
+    - What do $D_2 + D_3$ and $D_1 + D_2$ have in common?
+  followUps:
+    - What fraction of the position's variance does the hedge remove?
+    - Why not buy 10, one for one?
+  explanation: |
+    With $h$ hedge contracts the P&L's random part is $h(D_1 + D_2) - 10(D_2 + D_3)$. Its variance is
+    smallest at
+
+    $$h = 10 \cdot \frac{\operatorname{Cov}(D_2 + D_3,\, D_1 + D_2)}{\operatorname{Var}(D_1 + D_2)} = 10 \cdot \frac{\operatorname{Var}(D_2)}{2\operatorname{Var}(D_2)} = 5.$$
+
+    The two contracts share only $D_2$. With $\sigma^2 = 35/12$ the variance of one die, the unhedged
+    position has variance $100 \cdot 2\sigma^2 = 200\sigma^2$; with 5 hedge contracts the P&L is
+    $5D_1 - 5D_2 - 10D_3$, with variance $(25 + 25 + 100)\sigma^2 = 150\sigma^2$. A hedge on a partly
+    related contract removes only part of the risk, here a quarter.
+
+    The common wrong answer is 10, hedging one for one because the contracts look alike: the P&L
+    becomes $10D_1 - 10D_3$, whose variance is $200\sigma^2$ again, as much new risk ($D_1$) brought in as
+    old risk ($D_2$) removed.
+  source: { name: "Minimum-variance hedging with a correlated contract (standard trading-interview idea)" }
+
+- id: bmm-adverse-selection-009
+  topic: betting-market-making
+  subtopic: Adverse selection and updating after trades
+  type: numeric
+  difficulty: medium
+  tags: [hedging, correlation, beta]
+  prompt: |
+    You hold \$1 million of a stock whose annual volatility is 30%. You hedge with an index future whose
+    volatility is 20%; the correlation between the stock's and the index's returns is $0.8$. What
+    notional of the index, in millions of dollars, should you **sell** to minimise the variance of the
+    hedged position?
+  answer: 6/5
+  answerText: |-
+    $1.2$ million dollars
+  unit: million dollars
+  hints:
+    - The minimum-variance hedge ratio is $\operatorname{Cov}(S, I)/\operatorname{Var}(I)$ for returns $S$ and $I$.
+    - Write the covariance as $\rho\,\sigma_S\,\sigma_I$.
+  followUps:
+    - What is the volatility of the hedged position?
+    - The correlation drops to 0.5 after you put the hedge on. What happens?
+  explanation: |
+    The hedge ratio is the stock's beta to the index:
+
+    $$\beta = \frac{\rho\,\sigma_S\,\sigma_I}{\sigma_I^2} = \frac{\rho\,\sigma_S}{\sigma_I} = \frac{0.8 \times 0.3}{0.2} = 1.2,$$
+
+    so sell \$1.2 million of the index. The remaining volatility is $\sigma_S\sqrt{1 - \rho^2} = 0.3 \times 0.6 = 18\%$
+    of \$1 million: even a good hedge leaves most of the risk when correlation is 0.8.
+
+    The common wrong answers are 1 (hedging dollar for dollar), 0.8 (using the correlation alone) and
+    1.5 (the ratio of volatilities, which is right only when the correlation is 1).
+  source: { name: "Minimum-variance (beta) hedge, standard in trading interviews" }
+
+- id: bmm-adverse-selection-010
+  topic: betting-market-making
+  subtopic: Adverse selection and updating after trades
+  type: short
+  difficulty: hard
+  tags: [adverse-selection, markouts, execution]
+  prompt: |
+    You run an automated market maker on an exchange. Every fill looks good when it happens: on
+    average you buy 1 cent below and sell 1 cent above your fair value at the moment of the trade.
+    Yet the strategy loses money. How can both be true, how would you measure what is going on, and
+    what would you change?
+  reference: |
+    Fair value at the moment of the trade is the wrong yardstick, because fills are not random: you are
+    more likely to be filled when the price is about to move against you. Someone sells to you at your
+    bid just before the price drops, because they know (or react faster to) something your fair value
+    has not caught up with yet.
+
+    Measure it with **markouts**: for each fill, compare the fill price with the mid (or your fair value)
+    some time later, say 1 second, 10 seconds and 1 minute, signed by your side. If the 1-cent edge at
+    the fill becomes, say, a 3-cent loss on average a minute later, adverse selection costs 4 cents per
+    fill and the strategy loses 2 cents per trade. Break the markouts down by counterparty type, time of
+    day, size and market conditions to find where the toxic flow comes from.
+
+    Fixes: update fair value using order-flow and trade signals (including your own fills), widen or
+    pull quotes when the flow is likely informed (around news, after large prints in related
+    instruments), quote less size there, cancel stale quotes faster, and skew after fills.
+  keyPoints:
+    - Explains that fills are conditional on the price being about to move against you (adverse selection)
+    - Proposes measuring P&L after fills at later horizons (markouts) rather than at the moment of the trade
+    - Gives a numeric example in which the edge at the fill is smaller than the average post-fill move
+    - Suggests segmenting the flow to find where the losses come from
+    - Proposes concrete fixes, such as faster updates, widening or pulling quotes, smaller size or skewing
+  hints:
+    - What usually happens to the price just after you get filled?
+    - How would you measure the value of a fill if not at the moment it happens?
+  followUps:
+    - Your markouts are good at one second and bad at one minute. What does that suggest?
+    - How would you decide whether to stop quoting a particular counterparty?
+  explanation: |
+    This is the practical version of the winner's curse in market making: "conditional on my order being
+    filled, what is it worth?" Candidates who only talk about widening miss that the first job is to
+    measure it. Markouts are the standard tool on real desks, and segmenting them is how firms decide
+    which flow to quote tightly.
+  source: { name: "Adverse selection and markouts (e.g. Jane Street, Probability and Markets, adverse selection section)", url: "https://www.janestreet.com/static/pdfs/trading-interview.pdf" }

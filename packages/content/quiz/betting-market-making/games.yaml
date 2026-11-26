@@ -1,0 +1,271 @@
+# Trading games: markets on hidden cards and dice where information arrives in rounds, with positions and P&L tracked as you go.
+- id: bmm-games-001
+  topic: betting-market-making
+  subtopic: Trading games
+  type: numeric
+  difficulty: easy
+  tags: [cards, trading-game, expectation]
+  prompt: |
+    Ten cards numbered 1 to 10 are shuffled and three are dealt face down. A contract pays the sum of
+    the three cards in dollars. What is its fair value before any card is seen?
+  answer: 33/2
+  answerText: |-
+    $33/2 = 16.5$ dollars
+  unit: dollars
+  explanation: |
+    By linearity, each dealt card has the same distribution as a single random card from 1 to 10, with
+    mean $\tfrac{55}{10} = 5.5$, so the sum is worth $3 \times 5.5 = 16.5$. Dealing without replacement
+    makes the cards dependent, but linearity of expectation does not need independence.
+
+    The common slip is to think that the dependence changes the expected value; it changes the
+    variance (slightly smaller than with replacement), not the mean.
+  source: { name: "Card-sum trading game, as run in market-making interviews (e.g. Optiver, IMC; techinterview.org)", url: "https://www.techinterview.org/post/3233476306/market-making-interview-trading-games/" }
+
+- id: bmm-games-002
+  topic: betting-market-making
+  subtopic: Trading games
+  type: numeric
+  difficulty: easy
+  tags: [cards, trading-game, conditional-expectation]
+  prompt: |
+    Ten cards numbered 1 to 10 are shuffled and three are dealt face down. A contract pays the sum of
+    the three cards in dollars. The first card is turned over and it is a **9**. What is the contract's
+    fair value now?
+  answer: 173/9
+  answerText: |-
+    $173/9 \approx 19.22$ dollars
+  unit: dollars
+  explanation: |
+    The other two cards are drawn from the nine remaining cards, which add up to $55 - 9 = 46$, so each
+    is worth $\tfrac{46}{9}$ on average:
+
+    $$9 + 2 \cdot \frac{46}{9} = \frac{173}{9} \approx 19.22.$$
+
+    The common wrong answer is $9 + 2 \times 5.5 = 20$, which forgets that the 9 is no longer in the deck
+    and so the remaining cards are slightly lower on average. In a fast game that 0.78 is more than the
+    width of a tight market.
+  source: { name: "Card-sum trading game, as run in market-making interviews (e.g. Optiver, IMC; techinterview.org)", url: "https://www.techinterview.org/post/3233476306/market-making-interview-trading-games/" }
+
+- id: bmm-games-003
+  topic: betting-market-making
+  subtopic: Trading games
+  type: short
+  difficulty: medium
+  tags: [cards, trading-game, updating, position-management]
+  prompt: |
+    Ten cards numbered 1 to 10 are shuffled and three are dealt face down; a contract pays their sum in
+    dollars. Nobody has seen any card. Make me a market. I will trade against it, then turn the cards
+    over one at a time, and after each card you requote and tell me your position and expected P&L.
+    (Suppose I buy one contract from you at your first offer, then the first card is a 2 and the second
+    is a 10.)
+  reference: |
+    **Start.** Fair value $3 \times 5.5 = 16.5$. Market **15.5 at 17.5**. You buy one at 17.5, so I am
+    short 1 at 17.5, with expected P&L $+1$ (you have no information).
+
+    **First card 2.** The other two come from cards summing to 53, worth $\tfrac{53}{9}$ each:
+    fair value $2 + \tfrac{106}{9} \approx 13.78$. New market around **13 at 14.5**. I am still short 1
+    at 17.5, now expecting to make about $17.5 - 13.78 = 3.72$.
+
+    **Second card 10.** The last card comes from the eight cards summing to 43, worth 5.375: fair value
+    $12 + 5.375 = 17.375$. Market around **16.75 at 18**, narrower because only one card is left
+    (standard deviation about 2.5). Expected P&L on the short is now $17.5 - 17.375 = 0.125$.
+
+    Through the game I recompute fair value from what is left in the deck each time, centre the market
+    on it, narrow it as the uncertainty falls, and keep track of the short position; I might lean my
+    market up a little to buy back the short if I want to reduce risk before the last card.
+  keyPoints:
+    - Opens around the fair value 16.5 with a reasonable width
+    - Tracks the position (short 1 at 17.5) and its expected P&L after each card
+    - After the 2, uses the remaining deck to get about 13.78 (not 2 plus 11)
+    - After the 10, gets 17.375 from the eight remaining cards
+    - Narrows the market as fewer cards remain and considers managing the short position
+  hints:
+    - After each card, which cards are still in the deck, and what do they add up to?
+    - Your position does not change when a card is turned; its expected value does.
+  followUps:
+    - The last card is about to be turned. Would you buy back your short at 17.5? At 17?
+    - Now suppose I have seen the third card all along. Which of my trades should have worried you?
+  explanation: |
+    This is the shape of most interview trading games: a fair value that moves as information arrives,
+    a market that follows it and narrows, and a position whose expected P&L you must keep in your head.
+    The common slips are using 5.5 per unseen card after cards are removed, keeping the same width
+    when the uncertainty has fallen, and losing track of the position.
+  source: { name: "Card-sum trading game, as run in market-making interviews (e.g. QuantVault, market-making game guide)", url: "https://quantvault.org/market-making-game-interview-guide.html" }
+
+- id: bmm-games-004
+  topic: betting-market-making
+  subtopic: Trading games
+  type: short
+  difficulty: hard
+  tags: [cards, asymmetric-information, adverse-selection, bayes]
+  prompt: |
+    Ten cards numbered 1 to 10 are shuffled and three are dealt face down; a contract pays their sum in
+    dollars. You privately look at one card: it is a **3**. I privately look at a different card (you
+    do not see mine, I do not see yours). The third card stays hidden. You quote **13.5 at 15.5**, and I
+    lift your offer. Assuming I buy only when the contract is worth more than 15.5 to me given my card,
+    what is the contract worth to you now?
+  reference: |
+    Before the trade, my card $c$ is equally likely to be any of the 9 cards other than your 3, and you
+    value the contract at $3 + 2 \cdot \tfrac{52}{9} \approx 14.56$, hence your market.
+
+    From my side, knowing only $c$, the contract is worth $c + 2 \cdot \frac{55 - c}{9} = \frac{110 + 7c}{9}$.
+    I lift at 15.5 exactly when $\frac{110 + 7c}{9} > 15.5$, i.e. $c \ge 5$. So after the lift you know
+    $c \in \{5, 6, 7, 8, 9, 10\}$, equally likely, with mean 7.5. The third card comes from the 8 cards
+    other than yours and mine, which sum to $52 - c$, so you value the contract at
+
+    $$3 + E[c] + \frac{52 - E[c]}{8} = 3 + 7.5 + \frac{44.5}{8} \approx 16.06.$$
+
+    You are short 1 at 15.5 against a value of about 16.06, an expected loss of about 0.56, and your
+    market should move up to around 15.5 at 17 (centred near 16) rather than staying put.
+  keyPoints:
+    - Computes the pre-trade value from the 3 and the remaining deck (about 14.56)
+    - Works out the counterparty's valuation as a function of their card and the condition for lifting at 15.5 (card at least 5)
+    - Updates the distribution of the counterparty's card to 5 through 10, mean 7.5
+    - Revalues the contract to about 16.06 and notes the expected loss on the short
+    - Moves the market up to centre on the new value
+  hints:
+    - What would the contract be worth to me if all I knew was my own card?
+    - For which of my cards would I want to buy at 15.5?
+    - Given that I bought, what is my card on average, and what does that make the third card?
+  followUps:
+    - Suppose instead I had hit your bid at 13.5. What would the contract be worth to you?
+    - If I had seen your card too, how would that change what my lift tells you?
+  explanation: |
+    The core skill is to model the counterparty: what they know, what they would do with each possible
+    piece of information, and therefore what their trade reveals. Candidates often update in the right
+    direction but by a guessed amount; the clean method is to find the set of private cards consistent
+    with the trade and average over it. Notice that the third card's value also shifts, because a high
+    card in my hand leaves a lower deck behind.
+  source: { name: "Asymmetric-information card game in the style of trading interviews (e.g. Jane Street, Probability and Markets, adverse selection)", url: "https://www.janestreet.com/static/pdfs/trading-interview.pdf" }
+
+- id: bmm-games-005
+  topic: betting-market-making
+  subtopic: Trading games
+  type: numeric
+  difficulty: medium
+  tags: [cards, bayes, trading-game]
+  prompt: |
+    A deck of 10 cards is one of two kinds, equally likely: deck A has 6 red and 4 black cards, deck B
+    has 4 red and 6 black. Three cards are dealt from it without replacement and all three are red. A
+    contract pays \$10 if the deck is A and nothing otherwise. What is it worth now?
+  answer: 25/3
+  answerText: |-
+    $25/3 \approx 8.33$ dollars
+  unit: dollars
+  hints:
+    - Compute the probability of three reds from each deck.
+    - Update the 1:1 prior odds by the ratio of those probabilities.
+  followUps:
+    - Make me a market on the colour of the next card (a contract paying \$1 if it is red).
+    - How would your answer change if the cards had been dealt with replacement?
+  explanation: |
+    The likelihoods of three reds are
+
+    $$P(RRR \mid A) = \frac{6}{10}\cdot\frac59\cdot\frac48 = \frac16, \qquad P(RRR \mid B) = \frac{4}{10}\cdot\frac39\cdot\frac28 = \frac{1}{30}.$$
+
+    The odds of A go from 1:1 to 5:1, so $P(A) = \tfrac56$ and the contract is worth
+    $10 \cdot \tfrac56 = \tfrac{25}{3} \approx 8.33$.
+
+    The common wrong answer uses draws with replacement, $\left(\tfrac{6}{10}\right)^3$ versus
+    $\left(\tfrac{4}{10}\right)^3$, odds of 27:8 and a value of about 7.71; dealing without replacement
+    makes three reds rarer from deck B and so more telling. Games like Figgie are built on exactly
+    this kind of inference about a deck's composition.
+  source: { name: "Deck-composition inference, as in Jane Street's card game Figgie", url: "https://www.figgie.com" }
+
+- id: bmm-games-006
+  topic: betting-market-making
+  subtopic: Trading games
+  type: numeric
+  difficulty: medium
+  tags: [cards, pnl, position]
+  prompt: |
+    Ten cards numbered 1 to 10 are shuffled and three are dealt face down; a contract pays their sum in
+    dollars. During the game you **bought 2** contracts at 17 and **sold 1** at 19. Two of the three
+    cards have now been turned over: a 9 and a 2. What is your expected total P&L from these trades?
+  answer: 3/2
+  answerText: |-
+    $3/2 = 1.50$ dollars
+  unit: dollars
+  hints:
+    - What is your net position, and how much cash have you paid or received?
+    - What is the contract worth now, given the two cards seen?
+  followUps:
+    - What is the worst and the best final P&L from here?
+    - Would you sell your remaining contract at 16?
+  explanation: |
+    Net position: long $2 - 1 = 1$ contract. Cash: paid $2 \times 17 = 34$, received 19, net $-15$.
+
+    The last card is one of the 8 cards other than 9 and 2, which sum to $55 - 11 = 44$, so it averages
+    5.5 and the contract is worth $11 + 5.5 = 16.5$. Expected P&L:
+
+    $$1 \times 16.5 - 15 = 1.5.$$
+
+    Equivalently, trade by trade: each purchase at 17 is now worth $-0.5$ and the sale at 19 is worth
+    $+2.5$, total $1.5$. The common slip is forgetting the sale (giving $-1$). Valuing the unseen card
+    at 5.5 without removing the 9 and the 2 from the deck happens to give the same answer here, because
+    the two removed cards average 5.5, but it is wrong in general.
+  source: { name: "Position and P&L tracking in interview trading games (e.g. tradermath.org, make me a market guide)", url: "https://www.tradermath.org/articles/make-me-a-market-guide" }
+
+- id: bmm-games-007
+  topic: betting-market-making
+  subtopic: Trading games
+  type: short
+  difficulty: hard
+  tags: [dice, asymmetric-information, adverse-selection]
+  prompt: |
+    Two fair dice are rolled. You see one of them: it is a **5**. I see the other one; you do not. Make
+    me a market on a contract paying the sum of the two dice. I may buy, sell or pass.
+  reference: |
+    To me the sum is $5 + D$ with $D$ uniform on 1 to 6, so my fair value is 8.5 and the sum lies in 6
+    to 11. But you know the sum exactly, and you will trade only when my market is wrong. Any market with
+    a bid above 6 or an offer below 11 loses on average. For example at **7.5 at 9.5** you sell to me when
+    the sum is 6 or 7 (I lose 1.5 or 0.5) and buy from me when it is 10 or 11 (I lose 0.5 or 1.5): an
+    expected loss of $\tfrac{4}{6} \approx 0.67$ per round, and nothing to offset it.
+
+    So I should quote **6 at 11** (or wider), where you never profit, or decline; and if you do trade, it
+    tells me the sum exactly. If you were forced to trade every round at a single price of my choosing,
+    I would minimise your expected gain $E|5 + D - p|$ by quoting the median, any $p$ from 8 to 9, giving
+    up 1.5 per round.
+  keyPoints:
+    - Computes own fair value 8.5 and the possible range 6 to 11
+    - Recognises the counterparty knows the sum and trades only against a mispriced market
+    - Shows a market inside the range loses, with an expected loss computed for an example
+    - Concludes to quote at least as wide as 6 at 11 or decline, and that any trade reveals the sum
+  hints:
+    - What do I know that you do not?
+    - Try a market such as 7.5 at 9.5. When do I trade, and what do you lose?
+  followUps:
+    - Now I am forced to buy or sell one contract every round, at a single price you choose. What price, and what does it cost you?
+    - What if I have only been told whether my die is even or odd?
+  explanation: |
+    This is the dice version of trading against someone who has seen the card. Candidates often quote
+    around 8.5 with a normal width; the interviewer then trades every time it helps them. The skill is
+    recognising when there is no profitable market and saying so, and seeing that in the forced-trade
+    variant the right price is the median of what the counterparty might know.
+  source: { name: "Asymmetric-information dice market (common in trading-interview games)" }
+
+- id: bmm-games-008
+  topic: betting-market-making
+  subtopic: Trading games
+  type: single
+  difficulty: easy
+  tags: [sunk-cost, position-management, trading-game]
+  prompt: |
+    In a trading game you are long 5 contracts that you bought at an average price of 12. The cards
+    revealed since then have moved the contract's fair value to 10. I bid 11 for all 5. What should you
+    do?
+  choices:
+    - { id: a, text: "Sell all 5 at 11" }
+    - { id: b, text: "Do not sell: selling at 11 locks in a loss of 1 per contract" }
+    - { id: c, text: "Buy more at 10 to average down your entry price" }
+    - { id: d, text: "Hold, since the price may return to 12" }
+  answer: a
+  explanation: |
+    What you paid is sunk. The only question is whether 11 is a good price for something worth 10:
+    selling earns 1 per contract relative to fair value, so sell (assuming I have no information you
+    lack, and you have no reason to want the position).
+
+    Choice b is the sunk-cost mistake: the loss of 2 per contract happened when the value fell, not when
+    you sell. Choice c "averages down" without any edge (buying at fair value earns nothing). Choice d
+    is hoping, not trading: fair value is 10 now, so holding is worth 10 per contract, less than 11.
+  source: { name: "Sunk cost in position management (common interview follow-up)" }

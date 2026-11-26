@@ -1,0 +1,407 @@
+# Bet sizing, Kelly and risk: how much of a bankroll to stake, fractional Kelly, drawdowns, utility and risk aversion.
+- id: bmm-sizing-001
+  topic: betting-market-making
+  subtopic: Bet sizing, Kelly and risk
+  type: numeric
+  difficulty: easy
+  tags: [kelly-criterion, bet-sizing, odds]
+  prompt: |
+    A bet pays 2 to 1 (a winning \$1 stake returns \$3 including the stake) and wins with probability
+    $0.4$. You can make it many times in a row, independently, staking any fraction of your current
+    wealth each time. What fraction of your bankroll should you stake each time to maximise the
+    long-run growth rate of your wealth? Give it as a fraction of your bankroll.
+  answer: 1/10
+  answerText: |-
+    $1/10$ of your bankroll
+  explanation: |
+    Staking a fraction $f$ multiplies wealth by $1 + 2f$ on a win and $1 - f$ on a loss, so the
+    long-run growth rate per bet is
+
+    $$g(f) = 0.4\ln(1 + 2f) + 0.6\ln(1 - f), \qquad g'(f) = \frac{0.8}{1 + 2f} - \frac{0.6}{1 - f} = 0 \;\Longrightarrow\; f = 0.1.$$
+
+    This is the Kelly fraction $f^* = \frac{bp - q}{b}$ for odds of $b$ to 1: the **edge** (expected
+    profit per \$1, here $0.4 \times 3 - 1 = 0.2$) divided by the **odds** ($b = 2$).
+
+    The common wrong answers are 0.4 (betting the win probability, which ignores the odds) and 0.2
+    (betting the edge, which is the Kelly fraction only at even money).
+  source: { name: "Kelly criterion (Kelly, 1956)" }
+
+- id: bmm-sizing-002
+  topic: betting-market-making
+  subtopic: Bet sizing, Kelly and risk
+  type: numeric
+  difficulty: medium
+  tags: [kelly-criterion, fractional-kelly, growth-rate]
+  prompt: |
+    For a bet with a small edge, the long-run growth rate of wealth when you stake a fraction $f$ is
+    well approximated by
+
+    $$g(f) \approx m f - \tfrac12 s^2 f^2,$$
+
+    where $m$ is the bet's expected return and $s^2$ its variance per unit staked, so the Kelly
+    fraction is $f^* = m / s^2$. Under this approximation, what fraction of the full-Kelly growth rate
+    do you keep if you stake **half** the Kelly fraction?
+  answer: 3/4
+  hints:
+    - Write $f = c f^*$ and express $g$ as a multiple of $g(f^*)$.
+    - What is $g(f^*)$?
+  followUps:
+    - At what multiple of the Kelly fraction does the growth rate fall to zero?
+    - What do you gain in exchange for the quarter of the growth rate you give up at half Kelly?
+  explanation: |
+    With $f = c f^*$ and $f^* = m/s^2$,
+
+    $$g(c f^*) = \frac{m^2}{s^2}\left(c - \frac{c^2}{2}\right) = (2c - c^2)\, g(f^*), \qquad g(f^*) = \frac{m^2}{2s^2}.$$
+
+    At $c = \tfrac12$ the factor is $1 - \tfrac14 = \tfrac34$. Half Kelly keeps three quarters of the
+    growth rate while halving the volatility of the log of wealth; at $c = 2$ the growth rate is zero,
+    and beyond that negative.
+
+    The common wrong answer is $\tfrac12$, assuming growth is proportional to the stake. The growth
+    curve is flat near its peak, so a small under-bet costs little and an over-bet costs much more,
+    which is why desks that are unsure of their edge size at a fraction of Kelly.
+  source: { name: "Fractional Kelly (e.g. MacLean, Thorp and Ziemba, Good and bad properties of the Kelly criterion)", url: "https://www.stat.berkeley.edu/~aldous/157/Papers/Good_Bad_Kelly.pdf" }
+
+- id: bmm-sizing-003
+  topic: betting-market-making
+  subtopic: Bet sizing, Kelly and risk
+  type: numeric
+  difficulty: hard
+  tags: [kelly-criterion, simultaneous-bets, growth-rate]
+  prompt: |
+    Two independent even-money bets are offered **at the same time**, each winning with probability
+    $0.6$; both settle before the next pair is offered, and this repeats indefinitely. You stake the
+    same fraction $f$ of your current wealth on each bet. Which $f$ maximises the long-run growth rate
+    of your wealth? Give it as a fraction of your bankroll (per bet).
+  answer: 5/26
+  answerText: |-
+    $5/26 \approx 0.192$ of your bankroll on each bet
+  hints:
+    - Each bet on its own would have a Kelly fraction of 0.2. Why can't you simply bet 0.2 on each?
+    - List the three outcomes of the pair (two wins, one each, two losses) and what each does to your wealth.
+    - Maximise the expected log of wealth over $f$.
+  followUps:
+    - With many simultaneous independent bets of this kind, what happens to the fraction on each and to the total staked?
+    - How would the answer change if the two bets were perfectly correlated?
+  explanation: |
+    Wealth is multiplied by $1 + 2f$ (both win, probability 0.36), 1 (one each, 0.48) or $1 - 2f$ (both
+    lose, 0.16). Maximise
+
+    $$g(f) = 0.36\ln(1 + 2f) + 0.16\ln(1 - 2f), \qquad g'(f) = \frac{0.72}{1 + 2f} - \frac{0.32}{1 - 2f} = 0 \;\Longrightarrow\; f = \frac{0.4}{2.08} = \frac{5}{26}.$$
+
+    So about 19.2% on each bet, 38.5% in total: slightly less than the 20% each you would bet if the
+    bets came one after the other.
+
+    The common wrong answer is 0.2 each, which treats the bets as sequential. When bets are
+    simultaneous, losses can come together and you cannot resize between them, so each one gets a
+    little less. With perfectly correlated bets it would be one bet of 0.2 in total, split 0.1 and 0.1.
+  source: { name: "Kelly criterion for simultaneous bets (e.g. Thorp, The Kelly criterion in blackjack, sports betting and the stock market)" }
+
+- id: bmm-sizing-004
+  topic: betting-market-making
+  subtopic: Bet sizing, Kelly and risk
+  type: single
+  difficulty: medium
+  tags: [kelly-criterion, growth-rate, edge]
+  prompt: |
+    You will play one of two betting games many times, each time staking the growth-optimal (Kelly)
+    fraction of your current bankroll for that game.
+
+    - **Game A:** a fair coin; heads pays 1.25 to 1 (a \$1 stake wins \$1.25), tails loses the stake.
+    - **Game B:** two fair dice; a total of 10 or more (probability $\tfrac16$) pays 6.5 to 1, anything
+      else loses the stake.
+
+    Which game makes your bankroll grow faster in the long run?
+  choices:
+    - { id: a, text: "Game A" }
+    - { id: b, text: "Game B, because its expected profit per dollar staked is twice as large" }
+    - { id: c, text: "They grow at the same rate, since Kelly sizing adjusts for the difference" }
+  answer: a
+  explanation: |
+    Game A's edge is $0.5 \times 2.25 - 1 = 0.125$ per dollar and its Kelly fraction is
+    $\frac{0.125}{1.25} = 0.1$, giving a growth rate of
+    $0.5\ln(1.125) + 0.5\ln(0.9) \approx 0.0062$ per round.
+
+    Game B's edge is $\tfrac16 \times 7.5 - 1 = 0.25$ per dollar, but its Kelly fraction is only
+    $\frac{0.25}{6.5} \approx 0.038$, with growth $\tfrac16\ln(1.25) + \tfrac56\ln(0.9615) \approx 0.0045$ per
+    round.
+
+    Choice b ranks bets by edge alone. Growth depends on edge relative to risk (roughly
+    $\tfrac12 \cdot \text{edge}^2/\text{variance}$), and B's long-shot payoff is so volatile that you can
+    only stake a sliver of your bankroll on it. Choice c assumes Kelly equalises bets; it only makes each
+    bet as good as it can be.
+  source: { name: "Built on the bankroll games in Optiver-style betting rounds (e.g. QuantVault)", url: "https://quantvault.org/optiver-trading-betting-game-interview.html" }
+
+- id: bmm-sizing-005
+  topic: betting-market-making
+  subtopic: Bet sizing, Kelly and risk
+  type: numeric
+  difficulty: hard
+  tags: [cards, kelly-criterion, minimax, hedging]
+  prompt: |
+    A shuffled deck of 3 red and 3 black cards is turned over one card at a time. Before each card you
+    may bet any amount up to your current wealth on its colour, at even money (a correct \$1 bet wins
+    \$1, a wrong one loses \$1). You start with \$1. What is the largest final wealth you can
+    **guarantee**, however the cards come out?
+  answer: 16/5
+  answerText: |-
+    $16/5 = 3.20$ dollars
+  unit: dollars
+  hints:
+    - When only one colour is left, what do you do?
+    - Imagine splitting your dollar into equal parts, one for each possible order of the six colours.
+    - How many orders are there, and what does a part grow to if you bet it all on its order at every card?
+  followUps:
+    - What is the guaranteed amount for a full deck of 26 red and 26 black? (Roughly.)
+    - "Describe the strategy card by card: how much do you bet on the first card, and on which colour?"
+  explanation: |
+    There are $\binom63 = 20$ equally possible colour orders. Split the dollar into 20 parts of
+    $\tfrac{1}{20}$, one per order, and let each part bet everything on its own order at every card.
+    Exactly one order is the real one, and its part doubles six times, so you end with
+    $\tfrac{64}{20} = \tfrac{16}{5}$ for certain. (The parts' bets partly cancel; netting them gives a
+    single bet on the majority colour of the remaining cards, of a fraction $\frac{|r - b|}{r + b}$ of
+    wealth, which is the Kelly bet.)
+
+    You cannot guarantee more: even-money bets are fair against a fair coin, so averaged over all
+    $2^6 = 64$ colour sequences your final wealth is \$1. Since wealth is never negative, the 20 real
+    orders together get at most 64, and the worst of them at most $\tfrac{64}{20}$.
+
+    The common wrong answers are \$1 ("the deck is balanced, so nothing is guaranteed") and \$2 (waiting
+    until only one colour is left and then betting everything, which in the worst case leaves just the
+    last card to bet on).
+  source: { name: "Red and black card betting problem (e.g. LSU quant interview compilation)", url: "https://www.math.lsu.edu/~smolinsk/Quant_Interview_Prep.pdf" }
+
+- id: bmm-sizing-006
+  topic: betting-market-making
+  subtopic: Bet sizing, Kelly and risk
+  type: numeric
+  difficulty: medium
+  tags: [utility, certainty-equivalent, risk-aversion]
+  prompt: |
+    Your wealth is \$100,000 and your utility of wealth is $\ln(\text{wealth})$. You are offered a
+    single fair coin flip: heads you gain \$50,000, tails you lose \$30,000. What is the **certainty
+    equivalent** of this bet: the sure gain that you would value exactly as much as the flip? Answer
+    in thousands of dollars.
+  answer: 2.46951
+  answerText: |-
+    $\sqrt{150 \times 70} - 100 \approx 2.47$ thousand dollars (about \$2,470)
+  unit: thousand dollars
+  hints:
+    - Find the sure wealth $w$ with $\ln w = \tfrac12\ln(150{,}000) + \tfrac12\ln(70{,}000)$.
+    - For two equally likely outcomes, that $w$ is a geometric mean.
+  followUps:
+    - The bet's expected value is \$10,000. Why is the certainty equivalent so much lower?
+    - With \$1,000,000 of wealth instead, roughly what is the certainty equivalent? Why?
+    - What fraction of the same flip would a Kelly bettor want to take?
+  explanation: |
+    The sure wealth with the same expected log utility is the geometric mean of the outcomes:
+
+    $$w = \sqrt{150{,}000 \times 70{,}000} \approx 102{,}470, \qquad \text{certainty equivalent} \approx 102{,}470 - 100{,}000 = 2{,}470.$$
+
+    The expected gain is \$10,000, but most of it is eaten by risk: losing \$30,000 out of \$100,000 hurts
+    a log-utility investor more than gaining \$50,000 helps. The certainty equivalent is still positive,
+    so they would take the bet.
+
+    The common wrong answer is \$10,000, the expected value, which is the certainty equivalent only for
+    a risk-neutral investor. With much larger wealth the bet is small relative to it and the certainty
+    equivalent approaches \$10,000.
+  source: { name: "Certainty equivalent under log utility (Bernoulli, 1738; standard decision theory)" }
+
+- id: bmm-sizing-007
+  topic: betting-market-making
+  subtopic: Bet sizing, Kelly and risk
+  type: numeric
+  difficulty: hard
+  tags: [kelly-criterion, drawdown, brownian-motion]
+  prompt: |
+    In the continuous-time model of betting, you keep a constant fraction $f$ of your wealth in a
+    risky opportunity with expected excess return $\mu$ and volatility $\sigma$ per unit time, so that
+    the log of your wealth is a Brownian motion with drift $f\mu - \tfrac12 f^2\sigma^2$ and variance
+    $f^2\sigma^2$ per unit time. The Kelly fraction is $f^* = \mu/\sigma^2$. If you bet **half Kelly**,
+    $f = f^*/2$, forever, what is the probability that your wealth ever falls to half of its starting
+    value?
+  answer: 1/8
+  hints:
+    - For a Brownian motion with drift $m > 0$ and variance $v$ per unit time, the probability of ever falling a distance $a$ below the start is $e^{-2ma/v}$.
+    - Compute $2m/v$ for $f = c f^*$; the parameters $\mu$ and $\sigma$ should cancel.
+    - Falling to half your wealth means the log falls by $\ln 2$.
+  followUps:
+    - What is the probability at full Kelly? What does that say about full Kelly in practice?
+    - At half Kelly, what is the probability of doubling your wealth before halving it?
+  explanation: |
+    With $f = c\,\mu/\sigma^2$ the log of wealth has drift $m = \frac{\mu^2}{\sigma^2}\left(c - \tfrac{c^2}{2}\right)$
+    and variance $v = \frac{c^2\mu^2}{\sigma^2}$, so $\frac{2m}{v} = \frac{2}{c} - 1$. Falling to a
+    fraction $x$ of wealth is a fall of $\ln(1/x)$ in the log, which has probability
+
+    $$P = e^{-(2/c - 1)\ln(1/x)} = x^{2/c - 1}.$$
+
+    At half Kelly ($c = \tfrac12$) and $x = \tfrac12$: $P = \left(\tfrac12\right)^3 = \tfrac18$.
+
+    At full Kelly the same formula gives $P = x$: a 50% chance of halving at some point, and a 10%
+    chance of losing 90%. That is the strongest argument for fractional Kelly: half Kelly keeps three
+    quarters of the growth rate and cuts the chance of halving from $\tfrac12$ to $\tfrac18$. The
+    common wrong answer is $\tfrac14$, from guessing that halving the bet halves the probability.
+  source: { name: "Thorp, The Kelly criterion in blackjack, sports betting and the stock market (2006)" }
+
+- id: bmm-sizing-008
+  topic: betting-market-making
+  subtopic: Bet sizing, Kelly and risk
+  type: multiple
+  difficulty: medium
+  tags: [kelly-criterion, fractional-kelly, risk]
+  prompt: |
+    Which of the following are sound reasons for a trader to bet **less** than the full Kelly fraction?
+    Select all that apply.
+  choices:
+    - { id: a, text: "The edge is estimated, and over-betting a mistaken edge costs much more growth than under-betting it" }
+    - { id: b, text: "Full Kelly has a 50% chance of halving the bankroll at some point, which may be intolerable" }
+    - { id: c, text: "Full Kelly maximises expected wealth, which is too aggressive" }
+    - { id: d, text: "The trader holds other positions whose risk is correlated with this bet" }
+    - { id: e, text: "Full Kelly betting will eventually lose the whole bankroll" }
+    - { id: f, text: "A fraction of Kelly has a higher long-run growth rate than full Kelly" }
+  answer: [a, b, d]
+  explanation: |
+    - **a:** true. Growth falls slowly on the under-bet side and fast on the over-bet side (twice Kelly
+      gives zero growth), so uncertainty about the edge argues for a smaller fraction.
+    - **b:** true. In the continuous model, full Kelly falls to a fraction $x$ of its starting wealth
+      with probability $x$; half Kelly cuts the chance of halving to $\tfrac18$.
+    - **d:** true. Kelly for one bet assumes it is your only risk. Correlated positions add up, and
+      the combined stake should be sized together.
+    - **c:** false. Kelly maximises the expected *log* of wealth. Maximising expected wealth means
+      betting everything on every favourable bet.
+    - **e:** false. Betting a fraction below 1 of wealth never reaches zero; ruin is what happens to
+      the all-in bettor (or to one who bets more than twice Kelly, whose wealth drifts to zero).
+    - **f:** false. Full Kelly maximises long-run growth by definition; a fraction of it trades growth
+      for smoother wealth.
+  source: { name: "Fractional Kelly in practice (e.g. MacLean, Thorp and Ziemba, Good and bad properties of the Kelly criterion)", url: "https://www.stat.berkeley.edu/~aldous/157/Papers/Good_Bad_Kelly.pdf" }
+
+- id: bmm-sizing-009
+  topic: betting-market-making
+  subtopic: Bet sizing, Kelly and risk
+  type: short
+  difficulty: medium
+  tags: [risk-aversion, utility, making-markets]
+  prompt: |
+    A contract pays **\$1,000,000 times** the roll of a fair die. Your firm's capital is \$10,000,000.
+    How much would you pay for one contract? Would your answer change for a contract paying \$1 times
+    the roll, and for a firm with \$100,000,000? Make me a bid and explain it.
+  reference: |
+    The expected payout is \$3,500,000, and a risk-neutral buyer would bid just under that. But a buyer
+    at \$3.5M loses \$2.5M one time in six, a quarter of the firm's capital, so risk matters here in a
+    way it does not for the \$1 version.
+
+    One way to put a number on it is log utility of the firm's wealth: the highest price $P$ with
+    $\tfrac16\sum_{k=1}^{6}\ln(10 - P + k) \ge \ln 10$ (in millions) is about \$3.35M. So a bid around
+    \$3.2M to \$3.3M leaves some edge. With \$100M of capital the same calculation gives about \$3.49M:
+    the bet is small relative to capital and you price it almost at expected value. For the \$1 version
+    you bid close to \$3.5, say 3.25, and widen only for profit, not for risk.
+
+    The principle is that the same bet is priced off its expected value when it is small relative to
+    the bankroll, and below it (and quoted in smaller size) when one bad outcome would cost a large part
+    of the capital you need for future opportunities.
+  keyPoints:
+    - Expected value is \$3.5M, the risk-neutral price
+    - The worst case (a 1, a \$2.5M loss at \$3.5M) is a large fraction of the \$10M capital
+    - Bids meaningfully below \$3.5M because of risk, with a reason such as utility or Kelly (log utility gives about \$3.35M)
+    - With far more capital, or a \$1 contract, the price moves back towards the expected value
+  hints:
+    - Start with the expected value. Then ask how bad the worst outcome is relative to the capital.
+    - Pick a utility function, such as the log of the firm's wealth, and find the price where buying is neutral.
+  followUps:
+    - "I hit your bid. The die shows a 1. How do you feel about the trade, and was it a mistake?"
+    - Could you reduce the risk of holding this contract and therefore bid more? How?
+    - Would you rather sell this contract at \$3.7M or buy it at \$3.3M? Why?
+  explanation: |
+    Jane Street's guide uses this contract to make the point that expected value is not the whole
+    story once a trade is big relative to capital: losing a lot now means missing good trades later.
+    Strong answers separate the two questions (fair value, then how much risk you can take) and say
+    what changes with the size of the bet. A bad outcome on a good-value trade is not a mistake;
+    sizing it so that the bad outcome hurts too much is.
+  source: { name: "Jane Street, Probability and Markets (making markets exercises)", url: "https://www.janestreet.com/static/pdfs/trading-interview.pdf" }
+
+- id: bmm-sizing-010
+  topic: betting-market-making
+  subtopic: Bet sizing, Kelly and risk
+  type: short
+  difficulty: hard
+  tags: [kelly-criterion, estimation-error, fractional-kelly]
+  prompt: |
+    You can make repeated even-money bets, and your best estimate of the win probability is $0.55$,
+    but you would not be surprised if it were really $0.52$ or $0.58$. How much of your bankroll do
+    you bet each time, and why? Use numbers.
+  reference: |
+    At $p = 0.55$ the Kelly fraction for an even-money bet is $p - q = 0.10$. But look at what each
+    choice does if the estimate is wrong, using the growth rate $g(f) = p\ln(1 + f) + q\ln(1 - f)$:
+
+    | true $p$ | Kelly $f$ | $g$ at $f = 0.10$ | $g$ at $f = 0.05$ |
+    |---|---|---|---|
+    | 0.52 | 0.04 | $-0.0010$ | $+0.0008$ |
+    | 0.55 | 0.10 | $+0.0050$ | $+0.0038$ |
+    | 0.58 | 0.16 | $+0.0110$ | $+0.0068$ |
+
+    Betting full Kelly on the estimate is ruinous in the low case: 0.10 is 2.5 times the true Kelly
+    fraction there, and the growth rate is negative, so wealth shrinks to zero even though every bet has
+    positive expected value. Half Kelly (0.05) stays positive in every case and gives up only a quarter
+    of the growth when the estimate is right. So bet something like 0.04 to 0.05, and keep updating
+    the estimate of $p$ as results come in.
+  keyPoints:
+    - Full Kelly at the point estimate is 0.10 (p minus q at even money)
+    - If the true probability is 0.52 the true Kelly fraction is 0.04, and betting 0.10 gives negative growth
+    - Over-betting is much more costly than under-betting, since growth falls steeply past the optimum
+    - Recommends a fraction of the estimated Kelly (around half) that is positive across the plausible range
+    - Mentions updating the estimate as evidence accumulates
+  hints:
+    - What is the Kelly fraction at each of the three probabilities?
+    - Compute the growth rate of the full-Kelly bet if the true probability is 0.52.
+    - Is it worse to bet twice the right amount or half of it?
+  followUps:
+    - If you had to choose one fraction knowing $p$ is equally likely to be 0.52, 0.55 or 0.58, how would you choose it?
+    - After 1,000 bets you have won 540. How sure are you now that your edge is real?
+  explanation: |
+    The key fact is the asymmetry of the growth curve: it is roughly a parabola, so betting $c$ times
+    Kelly earns $2c - c^2$ of the maximum growth. Twice Kelly earns nothing, and more than that loses.
+    When the edge is uncertain, the realised multiple of Kelly is uncertain too, and a smaller fraction
+    keeps it well below 2 in the bad cases. This is the main reason professional bettors and trading
+    desks use fractional Kelly.
+  source: { name: "Fractional Kelly under estimation error (e.g. MacLean, Thorp and Ziemba, Good and bad properties of the Kelly criterion)", url: "https://www.stat.berkeley.edu/~aldous/157/Papers/Good_Bad_Kelly.pdf" }
+
+- id: bmm-sizing-011
+  topic: betting-market-making
+  subtopic: Bet sizing, Kelly and risk
+  type: short
+  difficulty: medium
+  tags: [growth-rate, kelly-criterion, ergodicity]
+  prompt: |
+    Each round of a game multiplies whatever you stake by 1.5 or by 0.6, with equal probability. Would
+    you play repeatedly with your whole wealth? What happens to a typical player who does, and what
+    fraction of wealth would you stake each round instead?
+  reference: |
+    Staking everything, expected wealth grows by a factor $\tfrac12(1.5 + 0.6) = 1.05$ per round, so
+    after 100 rounds the *mean* is about 131 times the start. But the typical path is governed by the
+    geometric mean, $\sqrt{1.5 \times 0.6} = \sqrt{0.9} \approx 0.949$ per round: after 100 rounds a typical
+    player (50 ups and 50 downs) has $0.9^{50} \approx 0.005$ of what they started with. The mean is held
+    up by a vanishingly rare lucky few. So no: staking everything repeatedly loses almost surely.
+
+    Staking a fraction $f$, wealth is multiplied by $1 + 0.5f$ or $1 - 0.4f$. Maximise
+    $\tfrac12\ln(1 + 0.5f) + \tfrac12\ln(1 - 0.4f)$: the derivative vanishes when
+    $\frac{0.25}{1 + 0.5f} = \frac{0.2}{1 - 0.4f}$, i.e. $f = 0.25$. Staking a quarter of wealth gives a
+    growth rate of about $0.0062$ per round, so a typical player's wealth now grows.
+  keyPoints:
+    - Expected wealth grows 5% per round when staking everything
+    - The typical (median) path shrinks by a factor of the square root of 0.9, about 0.949, per round
+    - Explains that the mean is driven by rare outcomes, so long-run growth follows the geometric mean (expected log)
+    - Finds the growth-optimal stake of 25% of wealth by maximising expected log
+    - Notes that with this fraction the typical path grows
+  hints:
+    - Compare the arithmetic mean of 1.5 and 0.6 with their geometric mean.
+    - What does a player with equally many good and bad rounds end up with?
+    - Staking a fraction $f$, what are the two multipliers of total wealth?
+  followUps:
+    - What is the median wealth after 100 rounds when staking a quarter each time?
+    - If you could share the game with 100 friends and pool everything each round, how would the answer change?
+  explanation: |
+    This game, popularised in discussions of "ergodicity economics", separates the expected value of
+    wealth from what happens to almost every player. Candidates who answer "positive expected value, so
+    play" miss that repeated multiplicative bets compound at the geometric mean. The fix is not to
+    avoid the game but to size it, which is exactly the Kelly criterion.
+  source: { name: "Multiplicative coin game (e.g. Peters, The ergodicity problem in economics, 2019)" }

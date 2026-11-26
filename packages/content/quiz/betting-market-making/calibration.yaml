@@ -1,0 +1,252 @@
+# Confidence intervals and calibration: building an interval for an unknown quantity, checking calibration, and honest probability reports.
+- id: bmm-calibration-001
+  topic: betting-market-making
+  subtopic: Confidence intervals and calibration
+  type: single
+  difficulty: easy
+  tags: [calibration, confidence-interval, overconfidence]
+  prompt: |
+    You gave 90% confidence intervals for 20 unrelated quantities, and when the answers came in, only
+    12 of the intervals contained the true value. What is the most reasonable conclusion?
+  choices:
+    - { id: a, text: "You are overconfident: your intervals are too narrow and should be wider" }
+    - { id: b, text: "You are underconfident: your intervals are too wide" }
+    - { id: c, text: "Nothing can be concluded: 12 out of 20 is within normal luck for 90% intervals" }
+    - { id: d, text: "Your point estimates are biased, but the width of your intervals is fine" }
+  answer: a
+  explanation: |
+    A calibrated 90% interval contains the truth 90% of the time, so you would expect about 18 of 20.
+    If you were calibrated, the chance of 12 or fewer hits would be about 0.04% (binomial with $n = 20$,
+    $p = 0.9$), so this is strong evidence that the intervals are too narrow: overconfidence, the
+    usual finding when people first try this.
+
+    Choice b has the direction backwards: too-wide intervals would contain the truth *more* than 90% of
+    the time. Choice c underestimates how unlikely 12 of 20 is. Choice d is possible in part, but
+    misses (whatever their cause) are exactly what wider intervals would fix; a shifted centre with the
+    right width would still show up as too few hits.
+  source: { name: "Jane Street, Probability and Markets (confidence intervals section)", url: "https://www.janestreet.com/static/pdfs/trading-interview.pdf" }
+
+- id: bmm-calibration-002
+  topic: betting-market-making
+  subtopic: Confidence intervals and calibration
+  type: numeric
+  difficulty: medium
+  tags: [calibration, binomial, hypothesis-test]
+  prompt: |
+    Someone gives 90% confidence intervals for 20 unrelated quantities. If they are perfectly
+    calibrated (each interval independently contains the truth with probability $0.9$), what is the
+    probability that **14 or fewer** of the 20 intervals contain the truth?
+  answer: "0.01125313416450900028"
+  answerText: |-
+    $\approx 0.0113$
+  hints:
+    - The number of intervals that contain the truth is binomial. With what parameters?
+    - It may be easier to count misses, the intervals that do not contain the truth.
+    - Compute $P(\text{at least 6 misses}) = 1 - P(\text{at most 5 misses})$.
+  followUps:
+    - If 14 of 20 intervals contained the truth, how should the person change the width of their intervals?
+    - How many intervals would you need to tell a 90% from an 80% hit rate reliably?
+  explanation: |
+    Count the misses $M \sim \text{Binomial}(20, 0.1)$, with mean 2. Then
+
+    $$P(\text{at most 14 hits}) = P(M \ge 6) = 1 - \sum_{k=0}^{5} \binom{20}{k}(0.1)^k (0.9)^{20-k} \approx 1 - 0.9887 = 0.0113.$$
+
+    So 14 hits out of 20 would happen only about 1% of the time if the intervals were honest: good
+    evidence of overconfidence. A Poisson approximation with mean 2 gives
+    $P(M \ge 6) \approx 0.017$, the right order of magnitude.
+
+    The common wrong answer is $0.1^6 \approx 10^{-6}$ (the chance that six *particular* intervals
+    miss), which forgets to count the ways of choosing which ones miss.
+  source: { name: "Calibration testing (standard binomial question)" }
+
+- id: bmm-calibration-003
+  topic: betting-market-making
+  subtopic: Confidence intervals and calibration
+  type: numeric
+  difficulty: easy
+  tags: [confidence-interval, lognormal, estimation]
+  prompt: |
+    Your belief about some quantity is that its logarithm is normally distributed, and your 90%
+    interval for it (5% below, 5% above) runs from 200 to 5,000. What is the **median** of your
+    belief?
+  answer: 1000
+  hints:
+    - On a log scale, where is the median relative to the two ends of a symmetric interval?
+  followUps:
+    - Is the mean of your belief above or below 1,000? Roughly how far?
+    - Make me a market on this quantity. Where is your mid?
+  explanation: |
+    The interval is symmetric on a log scale, so the median sits at the midpoint of the logs, which is
+    the geometric mean of the ends:
+
+    $$\sqrt{200 \times 5000} = \sqrt{1{,}000{,}000} = 1000.$$
+
+    The common wrong answer is 2,600, the arithmetic midpoint, which is the right centre only for an
+    interval that is symmetric on an ordinary scale. Interval estimates for counts and sizes ("how many
+    piano tuners", "how many taxis") are naturally symmetric in ratios, not in differences. The *mean*
+    of this belief is higher, about 1,600, because of the long right tail.
+  source: { name: "Log-scale interval estimates (common in Fermi-style interview questions)" }
+
+- id: bmm-calibration-004
+  topic: betting-market-making
+  subtopic: Confidence intervals and calibration
+  type: numeric
+  difficulty: medium
+  tags: [scoring-rule, brier-score, calibration]
+  prompt: |
+    You are scored on probability forecasts by the **Brier score**: if you report probability $r$ for an
+    event, your penalty is $(1 - r)^2$ if it happens and $r^2$ if it does not, and lower is better. You
+    honestly believe an event has probability $0.7$, but you report $0.9$. By how much does this raise
+    your expected penalty, by your own belief?
+  answer: 1/25
+  answerText: |-
+    $1/25 = 0.04$
+  hints:
+    - Write your expected penalty as a function of the reported $r$, using your belief $0.7$.
+    - Expand it as a quadratic in $r$. Where is its minimum?
+  followUps:
+    - Why does the minimum fall exactly at your true belief? What is a scoring rule with that property called?
+    - What would be wrong with scoring forecasts by the penalty $|1 - r|$ or $r$ instead?
+  explanation: |
+    With belief $p = 0.7$, the expected penalty of reporting $r$ is
+
+    $$p(1 - r)^2 + (1 - p)r^2 = (r - p)^2 + p(1 - p),$$
+
+    which is smallest at $r = p$ and rises by $(r - p)^2$ away from it. Reporting 0.9 costs
+    $(0.9 - 0.7)^2 = 0.04$ in expectation (0.25 instead of 0.21).
+
+    The Brier score is a **proper** scoring rule: you minimise your expected penalty only by reporting
+    what you believe, which is why it is used to check calibration. The common wrong answer is 0.2, the
+    difference in the reports, not in the expected penalty.
+  source: { name: "Brier (1950), Verification of forecasts expressed in terms of probability" }
+
+- id: bmm-calibration-005
+  topic: betting-market-making
+  subtopic: Confidence intervals and calibration
+  type: short
+  difficulty: medium
+  tags: [fermi-estimate, confidence-interval, estimation]
+  prompt: |
+    Give me a 90% confidence interval for the number of times a human heart beats in a lifetime, and
+    explain how you built it.
+  reference: |
+    Break it into factors I can bound: heart rate times lifetime.
+
+    - Resting heart rate is about 60 to 80 beats a minute, higher in childhood and during exercise; as
+      a lifetime average, say 70 (range 60 to 90).
+    - Lifetime: about 80 years (range 60 to 90).
+    - Minutes in a year: $60 \times 24 \times 365 \approx 525{,}600$, call it $5 \times 10^5$.
+
+    Point estimate: $70 \times 5.3 \times 10^5 \times 80 \approx 3 \times 10^9$. Low end
+    $60 \times 5.3 \times 10^5 \times 60 \approx 1.9 \times 10^9$; high end
+    $90 \times 5.3 \times 10^5 \times 90 \approx 4.3 \times 10^9$. Taking both extremes at once is more
+    pessimistic than 90% requires, but I also widen for the chance my rate range is off, so a 90%
+    interval of about **1.5 to 5 billion**, centred around 3 billion, is reasonable. (A typical figure
+    quoted is about 2.5 to 3 billion.)
+  keyPoints:
+    - Decomposes the quantity into heart rate times lifetime times minutes per year
+    - Gives sensible ranges for each factor (roughly 60 to 90 beats per minute, 60 to 90 years)
+    - Reaches a central estimate around 3 billion
+    - Gives an interval of roughly 1.5 to 5 billion, explaining how the factor ranges combine
+    - Thinks in ratios (an interval that is a multiplicative factor either side), not a fixed plus or minus
+  hints:
+    - What two quantities multiply to give the answer?
+    - Give a range for each, then combine them.
+  followUps:
+    - Now make me a market on it. How does the market relate to the interval?
+    - Which factor contributes most to your uncertainty?
+    - If I told you the answer is outside your interval, which end would you bet on?
+  explanation: |
+    The interviewer is checking the method: decompose into factors you can bound, combine the ranges
+    (multiplicatively, since the factors multiply), and give an interval that is honest about the
+    uncertainty. A common failure is an interval that is far too narrow (overconfidence); another is
+    an absurdly wide one that shows no knowledge. Combining every factor's extreme at once gives
+    more than 90% coverage, so the interval can be a little tighter than the extremes, but most people
+    err the other way.
+  source: { name: "Fermi-style confidence interval question (e.g. Jane Street, Probability and Markets, confidence intervals)", url: "https://www.janestreet.com/static/pdfs/trading-interview.pdf" }
+
+- id: bmm-calibration-006
+  topic: betting-market-making
+  subtopic: Confidence intervals and calibration
+  type: short
+  difficulty: hard
+  tags: [confidence-interval, making-markets, width]
+  prompt: |
+    Your honest 90% confidence interval for some quantity is 40 to 60, and your belief is roughly
+    normal. I ask you to make a two-sided market on it, for one contract. Should your bid and offer be
+    40 and 60? How do the interval and the market's width relate?
+  reference: |
+    No. The interval describes my uncertainty; the market is a price at which I am happy to trade
+    *given who trades with me*. My mid is the centre of my belief, 50, with standard deviation
+    about $10 / 1.645 \approx 6$.
+
+    - If you know no more than I do, every trade at my bid or offer earns me the distance to 50 on
+      average, so I can quote much tighter than 40 to 60, e.g. 47 at 53, and still make money; the
+      width is about how much edge I want per trade and how much risk I want to take, not about coverage.
+    - If you might know the answer, you trade exactly when I am wrong, and the width has to grow towards
+      the edges of my belief, or beyond: quoting 40 at 60 would still lose to someone who knows the
+      answer is 70 or 35 (which happens 10% of the time).
+
+    So the width depends on my uncertainty *and* on how informed the counterparty is, and a 90%
+    interval is neither a floor nor a ceiling for it. Quoting the interval itself as a market is too
+    wide against an uninformed counterparty (nobody trades) and not safe against an informed one.
+  keyPoints:
+    - Centres the market on the centre of the belief, 50
+    - Estimates the standard deviation (about 6) from the 90% interval
+    - Against an uninformed counterparty, quotes much narrower than 40 to 60, since every trade earns edge on average
+    - Against an informed counterparty, recognises that even 40 to 60 loses when the truth is outside it, so widens or declines
+    - States that width depends on both uncertainty and the counterparty's information
+  hints:
+    - What does a counterparty who knows nothing more than you do to your expected profit at any bid below 50?
+    - What does a counterparty who knows the answer do to it?
+  followUps:
+    - I lift your offer. How much should your mid move if I know nothing? If I know the answer?
+    - Make me a market for 100 contracts instead.
+  explanation: |
+    Many candidates think a market should be their confidence interval, or that width should be "two
+    standard deviations". There is no single rule: width balances edge per trade, the chance of
+    trading, risk and, most of all, adverse selection. Interviewers want to hear the dependence on who is
+    on the other side, which is what separates a market from an interval.
+  source: { name: "Market width versus uncertainty (e.g. tradermath.org, make me a market guide)", url: "https://www.tradermath.org/articles/make-me-a-market-guide" }
+
+- id: bmm-calibration-007
+  topic: betting-market-making
+  subtopic: Confidence intervals and calibration
+  type: short
+  difficulty: hard
+  tags: [calibration, confidence-interval, sharpness]
+  prompt: |
+    A trainee gives 90% confidence intervals for 10 unrelated quantities, and all 10 contain the true
+    value. They say this proves they are well calibrated, or even underconfident. Do you agree? How
+    would you assess their intervals properly?
+  reference: |
+    Ten out of ten proves little. A calibrated forecaster gets all 10 right with probability
+    $0.9^{10} \approx 0.35$, and at least 9 of 10 with probability about 0.74, so the result is entirely
+    consistent with good calibration and only weak evidence of underconfidence.
+
+    Better evidence:
+
+    - **More questions.** With 50 or 100 intervals the hit rate pins down calibration; with 10 it
+      cannot.
+    - **Where the truths land.** If they cluster near the middle of very wide intervals, the intervals
+      are probably too wide (underconfident); if they often sit near the edges, they are about right.
+    - **Sharpness.** Calibration is not enough: an interval of "0 to a billion" is always right and
+      useless. Compare the widths with what someone knowledgeable would give, or use a proper scoring
+      rule for intervals (the interval score, which charges for width plus a penalty for each miss)
+      that rewards narrow intervals that still have the right coverage.
+  keyPoints:
+    - Computes that all 10 hits has probability about 0.35 for a calibrated forecaster, so it is not strong evidence either way
+    - Says many more intervals are needed to judge calibration
+    - Distinguishes calibration from sharpness (narrowness) and notes wide intervals are trivially right
+    - Suggests looking at where truths fall within the intervals, or a proper scoring rule for intervals
+  hints:
+    - If they were exactly calibrated, how likely is 10 out of 10?
+    - What would an interval of "zero to a billion" score on this test?
+  followUps:
+    - How many intervals would you want before deciding someone is overconfident?
+    - How would you score a 90% interval so that being honest is the best strategy?
+  explanation: |
+    The two traps are reading too much into a small sample and forgetting that coverage is only half
+    of a good interval. Trading interviewers care about both because a market maker's width is tied to
+    the honesty and the sharpness of their uncertainty.
+  source: { name: "Calibration and sharpness (e.g. Gneiting and Raftery, Strictly proper scoring rules, 2007)" }
