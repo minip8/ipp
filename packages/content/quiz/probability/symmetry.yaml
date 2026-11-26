@@ -173,12 +173,10 @@
     - { id: c, text: "They are equal" }
   answer: a
   explanation: |
-    By the tail sum, $E[\min] = \sum_{k=1}^{6} P(\min \ge k) = \sum_{k=1}^{6} \left(\tfrac{7-k}{6}\right)^2
-    = \frac{36 + 25 + 16 + 9 + 4 + 1}{36} = \frac{91}{36} \approx 2.53$.
+    By the tail sum, $E[\min] = \sum_{k=1}^{6} P(\min \ge k) = \sum_{k=1}^{6} \left(\tfrac{7-k}{6}\right)^2 = \frac{36 + 25 + 16 + 9 + 4 + 1}{36} = \frac{91}{36} \approx 2.53$.
 
     For the difference, a gap of $d \ge 1$ occurs in $2(6 - d)$ of the 36 outcomes, so
-    $E|X - Y| = \frac{2(5 \cdot 1 + 4 \cdot 2 + 3 \cdot 3 + 2 \cdot 4 + 1 \cdot 5)}{36} = \frac{70}{36}
-    \approx 1.94$.
+    $E|X - Y| = \frac{2(5 \cdot 1 + 4 \cdot 2 + 3 \cdot 3 + 2 \cdot 4 + 1 \cdot 5)}{36} = \frac{70}{36} \approx 1.94$.
 
     So the smaller number wins. A quick consistency check: $E[\max] + E[\min] = 7$ and
     $E[\max] - E[\min] = E|X - Y|$, so $E|X - Y| = 7 - 2E[\min]$. Choice c is a guess that the two

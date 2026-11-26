@@ -453,9 +453,9 @@ decimal (`0.25`, `.5`, `1.5e-3`) or a percentage (`12.5%`); `parseNumeric` in
 `packages/contracts/src/numeric.ts` reads each as an exact rational, the browser uses it to refuse
 anything else before sending, and the API refuses it again with a 400. `numericMatches` grades:
 equal as rationals is always right; a question with a `tolerance` (`abs` and/or `rel`) accepts
-anything within it, however it is written; otherwise a decimal within 0.5% of a non-integer answer
-counts (three significant figures, so `0.333` for `1/3` but not `0.33`), a fraction or an integer
-must be exact, and a whole-number answer must be exact. The score is 1 or 0. The question's
+anything within it, however it is written; otherwise a decimal or a whole number within 0.5% of a
+non-integer answer counts (three significant figures, so `0.333` for `1/3` but not `0.33`, and
+`105` for `105.13`), a fraction must be exact, and a whole-number answer must be exact. The score is 1 or 0. The question's
 `answer` is kept as text so a fraction never goes through a float; the feedback shows
 `answerText` (Markdown, e.g. `$1/e \approx 0.368$`) or else the answer as written, and `unit` is
 shown beside the input.

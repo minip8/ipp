@@ -48,5 +48,6 @@ for (const topic of process.argv.slice(2)) {
   }
 }
 
+// No process.exit: it can cut a long write to a pipe short.
 process.stdout.write(JSON.stringify(out));
-process.exit(failed ? 1 : 0);
+process.exitCode = failed ? 1 : 0;

@@ -1,9 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { groupTags, PROBLEM_CATEGORIES, TOPIC_GROUPS } from '@ipp/contracts';
 import { afterAll, describe, expect, it } from 'vitest';
 import {
+  CONTENT_ROOT,
   loadProblems,
   loadQuizQuestions,
   loadQuizTopics,
@@ -111,5 +112,28 @@ describe('resultsEqual', () => {
   });
   it('unordered_deep', () => {
     expect(resultsEqual([[2, 1], [3]], [[3], [1, 2]], 'unordered_deep')).toBe(true);
+  });
+});
+
+describe('quant answer checks', () => {
+  // The checks themselves run in `pnpm --filter @ipp/content check` (Python); this only makes sure
+  // none is missing, so a numeric answer cannot ship without an independent recomputation.
+  it('every numeric question of a quant topic has a check in scripts/quant_checks', () => {
+    const quant = new Set(
+      loadQuizTopics()
+        .filter((t) => t.track === 'quant')
+        .map((t) => t.slug),
+    );
+    const dir = join(CONTENT_ROOT, 'scripts', 'quant_checks');
+    const checked = new Set<string>();
+    for (const f of readdirSync(dir).filter((f) => f.endsWith('.py')))
+      for (const m of readFileSync(join(dir, f), 'utf8').matchAll(/^@check\("([^"]+)"\)/gm))
+        checked.add(m[1] as string);
+    const questions = loadQuizQuestions().filter((q) => quant.has(q.topic));
+    const ids = new Set(questions.map((q) => q.id));
+    expect(
+      questions.filter((q) => q.type === 'numeric' && !checked.has(q.id)).map((q) => q.id),
+    ).toEqual([]);
+    expect([...checked].filter((id) => !ids.has(id))).toEqual([]);
   });
 });

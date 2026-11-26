@@ -86,8 +86,7 @@
     - How does this compare with the 50% she would have with a fair coin, and why is the effect so large?
     - Would she do better betting \$5 at a time? Why?
   explanation: |
-    Let $r = q/p = 1.5$. Then $r^{W_t}$ is a martingale: $p\,r^{w+1} + q\,r^{w-1} = r^w(pr + q/r) =
-    r^w(q + p)$. Optional stopping with $P$ the probability of reaching 10:
+    Let $r = q/p = 1.5$. Then $r^{W_t}$ is a martingale: $p\,r^{w+1} + q\,r^{w-1} = r^w(pr + q/r) = r^w(q + p)$. Optional stopping with $P$ the probability of reaching 10:
 
     $$P r^{10} + (1 - P) r^0 = r^5 \quad\Longrightarrow\quad P = \frac{r^5 - 1}{r^{10} - 1} = \frac{1}{r^5 + 1} = \frac{1}{243/32 + 1} = \frac{32}{275} \approx 0.116.$$
 
@@ -116,8 +115,9 @@
     $P(T < \infty) = 1$: the probability of reaching $+1$ before $-N$ is $\frac{N}{N+1}$ (gambler's
     ruin), which tends to 1 as $N \to \infty$. But the expected time is infinite: the expected time to
     hit $+1$ or $-N$ is $1 \cdot N$, which grows without bound, and $T$ is at least that exit time.
-    Equivalently, if $m = E[T]$ were finite, first-step analysis would give $m = 1 + \tfrac12 \cdot 0
-    + \tfrac12 \cdot 2m$ (from $-1$ you need two successive climbs), i.e. $m = 1 + m$, impossible.
+    Equivalently, if $m = E[T]$ were finite, first-step analysis would give
+    $m = 1 + \tfrac12 \cdot 0 + \tfrac12 \cdot 2m$ (from $-1$ you need two successive climbs), i.e.
+    $m = 1 + m$, impossible.
 
     - a counts only the first step.
     - b comes from treating $T$ as geometric ("half the time you go up").

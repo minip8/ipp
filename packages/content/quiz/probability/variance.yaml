@@ -34,8 +34,7 @@
     - { id: d, text: "2" }
   answer: d
   explanation: |
-    $\operatorname{Var}(X - Y) = \operatorname{Var}(X) + \operatorname{Var}(-Y) - 2\operatorname{Cov}(X, Y)
-    = 1 + 1 - 0 = 2$, since $\operatorname{Var}(-Y) = (-1)^2 \operatorname{Var}(Y)$. Variances of
+    $\operatorname{Var}(X - Y) = \operatorname{Var}(X) + \operatorname{Var}(-Y) - 2\operatorname{Cov}(X, Y) = 1 + 1 - 0 = 2$, since $\operatorname{Var}(-Y) = (-1)^2 \operatorname{Var}(Y)$. Variances of
     independent variables add whether you add or subtract the variables: subtracting a noisy quantity
     adds noise, it does not cancel it.
 
@@ -98,9 +97,7 @@
 
     $$\operatorname{Var} = 13 \cdot \frac{3}{16} + 13 \cdot 12 \cdot \left(-\frac{1}{272}\right) = \frac{663}{272} - \frac{156}{272} = \frac{507}{272} \approx 1.86.$$
 
-    This matches the hypergeometric formula $n p (1-p) \frac{N - n}{N - 1} = 13 \cdot \tfrac14 \cdot
-    \tfrac34 \cdot \tfrac{39}{51}$. The common wrong answer is the binomial $13 \cdot \tfrac{3}{16}
-    = \tfrac{39}{16} \approx 2.44$, which ignores the negative covariance: drawing a heart makes the
+    This matches the hypergeometric formula $n p (1-p) \frac{N - n}{N - 1} = 13 \cdot \tfrac14 \cdot \tfrac34 \cdot \tfrac{39}{51}$. The common wrong answer is the binomial $13 \cdot \tfrac{3}{16} = \tfrac{39}{16} \approx 2.44$, which ignores the negative covariance: drawing a heart makes the
     next heart less likely.
   source: { name: "Indicator method for the hypergeometric (e.g. Blitzstein and Hwang, Introduction to Probability)" }
 
@@ -224,8 +221,7 @@
       correlation $\tfrac12$ with each. Correlation is "transitive" only when the two correlations are
       large enough ($a^2 + b^2 > 1$).
     - **f, false.** Marginal normality is not enough; *joint* normality is. Take $X$ standard normal
-      and $Y = SX$ with $S = \pm 1$ a fair independent sign: $Y$ is standard normal, $\operatorname{Cov}
-      = E[S]E[X^2] = 0$, yet $|Y| = |X|$.
+      and $Y = SX$ with $S = \pm 1$ a fair independent sign: $Y$ is standard normal, $\operatorname{Cov}   = E[S]E[X^2] = 0$, yet $|Y| = |X|$.
 
     The usual mistakes are a and f (treating uncorrelated as independent) and e (assuming correlation
     is transitive).

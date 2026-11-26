@@ -19,7 +19,7 @@ const MAX_EXPONENT = 30;
 
 /**
  * How a value was written, which decides how strictly it is compared (`numericMatches`):
- * an integer or a fraction claims to be exact, a decimal may be a rounding.
+ * a fraction claims to be exact, a decimal or a whole number may be a rounding.
  */
 export type NumericForm = 'integer' | 'fraction' | 'decimal';
 
@@ -38,7 +38,7 @@ export interface NumericTolerance {
 }
 
 /**
- * Tolerance for a decimal answer when the question sets none: half a percent, so any correct
+ * Tolerance for a rounded answer when the question sets none: half a percent, so any correct
  * rounding (or truncation) to three significant figures is accepted and two figures is not.
  */
 export const NUMERIC_DEFAULT_REL = 0.005;
@@ -106,9 +106,9 @@ export const numericToNumber = (v: NumericValue): number => Number(v.num) / Numb
  *  1. Equal as rationals: always.
  *  2. The question sets a tolerance: within `abs` or within `rel` of the answer, however the
  *     value was written (estimates, simulated or irrational answers).
- *  3. No tolerance, and the answer is not a whole number: a *decimal* within
- *     `NUMERIC_DEFAULT_REL` of it, so `0.333` is accepted for `1/3`. A fraction or an integer
- *     claims to be exact and has to be (`33/100` is not `1/3`).
+ *  3. No tolerance, and the answer is not a whole number: a decimal or a whole number within
+ *     `NUMERIC_DEFAULT_REL` of it, so `0.333` is accepted for `1/3` and `105` for `105.13`. A
+ *     fraction claims to be exact and has to be (`333/1000` is not `1/3`).
  *  4. No tolerance and a whole-number answer (a count): only the exact value.
  */
 export function numericMatches(
@@ -121,6 +121,6 @@ export function numericMatches(
   const diff = Math.abs(Number(cross) / Number(given.den * expected.den));
   const size = Math.abs(numericToNumber(expected));
   if (tolerance) return diff <= Math.max(tolerance.abs ?? 0, (tolerance.rel ?? 0) * size);
-  if (expected.den === 1n || given.form !== 'decimal') return false;
+  if (expected.den === 1n || given.form === 'fraction') return false;
   return diff <= NUMERIC_DEFAULT_REL * size;
 }

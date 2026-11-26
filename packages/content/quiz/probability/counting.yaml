@@ -241,8 +241,7 @@
 
     $$P(\text{no collision}) \approx \exp\!\left(-\sum_{i=1}^{n-1}\frac{i}{d}\right) = \exp\!\left(-\frac{n(n-1)}{2d}\right) \approx e^{-n^2/(2d)}.$$
 
-    Setting this to $1/2$ gives $n^2 \approx 2d \ln 2$, so $n \approx \sqrt{2 \ln 2}\,\sqrt{d} \approx
-    1.18\sqrt{d}$. For $d = 365$ that is about $22.5$, matching the exact answer 23. The point is
+    Setting this to $1/2$ gives $n^2 \approx 2d \ln 2$, so $n \approx \sqrt{2 \ln 2}\,\sqrt{d} \approx 1.18\sqrt{d}$. For $d = 365$ that is about $22.5$, matching the exact answer 23. The point is
     the square-root scaling: there are $\binom{n}{2} \approx n^2/2$ pairs and each collides with
     probability $1/d$, so collisions become likely once $n^2/(2d)$ is of order 1.
   keyPoints:

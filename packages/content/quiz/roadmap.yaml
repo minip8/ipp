@@ -426,3 +426,309 @@ networking:
     description: What happens when you type a URL, and the tools that show each step.
     subtopics: [Debugging tools, What happens when you type a URL]
     requires: [net-http, net-sockets]
+
+probability:
+  - id: prob-counting
+    title: Counting and combinatorics
+    description: Equally likely outcomes, complements, inclusion-exclusion and reflection counts.
+    subtopics: [Counting and combinatorics]
+  - id: prob-conditional
+    title: Conditional probability
+    description: Conditioning on what was observed, Bayes in odds form, base rates and classic paradoxes.
+    subtopics: [Conditional probability and Bayes]
+    requires: [prob-counting]
+  - id: prob-expectation
+    title: Expectation and linearity
+    description: Indicator variables, tail sums, and what an expected value does and does not tell you.
+    subtopics: [Expectation and linearity]
+    requires: [prob-counting]
+  - id: prob-discrete
+    title: Discrete distributions
+    description: Binomial, geometric and Poisson variables, thinning, and quick normal approximations.
+    subtopics: [Discrete distributions]
+    requires: [prob-expectation]
+  - id: prob-continuous
+    title: Continuous and geometric
+    description: Uniforms as areas, exponentials and memorylessness, sampling, and ill-posed "random" choices.
+    subtopics: [Continuous distributions and geometric probability]
+    requires: [prob-expectation]
+  - id: prob-variance
+    title: Variance and correlation
+    description: Variance of sums and random sums, limits on correlation, and the bivariate normal.
+    subtopics: ["Variance, covariance and correlation"]
+    requires: [prob-discrete, prob-continuous]
+  - id: prob-symmetry
+    title: Symmetry and order stats
+    description: Exchangeability and relabelling arguments, records and uniform order statistics.
+    subtopics: [Symmetry and order statistics]
+    requires: [prob-continuous]
+  - id: prob-first-step
+    title: First-step analysis
+    description: Conditioning on the first move, Markov chains on small graphs, waiting times for patterns.
+    subtopics: [First-step analysis and Markov chains]
+    requires: [prob-conditional, prob-expectation]
+  - id: prob-random-walks
+    title: Random walks and martingales
+    description: Gambler's ruin, hitting times, reflection, Pólya's urn and why fair games stay fair.
+    subtopics: [Random walks and martingales]
+    requires: [prob-first-step]
+  - id: prob-games
+    title: Games and optimal stopping
+    description: Fair value of games, when to stop, backward induction, Kelly betting and paradoxes.
+    subtopics: [Games and optimal stopping]
+    requires: [prob-first-step]
+
+brainteasers:
+  - id: bt-logic
+    title: Logic and deduction
+    description: Liars and truth-tellers, hat puzzles, and what people can infer from what others know.
+    subtopics: [Logic and deduction]
+  - id: bt-weighing
+    title: Weighing and measuring
+    description: Counterfeit coins, one-weighing tricks, poisoned bottles, jugs, ropes and hourglasses.
+    subtopics: [Weighing and measuring]
+  - id: bt-invariants
+    title: Invariants and colouring
+    description: Quantities a move cannot change, parity arguments and colourings that rule out tilings.
+    subtopics: ["Invariants, parity and colouring"]
+  - id: bt-pigeonhole
+    title: Pigeonhole and extremal
+    description: More objects than boxes, Ramsey-style arguments, and choosing the best case to force a property.
+    subtopics: [Pigeonhole and extremal arguments]
+  - id: bt-games
+    title: Strategy games
+    description: Backward induction, losing positions and Nim, symmetry and strategy-stealing arguments.
+    subtopics: [Strategy games and backward induction]
+    requires: [bt-logic]
+    related: [prob-games]
+  - id: bt-worst-case
+    title: Optimisation and worst case
+    description: Fewest drops, races or comparisons that always suffice, with a matching lower bound.
+    subtopics: [Optimisation and worst case]
+    requires: [bt-weighing]
+  - id: bt-numbers
+    title: Number puzzles
+    description: Divisibility, digits, clocks and sums where one observation replaces a long computation.
+    subtopics: [Number puzzles and quick insight]
+  - id: bt-geometry
+    title: Geometry and spatial
+    description: Unfolding surfaces, limiting cases, angular speed and continuity arguments.
+    subtopics: [Geometry and spatial puzzles]
+  - id: bt-estimation
+    title: Estimation (Fermi)
+    description: Breaking an unknown quantity into factors you can estimate, with stated assumptions and a range.
+    subtopics: [Estimation and Fermi questions]
+
+betting-market-making:
+  - id: bmm-fair-value
+    title: Fair value and EV
+    description: What a game or contract is worth, who holds the choices in it, and what information is worth.
+    subtopics: [Fair value and expected value]
+    related: [prob-expectation]
+  - id: bmm-mechanics
+    title: Market mechanics
+    description: Bids, offers and the spread, the order book, crossing the spread, positions and mark-to-market P&L.
+    subtopics: [Market mechanics]
+  - id: bmm-odds
+    title: Odds and arbitrage
+    description: Implied probabilities, the bookmaker's margin, value bets, dutching and sure-win books.
+    subtopics: ["Odds, margins and arbitrage"]
+    requires: [bmm-fair-value]
+  - id: bmm-sizing
+    title: Bet sizing and Kelly
+    description: How much to stake, Kelly and fractional Kelly, drawdowns, utility and risk aversion.
+    subtopics: ["Bet sizing, Kelly and risk"]
+    requires: [bmm-fair-value]
+    related: [prob-games]
+  - id: bmm-calibration
+    title: Intervals and calibration
+    description: Building a confidence interval for an unknown quantity, checking calibration, honest forecasts.
+    subtopics: [Confidence intervals and calibration]
+  - id: bmm-quoting
+    title: Making a market
+    description: Choosing a mid and a width, consistency between related markets, and quoting in size.
+    subtopics: [Making a two-sided market]
+    requires: [bmm-fair-value, bmm-mechanics]
+  - id: bmm-adverse-selection
+    title: Adverse selection
+    description: What a fill tells you, informed flow, moving the market, and managing and hedging the position.
+    subtopics: [Adverse selection and updating after trades]
+    requires: [bmm-quoting]
+    related: [prob-conditional]
+  - id: bmm-auctions
+    title: Auctions, winner's curse
+    description: Conditioning on winning, shading bids, and first- and second-price auctions.
+    subtopics: [Auctions and the winner's curse]
+    requires: [bmm-adverse-selection]
+  - id: bmm-games
+    title: Trading games
+    description: Markets on hidden cards and dice where information arrives in rounds, with positions tracked as you go.
+    subtopics: [Trading games]
+    requires: [bmm-adverse-selection]
+
+options:
+  - id: opt-forwards
+    title: Forwards and carry
+    description: Discounting, the forward price by no arbitrage, dividends, currencies, commodities and futures.
+    subtopics: ["Forwards, futures and carry"]
+  - id: opt-payoffs
+    title: Payoffs and strategies
+    description: Calls, puts, spreads, straddles and butterflies, reading a payoff and building one from options.
+    subtopics: [Payoffs and option strategies]
+  - id: opt-parity
+    title: Put-call parity
+    description: Deriving parity from payoffs, pricing with it, conversions, box spreads and implied forwards.
+    subtopics: [Put-call parity]
+    requires: [opt-forwards, opt-payoffs]
+  - id: opt-bounds
+    title: Arbitrage bounds
+    description: Bounds on option prices, monotonicity and convexity in strike, and spotting an arbitrage in quotes.
+    subtopics: [Static arbitrage bounds]
+    requires: [opt-parity]
+  - id: opt-binomial
+    title: Binomial trees
+    description: One- and two-step trees, replication, risk-neutral probabilities and incomplete markets.
+    subtopics: [Binomial trees and risk-neutral pricing]
+    requires: [opt-parity]
+    related: [prob-expectation]
+  - id: opt-american
+    title: Early exercise
+    description: Why American calls on non-dividend stocks are never exercised early, when puts are, and pricing on a tree.
+    subtopics: [Early exercise and American options]
+    requires: [opt-bounds, opt-binomial]
+  - id: opt-black-scholes
+    title: Black-Scholes
+    description: What the inputs do, quick at-the-money pricing, N(d1) and N(d2), limits and the hedging argument.
+    subtopics: [Black-Scholes]
+    requires: [opt-binomial]
+  - id: opt-greeks
+    title: Greeks and hedging
+    description: Signs and shapes of the Greeks, delta and gamma hedging, and gamma paid for by theta.
+    subtopics: [The Greeks and hedging]
+    requires: [opt-black-scholes]
+  - id: opt-volatility
+    title: Implied and realised vol
+    description: Volatility arithmetic, variance over time, the skew, and what a delta-hedged option bets on.
+    subtopics: [Implied and realised volatility]
+    requires: [opt-greeks]
+  - id: opt-stochastic
+    title: Brownian motion and Itô
+    description: Brownian motion, quadratic variation, Itô's lemma, martingales and changing measure.
+    subtopics: [Brownian motion and Itô calculus]
+    requires: [opt-binomial]
+    related: [prob-random-walks]
+  - id: opt-fixed-income
+    title: Bonds and duration
+    description: Price against yield, duration and convexity, forward rates and callable bonds.
+    subtopics: ["Bonds, yields and duration"]
+    requires: [opt-forwards]
+
+statistics:
+  - id: stat-sampling
+    title: Sampling and the CLT
+    description: Standard error against standard deviation, when averages settle down, and samples that mislead.
+    subtopics: ["Sampling, the law of large numbers and the CLT"]
+    related: [prob-discrete]
+  - id: stat-estimation
+    title: Estimators and likelihood
+    description: Bias, variance and MSE, why n - 1, maximum likelihood, method of moments and the German tank.
+    subtopics: [Estimators and maximum likelihood]
+    requires: [stat-sampling]
+    related: [prob-symmetry]
+  - id: stat-testing
+    title: Intervals and tests
+    description: What p-values and confidence levels mean, power and sample size, multiple testing and peeking.
+    subtopics: [Confidence intervals and hypothesis tests]
+    requires: [stat-sampling]
+  - id: stat-bayesian
+    title: Bayesian inference
+    description: Conjugate updates, sceptical priors, shrinking noisy estimates, and where Bayes and p-values part.
+    subtopics: [Bayesian inference and shrinkage]
+    requires: [stat-estimation]
+    related: [prob-conditional]
+  - id: stat-regression
+    title: Linear regression
+    description: What OLS minimises, its assumptions and failures, R squared, collinearity and omitted variables.
+    subtopics: [Linear regression]
+    requires: [stat-estimation, stat-testing]
+    related: [prob-variance]
+  - id: stat-correlation
+    title: Correlation and Sharpe
+    description: Spurious and fragile correlations, outliers, tail dependence, and Sharpe-ratio arithmetic and error.
+    subtopics: [Correlation and the Sharpe ratio]
+    requires: [stat-testing]
+    related: [prob-variance]
+  - id: stat-time-series
+    title: Time series
+    description: Stationarity, AR(1) and half-lives, unit roots, overlapping data, volatility clustering and scaling.
+    subtopics: [Time series]
+    requires: [stat-regression, stat-correlation]
+    related: [prob-random-walks]
+  - id: stat-backtesting
+    title: Backtesting and validation
+    description: Overfitting, selection across many backtests, look-ahead and survivorship, validation in time.
+    subtopics: [Model validation and backtesting]
+    requires: [stat-time-series]
+  - id: stat-ml
+    title: Regularisation and ML
+    description: The bias-variance trade-off, ridge and lasso as priors, training-error optimism, simple models.
+    subtopics: [Regularisation and model complexity]
+    requires: [stat-regression]
+
+algebra-calculus:
+  - id: lac-rank
+    title: Rank and linear systems
+    description: Rank and nullity, when Ax = b has a solution, and the rank of sums, products and outer products.
+    subtopics: [Rank and linear systems]
+  - id: lac-determinants
+    title: Determinants
+    description: Determinants as volume, and quick determinants of structured and covariance-like matrices.
+    subtopics: [Determinants]
+    requires: [lac-rank]
+  - id: lac-eigen
+    title: Eigenvalues and vectors
+    description: Trace and determinant, rank-one and symmetric matrices, powers, diagonalisation and Markov matrices.
+    subtopics: [Eigenvalues and eigenvectors]
+    requires: [lac-determinants]
+    related: [prob-first-step]
+  - id: lac-psd
+    title: Covariance and PSD matrices
+    description: Valid covariance and correlation matrices, Cholesky and correlated normals, singular and repaired estimates.
+    subtopics: [Positive semidefinite and covariance matrices]
+    requires: [lac-eigen]
+    related: [prob-variance]
+  - id: lac-least-squares
+    title: Projections, least squares
+    description: Orthogonal projection, the normal equations, the hat matrix, and what collinearity does to a fit.
+    subtopics: [Projections and least squares]
+    requires: [lac-eigen]
+  - id: lac-svd-pca
+    title: SVD, PCA and conditioning
+    description: Principal components of returns, low-rank approximation, condition numbers and noisy covariance estimates.
+    subtopics: ["SVD, PCA and conditioning"]
+    requires: [lac-psd, lac-least-squares]
+  - id: lac-limits
+    title: Limits and derivatives
+    description: Standard limits, logarithmic differentiation, Taylor coefficients and quick approximations such as log returns.
+    subtopics: ["Limits, derivatives and approximations"]
+  - id: lac-integrals
+    title: Integrals
+    description: Gamma and Gaussian integrals, integration by parts, substitution, volumes and differentiating under the integral.
+    subtopics: [Integrals]
+    requires: [lac-limits]
+    related: [prob-continuous]
+  - id: lac-series
+    title: Series and sums
+    description: Geometric and telescoping sums, harmonic numbers, convergence tests and swapping the order of summation.
+    subtopics: [Series and sums]
+    requires: [lac-integrals]
+  - id: lac-optimisation
+    title: Optimisation and convexity
+    description: First- and second-order conditions, Lagrange multipliers, minimum-variance weights, AM-GM and Cauchy-Schwarz.
+    subtopics: ["Optimisation, convexity and inequalities"]
+    requires: [lac-limits, lac-psd]
+  - id: lac-odes
+    title: Differential equations
+    description: Exponential decay and mean reversion, first-order linear equations and damped oscillations.
+    subtopics: [Differential equations]
+    requires: [lac-integrals]

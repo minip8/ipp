@@ -36,8 +36,7 @@
   answer: c
   explanation: |
     The count has mean 50 and standard deviation $\sqrt{100 \cdot \tfrac14} = 5$. The most likely
-    value of a near-normal count is roughly $\dfrac{1}{\sigma\sqrt{2\pi}} = \dfrac{1}{5 \cdot 2.507}
-    \approx 0.080$; the exact value is $\binom{100}{50} 2^{-100} \approx 0.0796$.
+    value of a near-normal count is roughly $\dfrac{1}{\sigma\sqrt{2\pi}} = \dfrac{1}{5 \cdot 2.507} \approx 0.080$; the exact value is $\binom{100}{50} 2^{-100} \approx 0.0796$.
 
     - a confuses "50 is the expected number" with "50 is likely".
     - b is the answer for 10 tosses (exactly 5 heads, $0.246$); the peak shrinks like $1/\sqrt{n}$.

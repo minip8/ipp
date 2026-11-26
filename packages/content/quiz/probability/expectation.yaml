@@ -17,8 +17,7 @@
     $$E[\max] = \sum_{k=1}^{6} k \cdot \frac{2k-1}{36} = \frac{1 + 6 + 15 + 28 + 45 + 66}{36} = \frac{161}{36} \approx 4.47.$$
 
     Working with the CDF of the maximum is the general method: the maximum is at most $k$ exactly
-    when every die is. A tail-sum version is just as quick: $E[\max] = \sum_{k=1}^{6} P(\max \ge k)
-    = \sum_{k=1}^{6} \left(1 - \left(\tfrac{k-1}{6}\right)^2\right)$.
+    when every die is. A tail-sum version is just as quick: $E[\max] = \sum_{k=1}^{6} P(\max \ge k) = \sum_{k=1}^{6} \left(1 - \left(\tfrac{k-1}{6}\right)^2\right)$.
 
     A common wrong answer is $3.5$ or "a bit above it" from treating the maximum like a single die,
     and another is to count $P(\max = k) = 2k/36$, which double-counts the outcome where both dice
