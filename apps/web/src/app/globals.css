@@ -192,6 +192,21 @@
     text-size-adjust: 100%;
     -webkit-tap-highlight-color: transparent;
   }
+  /*
+   * App pages (header + centred content) keep the page scrollbar's space whether or not the
+   * page is long enough to scroll, so moving between pages or views of different heights does
+   * not shift everything sideways by half a scrollbar (classic scrollbars, e.g. Windows).
+   * Full-height pages that never scroll (the pad workspace) are outside the app shell.
+   * The scroll lock of dialogs, menus and selects (react-remove-scroll) adds a right margin to
+   * stand in for the scrollbar it hides; with the gutter kept, that would shift the page, so
+   * it is zeroed. Layered !important beats the lock's unlayered !important.
+   */
+  html:has([data-app-shell]) {
+    scrollbar-gutter: stable;
+  }
+  html:has([data-app-shell]) body[data-scroll-locked] {
+    margin-right: 0 !important;
+  }
   body {
     /* viewport-fit=cover: keep content clear of the notch in landscape. Zero on desktop. */
     padding-left: env(safe-area-inset-left);

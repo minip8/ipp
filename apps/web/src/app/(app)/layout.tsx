@@ -24,7 +24,8 @@ function PageSkeleton() {
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-dvh">
+    // data-app-shell: globals.css keeps the scrollbar gutter on these pages.
+    <div className="min-h-dvh" data-app-shell>
       <AppHeader />
       <main>
         <Suspense fallback={<PageSkeleton />}>
