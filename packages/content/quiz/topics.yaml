@@ -17,3 +17,7 @@
 - slug: networking
   title: Networking
   description: TCP/IP, UDP, DNS, HTTP, TLS, sockets, and how packets get from A to B.
+- slug: probability
+  title: Probability
+  track: quant
+  description: Counting, conditioning, expectation, distributions, random walks and the classic interview problems.
