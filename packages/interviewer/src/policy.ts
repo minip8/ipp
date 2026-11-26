@@ -190,6 +190,11 @@ export interface PolicyState {
   /** Set by the orchestrator after model errors (circuit breaker). */
   backoffUntil: number | null;
   pending: Moment[];
+  /**
+   * A quant pad: the round keeps its own clock and there is no code, so no clock checkpoints,
+   * no checkpoint reviews and no approach checks; stalls and the greeting work as usual.
+   */
+  quant: boolean;
 }
 
 export const DEFAULT_SETTINGS: InterviewerSettings = {
@@ -225,6 +230,7 @@ export function initialPolicyState(): PolicyState {
     proactiveMessages: 0,
     backoffUntil: null,
     pending: [],
+    quant: false,
   };
 }
 
@@ -289,6 +295,14 @@ export function observe(s: PolicyState, trigger: Trigger, now: number): void {
       s.lastActivityAt = now;
       s.stallLevel = 0;
       s.codeChangesSinceCheckpoint += 1;
+      s.pending = s.pending.filter((p) => !(p.cancelOnEdit || p.kind === 'stall'));
+      return;
+
+    case 'scratch_changed':
+      // Typing activity on a quant pad's scratchpad: like code_changed, but nothing to review.
+      s.lastCodeChangeAt = now;
+      s.lastActivityAt = now;
+      s.stallLevel = 0;
       s.pending = s.pending.filter((p) => !(p.cancelOnEdit || p.kind === 'stall'));
       return;
 
@@ -395,7 +409,7 @@ function onRun(s: PolicyState, t: Tuning, run: Run, hiddenFailures: number, now:
 /** Time-derived moments (stall, clock); appended to `pending` once each. */
 function derive(s: PolicyState, now: number): void {
   const t = tuningFor(s);
-  if (s.startedAt !== null && s.durationMs !== null) {
+  if (!s.quant && s.startedAt !== null && s.durationMs !== null) {
     const elapsed = now - s.startedAt;
     const remaining = s.durationMs - elapsed;
     const fire = (id: string, ok: boolean, m: () => Moment) => {
@@ -463,6 +477,7 @@ function derive(s: PolicyState, now: number): void {
 
   // Checkpoint: the candidate wrote something and has paused typing.
   if (
+    !s.quant &&
     s.codeChangesSinceCheckpoint > 0 &&
     s.lastCodeChangeAt !== null &&
     now - s.lastCodeChangeAt >= CONST.typingQuietMs &&

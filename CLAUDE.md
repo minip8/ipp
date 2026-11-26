@@ -127,6 +127,15 @@ browser ── /api/* (Next rewrite, same origin, cookie session) ──▶ apps
 - **The mental math drill** (ARCHITECTURE §8.1) is generated and marked in the browser; the API
   only stores finished runs (`drill_runs`, `POST`/`GET /api/drill/runs`) after the contract's
   consistency checks, computing totals, score and `finishedAt` itself. Bests count full-mix runs only.
+- **Quant rounds** (ARCHITECTURE §8.2): a practice pad of `format: 'quant'` (`POST /api/pads/quant`)
+  has no problem, code or runs; the AI interviewer asks quant-track questions one by one while the
+  candidate works on the scratchpad. The round's state (`quant_rounds`) is server-only and changes
+  only through the pure `advanceRound` in contracts, applied by `apps/api/src/quant/round.ts` behind
+  a compare-and-swap on its version; the browser gets `publicRound` (`PadDetail.round`,
+  `round.updated`), and question ids, answers, verdicts, hints and later questions reach it only in
+  the report after the pad ended (hint and follow-up text never). Assembly is
+  `apps/api/src/quant/assemble.ts`. A route or event that assumes code or a problem must refuse a
+  quant pad (409 `wrong_format`).
 - **`apps/web`** is UI only. Read `apps/web/AGENTS.md` first: this Next.js version differs from
   older ones, and the relevant guide under `apps/web/node_modules/next/dist/docs/` should be read
   before writing Next-specific code. Features live in `src/features/<name>/`, with pure logic in

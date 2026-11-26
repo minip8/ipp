@@ -3,6 +3,11 @@
  * (including stay-silent ones), every message, latencies and token usage.
  *
  *   pnpm --filter @ipp/interviewer exec tsx scripts/simulate.ts [--style neutral] [--proactivity normal] [--voice]
+ *   pnpm --filter @ipp/interviewer exec tsx scripts/simulate.ts --quant [--style tough] [--voice]
+ *
+ * `--quant` plays a 20-minute quant round instead (scripts/simulate-quant.ts): three bank
+ * questions, thinking aloud, a hint, a follow-up, a stall, a close for time, a market to make,
+ * then the verdicts and the assessment. `--no-assessment` skips the assessment in both.
  *
  * Reads ANTHROPIC_API_KEY or ANTHROPIC_KEY from the environment or the repo-root .env.
  * The key is never printed. Uses a virtual clock: time jumps between scripted steps, so a
@@ -28,6 +33,7 @@ import {
   interviewerConfigFromEnv,
   type TraceEvent,
 } from '../src/index';
+import { simulateQuant } from './simulate-quant';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -452,7 +458,10 @@ async function main() {
   );
 }
 
-main().catch((err) => {
+(args.includes('--quant')
+  ? simulateQuant({ config, devKey, settings, skipAssessment })
+  : main()
+).catch((err) => {
   console.error(err);
   process.exit(1);
 });

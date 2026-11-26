@@ -25,21 +25,14 @@ import {
   gradeResponse,
   latestAnswerMap,
   latestAnswers,
+  weakFirst,
 } from '../quiz/answers';
 import { CORRECT_THRESHOLD, publicQuestion } from '../quiz/grade';
 import { loadRoadmapTopics, nodeFilter, roadmapTopics, subtopicCounts } from '../quiz/roadmap';
+import { shuffle } from '../random';
 import { quizBankRoutes } from './quiz-bank';
 
 type AttemptRow = typeof quizAttempts.$inferSelect;
-
-function shuffle<T>(xs: T[]): T[] {
-  const a = [...xs];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j] as T, a[i] as T];
-  }
-  return a;
-}
 
 export function quizRoutes(ctx: Ctx) {
   const r = new Hono<Env>();
@@ -187,16 +180,10 @@ export function quizRoutes(ctx: Ctx) {
     else {
       // Latest countable answer per question for this user (attempts and question bank).
       const seen = await latestAnswerMap(db, user.id, { questionIds: pool.map((p) => p.id) });
-      // Missed or never seen first (mixed), then ones answered correctly, least recently first.
-      const weak = shuffle(pool.filter((p) => !seen.get(p.id)?.correct).map((p) => p.id));
-      const strong = pool
-        .filter((p) => seen.get(p.id)?.correct)
-        .map((p) => p.id)
-        .sort(
-          (a, b) =>
-            (seen.get(a)?.answeredAt.getTime() ?? 0) - (seen.get(b)?.answeredAt.getTime() ?? 0),
-        );
-      chosen = [...weak, ...strong].slice(0, body.count);
+      chosen = weakFirst(
+        pool.map((p) => p.id),
+        seen,
+      ).slice(0, body.count);
       chosen = shuffle(chosen);
     }
     const [attempt] = await db

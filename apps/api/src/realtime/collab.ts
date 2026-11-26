@@ -2,8 +2,9 @@
  * Hocuspocus (Yjs) at /collab. Document `pad:<padId>`; the WS ticket is the Hocuspocus token.
  *
  *  - first load seeds code:<language> for all languages with problemScaffold (the problem's
- *    starter code where it has some, else the generated scaffold), and records that
- *    seed as history row 1 so playback can start from an empty doc
+ *    starter code where it has some, else the generated scaffold; nothing for a quant pad,
+ *    which has only the scratchpad), and records that seed as history row 1 so playback can
+ *    start from an empty doc
  *  - state persisted to pad_docs (debounced by Hocuspocus)
  *  - incremental updates coalesced into pad_updates rows, at most one per historyCoalesceMs
  *  - ended pads are read-only
@@ -93,11 +94,15 @@ const padIdOf = (documentName: string): string | null => {
   return m ? (m[1] ?? null) : null;
 };
 
-/** `problem` null: a blank room, seeded with a small runnable program per language. */
-export function seedDoc(doc: Y.Doc, problem: StarterSource | null): void {
+/**
+ * `problem` null: a blank room, seeded with a small runnable program per language. `'none'`: a
+ * quant pad, which has no editor code: only the (empty) scratchpad.
+ */
+export function seedDoc(doc: Y.Doc, problem: StarterSource | null | 'none'): void {
   doc.transact(() => {
-    for (const lang of LANGUAGES)
-      doc.getText(YDOC.code(lang)).insert(0, problemScaffold(problem, lang));
+    if (problem !== 'none')
+      for (const lang of LANGUAGES)
+        doc.getText(YDOC.code(lang)).insert(0, problemScaffold(problem, lang));
     doc.getText(YDOC.notes);
   });
 }
@@ -362,10 +367,16 @@ export class Collab {
 
   // ------------------------------------------------------------------ internals
 
-  /** The pad's starter source (`problem` null for a blank room); null when the pad is gone. */
-  private async starterFor(padId: string): Promise<{ problem: StarterSource | null } | null> {
+  /**
+   * The pad's starter source (`problem` null for a blank room, `'none'` for a quant pad); null
+   * when the pad is gone.
+   */
+  private async starterFor(
+    padId: string,
+  ): Promise<{ problem: StarterSource | null | 'none' } | null> {
     const [row] = await this.ctx.db
       .select({
+        format: pads.format,
         slug: pads.problemSlug,
         signature: problems.signature,
         languages: problems.languages,
@@ -375,6 +386,7 @@ export class Collab {
       .leftJoin(problems, eq(problems.slug, pads.problemSlug))
       .where(eq(pads.id, padId));
     if (!row) return null;
+    if (row.format === 'quant') return { problem: 'none' };
     if (!row.slug || !row.signature) return { problem: null };
     return {
       problem: {

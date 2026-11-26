@@ -14,6 +14,8 @@ import type {
   Pad,
   ProblemContent,
   QuantClock,
+  QuantClosedBy,
+  QuantPath,
   QuantPhase,
   QuantStep,
   QuantStepResult,
@@ -103,6 +105,8 @@ export interface QuantContext {
     phase: QuantPhase;
     /** The current question's clock; null unless asking. */
     clock: QuantClock | null;
+    /** Optional: the round's path (`QuantRoundState.path`), named in the opening. */
+    path?: QuantPath;
     /** The questions already closed, oldest first: a code-built summary, no prompts. */
     closed: {
       index: number;
@@ -111,6 +115,10 @@ export interface QuantContext {
       hints: number;
       timeSec: number;
       verdict: QuantVerdict | null;
+      /** Optional: the budget it was given (`QuantRoundQuestion.budgetSec`), for the assessment. */
+      budgetSec?: number | null;
+      /** Optional: how it was closed (`QuantRoundQuestion.closedBy`). */
+      closedBy?: QuantClosedBy | null;
     }[];
   };
   /**

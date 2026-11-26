@@ -15,6 +15,9 @@ import type {
   DiscussionStep,
   Interviewer,
   InterviewerDeps,
+  QuantContext,
+  QuantStep,
+  QuantStepResult,
   ReviewResult,
   RoomContext,
   ShortAnswerGrade,
@@ -105,6 +108,96 @@ export class FakeInterviewer implements Interviewer {
   handle(padId: string, trigger: Trigger): void {
     this.triggers.push({ padId, trigger });
     if (trigger.type === 'candidate_message') void this.reply(padId, trigger.text);
+    if (trigger.type === 'session_started') void this.quantStart(padId);
+  }
+
+  // ---------------------------------------------------------------- quant rounds
+  // Drives a quant pad's round through `applyQuantStep`, as the real interviewer would: it greets
+  // and starts the round, and reads each candidate message as a command:
+  //   "hint…"   the next authored hint (or one in its own words when none is left)
+  //   "follow…" the question's one follow-up
+  //   "answer…" closes the question with a verdict      "skip…" closes it without one
+  //   anything else: stays on the question
+
+  /** false: `session_started` does not start the round (a test drives it with `quantStep`). */
+  quantAutoStart = true;
+  /** Every quant context the fake loaded, in order. */
+  quantContexts: QuantContext[] = [];
+  /** Every step the fake applied, with its result. */
+  quantSteps: { padId: string; step: QuantStep; result: QuantStepResult }[] = [];
+
+  /** Loads the pad's quant context (recorded); null for a coding pad. */
+  async quantContext(padId: string, scope: 'current' | 'all' = 'current') {
+    const ctx = (await this.deps.loadQuantContext?.(padId, scope)) ?? null;
+    if (ctx) this.quantContexts.push(ctx);
+    return ctx;
+  }
+
+  /** Decides a step on the round as it is now and applies it. */
+  async quantStep(
+    padId: string,
+    decide: (ctx: QuantContext) => QuantStep,
+  ): Promise<QuantStepResult | null> {
+    const ctx = await this.quantContext(padId);
+    if (!ctx || !this.deps.applyQuantStep) return null;
+    const step = decide(ctx);
+    const result = await this.deps.applyQuantStep(padId, step);
+    this.quantSteps.push({ padId, step, result });
+    return result;
+  }
+
+  private async quantStart(padId: string) {
+    if (!this.quantAutoStart) return;
+    const ctx = await this.deps.loadQuantContext?.(padId);
+    if (ctx?.round.phase !== 'pending') return;
+    if (!(await this.model({ padId }))) return;
+    await this.quantStep(padId, (c) => ({
+      type: 'start',
+      version: c.round.version,
+      say: 'Welcome to the round. Think out loud.',
+    }));
+  }
+
+  private async quantReply(padId: string, ctx: QuantContext, text: string) {
+    const current = ctx.questions[0];
+    const version = ctx.round.version;
+    // Nothing to step on before the round starts or after it finished.
+    if (ctx.round.phase !== 'asking' || !current) return;
+    const index = current.index;
+    const cmd = text.trim().toLowerCase();
+    let step: QuantStep;
+    if (cmd.startsWith('hint')) {
+      const given = current.hintRungs.filter((r) => r > 0).length;
+      const rung = given < (current.question.hints ?? []).length ? given + 1 : 0;
+      step = {
+        type: 'turn',
+        version,
+        index,
+        kind: 'chat',
+        say: 'Try this.',
+        action: 'hint',
+        hintRung: rung,
+      };
+    } else if (cmd.startsWith('follow')) {
+      step = { type: 'turn', version, index, kind: 'chat', say: 'And then?', action: 'follow_up' };
+    } else if (cmd.startsWith('answer') || cmd.startsWith('skip')) {
+      step = {
+        type: 'close',
+        version,
+        index,
+        kind: 'chat',
+        say: 'Thanks, let us move on.',
+        by: 'interviewer',
+        verdict: cmd.startsWith('answer')
+          ? { score: 0.8, summary: `VERDICT-SUMMARY-${index}` }
+          : null,
+        note: `PRIVATE-NOTE-${index}`,
+      };
+    } else {
+      step = { type: 'turn', version, index, kind: 'chat', say: 'Go on.', action: 'stay' };
+    }
+    const result = (await this.deps.applyQuantStep?.(padId, step)) ?? null;
+    if (result) this.quantSteps.push({ padId, step, result });
   }
 
   /** Resolve the key and "call the model"; null = stay silent. */
@@ -137,6 +230,8 @@ export class FakeInterviewer implements Interviewer {
 
   private async reply(padId: string, text: string) {
     if (!(await this.model({ padId }))) return;
+    const quant = await this.quantContext(padId);
+    if (quant) return this.quantReply(padId, quant, text);
     const ctx = await this.deps.loadContext(padId);
     const id = randomUUID();
     this.deps.emit(padId, { type: 'interviewer.thinking', active: true });
@@ -162,10 +257,40 @@ export class FakeInterviewer implements Interviewer {
   /** What the room adviser was shown, per call (host notes and all). */
   roomContexts: RoomContext[] = [];
   reviewQuestions: (string | undefined)[] = [];
-  // TODO(quant-round): API. Stub for step 0: returns the canned assessment like
-  // `generateAssessment`; extend it (e.g. record the quant contexts) with the API's quant tests.
-  generateQuantAssessment = async (padId: string) =>
-    (await this.model({ padId })) ? this.assessment : null;
+  quantAssessment: ReportAssessment = {
+    recommendation: 'lean_hire',
+    summary: 'Quick and mostly right.',
+    scores: [
+      { dimension: 'structuring', score: 3, evidence: 'Set the problem up.' },
+      { dimension: 'correctness', score: 3, evidence: 'Mostly right.' },
+      { dimension: 'communication', score: 3, evidence: 'Clear.' },
+      { dimension: 'speed', score: 2, evidence: 'Slow on the last one.' },
+      { dimension: 'independence', score: 3, evidence: 'One hint.' },
+    ],
+    strengths: ['setup'],
+    improvements: ['speed'],
+  };
+  /** Like the real one: judges every closed question without a verdict first, then assesses. */
+  generateQuantAssessment = async (padId: string) => {
+    if (!(await this.model({ padId }))) return null;
+    const ctx = await this.quantContext(padId, 'all');
+    if (!ctx) return null;
+    let version = ctx.round.version;
+    for (const q of ctx.round.closed) {
+      if (q.verdict) continue;
+      const step: QuantStep = {
+        type: 'verdict',
+        version,
+        index: q.index,
+        verdict: { score: 0.25, summary: `LATE-VERDICT-${q.index}` },
+      };
+      const result = (await this.deps.applyQuantStep?.(padId, step)) ?? null;
+      if (!result) continue;
+      this.quantSteps.push({ padId, step, result });
+      if (result.ok) version = result.version;
+    }
+    return this.quantAssessment;
+  };
   generateRoomAssessment = async (padId: string) => {
     if (!(await this.model({ padId }))) return null;
     if (this.deps.loadRoomContext) this.roomContexts.push(await this.deps.loadRoomContext(padId));

@@ -19,8 +19,9 @@ import {
 } from '@ipp/db';
 import { and, asc, count, eq, inArray, ne, sql } from '@ipp/db/orm';
 import type { Ctx } from '../context';
-import { badRequest, notFound } from '../http/errors';
+import { badRequest, conflict, notFound } from '../http/errors';
 import { isForeignKeyViolation } from '../pg';
+import { finishRound } from '../quant/round';
 import { padView, problemDetail } from '../views';
 
 export type PadRow = typeof pads.$inferSelect;
@@ -81,15 +82,22 @@ export function assertLanguageOffered(
   );
 }
 
+/** 409 `wrong_format`: what a coding pad has (code, runs, a language, a problem) and a quant pad does not. */
+export const wrongFormat = (what: string) =>
+  conflict('wrong_format', `A quant round has no ${what}`);
+
 /**
  * Changes the pad language (any member, active pads only); timeline, broadcast, trigger.
- * Throws `language_unavailable` when the pad's problem does not offer the language.
+ * Throws `language_unavailable` when the pad's problem does not offer the language, and
+ * `wrong_format` for a quant pad.
  */
 export async function changeLanguage(
   ctx: Ctx,
   padId: string,
   language: Language,
 ): Promise<PadRow | null> {
+  const [pad] = await ctx.db.select({ format: pads.format }).from(pads).where(eq(pads.id, padId));
+  if (pad?.format === 'quant') throw wrongFormat('language');
   // A blank room has no problem, so every language is available.
   const [problem] = await ctx.db
     .select({ title: problems.title, languages: problems.languages })
@@ -152,6 +160,11 @@ export async function endPad(ctx: Ctx, padId: string): Promise<PadRow | null> {
   await ctx.db.insert(timelineEvents).values({ padId, event: { type: 'ended' } });
   ctx.rooms.broadcast(padId, { type: 'pad.updated', pad: padView(row, null) });
   await ctx.collab.endPad(padId).catch((err) => ctx.log.error({ err, padId }, 'collab end failed'));
+  // A quant round ends with its pad: the open question is closed and the rest are never posed.
+  if (row.format === 'quant')
+    await finishRound(ctx, padId).catch((err) =>
+      ctx.log.error({ err, padId }, 'finishing the quant round failed'),
+    );
   ctx.ai.trigger(padId, { type: 'session_ended' });
   const stats = await computeStats(ctx, row);
   if (row.kind === 'room') {
@@ -222,10 +235,14 @@ export async function generateAssessment(ctx: Ctx, pad: PadRow): Promise<void> {
   // interviewer: its assessment is an observer's, written for the host when they ask.
   if (pad.kind === 'room' || pad.interviewer.enabled) {
     try {
+      // A quant pad's is over the quant dimensions, and first judges any question closed
+      // without a verdict (written back to the round with `verdict` steps).
       assessment =
         pad.kind === 'room'
           ? await ctx.ai.interviewer.generateRoomAssessment(pad.id)
-          : await ctx.ai.interviewer.generateAssessment(pad.id);
+          : pad.format === 'quant'
+            ? await ctx.ai.interviewer.generateQuantAssessment(pad.id)
+            : await ctx.ai.interviewer.generateAssessment(pad.id);
       if (pad.kind === 'room' && !assessment) status = 'failed';
     } catch (err) {
       ctx.log.error({ err, padId: pad.id }, 'assessment failed');

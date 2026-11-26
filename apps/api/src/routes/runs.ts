@@ -5,7 +5,7 @@ import { Hono } from 'hono';
 import type { Ctx } from '../context';
 import { type Env, parseBody, requireUser } from '../http/app';
 import { conflict, notFound } from '../http/errors';
-import { padForMember } from '../pads/service';
+import { padForMember, wrongFormat } from '../pads/service';
 import { toPublicRun } from '../runs/redact';
 import { storedRun } from '../views';
 
@@ -15,6 +15,8 @@ export function runRoutes(ctx: Ctx) {
   r.post('/pads/:id/runs', async (c) => {
     const user = requireUser(c);
     const { pad } = await padForMember(ctx, c.req.param('id'), user.id);
+    // A quant round has a scratchpad, not a program (a blank room's `file` runs included).
+    if (pad.format === 'quant') throw wrongFormat('code to run');
     if (pad.status !== 'active') throw conflict('pad_ended', 'This pad has ended');
     const body = await parseBody(c, CreateRunRequest);
     const run = await ctx.runs.create({
