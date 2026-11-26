@@ -15,6 +15,11 @@
  * gives the next hint, "follow…" the follow-up, "answer…" closes the question with a verdict,
  * "skip…" closes it without one; anything else stays on the question. Specs can also call the
  * steps directly (`hint`, `followUp`, `close`, `nudge`, `timeout`, `finish`).
+ *
+ * Streaming, as the API's interviewer does it: `streamMessages` streams every scripted reply's
+ * message (`message.delta`) before its step, which posts it under the same id
+ * (`QuantStep.messageId`), and a refused step drops it (`message.discarded`). Specs drive a stream
+ * by hand with `streamDeltas`, then post it (a step helper given the id) or `discard` it.
  */
 import {
   type AiKeyStatus,
@@ -110,6 +115,10 @@ export class MockQuantRounds {
   broadcast: QuantRoundView[] = [];
   /** Every step tried, and whether the shared transition accepted it. */
   log: { step: QuantRoundStep; ok: boolean; reason?: string }[] = [];
+  /** Stream each scripted reply's message before its step (`message.delta`, then the step). */
+  streamMessages = false;
+  /** The pause between streamed pieces. */
+  streamChunkMs = 40;
 
   constructor(private host: QuantHost) {
     this.seedEnded();
@@ -399,6 +408,8 @@ export class MockQuantRounds {
     if (say)
       messages.push(
         makeMessage({
+          // The id it was streamed under, when it was.
+          ...(say.messageId ? { id: say.messageId } : {}),
           padId: r.padId,
           role: 'interviewer',
           kind: say.kind,
@@ -447,14 +458,42 @@ export class MockQuantRounds {
     return r;
   }
 
-  /** The interviewer at work: thinking, then the step. */
-  private async speak(padId: string, step: () => QuantRoundStep | null) {
+  /**
+   * The interviewer at work: thinking, then the step. With `messageId` (a message streamed by
+   * hand) or `streamMessages`, the step posts its message under the id it was streamed under,
+   * and a refused step drops what was streamed.
+   */
+  private async speak(padId: string, step: () => QuantRoundStep | null, messageId?: string) {
     if (!this.muted) this.host.push({ type: 'interviewer.thinking', active: true });
     await sleep(this.replyDelayMs);
-    const s = step();
+    let s = step();
+    let id = messageId;
+    if (s && !id && this.streamMessages && !this.muted && 'say' in s && s.say) {
+      id = uuid();
+      await this.streamDeltas(id, s.say);
+      // Decided again on the round as it now is (the API's step names the version it read).
+      s = step();
+    }
+    if (s && id && s.type !== 'end' && s.type !== 'verdict') s = { ...s, messageId: id };
     const ok = s ? this.apply(this.round(padId), s) !== null : false;
+    if (!ok && id && !this.muted) this.host.push({ type: 'message.discarded', messageId: id });
     if (!this.muted) this.host.push({ type: 'interviewer.thinking', active: false });
     return ok;
+  }
+
+  /** The interviewer writing a message: `text` as deltas under `id`, nothing posted yet. */
+  async streamDeltas(id: string, text: string, chunkMs = this.streamChunkMs) {
+    this.host.push({ type: 'interviewer.thinking', active: true });
+    for (const piece of text.match(/[\s\S]{1,6}/g) ?? []) {
+      this.host.push({ type: 'message.delta', messageId: id, delta: piece });
+      await sleep(chunkMs);
+    }
+  }
+
+  /** What was streamed under `id` will not be posted (the turn was aborted or refused). */
+  discard(id: string) {
+    this.host.push({ type: 'message.discarded', messageId: id });
+    this.host.push({ type: 'interviewer.thinking', active: false });
   }
 
   // ---------------------------------------------------------------- the socket
@@ -541,21 +580,28 @@ export class MockQuantRounds {
     return this.speak(padId, () => ({ type: 'start', version: r.version, say }));
   }
 
-  /** The next authored hint (or one in the interviewer's own words once they are used up). */
-  hint(padId: string, say?: string) {
+  /**
+   * The next authored hint (or one in the interviewer's own words once they are used up).
+   * `messageId`: the id its text was streamed under (`streamDeltas`).
+   */
+  hint(padId: string, say?: string, messageId?: string) {
     const r = this.round(padId);
-    return this.speak(padId, () => {
-      const rung = this.nextRung(r);
-      return {
-        type: 'turn',
-        version: r.version,
-        index: r.state.current,
-        kind: 'proactive',
-        action: 'hint',
-        hintRung: rung,
-        say: say ?? (rung > 0 ? LINES.hint : LINES.ownHint),
-      };
-    });
+    return this.speak(
+      padId,
+      () => {
+        const rung = this.nextRung(r);
+        return {
+          type: 'turn',
+          version: r.version,
+          index: r.state.current,
+          kind: 'proactive',
+          action: 'hint',
+          hintRung: rung,
+          say: say ?? (rung > 0 ? LINES.hint : LINES.ownHint),
+        };
+      },
+      messageId,
+    );
   }
 
   followUp(padId: string, say: string = LINES.followUp) {

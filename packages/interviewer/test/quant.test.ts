@@ -3,7 +3,7 @@
  * `advanceRound` (./quant-harness.ts): steps, books, the clock, failure rules, restarts, what the
  * model may see, prompt structure, and the end-of-round assessment.
  */
-import { QUANT_REPORT_DIMENSIONS, type QuantStep } from '@ipp/contracts';
+import { QUANT_REPORT_DIMENSIONS, type QuantStep, type ServerEvent } from '@ipp/contracts';
 import { describe, expect, it } from 'vitest';
 import { ModelError, type ModelRequest } from '../src/model';
 import { QuantAssessmentSchema } from '../src/quant/assessment';
@@ -499,6 +499,299 @@ describe('voice', () => {
     const user = lastUser(h.calls.at(-1)?.req as ModelRequest);
     for (const piece of ['so the first die', 'can be anything', 'and the second must match'])
       expect(user).toContain(piece);
+  });
+});
+
+describe('streaming the message', () => {
+  type Delta = Extract<ServerEvent, { type: 'message.delta' }>;
+  const deltas = (h: QuantHarness, from = 0) =>
+    h.events.slice(from).filter((e): e is Delta => e.type === 'message.delta');
+  const discarded = (h: QuantHarness, from = 0) =>
+    h.events.slice(from).flatMap((e) => (e.type === 'message.discarded' ? [e.messageId] : []));
+  /** The one id the deltas since `from` went out under, and their text. */
+  function streamOf(h: QuantHarness, from = 0) {
+    const d = deltas(h, from);
+    const ids = [...new Set(d.map((x) => x.messageId))];
+    expect(ids).toHaveLength(1);
+    return { id: ids[0] as string, text: d.map((x) => x.delta).join('') };
+  }
+  const fail = <T>() => {
+    let reject!: (e: unknown) => void;
+    const wait = new Promise<T>((_r, j) => {
+      reject = j;
+    });
+    return { wait, reject };
+  };
+
+  it('streams a reply under the id the posted message then takes', async () => {
+    const message = 'Good: $\\frac{1}{6}$, since six of the $36$ outcomes sum to $7$. And for $8$?';
+    const h = quantHarness({
+      respond: scripted({ reply: () => turn({ action: 'follow_up', message }) }),
+    });
+    await started(h);
+    const mark = h.events.length;
+    await h.say('one sixth');
+    const s = streamOf(h, mark);
+    expect(s.text).toBe(message);
+    expect(deltas(h, mark).length).toBeGreaterThan(3);
+    expect(h.applied().at(-1)).toMatchObject({
+      type: 'turn',
+      action: 'follow_up',
+      messageId: s.id,
+    });
+    expect(h.interviewerSaid().at(-1)).toMatchObject({ id: s.id, text: message, intent: 'probe' });
+    expect(discarded(h)).toEqual([]);
+    // In order: thinking, the deltas, and thinking again once the step is taken.
+    const kinds = h.events.slice(mark).map((e) => e.type);
+    expect(kinds[0]).toBe('interviewer.thinking');
+    expect(kinds.at(-1)).toBe('interviewer.thinking');
+    expect(new Set(kinds.slice(1, -1))).toEqual(new Set(['message.delta']));
+  });
+
+  it('streams the opening and a close; the question each reveals keeps its own id', async () => {
+    const h = quantHarness({
+      respond: scripted({
+        reply: () =>
+          turn({ action: 'close', message: "That's right.", score: 1, summary: 'Right.' }),
+      }),
+    });
+    await h.start();
+    const opening = streamOf(h);
+    expect(h.transcript[0]).toMatchObject({ id: opening.id, intent: 'greeting' });
+    expect(h.transcript[1]?.id).not.toBe(opening.id);
+    const mark = h.events.length;
+    await h.say('one sixth, final answer');
+    const close = streamOf(h, mark);
+    expect(close.text).toBe("That's right.");
+    const said = h.transcript.slice(-2);
+    expect(said.map((m) => [m.id === close.id, m.intent])).toEqual([
+      [true, 'feedback'],
+      [false, 'question'],
+    ]);
+  });
+
+  it('shows nothing for a silent turn, and drops what showed when the turn turns out silent', async () => {
+    const h = quantHarness({
+      respond: scripted({
+        reply: (n) =>
+          n === 1
+            ? turn({ action: 'silent', message: 'mid-thought, let them go on' })
+            : turn({ action: 'stay', message: '""' }),
+      }),
+    });
+    await started(h);
+    let mark = h.events.length;
+    await h.say('so if I condition', 'voice');
+    expect(deltas(h, mark)).toEqual([]);
+    mark = h.events.length;
+    await h.say('on the first die', 'voice');
+    // `""` is something to show while it streams, and nothing once cleaned: a silent turn.
+    const s = streamOf(h, mark);
+    expect(discarded(h, mark)).toEqual([s.id]);
+    expect(h.transcript.some((m) => m.id === s.id)).toBe(false);
+  });
+
+  it('drops the streamed text when the round moved on under the step', async () => {
+    let h: QuantHarness | null = null;
+    h = quantHarness({
+      respond: scripted({
+        reply: () => {
+          h?.bumpVersion();
+          return turn({ action: 'hint', hint_rung: 1, message: 'Count outcomes.' });
+        },
+      }),
+    });
+    await started(h);
+    const mark = h.events.length;
+    await h.say('help');
+    const s = streamOf(h, mark);
+    expect(h.steps.at(-1)?.result).toEqual({ ok: false, reason: 'stale' });
+    expect(discarded(h, mark)).toEqual([s.id]);
+    expect(h.transcript.some((m) => m.id === s.id)).toBe(false);
+    // The discard comes after the last delta, and nothing else is said.
+    const types = h.events.slice(mark).map((e) => e.type);
+    expect(types.lastIndexOf('message.delta')).toBeLessThan(types.indexOf('message.discarded'));
+    expect(h.saved).toEqual([]);
+  });
+
+  it('replaces the streamed text with the canned reply when the round refuses the step on its content', async () => {
+    const h = quantHarness({
+      respond: scripted({
+        reply: () => turn({ action: 'hint', hint_rung: 1, message: 'Count outcomes.' }),
+      }),
+    });
+    await started(h);
+    const q = h.round.questions[0];
+    if (q) q.hintsAvailable = 0;
+    const mark = h.events.length;
+    await h.say('help');
+    const s = streamOf(h, mark);
+    expect(h.saved).toEqual([expect.objectContaining({ id: s.id, intent: 'answer' })]);
+    expect(h.saved[0]?.text).toMatch(/say that again/);
+    expect(discarded(h)).toEqual([]);
+  });
+
+  it('a call that fails or is refused mid-stream: the canned reply takes the stream’s place', async () => {
+    const partial = '{"reason":"r","action":"stay","hint_rung":0,"message":"Let me think about wh';
+    for (const failure of ['fails', 'refused'] as const) {
+      const f = fail<string>();
+      const h = quantHarness({
+        respond: scripted({
+          reply: () =>
+            failure === 'fails'
+              ? { wait: f.wait, partial }
+              : { wait: Promise.resolve(''), partial, refused: true },
+        }),
+      });
+      await started(h);
+      const mark = h.events.length;
+      h.candidate('what do you think?');
+      h.iv.handle(h.padId, { type: 'candidate_message', text: 'what?', via: 'text', userId: 'u1' });
+      await tick();
+      if (failure === 'fails') f.reject(new ModelError('transient', 'connection reset'));
+      await h.iv.idle(h.padId);
+      const s = streamOf(h, mark);
+      expect(s.text).toBe('Let me think about wh');
+      expect(h.saved).toEqual([
+        expect.objectContaining({
+          id: s.id,
+          text: failure === 'refused' ? QUANT_MESSAGES.refused : expect.stringMatching(/again/),
+        }),
+      ]);
+      expect(discarded(h)).toEqual([]);
+      expect(h.platform.version).toBe(1);
+    }
+  });
+
+  it('an opening cut off by a candidate message is dropped; the reply opens under its own id', async () => {
+    const h = quantHarness({
+      respond: scripted({
+        opening: (n) =>
+          n === 1
+            ? {
+                wait: new Promise<string>(() => {}),
+                partial: '{"reason":"r","action":"stay","hint_rung":0,"message":"Welcome to',
+              }
+            : turn({ action: 'stay', message: 'Hello! Here is the first one.' }),
+      }),
+    });
+    h.iv.handle(h.padId, { type: 'session_started' });
+    await new Promise((r) => setTimeout(r, 20));
+    const first = streamOf(h);
+    expect(first.text).toBe('Welcome to');
+    const mark = h.events.length;
+    await h.say('hello?');
+    expect(discarded(h)).toEqual([first.id]);
+    const second = streamOf(h, mark);
+    expect(second.id).not.toBe(first.id);
+    expect(h.transcript.find((m) => m.intent === 'greeting')).toMatchObject({
+      id: second.id,
+      text: 'Hello! Here is the first one.',
+    });
+  });
+
+  it('a key refused mid-stream drops the text before the notice', async () => {
+    const f = fail<string>();
+    const h = quantHarness({
+      respond: scripted({
+        reply: () => ({
+          wait: f.wait,
+          partial: '{"reason":"r","action":"stay","hint_rung":0,"message":"Sure, so',
+        }),
+      }),
+    });
+    await started(h);
+    const mark = h.events.length;
+    h.candidate('hi');
+    h.iv.handle(h.padId, { type: 'candidate_message', text: 'hi', via: 'text', userId: 'u1' });
+    await tick();
+    f.reject(new ModelError('permanent', 'key refused', 401, 'invalid'));
+    await h.iv.idle(h.padId);
+    const s = streamOf(h, mark);
+    expect(discarded(h, mark)).toEqual([s.id]);
+    expect(h.saved).toHaveLength(1);
+    expect(h.saved[0]?.id).toBeUndefined();
+  });
+
+  it('does not stream proactive turns, or a forced close the model left empty', async () => {
+    const h = quantHarness({
+      respond: scripted({
+        stall: () => turn({ action: 'stay', message: 'Where are you with it?' }),
+        reply: () => turn({ action: 'close', message: '' }),
+      }),
+    });
+    await started(h);
+    const c = h.clock();
+    let mark = h.events.length;
+    await h.advanceTo(c.posedAt + c.budgetMs);
+    expect(h.tasks()).toContain('nudge');
+    expect(deltas(h, mark)).toEqual([]);
+    // Past the grace a reply must close: the model wrote no line, so the canned one is posted.
+    h.state.clock = c.posedAt + c.budgetMs + c.graceMs + 1000;
+    mark = h.events.length;
+    await h.say('still working on it');
+    expect(h.round.questions[0]?.closedBy).toBe('timeout');
+    expect(deltas(h, mark)).toEqual([]);
+    const close = h.applied().at(-1);
+    expect(close).toMatchObject({ type: 'close', by: 'timeout' });
+    expect(close).not.toHaveProperty('messageId');
+  });
+
+  it('a forced close whose call fails mid-stream posts the canned line in its place', async () => {
+    const f = fail<string>();
+    const h = quantHarness({
+      respond: scripted({
+        reply: () => ({
+          wait: f.wait,
+          partial: '{"reason":"r","action":"close","hint_rung":0,"message":"That is time, and',
+        }),
+      }),
+    });
+    await started(h);
+    const c = h.clock();
+    h.state.clock = c.posedAt + c.budgetMs + c.graceMs + 1000;
+    const mark = h.events.length;
+    h.candidate('one more second');
+    h.iv.handle(h.padId, { type: 'candidate_message', text: 'x', via: 'text', userId: 'u1' });
+    await tick();
+    f.reject(new ModelError('transient', 'overloaded'));
+    await h.iv.idle(h.padId);
+    const s = streamOf(h, mark);
+    expect(h.applied().at(-1)).toMatchObject({ type: 'close', by: 'timeout', messageId: s.id });
+    expect(h.transcript.find((m) => m.id === s.id)?.text).toBe(QUANT_MESSAGES.timeout);
+    expect(discarded(h)).toEqual([]);
+  });
+
+  it('works without deltas on a provider that does not stream, with the same request settings', async () => {
+    const inner = new FakeModel(defaultQuantRespond);
+    const h = quantHarness({
+      clientFor: () => ({
+        model: 'quiet',
+        call: (req) => inner.call({ ...req, onText: undefined }),
+      }),
+    });
+    await started(h);
+    await h.say('hello');
+    expect(deltas(h)).toEqual([]);
+    expect(h.applied().map((s) => 'messageId' in s)).toEqual([false, false]);
+    expect(h.interviewerSaid().map((m) => m.text)).toEqual([
+      expect.stringContaining('Welcome'),
+      'Go on.',
+    ]);
+    // A streamed call (the reply) and one that is not (the nudge) ask the provider the same way.
+    const c = h.clock();
+    await h.advanceTo(c.posedAt + c.budgetMs);
+    const settings = (req: ModelRequest) => ({
+      purpose: req.purpose,
+      effort: req.effort,
+      maxTokens: req.maxTokens,
+      timeoutMs: req.timeoutMs,
+      schema: req.schema,
+      system: req.system.map((b) => b.cache_control),
+    });
+    const [reply, nudge] = ['reply', 'nudge'].map((t) => h.calls.find((x) => taskOf(x.req) === t));
+    expect(settings(reply?.req as ModelRequest)).toEqual(settings(nudge?.req as ModelRequest));
+    expect(reply?.req.schema).toBe(QuantTurnSchema);
   });
 });
 

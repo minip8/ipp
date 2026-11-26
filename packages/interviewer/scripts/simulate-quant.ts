@@ -114,12 +114,49 @@ export async function simulateQuant(o: {
   /** Raw outputs: how many were not valid JSON as sent, and how many had LaTeX escapes repaired. */
   const raw = { outputs: 0, invalidJson: 0, latexRepaired: 0, refused: 0, fallback: 0 };
   if (o.dump) writeFileSync(o.dump, '');
+  /**
+   * Streaming: when the current call started, the first delta of each streamed message (time to
+   * first character), what was streamed under each id, and how each stream ended.
+   */
+  let callStarted = 0;
+  const firstChar: number[] = [];
+  /** The whole call, for the calls that streamed (replies and the opening). */
+  const streamedCalls: number[] = [];
+  const streamedText = new Map<string, string>();
+  const ends = { posted: 0, differed: 0, discarded: 0 };
+  /** A posted message: the same as what was streamed under its id? */
+  const settle = (id: string | undefined, text: string) => {
+    const s = id ? streamedText.get(id) : undefined;
+    if (s === undefined || !id) return;
+    streamedText.delete(id);
+    ends.posted++;
+    if (s !== text) {
+      ends.differed++;
+      console.log(
+        `${C.yellow}        streamed text differs from the posted one: ${JSON.stringify(s)}${C.reset}`,
+      );
+    }
+  };
 
   /** The real client, wrapped to look at what the model actually sent back. */
   const inspect = (inner: ModelClient): ModelClient => ({
     model: inner.model,
     async call(req) {
-      const res = await inner.call(req);
+      callStarted = performance.now();
+      const chunks: string[] = [];
+      const onText = req.onText;
+      const res = await inner.call(
+        onText
+          ? {
+              ...req,
+              onText: (d) => {
+                chunks.push(d);
+                onText(d);
+              },
+            }
+          : req,
+      );
+      if (onText) streamedCalls.push(res.latencyMs);
       raw.outputs++;
       if (res.refused) raw.refused++;
       if (res.fallback) raw.fallback++;
@@ -146,7 +183,7 @@ export async function simulateQuant(o: {
         const { signal: _s, schema: _z, onText: _t, ...body } = req;
         appendFileSync(
           o.dump,
-          `${JSON.stringify({ at: mmss(), request: body, text: res.text, usage: res.usage, model: res.model, stopReason: res.stopReason })}\n`,
+          `${JSON.stringify({ at: mmss(), request: body, text: res.text, chunks, usage: res.usage, model: res.model, stopReason: res.stopReason, latencyMs: res.latencyMs, ttftMs: res.ttftMs })}\n`,
         );
       }
       return res;
@@ -191,8 +228,16 @@ export async function simulateQuant(o: {
     round = adv.state;
     version = adv.version;
     const e = adv.effects;
-    if (e.say)
-      post({ role: 'interviewer', kind: e.say.kind, intent: e.say.intent, text: e.say.text });
+    if (e.say) {
+      settle(e.say.messageId, e.say.text);
+      post({
+        id: e.say.messageId,
+        role: 'interviewer',
+        kind: e.say.kind,
+        intent: e.say.intent,
+        text: e.say.text,
+      });
+    }
     if (e.reveal)
       post({
         id: e.reveal.messageId,
@@ -302,12 +347,29 @@ export async function simulateQuant(o: {
       loadQuantContext: async (_id, scope) => context(scope),
       applyQuantStep: async (_id, step) => apply(step),
       async saveMessage(_id, m) {
-        return post({ role: 'interviewer', kind: m.kind, intent: m.intent, text: m.text });
+        settle(m.id, m.text);
+        return post({
+          id: m.id,
+          role: 'interviewer',
+          kind: m.kind,
+          intent: m.intent,
+          text: m.text,
+        });
       },
       async appendPrivateNote(_id, note) {
         notes.push(note);
       },
-      emit() {},
+      emit(_id, e) {
+        if (e.type === 'message.delta') {
+          const before = streamedText.get(e.messageId);
+          if (before === undefined) firstChar.push(performance.now() - callStarted);
+          streamedText.set(e.messageId, (before ?? '') + e.delta);
+        } else if (e.type === 'message.discarded') {
+          streamedText.delete(e.messageId);
+          ends.discarded++;
+          console.log(`${C.dim}        (streamed message discarded)${C.reset}`);
+        }
+      },
       checkBudget: async () => ({ ok: true }),
       log: {
         info() {},
@@ -440,6 +502,14 @@ export async function simulateQuant(o: {
     ((lat[Math.min(lat.length - 1, Math.floor((lat.length * p) / 100))] ?? 0) / 1000).toFixed(1);
   console.log(
     `\n${C.bold}Turn calls: ${totals.calls}; input ${totals.input} uncached + ${totals.cacheRead} cache read + ${totals.cacheWrite} cache write; output ${totals.output}; latency p50 ${at(50)} s, p90 ${at(90)} s, max ${at(100)} s; wall ${((performance.now() - t0) / 1000).toFixed(0)} s${C.reset}`,
+  );
+  const pct = (xs: number[], p: number) => {
+    const sorted = [...xs].sort((a, b) => a - b);
+    const v = sorted[Math.min(sorted.length - 1, Math.floor((sorted.length * p) / 100))] ?? 0;
+    return (v / 1000).toFixed(1);
+  };
+  console.log(
+    `${C.bold}Streamed messages: ${firstChar.length}; first character after p50 ${pct(firstChar, 50)} s, p90 ${pct(firstChar, 90)} s, max ${pct(firstChar, 100)} s; the same ${streamedCalls.length} calls whole: p50 ${pct(streamedCalls, 50)} s, p90 ${pct(streamedCalls, 90)} s, max ${pct(streamedCalls, 100)} s; posted under their id ${ends.posted} (text changed when posted ${ends.differed}), discarded ${ends.discarded}, left over ${streamedText.size}${C.reset}`,
   );
   console.log(
     `${C.bold}Raw outputs (all calls): ${raw.outputs}; not valid JSON as sent ${raw.invalidJson}; LaTeX escapes repaired ${raw.latexRepaired}; refused ${raw.refused}; served by a fallback ${raw.fallback}${C.reset}`,

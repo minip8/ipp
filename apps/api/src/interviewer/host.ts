@@ -22,6 +22,7 @@ import {
 } from '@ipp/contracts';
 import { aiUsage, interviewerNotes, messages, pads, problems, runs, timelineEvents } from '@ipp/db';
 import { and, asc, count, desc, eq, gte, inArray, sql } from '@ipp/db/orm';
+import type { Limits } from '../config';
 import type { Ctx } from '../context';
 import { applyStep, bankQuestions, loadRound } from '../quant/round';
 import { toInterviewerRun } from '../runs/redact';
@@ -620,7 +621,10 @@ export class InterviewerHost {
 
   async checkBudget(padId: string): Promise<{ ok: true } | { ok: false; reason: string }> {
     const { db, config } = this.ctx;
-    const [pad] = await db.select({ ownerId: pads.ownerId }).from(pads).where(eq(pads.id, padId));
+    const [pad] = await db
+      .select({ ownerId: pads.ownerId, format: pads.format, durationMin: pads.durationMin })
+      .from(pads)
+      .where(eq(pads.id, padId));
     if (!pad) return { ok: false, reason: 'Pad not found.' };
     const over = await this.overDailyLimit(pad.ownerId);
     if (over) return { ok: false, reason: over };
@@ -635,11 +639,28 @@ export class InterviewerHost {
           sql`${messages.intent} is distinct from 'question'`,
         ),
       );
-    if ((perPad?.n ?? 0) >= config.limits.interviewerMessagesPerPad) {
+    if ((perPad?.n ?? 0) >= interviewerMessageCap(pad, config.limits)) {
       return { ok: false, reason: 'The interviewer message limit for this pad has been reached.' };
     }
     return { ok: true };
   }
+}
+
+/**
+ * The most interviewer messages (questions aside) a pad may hold before its interviewer stops
+ * answering: `interviewerMessagesPerPad`, or for a quant round
+ * `quantInterviewerMessagesPerMinute` per minute of the round when that is more. A spoken round
+ * answers far more often than a typed one (every few pieces of speech get a reply), and its
+ * length is fixed, so its cap follows its length: 200, 240 and 360 for 20, 30 and 45 minutes by
+ * default. What the cap stops is the model; the round's clock still closes questions (canned).
+ */
+export function interviewerMessageCap(
+  pad: { format: PadFormat; durationMin: number | null },
+  limits: Pick<Limits, 'interviewerMessagesPerPad' | 'quantInterviewerMessagesPerMinute'>,
+): number {
+  const base = limits.interviewerMessagesPerPad;
+  if (pad.format !== 'quant' || !pad.durationMin) return base;
+  return Math.max(base, Math.ceil(pad.durationMin * limits.quantInterviewerMessagesPerMinute));
 }
 
 /** What a trigger means on a quant pad: null when it is not its business. */

@@ -27,8 +27,8 @@ import { QUANT_MESSAGES } from '@ipp/interviewer';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { WebSocket } from 'ws';
 import * as Y from 'yjs';
-import { loadConfig } from '../src/config';
-import { QUANT_SCRATCH_CHARS, quantTrigger } from '../src/interviewer/host';
+import { DEFAULT_LIMITS, loadConfig } from '../src/config';
+import { interviewerMessageCap, QUANT_SCRATCH_CHARS, quantTrigger } from '../src/interviewer/host';
 import { finishRound } from '../src/quant/round';
 import { startQuantSweeper, sweepQuantRounds } from '../src/quant/sweeper';
 import {
@@ -751,17 +751,30 @@ describe('a round, step by step', () => {
     // The interviewer's messages count against the owner's day; the questions do not.
     const [usage] = await db().select().from(aiUsage).where(eq(aiUsage.userId, owner.userId));
     expect(usage?.messages).toBe(6);
-    // Nor against the pad's cap on interviewer messages.
+    // Nor against the pad's cap on interviewer messages, which for a round follows its length
+    // (20 minutes here) when that allows more than the cap of any other pad.
     const cap = h.api.ctx.config.limits;
-    const saved = cap.interviewerMessagesPerPad;
+    const saved = { ...cap };
     cap.interviewerMessagesPerPad = 7;
+    cap.quantInterviewerMessagesPerMinute = 0.3;
     try {
       expect(await fake.deps.checkBudget(id)).toEqual({ ok: true });
       cap.interviewerMessagesPerPad = 6;
       expect((await fake.deps.checkBudget(id)).ok).toBe(false);
+      cap.quantInterviewerMessagesPerMinute = 0.35;
+      expect(await fake.deps.checkBudget(id)).toEqual({ ok: true });
     } finally {
-      cap.interviewerMessagesPerPad = saved;
+      Object.assign(cap, saved);
     }
+  });
+
+  it('sizes the interviewer message cap of a quant round to its length, and nothing else', () => {
+    const limits = DEFAULT_LIMITS;
+    const cap = (format: 'coding' | 'quant', durationMin: number | null) =>
+      interviewerMessageCap({ format, durationMin }, limits);
+    expect([cap('quant', 20), cap('quant', 30), cap('quant', 45)]).toEqual([200, 240, 360]);
+    expect([cap('coding', 45), cap('coding', 90), cap('coding', null)]).toEqual([200, 200, 200]);
+    expect(cap('quant', null)).toBe(200);
   });
 
   it('starts by itself when the first socket opens, once, and a reconnect gets the round', async () => {

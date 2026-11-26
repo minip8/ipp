@@ -103,6 +103,11 @@ export interface Limits {
   drillRuns: { userBurst: RateLimit; userDaily: RateLimit };
   /** Hard cap on interviewer messages per pad (spend guard). */
   interviewerMessagesPerPad: number;
+  /**
+   * A quant round's cap instead, per minute of the round, when that is more
+   * (`interviewerMessageCap`): spoken rounds answer often, and the round's length is known.
+   */
+  quantInterviewerMessagesPerMinute: number;
   collab: {
     /** Bytes of Yjs updates a pad may accumulate (history included); further edits are refused. */
     docBytes: number;
@@ -145,6 +150,7 @@ export const DEFAULT_LIMITS: Limits = {
     userDaily: { limit: 200, windowSec: 86_400 },
   },
   interviewerMessagesPerPad: 200,
+  quantInterviewerMessagesPerMinute: 8,
   collab: { docBytes: 16 * 1024 * 1024, preAuthBytes: 64 * 1024, authTimeoutMs: 15_000 },
 };
 

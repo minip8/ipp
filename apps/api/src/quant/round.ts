@@ -3,7 +3,8 @@
  * @ipp/contracts. Every change is one transaction that writes the next state behind a
  * compare-and-swap on `quant_rounds.version` and posts what the step says (the interviewer's
  * message, then the question it reveals, with its timeline event); after the commit everyone in
- * the pad gets `message.created` for each, then `round.updated`. A refused or stale step changes
+ * the pad gets `message.created` for each, then `round.updated`. The interviewer's message takes
+ * the id it was streamed under, when it was (`QuantStep.messageId`). A refused or stale step changes
  * nothing and posts nothing. A step's time (the state's times, its messages' `created_at`) is
  * the database's clock (`Ctx.dbNow`), the one every other message and the pad's start are on.
  *
@@ -19,6 +20,7 @@ import {
   advanceRound,
   gameSolution,
   gameStats,
+  Id,
   type Message,
   publicRound,
   type QuantGame,
@@ -144,6 +146,9 @@ async function tryStep(ctx: Ctx, padId: string, step: QuantRoundStep): Promise<S
       const [m] = await tx
         .insert(messages)
         .values({
+          // The id its text was streamed under (`message.delta`), so the posted message replaces
+          // the streamed one in every client.
+          ...(say.messageId && Id.safeParse(say.messageId).success ? { id: say.messageId } : {}),
           padId,
           role: 'interviewer',
           kind: say.kind,

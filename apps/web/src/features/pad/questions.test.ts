@@ -62,4 +62,11 @@ describe('a quant round in the conversation', () => {
     expect(spokenText(m('3', 'greeting', 'Hi'), view)).toBe('Hi');
     expect(spokenText(m('9', 'question'), null)).toBe('The next question is on your screen.');
   });
+
+  it('says the rest of a round in words, and a coding pad as written', () => {
+    const hint = m('5', 'hint', 'Try $P(A \\mid B)$; it costs \\$10.');
+    expect(spokenText(hint, view)).toBe('Try the probability of A given B; it costs 10 dollars.');
+    expect(spokenText(m('6', 'answer', 'One sixth. Good.'), view)).toBe('One sixth. Good.');
+    expect(spokenText(m('7', 'answer', 'Use `nums[i]` here.'), null)).toBe('Use `nums[i]` here.');
+  });
 });

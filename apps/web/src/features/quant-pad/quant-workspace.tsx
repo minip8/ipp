@@ -10,6 +10,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Group, Panel, useDefaultLayout } from 'react-resizable-panels';
+import { settledMath } from '@/components/math-guard';
 import { MathMarkdown } from '@/components/math-markdown';
 import { type ChatHandle, ChatPanel } from '@/features/pad/chat-panel';
 import { EndDialog, ShareDialog } from '@/features/pad/dialogs';
@@ -205,6 +206,7 @@ export function QuantWorkspace() {
         <ChatPanel
           ref={chatRef}
           Text={MathMarkdown}
+          streamingText={settledMath}
           lockInterviewer
           placeholder="Think out loud, or give your answer…"
           emptyState={{

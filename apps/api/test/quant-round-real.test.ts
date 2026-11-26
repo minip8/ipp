@@ -1271,6 +1271,100 @@ describe('a quant round with the real interviewer', () => {
     s.close();
   });
 
+  // ---------------------------------------------------------------- streaming
+
+  /** What a socket saw from `mark`, with each run of deltas as one `delta`. */
+  const streamed = (s: EventSocket, mark: number) =>
+    s.events
+      .slice(mark)
+      .filter((e) => shown(e) || e.type === 'message.delta' || e.type === 'message.discarded')
+      .map((e) => (e.type === 'message.delta' ? 'delta' : label(e)))
+      .filter((l, i, all) => l !== 'delta' || all[i - 1] !== 'delta');
+  const deltasOf = (s: EventSocket, mark: number) =>
+    s.events
+      .slice(mark)
+      .flatMap((e) => (e.type === 'message.delta' ? [{ id: e.messageId, text: e.delta }] : []));
+
+  it('streams a turn to every socket under the id its stored message takes, then replaces it', {
+    timeout: 60_000,
+  }, async () => {
+    const { a, id, s, model: m } = await started('Streaming');
+    // The greeting was streamed too, under the id it was stored with.
+    const greeting = must(
+      s.events.find(
+        (e): e is Extract<ServerEvent, { type: 'message.created' }> =>
+          e.type === 'message.created' && e.message.intent === 'greeting',
+      ),
+    );
+    expect(new Set(deltasOf(s, 0).map((d) => d.id))).toEqual(new Set([greeting.message.id]));
+    const other = await openEvents(a, id);
+    await other.waitFor('round.updated');
+    const message = 'Close. $\\frac{1}{6}$ needs the pairs that sum to $7$: how many are there?';
+    m.script('reply', turn({ action: 'hint', hint_rung: 1, message }));
+    const marks = [s.events.length, other.events.length] as const;
+    say(s, 'Is it one fifth?');
+    for (const [sock, mark] of [
+      [s, marks[0]],
+      [other, marks[1]],
+    ] as const) {
+      await sock.waitFor('round.updated', (e) => e.round.version === 2, 15_000);
+      expect(streamed(sock, mark)).toEqual([
+        'candidate:chat',
+        'delta',
+        'interviewer:hint',
+        'round:2',
+      ]);
+      const deltas = deltasOf(sock, mark);
+      const created = must(saidAfter(sock, mark)[0]);
+      expect(deltas.length).toBeGreaterThan(2);
+      expect(new Set(deltas.map((d) => d.id))).toEqual(new Set([created.id]));
+      expect(deltas.map((d) => d.text).join('')).toBe(message);
+      expect(created.text).toBe(message);
+    }
+    const rows = await storedMessages(id);
+    expect(rows.find((r) => r.intent === 'hint')).toMatchObject({
+      id: must(saidAfter(s, marks[0])[0]).id,
+      text: message,
+    });
+    // Nothing of the question's material went out with the deltas.
+    await expectBrowserClean(id, [...s.raw, ...other.raw]);
+    other.close();
+    s.close();
+  });
+
+  it('replaces a stream cut off by a failure with the canned reply, and drops one the pad’s end cut off', {
+    timeout: 60_000,
+  }, async () => {
+    const { a, id, s, model: m } = await started('Cutoff');
+    const partial = '{"reason":"r","action":"stay","hint_rung":0,"message":"Let me look at your';
+    m.script('reply', { hang: true, partial });
+    const seen = new Set(deltasOf(s, 0).map((d) => d.id));
+    let mark = say(s, 'What do you think of my approach?');
+    await s.waitFor('message.delta', (e) => !seen.has(e.messageId), 10_000);
+    const call = must(m.of('reply').at(-1));
+    call.release({ error: 'transient' });
+    await eventually(() => saidAfter(s, mark).length === 1, 10_000, 'the canned reply');
+    await rig.idle(id);
+    const deltas = deltasOf(s, mark);
+    expect(deltas.map((d) => d.text).join('')).toBe('Let me look at your');
+    expect(saidAfter(s, mark)[0]).toMatchObject({ id: deltas[0]?.id, text: CANNED_FAILED });
+    expect(streamed(s, mark)).toEqual(['candidate:chat', 'delta', 'interviewer:answer']);
+    expect((await roundRow(id)).version).toBe(1);
+
+    // Ending the pad aborts a reply in flight: what it streamed is dropped, nothing is stored.
+    m.script('reply', { hang: true, partial: `${partial} scratchpad` });
+    mark = say(s, 'And now?');
+    for (const d of deltas) seen.add(d.id);
+    const first = await s.waitFor('message.delta', (e) => !seen.has(e.messageId), 10_000);
+    expect((await a.post(`/api/pads/${id}/end`)).status).toBe(200);
+    const dropped = await s.waitFor('message.discarded', undefined, 10_000);
+    expect(dropped.messageId).toBe(first.messageId);
+    await rig.idle(id);
+    expect(saidAfter(s, mark)).toEqual([]);
+    expect((await storedMessages(id)).some((r) => r.id === first.messageId)).toBe(false);
+    s.close();
+  });
+
   // ---------------------------------------------------------------- a restart
 
   it('after a restart: no second greeting, no second nudge, and the question’s context intact', {
