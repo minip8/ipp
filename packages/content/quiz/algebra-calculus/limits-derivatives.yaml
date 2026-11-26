@@ -38,10 +38,10 @@
   answer: 2
   hints:
     - Take logarithms first, or write $f(x) = e^{g(x)}$ for a suitable $g$.
-    - What are $\ln x$ and $\ln \ln x$ at $x = e^e$?
+    - 'What are $\ln x$ and $\ln \ln x$ at $x = e^e$?'
   followUps:
-    - What is the derivative of $x^x$, and where on $(0, \infty)$ is $x^x$ smallest?
-    - What is $\lim_{x \to 0^+} x^x$?
+    - 'What is the derivative of $x^x$, and where on $(0, \infty)$ is $x^x$ smallest?'
+    - 'What is $\lim_{x \to 0^+} x^x$?'
   explanation: |
     Write $\ln f(x) = \ln x \cdot \ln\ln x$ and differentiate:
 
@@ -102,9 +102,9 @@
     $3\Phi(2) - 2\Phi(1) \approx 1.249$
   hints:
     - Leibniz's rule has three terms here, because both limits and the integrand depend on $x$.
-    - The derivative of the integrand with respect to $x$ is $\varphi(t + x)$, the normal density, and you can integrate that in $t$ directly.
+    - 'The derivative of the integrand with respect to $x$ is $\varphi(t + x)$, the normal density, and you can integrate that in $t$ directly.'
   followUps:
-    - What is $\frac{d}{dx}\int_0^x \Phi(t)\, dt$, and what is the integral itself in closed form?
+    - 'What is $\frac{d}{dx}\int_0^x \Phi(t)\, dt$, and what is the integral itself in closed form?'
     - Where does differentiating under the integral sign show up in option pricing?
   explanation: |
     Leibniz's rule for $g(x) = \int_{a(x)}^{b(x)} h(t, x)\, dt$:
@@ -183,7 +183,7 @@
     - Volatility drag, with an example such as +50% then −50%
     - Links to Jensen's inequality (concave log) or to leverage and Kelly sizing
   hints:
-    - Expand to second order. What is $E[R^2]$ in terms of $\mu$ and $\sigma$?
+    - 'Expand to second order. What is $E[R^2]$ in terms of $\mu$ and $\sigma$?'
     - Wealth after many periods is a product of growth factors. Take its logarithm.
   followUps:
     - A stock rises 10% and then falls 10%. What is the net return, and how does the approximation predict it?

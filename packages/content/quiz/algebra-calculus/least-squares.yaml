@@ -93,7 +93,7 @@
     - Uses Pythagoras (or an equivalent argument) to show any other β gives a larger error
     - Identifies the fitted values as Hy = X(XᵀX)⁻¹Xᵀy, the projection of y onto the column space
   hints:
-    - What set does $X\beta$ range over as $\beta$ varies?
+    - 'What set does $X\beta$ range over as $\beta$ varies?'
     - In the plane, how do you find the point of a line closest to a given point?
   followUps:
     - With an intercept in the model, what does orthogonality to the column of ones tell you about the residuals and the fitted values?
@@ -125,8 +125,8 @@
     - Scaling a matrix by $n$ does not change the ratio of its eigenvalues.
   followUps:
     - What is the condition number of $X$ itself?
-    - In which direction of $(\beta_1, \beta_2)$ is the least-squares estimate least precise, and how much less precise than in the best direction?
-    - What does ridge regression, which adds $\lambda I$ to $X^\top X$, do to the condition number?
+    - 'In which direction of $(\beta_1, \beta_2)$ is the least-squares estimate least precise, and how much less precise than in the best direction?'
+    - 'What does ridge regression, which adds $\lambda I$ to $X^\top X$, do to the condition number?'
   explanation: |
     The eigenvectors are $(1, 1)$ and $(1, -1)$ with eigenvalues $1 + \rho = 1.95$ and $1 - \rho = 0.05$,
     so
@@ -183,12 +183,12 @@
     - Forming XᵀX can destroy information entirely (e.g. the Läuchli-type example with a tiny δ)
     - SVD handles near rank-deficiency by truncating small singular values; normal equations are fine when X is well conditioned
   hints:
-    - How are the singular values of $X$ related to the eigenvalues of $X^\top X$?
-    - In double precision, roughly how many digits do you lose solving a system with condition number $\kappa$?
+    - 'How are the singular values of $X$ related to the eigenvalues of $X^\top X$?'
+    - 'In double precision, roughly how many digits do you lose solving a system with condition number $\kappa$?'
     - What does multiplying by an orthogonal matrix do to lengths, and so to errors?
   followUps:
-    - Give a $3 \times 2$ matrix of full rank whose $X^\top X$ is exactly singular in floating point.
-    - You can stream the data only once. How do you compute least squares without forming $X^\top X$?
+    - 'Give a $3 \times 2$ matrix of full rank whose $X^\top X$ is exactly singular in floating point.'
+    - 'You can stream the data only once. How do you compute least squares without forming $X^\top X$?'
     - Where does ridge regression fit into this picture?
   explanation: |
     "QR is more stable" is not an answer; the interviewer wants the squaring of the condition number

@@ -65,7 +65,7 @@
     - Each term of the expansion is (a function of $i$) times (a function of $j$). What is the rank of such a matrix?
   followUps:
     - What is the rank of the matrix with entries $(i + j)^k$?
-    - What is the rank of the matrix with entries $\sin(i + j)$?
+    - 'What is the rank of the matrix with entries $\sin(i + j)$?'
   explanation: |
     Expand: $(i + j)^2 = i^2 \cdot 1 + 2\, i \cdot j + 1 \cdot j^2$. Each term is an outer product
     $u v^\top$ of a vector indexed by $i$ with one indexed by $j$, and each outer product has rank one:
@@ -129,8 +129,8 @@
     - $A^2 = 0$ means $A(Ax) = 0$ for every $x$. Where does every column of $A$ lie?
     - Compare the dimension of the column space with the dimension of the null space.
   followUps:
-    - For an $n \times n$ matrix with $A^2 = 0$, what is the largest possible rank?
-    - If instead $A^3 = 0$ (a $3 \times 3$ matrix), which ranks are possible?
+    - 'For an $n \times n$ matrix with $A^2 = 0$, what is the largest possible rank?'
+    - 'If instead $A^3 = 0$ (a $3 \times 3$ matrix), which ranks are possible?'
   explanation: |
     $A^2 = 0$ says $A$ kills everything it produces: the column space (image) of $A$ lies inside its
     null space. With $r = \operatorname{rank} A$, the null space has dimension $3 - r$, so
@@ -175,10 +175,10 @@
     - Concludes XᵀX is invertible exactly when X has independent columns (full column rank)
     - Realness is needed for ‖Xv‖² = 0 to force Xv = 0; over ℂ the conjugate transpose is required
   hints:
-    - Compare the null spaces of $X$ and $X^\top X$.
-    - If $X^\top X v = 0$, multiply on the left by $v^\top$.
+    - 'Compare the null spaces of $X$ and $X^\top X$.'
+    - 'If $X^\top X v = 0$, multiply on the left by $v^\top$.'
   followUps:
-    - Show that $\operatorname{rank}(XX^\top) = \operatorname{rank}(X)$ as well. What does that say about a sample covariance matrix computed from fewer days than stocks?
+    - 'Show that $\operatorname{rank}(XX^\top) = \operatorname{rank}(X)$ as well. What does that say about a sample covariance matrix computed from fewer days than stocks?'
     - A regression has 50 observations and 100 regressors. What goes wrong, and what are the usual fixes?
   explanation: |
     The inclusion $\ker X \subseteq \ker X^\top X$ is immediate; candidates who stop there have not

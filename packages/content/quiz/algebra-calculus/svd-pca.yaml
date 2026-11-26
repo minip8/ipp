@@ -13,11 +13,11 @@
   answerText: |-
     $11/25 = 0.44$
   hints:
-    - Write the correlation matrix as $(1 - \rho)I + \rho J$, with $J$ the all-ones matrix.
+    - 'Write the correlation matrix as $(1 - \rho)I + \rho J$, with $J$ the all-ones matrix.'
     - The total variance is the trace.
   followUps:
     - What are the other four eigenvalues, and what do their eigenvectors look like as portfolios?
-    - What does the fraction tend to as the number of assets grows with $\rho$ fixed?
+    - 'What does the fraction tend to as the number of assets grows with $\rho$ fixed?'
   explanation: |
     $C = 0.7\,I + 0.3\,J$. The all-ones matrix $J$ has eigenvalue 5 on $\mathbf{1}$ and 0 on every vector
     whose entries sum to zero, so $C$ has eigenvalues $0.7 + 0.3 \cdot 5 = 2.2$ (eigenvector $\mathbf{1}$)
@@ -131,11 +131,11 @@
     $$A = \begin{pmatrix} 3 & 0 \\ 4 & 5 \end{pmatrix}?$$
   answer: 3
   hints:
-    - The singular values are the square roots of the eigenvalues of $A^\top A$.
-    - Use the trace and determinant of $A^\top A$.
+    - 'The singular values are the square roots of the eigenvalues of $A^\top A$.'
+    - 'Use the trace and determinant of $A^\top A$.'
   followUps:
     - Why is $5/3$, the ratio of the eigenvalues, the wrong answer?
-    - Check your singular values against $\lvert \det A \rvert$.
+    - 'Check your singular values against $\lvert \det A \rvert$.'
   explanation: |
     Compute
 
@@ -215,7 +215,7 @@
     - Fixes such as shrinkage (e.g. Ledoit–Wolf), a factor model, eigenvalue cleaning or portfolio constraints
     - Notes that the predicted risk of the optimised portfolio understates its realised risk
   hints:
-    - What is the rank of $X^\top X$ when $X$ has 250 rows?
+    - 'What is the rank of $X^\top X$ when $X$ has 250 rows?'
     - What does an optimiser do with a direction that has zero estimated variance?
     - If every true eigenvalue were equal, would the sample eigenvalues be equal?
   followUps:

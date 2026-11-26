@@ -68,8 +68,8 @@
     - Not positive definite exactly when some non-zero combination has zero variance, or Xw = 0 for some w ≠ 0
     - Gives an instance, such as a redundant asset or fewer observations than variables
   hints:
-    - What is the variance of $w^\top X$ in terms of $\Sigma$?
-    - Write $w^\top X^\top X w$ as a squared length.
+    - 'What is the variance of $w^\top X$ in terms of $\Sigma$?'
+    - 'Write $w^\top X^\top X w$ as a squared length.'
   followUps:
     - Is every symmetric PSD matrix the covariance matrix of some random vector? How would you construct one?
     - A symmetric matrix has all its leading principal minors non-negative. Must it be PSD?
@@ -116,9 +116,9 @@
     - Σ is singular, so Σ⁻¹μ does not exist and the optimiser can take unbounded positions in that direction
     - Small but non-zero eigenvalues cause similar instability; fix by removing redundancy, a factor model or shrinkage
   hints:
-    - What is $v^\top \Sigma v$ for that eigenvector?
+    - 'What is $v^\top \Sigma v$ for that eigenvector?'
     - Think of a set of instruments in which one is a fixed combination of the others.
-    - What does the optimiser's solution, proportional to $\Sigma^{-1}\mu$, need?
+    - 'What does the optimiser''s solution, proportional to $\Sigma^{-1}\mu$, need?'
   followUps:
     - How would you detect near-singularity before running the optimiser?
     - You hold log returns of EURUSD, USDJPY and EURJPY. Which eigenvector of their covariance matrix has (nearly) zero eigenvalue?
@@ -166,8 +166,8 @@
     - A non-PSD Σ has no real factor (negative value under a square root) and must be fixed first
   hints:
     - Start with $X = Z_1$ and look for $Y = aZ_1 + bZ_2$.
-    - What is $\operatorname{Cov}(LZ)$ for a fixed matrix $L$?
-    - Multiply $\begin{pmatrix} 1 & 0 \\ a & b \end{pmatrix}$ by its transpose.
+    - 'What is $\operatorname{Cov}(LZ)$ for a fixed matrix $L$?'
+    - 'Multiply $\begin{pmatrix} 1 & 0 \\ a & b \end{pmatrix}$ by its transpose.'
   followUps:
     - Why would a Monte Carlo engine prefer Cholesky to the eigendecomposition?
     - Does the order in which you list the variables change the simulated distribution?
@@ -194,11 +194,11 @@
     factorisation). What is the bottom-right entry $L_{33}$?
   answer: 2
   hints:
-    - The first column of $L$ is the first column of $\Sigma$ divided by $\sqrt{\Sigma_{11}}$.
-    - Then fill in the second column, then $L_{33}$ from $\Sigma_{33} = L_{31}^2 + L_{32}^2 + L_{33}^2$.
+    - 'The first column of $L$ is the first column of $\Sigma$ divided by $\sqrt{\Sigma_{11}}$.'
+    - 'Then fill in the second column, then $L_{33}$ from $\Sigma_{33} = L_{31}^2 + L_{32}^2 + L_{33}^2$.'
   followUps:
     - Interpret $L_{33}^2$ statistically.
-    - How would you check, while factorising, whether $\Sigma$ is a valid covariance matrix at all?
+    - 'How would you check, while factorising, whether $\Sigma$ is a valid covariance matrix at all?'
   explanation: |
     Work column by column, using $\Sigma_{ij} = \sum_k L_{ik} L_{jk}$:
 
@@ -232,7 +232,7 @@
     - What sign can the eigenvalues have?
   followUps:
     - What is the smallest possible value of the largest eigenvalue, and which matrix attains it?
-    - If every off-diagonal correlation equals $\rho \ge 0$, what is the largest eigenvalue, and what share of the variance does the first principal component explain?
+    - 'If every off-diagonal correlation equals $\rho \ge 0$, what is the largest eigenvalue, and what share of the variance does the first principal component explain?'
   explanation: |
     The eigenvalues are non-negative (PSD) and add up to the trace, which is 10. So none can exceed
     10, and 10 is attained by the all-ones matrix (every correlation equal to 1), whose eigenvalues
@@ -320,11 +320,11 @@
     - Alternatives such as the nearest correlation matrix (Higham) or shrinkage towards the identity or a structured target
     - Verifies the result (e.g. Cholesky now succeeds) and notes that the repair alters the correlations
   hints:
-    - Why is $X^\top X$ always PSD? Is the pairwise matrix of that form for some single $X$?
-    - What do the eigenvalues of $(1 - \delta)C + \delta I$ look like?
+    - 'Why is $X^\top X$ always PSD? Is the pairwise matrix of that form for some single $X$?'
+    - 'What do the eigenvalues of $(1 - \delta)C + \delta I$ look like?'
   followUps:
     - After clipping the eigenvalues you rescale to unit diagonal. Why is that needed, and does it keep the matrix PSD?
-    - If the smallest eigenvalue of $C$ is $-0.1$, how large must $\delta$ be in $(1 - \delta)C + \delta I$?
+    - 'If the smallest eigenvalue of $C$ is $-0.1$, how large must $\delta$ be in $(1 - \delta)C + \delta I$?'
     - Which entries does the repair change most, and how would you explain the change to a risk manager?
   explanation: |
     The key insight is that PSD comes from the Gram structure, which pairwise estimation destroys;

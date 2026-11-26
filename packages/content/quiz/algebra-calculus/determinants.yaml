@@ -45,8 +45,8 @@
     - Write the matrix as a multiple of the identity plus a multiple of the all-ones matrix $J$.
     - What are the eigenvalues of $J$, and what does adding $cI$ do to them?
   followUps:
-    - What is the determinant of the $n \times n$ matrix with $a$ on the diagonal and $b$ elsewhere? For which $b$ is it singular?
-    - Read the result for a correlation matrix with every off-diagonal entry $\rho$. What lower bound on $\rho$ follows?
+    - 'What is the determinant of the $n \times n$ matrix with $a$ on the diagonal and $b$ elsewhere? For which $b$ is it singular?'
+    - 'Read the result for a correlation matrix with every off-diagonal entry $\rho$. What lower bound on $\rho$ follows?'
   explanation: |
     Write the matrix as $M = 2I + J$, where $J$ is the all-ones matrix. $J = \mathbf{1}\mathbf{1}^\top$
     has rank one, with eigenvalue $5$ (eigenvector $\mathbf{1}$) and eigenvalue $0$ four times
@@ -78,11 +78,11 @@
     What is $\det T_{10}$?
   answer: 11
   hints:
-    - Expand along the first row and express $\det T_n$ through $\det T_{n-1}$ and $\det T_{n-2}$.
-    - Compute $\det T_1$ and $\det T_2$ and look for the pattern.
+    - 'Expand along the first row and express $\det T_n$ through $\det T_{n-1}$ and $\det T_{n-2}$.'
+    - 'Compute $\det T_1$ and $\det T_2$ and look for the pattern.'
   followUps:
     - Where does this matrix come from in numerical finance?
-    - The eigenvalues of $T_n$ are $2 - 2\cos\frac{k\pi}{n+1}$. What happens to its condition number as $n$ grows?
+    - 'The eigenvalues of $T_n$ are $2 - 2\cos\frac{k\pi}{n+1}$. What happens to its condition number as $n$ grows?'
   explanation: |
     Expanding along the first row, the $(1,1)$ minor is $T_{n-1}$ and the $(1,2)$ cofactor reduces to
     $T_{n-2}$, giving
@@ -115,9 +115,9 @@
   answer: 1
   hints:
     - Subtract each row from the row below it, starting from the bottom.
-    - Alternatively, $M_{ij} = \min(i, j)$ is the covariance of a random walk (or Brownian motion) at times $i$ and $j$. Write the walk as a sum of independent steps.
+    - 'Alternatively, $M_{ij} = \min(i, j)$ is the covariance of a random walk (or Brownian motion) at times $i$ and $j$. Write the walk as a sum of independent steps.'
   followUps:
-    - What is the determinant when the entries are $\min(t_i, t_j)$ for times $0 < t_1 < \dots < t_n$?
+    - 'What is the determinant when the entries are $\min(t_i, t_j)$ for times $0 < t_1 < \dots < t_n$?'
     - What does the inverse of $M$ look like, and why is it so sparse?
   explanation: |
     Write $M = LL^\top$ where $L$ is the lower-triangular matrix of ones ($L_{ik} = 1$ for $k \le i$):

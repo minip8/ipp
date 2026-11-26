@@ -114,7 +114,7 @@
     - The second eigenvalue governs convergence, deviations from stationarity shrinking like 0.6ⁿ
     - Shows no eigenvalue exceeds 1 in modulus, via the largest component of an eigenvector or the row-sum norm
   hints:
-    - For a $2 \times 2$ matrix, use the trace and the determinant.
+    - 'For a $2 \times 2$ matrix, use the trace and the determinant.'
     - What does $P$ do to the vector of all ones?
     - Write $P^n$ using the eigendecomposition. Which term survives as $n$ grows?
   followUps:
@@ -265,11 +265,11 @@
     - Uses it to eigen-decompose the 60×60 matrix XXᵀ instead of the 2000×2000 matrix XᵀX
     - Maps eigenvectors back with Xᵀu (normalised), or identifies this with the SVD of X
   hints:
-    - Start from $ABv = \lambda v$ and look for an eigenvector of $BA$ built from $v$.
-    - Why must you assume $\lambda \ne 0$?
-    - How many non-zero eigenvalues can $X^\top X$ have when $X$ has 60 rows?
+    - 'Start from $ABv = \lambda v$ and look for an eigenvector of $BA$ built from $v$.'
+    - 'Why must you assume $\lambda \ne 0$?'
+    - 'How many non-zero eigenvalues can $X^\top X$ have when $X$ has 60 rows?'
   followUps:
-    - Show directly that $\operatorname{tr}(AB) = \operatorname{tr}(BA)$. Is that implied by the result?
+    - 'Show directly that $\operatorname{tr}(AB) = \operatorname{tr}(BA)$. Is that implied by the result?'
     - If $A$ and $B$ are both square, are $AB$ and $BA$ always similar?
     - With 60 days and 2,000 stocks, how many principal components have non-zero sample variance?
   explanation: |

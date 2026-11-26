@@ -90,11 +90,11 @@
     - Two uncorrelated assets give weights proportional to 1/σᵢ², the inverse-variance portfolio
   hints:
     - Write the Lagrangian with one multiplier for the budget constraint.
-    - The gradient of $w^\top\Sigma w$ is $2\Sigma w$.
+    - 'The gradient of $w^\top\Sigma w$ is $2\Sigma w$.'
     - Use the constraint to find the multiplier.
   followUps:
-    - What goes wrong if $\Sigma$ is singular?
-    - Add a target-return constraint $\mu^\top w = m$. How does the minimum variance depend on $m$?
+    - 'What goes wrong if $\Sigma$ is singular?'
+    - 'Add a target-return constraint $\mu^\top w = m$. How does the minimum variance depend on $m$?'
     - Can the weights be negative? Give two assets for which the minimum-variance portfolio shorts one of them.
   explanation: |
     The derivation is routine; the interviewer is checking that you know the closed form, can say why
@@ -123,7 +123,7 @@
     - The gradient of the constraint is the normal vector $(2, 3, 4)$. In which direction from the origin is the nearest point?
   followUps:
     - Prove the bound with the Cauchy–Schwarz inequality instead.
-    - What is the distance from a general point $p$ to the plane $n^\top x = c$?
+    - 'What is the distance from a general point $p$ to the plane $n^\top x = c$?'
   explanation: |
     With $\mathcal{L} = x^2 + y^2 + z^2 - \lambda(2x + 3y + 4z - 12)$, the stationarity conditions give
     $(x, y, z) = \tfrac{\lambda}{2}(2, 3, 4)$: the nearest point lies along the normal. Substituting into
@@ -237,7 +237,7 @@
     - What does a quadratic that is never negative say about its discriminant?
   followUps:
     - In what sense is a correlation the cosine of an angle? Which vectors?
-    - Use Cauchy–Schwarz to show $E\lvert X \rvert \le \sqrt{E[X^2]}$.
+    - 'Use Cauchy–Schwarz to show $E\lvert X \rvert \le \sqrt{E[X^2]}$.'
     - Regress $y$ on $x$ and $x$ on $y$. What does Cauchy–Schwarz say about the product of the two slopes?
   explanation: |
     Most candidates can state the inequality; the discriminant proof is short and worth having ready.

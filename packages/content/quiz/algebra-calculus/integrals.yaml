@@ -74,8 +74,8 @@
     - What is $I^2$ as a double integral?
     - Which coordinates suit $e^{-(x^2 + y^2)}$?
   followUps:
-    - What is $\Gamma(1/2)$, and how does it follow from this result?
-    - Evaluate $\int_{-\infty}^\infty e^{-ax^2 + bx}\, dx$ for $a > 0$. Where does this show up in finance?
+    - 'What is $\Gamma(1/2)$, and how does it follow from this result?'
+    - 'Evaluate $\int_{-\infty}^\infty e^{-ax^2 + bx}\, dx$ for $a > 0$. Where does this show up in finance?'
     - Why does looking for an antiderivative not work here?
   explanation: |
     The polar-coordinates trick is the expected answer and most candidates know it; the interviewer
@@ -98,10 +98,10 @@
   answerText: |-
     $\sqrt{\pi}/4 \approx 0.443$
   hints:
-    - Integrate by parts with $u = x$ and $dv = x e^{-x^2}\,dx$.
-    - Or read $e^{-x^2}/\sqrt\pi$ as a normal density. What is its variance?
+    - 'Integrate by parts with $u = x$ and $dv = x e^{-x^2}\,dx$.'
+    - 'Or read $e^{-x^2}/\sqrt\pi$ as a normal density. What is its variance?'
   followUps:
-    - Generalise to $\int_0^\infty x^{2n} e^{-x^2}\, dx$.
+    - 'Generalise to $\int_0^\infty x^{2n} e^{-x^2}\, dx$.'
     - Write the integral as a value of the gamma function.
   explanation: |
     By parts, with $u = x$ and $dv = x e^{-x^2}\,dx$ (so $v = -\tfrac12 e^{-x^2}$):
@@ -128,11 +128,11 @@
   answerText: |-
     $\tfrac12 \ln 3 \approx 0.549$
   hints:
-    - Write $\sec x = \dfrac{\cos x}{1 - \sin^2 x}$.
-    - Substitute $u = \sin x$ and use partial fractions.
+    - 'Write $\sec x = \dfrac{\cos x}{1 - \sin^2 x}$.'
+    - 'Substitute $u = \sin x$ and use partial fractions.'
   followUps:
-    - What is the antiderivative of $\sec x$ in the form $\ln\lvert \cdot \rvert$, and how would you verify it?
-    - What happens to the integral as the upper limit approaches $\pi/2$?
+    - 'What is the antiderivative of $\sec x$ in the form $\ln\lvert \cdot \rvert$, and how would you verify it?'
+    - 'What happens to the integral as the upper limit approaches $\pi/2$?'
   explanation: |
     Multiply top and bottom by $\cos x$ and substitute $u = \sin x$:
 
@@ -159,11 +159,11 @@
   answerText: |-
     $16/3 \approx 5.33$
   hints:
-    - Put the axes along the $x$- and $y$-axes. What does a horizontal slice $z = \text{const}$ of the intersection look like?
+    - 'Put the axes along the $x$- and $y$-axes. What does a horizontal slice $z = \text{const}$ of the intersection look like?'
     - Each cylinder cuts the slice to a strip; the intersection of two perpendicular strips is a square.
   followUps:
     - What is the volume common to three such cylinders along the three coordinate axes?
-    - How does the answer compare with the inscribed unit sphere, and why is the ratio exactly $4/\pi$?
+    - 'How does the answer compare with the inscribed unit sphere, and why is the ratio exactly $4/\pi$?'
   explanation: |
     Put the axes along $x$ and $y$: the solids are $y^2 + z^2 \le 1$ and $x^2 + z^2 \le 1$. At height $z$
     the slice of the intersection is the square $|x|, |y| \le \sqrt{1 - z^2}$, of area $4(1 - z^2)$. So
@@ -190,10 +190,10 @@
   answerText: |-
     $\ln 2 \approx 0.693$
   hints:
-    - Write $\dfrac{x - 1}{\ln x}$ as an integral of $x^t$ over $t$ from 0 to 1.
-    - Alternatively, put a parameter in the exponent, $I(a) = \int_0^1 \frac{x^a - 1}{\ln x}\,dx$, and differentiate in $a$.
+    - 'Write $\dfrac{x - 1}{\ln x}$ as an integral of $x^t$ over $t$ from 0 to 1.'
+    - 'Alternatively, put a parameter in the exponent, $I(a) = \int_0^1 \frac{x^a - 1}{\ln x}\,dx$, and differentiate in $a$.'
   followUps:
-    - Evaluate $\int_0^1 \frac{x^a - x^b}{\ln x}\, dx$ for $a, b > -1$.
+    - 'Evaluate $\int_0^1 \frac{x^a - x^b}{\ln x}\, dx$ for $a, b > -1$.'
     - Why is swapping the order of integration allowed here?
   explanation: |
     The integrand is bounded (it tends to 0 at $x = 0$ and to 1 at $x = 1$), so the integral is finite.

@@ -28,13 +28,13 @@
     - Half-life ln 2 / θ
     - Estimates θ from an AR(1) regression of x_(t+1) on x_t, with slope b = e^(−θΔt), so θ = −ln b / Δt
   hints:
-    - Shift the variable so that $\mu$ disappears.
-    - When is $e^{-\theta T}$ equal to $\tfrac12$?
+    - 'Shift the variable so that $\mu$ disappears.'
+    - 'When is $e^{-\theta T}$ equal to $\tfrac12$?'
     - What does the solution say about $x$ one day later, given $x$ today?
   followUps:
     - The AR(1) slope fitted to daily data is $0.95$. What is the half-life in days?
     - Why is the estimated slope biased when the true slope is close to 1, and why does that matter for a pairs trade?
-    - What is the stationary variance of $dX = -\theta(X - \mu)\,dt + \sigma\,dW$?
+    - 'What is the stationary variance of $dX = -\theta(X - \mu)\,dt + \sigma\,dW$?'
   explanation: |
     The ODE is one line; the value is in connecting it to data. On the follow-ups: a slope of 0.95
     gives a half-life of $\ln 2/(-\ln 0.95) \approx 13.5$ days; least squares underestimates a slope
