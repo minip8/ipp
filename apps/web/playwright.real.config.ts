@@ -1,12 +1,12 @@
 /**
- * Runs e2e/real-api.spec.ts against a real stack: `next dev` on :3000 (root .env) and apps/api
+ * Runs e2e/real-*.spec.ts against a real stack: `next dev` on :3000 (root .env) and apps/api
  * on :4000. No interception. Start both first, then: playwright test -c playwright.real.config.ts
  */
 import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './e2e',
-  testMatch: /real-(api|judge|rooms)\.spec\.ts/,
+  testMatch: /real-(api|judge|rooms|quant-game)\.spec\.ts/,
   timeout: 120_000,
   expect: { timeout: 20_000 },
   workers: 1,

@@ -141,7 +141,7 @@ test.describe('the game panel', () => {
     await expect(status(page)).toHaveAttribute('data-state', 'traded');
     await expect(status(page)).toContainText('Traded · Sold 1 at 11.5. Make a new market.');
     await expect(chat(page).getByTestId('interviewer-message').last()).toContainText(
-      'I buy 1 at 11.5.',
+      'I buy 1 at your offer of 11.5.',
     );
     await expect(p.getByTestId('game-position')).toHaveText('Short 1');
     await expect(p.getByTestId('game-cash')).toHaveText('+11.5');
@@ -347,7 +347,7 @@ test.describe('the game on a phone', () => {
       'Traded: quote again · Short 1 · cash +11.5',
     );
     // A die shown while on the chat marks the question tab.
-    await b.quant.gameMove(QUANT_GAME_PAD_ID, { reveal: true }, 'Now Die 1: it is a 6.');
+    await b.quant.gameMove(QUANT_GAME_PAD_ID, { reveal: true }, 'Die 1 shows 6.');
     await expect(page.getByTestId('question-unread')).toBeVisible();
     await expect(strip.getByTestId('game-strip')).toContainText('6');
     expect(
@@ -423,11 +423,11 @@ test('voice reads the interviewer’s trade once and never the candidate’s quo
   const spoken = () => page.evaluate(() => (window as unknown as { __spoken: string[] }).__spoken);
   await quote(panel(page), '9.5', '11.5', '1');
   await expect(status(page)).toHaveAttribute('data-state', 'traded');
-  await expect.poll(spoken).toEqual(['I buy 1 at 11.5. Make me a new market.']);
+  await expect.poll(spoken).toEqual(['I buy 1 at your offer of 11.5. Make me a new market.']);
   await b.quant.close(id);
   await expect(heading(page)).toHaveText('Question 3 of 4');
   await expect.poll(spoken).toEqual([
-    'I buy 1 at 11.5. Make me a new market.',
+    'I buy 1 at your offer of 11.5. Make me a new market.',
     // The closing line's formula is said in words (`speechOf`).
     'Right, 5 over 36 is it. Let’s move on to the next one.',
     'Question 3 is on your screen.',

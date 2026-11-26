@@ -107,14 +107,19 @@ export function RecommendationScale({ value }: { value: Recommendation }) {
   );
 }
 
+type ItemText = ComponentType<{ children: string; className?: string }>;
+
 export function DimensionMeter({
   dimension,
   score,
   evidence,
+  Text,
 }: {
   dimension: Dimension;
   score: number;
   evidence: string;
+  /** Renders the evidence (a quant report typesets its math); plain text otherwise. */
+  Text?: ItemText;
 }) {
   const tone = score >= 3 ? 'ok' : score === 2 ? 'warn' : 'bad';
   return (
@@ -142,7 +147,11 @@ export function DimensionMeter({
           ))}
         </div>
       </div>
-      <p className="text-sm leading-relaxed text-fg-muted">{evidence}</p>
+      {Text ? (
+        <Text className="text-sm leading-relaxed text-fg-muted">{evidence}</Text>
+      ) : (
+        <p className="text-sm leading-relaxed text-fg-muted">{evidence}</p>
+      )}
     </li>
   );
 }
@@ -151,10 +160,13 @@ function ListBlock({
   title,
   items,
   kind,
+  Text,
 }: {
   title: string;
   items: string[];
   kind: 'plus' | 'minus';
+  /** Renders each item (a quant report typesets its math); plain text otherwise. */
+  Text?: ItemText;
 }) {
   const Icon = kind === 'plus' ? PlusIcon : MinusIcon;
   return (
@@ -177,7 +189,7 @@ function ListBlock({
               >
                 <Icon className="size-3" strokeWidth={2.5} />
               </span>
-              <span>{s}</span>
+              {Text ? <Text className="min-w-0 [&>p]:inline">{s}</Text> : <span>{s}</span>}
             </li>
           ))}
         </ul>
@@ -449,15 +461,18 @@ export function Assessment({
   pad,
   onRetry,
   dimensions = REPORT_DIMENSIONS,
-  Text = Markdown,
+  Text,
 }: {
   report: Report;
   pad: PadDetail;
   onRetry: () => void;
   /** The scorecard's dimensions in order: the coding ones unless given (a quant round's). */
   dimensions?: readonly ReportDimension[];
-  /** Renders the summary; a quant report typesets its math. */
-  Text?: ComponentType<{ children: string; className?: string }>;
+  /**
+   * Renders the summary (Markdown unless given), and when given also the evidence, strengths
+   * and improvements: a quant report typesets the math the assessment writes in all of them.
+   */
+  Text?: ItemText;
 }) {
   if (report.status === 'pending') {
     return (
@@ -485,6 +500,7 @@ export function Assessment({
   }
   const a = report.assessment;
   if (!a) return <NoAssessment report={report} pad={pad} />;
+  const Summary = Text ?? Markdown;
   const scores = dimensions.flatMap((d) => {
     const s = a.scores.find((x) => x.dimension === d);
     return s ? [{ ...s, dimension: d }] : [];
@@ -497,7 +513,7 @@ export function Assessment({
         </CardHeader>
         <div className="px-4 pt-4 pb-5 sm:px-5">
           <RecommendationScale value={a.recommendation} />
-          <Text className="mt-5 text-base leading-relaxed">{a.summary}</Text>
+          <Summary className="mt-5 text-base leading-relaxed">{a.summary}</Summary>
         </div>
         <div className="border-t border-border px-4 sm:px-5">
           <ul className="divide-y divide-border">
@@ -507,14 +523,15 @@ export function Assessment({
                 dimension={s.dimension}
                 score={s.score}
                 evidence={s.evidence}
+                Text={Text}
               />
             ))}
           </ul>
         </div>
       </Card>
       <div className="space-y-4">
-        <ListBlock title="Strengths" items={a.strengths} kind="plus" />
-        <ListBlock title="To work on" items={a.improvements} kind="minus" />
+        <ListBlock title="Strengths" items={a.strengths} kind="plus" Text={Text} />
+        <ListBlock title="To work on" items={a.improvements} kind="minus" Text={Text} />
       </div>
     </div>
   );

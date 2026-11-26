@@ -582,6 +582,12 @@ test.describe('the quant report', () => {
       'Independence',
     ]);
     await expect(assessment.locator('.katex').first()).toBeVisible();
+    // The math the assessment writes is typeset everywhere in it, not only in the summary.
+    for (const text of ['The one finished answer', 'Counts outcomes', 'Say the answer']) {
+      const item = page.locator('li', { hasText: text });
+      await expect(item.locator('.katex')).toHaveCount(1);
+      await expect(item).not.toContainText('$');
+    }
 
     const reviews = page.getByTestId('question-review');
     await expect(reviews.getByTestId('review-status')).toHaveText([
