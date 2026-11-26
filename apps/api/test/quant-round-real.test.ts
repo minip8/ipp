@@ -308,9 +308,8 @@ const STATE_KEYS = [
   '"questionId"',
   '"verdict"',
   '"hintRungs"',
-  '"closedBy"',
+  // `closedBy` and `posedMessageId` are on the view (how a question closed is not sensitive).
   '"subtopic"',
-  '"posedMessageId"',
   '"nudgedAt"',
   '"hintsAvailable"',
   '"followUpAsked"',

@@ -13,6 +13,7 @@ import {
   type PadSummary,
   type Playback,
   QUANT_PATH_INFO,
+  type QuantPath,
   type Report,
   ReviewRequest,
   UpdateHostNotesRequest,
@@ -240,27 +241,33 @@ export function padRoutes(ctx: Ctx) {
         difficulty: problems.difficulty,
         accepted,
         role: padMembers.role,
+        // Only the path: the rest of the round's state is server-only.
+        quantPath: sql<QuantPath | null>`${quantRounds.state}->>'path'`,
       })
       .from(pads)
       .innerJoin(padMembers, and(eq(padMembers.padId, pads.id), eq(padMembers.userId, user.id)))
       .leftJoin(problems, eq(problems.slug, pads.problemSlug))
+      .leftJoin(quantRounds, eq(quantRounds.padId, pads.id))
       .orderBy(desc(pads.startedAt))
       .limit(200);
-    const out: PadSummary[] = rows.map(({ pad, problemTitle, difficulty, accepted, role }) => ({
-      id: pad.id,
-      title: pad.title,
-      kind: pad.kind,
-      format: pad.format,
-      problemSlug: pad.problemSlug,
-      language: pad.language,
-      status: pad.status,
-      startedAt: pad.startedAt.toISOString(),
-      endedAt: pad.endedAt?.toISOString() ?? null,
-      problemTitle,
-      difficulty,
-      accepted: Boolean(accepted),
-      role,
-    }));
+    const out: PadSummary[] = rows.map(
+      ({ pad, problemTitle, difficulty, accepted, role, quantPath }) => ({
+        id: pad.id,
+        title: pad.title,
+        kind: pad.kind,
+        format: pad.format,
+        problemSlug: pad.problemSlug,
+        language: pad.language,
+        status: pad.status,
+        startedAt: pad.startedAt.toISOString(),
+        endedAt: pad.endedAt?.toISOString() ?? null,
+        problemTitle,
+        difficulty,
+        accepted: Boolean(accepted),
+        role,
+        quantPath: pad.format === 'quant' ? quantPath : null,
+      }),
+    );
     return c.json(out);
   });
 
@@ -580,7 +587,11 @@ export function padRoutes(ctx: Ctx) {
       padId: pad.id,
       status: row.status,
       generatedAt: row.generatedAt?.toISOString() ?? null,
-      stats: row.stats,
+      // A quant pad has no runs; reports stored before that said 0 / 0 / false.
+      stats:
+        pad.format === 'quant'
+          ? { ...row.stats, runs: null, submissions: null, accepted: null }
+          : row.stats,
       assessment: row.assessment ?? null,
       assessmentUnavailable: unavailable,
       // Only a room's host gets this far (assertMayReview).

@@ -86,6 +86,7 @@ export async function simulateQuant(o: {
     questions.map((q) => ({
       questionId: q.id,
       topic: q.topic,
+      topicTitle: q.topic,
       difficulty: q.difficulty,
       prompt: q.prompt,
       unit: q.type === 'numeric' ? (q.unit ?? null) : null,
