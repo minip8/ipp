@@ -8,7 +8,7 @@
  * link lands on the same graph and area).
  */
 import type { QuizRoadmapNodeProgress, QuizRoadmapTopic } from '@ipp/contracts';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import {
   ArrowRightIcon,
   ChevronRightIcon,
@@ -18,7 +18,7 @@ import {
   PlayIcon,
 } from 'lucide-react';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { ToggleGroup } from 'radix-ui';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { EmptyState, ErrorState, InlineError, useRetryCountdown } from '@/components/states';
@@ -27,14 +27,13 @@ import { Card } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
-import { AiKeyPrompt } from '@/features/ai-key/ai-key-prompt';
 import { api } from '@/lib/api';
 import { formatPercent, plural } from '@/lib/format';
-import { qk, useAiKey } from '@/lib/queries';
+import { qk } from '@/lib/queries';
 import { storage } from '@/lib/storage';
 import { cn } from '@/lib/utils';
 import { bankHref, DEFAULT_FILTERS } from './bank-logic';
-import { groupByTrack } from './logic';
+import { DISCUSSION_ROUND, groupByTrack, PRACTICE_ROUND } from './logic';
 import { NodeBar, RoadmapGraph, StateIcon } from './roadmap-graph';
 import {
   browseSubtopic,
@@ -50,6 +49,7 @@ import {
   STATE_LABEL,
   summarise,
 } from './roadmap-logic';
+import { DiscussionKeyPrompt, useDiscussionKey, useStartAttempt } from './start';
 
 /** A faint dot grid behind the graph. */
 const CANVAS = {
@@ -57,10 +57,6 @@ const CANVAS = {
   backgroundSize: '16px 16px',
   backgroundPosition: 'center',
 } as const;
-
-/** Questions in a practice round started from an area, and in a discussion. */
-const PRACTICE_COUNT = 10;
-const DISCUSSION_COUNT = 5;
 
 const WIDE = '(min-width: 1024px)';
 function subscribeWide(cb: () => void) {
@@ -324,34 +320,24 @@ function NodeDetails({
   /** in the phone sheet the title is the dialog's own */
   headingAs?: 'h2' | 'dialog';
 }) {
-  const router = useRouter();
-  const qc = useQueryClient();
-  const aiKey = useAiKey();
-  const keyState = aiKey.data?.state;
-  const needsKey = keyState === 'missing' || keyState === 'rejected';
+  const { missing } = useDiscussionKey();
   const [askKey, setAskKey] = useState(false);
   const status = statuses.get(node.id) ?? { state: 'not_started', next: false };
   const { requires, leadsTo } = useMemo(() => relations(topic.nodes), [topic.nodes]);
   const byId = new Map(topic.nodes.map((n) => [n.id, n]));
   const auto = node.questionCount - node.shortCount;
 
-  const start = useMutation({
-    mutationFn: (mode: 'practice' | 'discussion') =>
-      api.createAttempt({
-        topics: [topic.slug],
-        nodes: [node.id],
-        mode,
-        count: mode === 'discussion' ? DISCUSSION_COUNT : PRACTICE_COUNT,
-        focusWeak: true,
-      }),
-    onSuccess: (a) => {
-      qc.setQueryData(qk.attempt(a.id), a);
-      qc.invalidateQueries({ queryKey: qk.attempts });
-      router.push(`/quiz/${a.id}`);
-    },
-  });
+  const start = useStartAttempt();
+  const begin = (mode: 'practice' | 'discussion') =>
+    start.mutate({
+      topics: [topic.slug],
+      nodes: [node.id],
+      mode,
+      count: mode === 'discussion' ? DISCUSSION_ROUND : PRACTICE_ROUND,
+      focusWeak: true,
+    });
   const wait = useRetryCountdown(start.error);
-  const busy = start.isPending ? start.variables : null;
+  const busy = start.isPending ? start.variables.mode : null;
   const browse = browseSubtopic(node.subtopics);
   const Title = headingAs === 'dialog' ? DialogTitle : 'h2';
   const Description = headingAs === 'dialog' ? DialogDescription : 'p';
@@ -434,7 +420,7 @@ function NodeDetails({
           size="lg"
           className="w-full"
           disabled={auto === 0 || start.isPending || wait > 0}
-          onClick={() => start.mutate('practice')}
+          onClick={() => begin('practice')}
         >
           {busy === 'practice' ? <Spinner /> : <PlayIcon />}
           {wait > 0 ? `Try again in ${wait}s` : 'Practise'}
@@ -442,7 +428,7 @@ function NodeDetails({
         <p className="text-center text-xs text-fg-muted">
           {auto === 0
             ? 'Only open questions here: discuss them instead.'
-            : `${plural(Math.min(PRACTICE_COUNT, auto), 'question')}, the ones you have not got right first.`}
+            : `${plural(Math.min(PRACTICE_ROUND, auto), 'question')}, the ones you have not got right first.`}
         </p>
         <div className="grid grid-cols-2 gap-2">
           {node.shortCount > 0 ? (
@@ -450,8 +436,8 @@ function NodeDetails({
               className="w-full max-sm:h-10"
               disabled={start.isPending || wait > 0}
               onClick={() => {
-                if (needsKey) setAskKey(true);
-                else start.mutate('discussion');
+                if (missing) setAskKey(true);
+                else begin('discussion');
               }}
             >
               {busy === 'discussion' ? <Spinner /> : <MessagesSquareIcon />}
@@ -472,16 +458,10 @@ function NodeDetails({
             </Button>
           )}
         </div>
-        {askKey && needsKey && keyState && (
-          <AiKeyPrompt
-            size="sm"
+        {askKey && missing && (
+          <DiscussionKeyPrompt
+            state={missing}
             testId="roadmap-key-prompt"
-            state={keyState}
-            title={
-              keyState === 'rejected'
-                ? 'Your API key was rejected'
-                : 'A discussion runs on your own AI API key'
-            }
             onSaved={() => setAskKey(false)}
           />
         )}

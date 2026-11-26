@@ -1,10 +1,12 @@
 # interview++ architecture
 
-A practice-interview site: CoderPad-style coding pads (C++, Python, Java) with an AI interviewer
-that watches and speaks up unprompted, plus knowledge quizzes. Strangers can sign up and run code,
-so untrusted-code execution is designed as a hostile-input problem. The operator pays for no model
-usage: the AI features run only on an API key each user saves themselves, from Anthropic, OpenAI,
-Google Gemini or OpenRouter (§7.1).
+A prep site for quant and software interviews: CoderPad-style coding pads (C++, Python, Java)
+with an AI interviewer that watches and speaks up unprompted, plus quizzes (§8): quant question
+banks, which the Quant page orders into trader and researcher paths (`QUANT_PATHS`), and
+fundamentals for developers. Strangers can sign up and run code, so untrusted-code execution is
+designed as a hostile-input problem. The operator pays for no model usage: the AI features run
+only on an API key each user saves themselves, from Anthropic, OpenAI, Google Gemini or
+OpenRouter (§7.1).
 
 `packages/contracts` is the source of truth for every shape that crosses a process boundary.
 If this document and the contracts disagree, the contracts win; fix the document.

@@ -8,6 +8,7 @@ import { UserMenu } from './user-menu';
 
 const NAV = [
   { href: '/dashboard', label: 'Interviews' },
+  { href: '/quant', label: 'Quant' },
   { href: '/quiz', label: 'Quizzes' },
 ];
 
@@ -15,10 +16,11 @@ export function AppHeader() {
   const pathname = usePathname();
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-bg/90 pt-[env(safe-area-inset-top)] backdrop-blur-sm">
-      {/* Phones: tighter gaps, and below 375px the logo is just its mark (the word stays for
-          screen readers), so logo, both nav links, theme and account fit on one line at 360px. */}
+      {/* Phones: tighter gaps, and below 440px the logo is just its mark (the word stays for
+          screen readers), so logo, the three nav links, theme and account fit on one line down
+          to 360px. */}
       <div className="mx-auto flex h-13 max-w-6xl items-center gap-2 px-4 min-[400px]:gap-3 sm:gap-4 sm:px-6">
-        <Logo wordmarkClassName="max-[374px]:sr-only" />
+        <Logo wordmarkClassName="max-[439px]:sr-only" />
         <nav aria-label="Main" className="flex min-w-0 items-center gap-0.5">
           {NAV.map((n) => {
             const active =

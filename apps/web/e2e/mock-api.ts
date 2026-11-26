@@ -655,11 +655,13 @@ export class MockBackend {
       );
       if (req.nodes?.some((id) => !onTopics.has(id)))
         return this.status(400, 'unknown_node', 'Unknown roadmap node for these topics');
-      // The fundamentals fixtures stand in for any fundamentals topics; the quant topic has its own.
-      const quant = req.topics.includes(QUANT_TOPIC);
+      // The fundamentals fixtures stand in for any fundamentals topics, and probability's questions
+      // (the one quant bank with questions) for any quant topics.
+      const isQuant = (slug: string) =>
+        slug === QUANT_TOPIC || this.quizTopics.some((t) => t.slug === slug && t.track === 'quant');
       const pool = [
-        ...(!quant || req.topics.length > 1 ? QUIZ_QUESTIONS : []),
-        ...(quant ? QUANT_QUESTIONS : []),
+        ...(req.topics.some((t) => !isQuant(t)) ? QUIZ_QUESTIONS : []),
+        ...(req.topics.some(isQuant) ? QUANT_QUESTIONS : []),
       ];
       const a = makeAttempt({
         id: uuid(),

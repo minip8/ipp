@@ -255,3 +255,17 @@ describe('quiz roadmap', () => {
     expect(CreateAttemptRequest.safeParse({ topics: ['cpp'], nodes: [] }).success).toBe(false);
   });
 });
+
+describe('quant paths', () => {
+  it('name each topic once, as a slug, with a label and a description', async () => {
+    const { QUANT_PATHS, QUANT_PATH_INFO, Slug } = await import('../src');
+    for (const path of QUANT_PATHS) {
+      const info = QUANT_PATH_INFO[path];
+      expect(info.label).not.toBe('');
+      expect(info.description).not.toBe('');
+      expect(info.topics.length).toBeGreaterThan(0);
+      expect(new Set(info.topics).size).toBe(info.topics.length);
+      for (const t of info.topics) expect(() => Slug.parse(t)).not.toThrow();
+    }
+  });
+});

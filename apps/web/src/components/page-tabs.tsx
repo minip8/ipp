@@ -13,19 +13,20 @@ export const VIEW_PARAM = 'view';
  * A hub page's view, kept in `?view=` so it can be linked and Back returns to the previous one.
  * The first view is the default and leaves the param out. Other params on the page are kept:
  * the URL is rebuilt from `window.location`, as the pages' own `replaceState` calls do.
- * `views` should be a module-level constant.
+ * `views` should be a module-level constant. Another choice kept the same way (the Quant page's
+ * path) passes its own `param`.
  */
-export function usePageView<V extends string>(views: readonly [V, ...V[]]) {
+export function usePageView<V extends string>(views: readonly [V, ...V[]], param = VIEW_PARAM) {
   const params = useSearchParams();
-  const raw = params.get(VIEW_PARAM);
+  const raw = params.get(param);
   const view = views.find((v) => v === raw) ?? views[0];
   const setView = useCallback(
     (next: V) => {
       const q = new URLSearchParams(window.location.search);
-      const current = q.get(VIEW_PARAM);
-      if (next === views[0]) q.delete(VIEW_PARAM);
-      else q.set(VIEW_PARAM, next);
-      if ((q.get(VIEW_PARAM) ?? null) === current) return;
+      const current = q.get(param);
+      if (next === views[0]) q.delete(param);
+      else q.set(param, next);
+      if ((q.get(param) ?? null) === current) return;
       const search = q.toString();
       // Next keeps useSearchParams in step with the native History API.
       window.history.pushState(
@@ -34,7 +35,7 @@ export function usePageView<V extends string>(views: readonly [V, ...V[]]) {
         `${window.location.pathname}${search ? `?${search}` : ''}${window.location.hash}`,
       );
     },
-    [views],
+    [views, param],
   );
   return [view, setView] as const;
 }

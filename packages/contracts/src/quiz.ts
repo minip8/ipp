@@ -23,6 +23,32 @@ export const QUIZ_TRACK_INFO: Record<QuizTrack, { label: string; description: st
   },
 };
 
+/**
+ * The Quant page's guided paths through the quant track: topic slugs in the order to study them.
+ * A topic the server does not have is skipped by the page, so a path may name one before its
+ * content is loaded.
+ */
+export const QUANT_PATHS = ['trader', 'researcher'] as const;
+export type QuantPath = (typeof QUANT_PATHS)[number];
+
+export const QUANT_PATH_INFO: Record<
+  QuantPath,
+  { label: string; description: string; topics: readonly string[] }
+> = {
+  trader: {
+    label: 'Trader',
+    description:
+      'Probability and puzzles first, then betting, market making and options: what trading interviews lean on.',
+    topics: ['probability', 'brainteasers', 'betting-market-making', 'options'],
+  },
+  researcher: {
+    label: 'Researcher',
+    description:
+      'Probability, then statistics and linear algebra, then options: the maths research interviews build on.',
+    topics: ['probability', 'statistics', 'algebra-calculus', 'options'],
+  },
+};
+
 export const QuizTopic = z.object({
   slug: Slug,
   title: z.string(),

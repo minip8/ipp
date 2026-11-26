@@ -40,16 +40,34 @@ export function LandingHeader() {
   );
 }
 
-/** The hero's two buttons: straight into the app when signed in, to the account pages when not. */
+/**
+ * The hero's buttons: signed in, straight into each side of the app (a coding interview, the
+ * quant paths); signed out, to the account pages.
+ */
 export function LandingActions() {
   const { loading, account } = useAccount();
   return (
     <div className="mt-7 flex flex-wrap items-center gap-3">
-      <Button asChild variant="primary" size="lg">
-        <Link href={account ? '/dashboard' : '/sign-up'}>
-          Start a practice interview <ArrowRightIcon />
-        </Link>
-      </Button>
+      {account ? (
+        <>
+          <Button asChild variant="primary" size="lg">
+            <Link href="/dashboard">
+              Start a coding interview <ArrowRightIcon />
+            </Link>
+          </Button>
+          <Button asChild variant="secondary" size="lg">
+            <Link href="/quant">
+              Quant questions <ArrowRightIcon />
+            </Link>
+          </Button>
+        </>
+      ) : (
+        <Button asChild variant="primary" size="lg">
+          <Link href="/sign-up">
+            Create an account <ArrowRightIcon />
+          </Link>
+        </Button>
+      )}
       {!loading && !account && (
         <Button asChild variant="ghost" size="lg">
           <Link href="/sign-in">I have an account</Link>

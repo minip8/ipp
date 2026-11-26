@@ -2,9 +2,11 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-interview++ is a practice-interview site: collaborative coding pads (C++, Python, Java) with an AI
-interviewer that speaks up on its own, plus knowledge quizzes. `docs/ARCHITECTURE.md` is the
-design and security reference; `docs/DEPLOY.md` covers production.
+interview++ is a prep site for quant and software interviews: collaborative coding pads (C++,
+Python, Java) with an AI interviewer that speaks up on its own, quant question banks (numeric
+answers, multiple choice, and open questions discussed with the interviewer; the Quant page lays
+them out as trader and researcher paths) and fundamentals quizzes for developers.
+`docs/ARCHITECTURE.md` is the design and security reference; `docs/DEPLOY.md` covers production.
 
 ## Git and deploys
 
