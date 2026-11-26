@@ -306,7 +306,7 @@ test.describe('the game panel', () => {
 
   test('a coding pad has no quote route', async ({ page }) => {
     await setup(page);
-    await page.goto('/dashboard');
+    await page.goto('/software/interviews');
     const res = await page.evaluate(async (id) => {
       const r = await fetch(`/api/pads/${id}/round/quote`, {
         method: 'POST',
@@ -440,7 +440,7 @@ test.describe('the setup option', () => {
 
   test('on for the trader path, off for the researcher path, kept per path', async ({ page }) => {
     const b = await setup(page);
-    await page.goto('/quant');
+    await page.goto('/quant/interviews');
     const card = page.getByTestId('round-setup');
     const option = card.getByRole('switch', { name: 'Include a market-making game' });
     await expect(option).toHaveAttribute('aria-checked', 'true');
@@ -452,11 +452,11 @@ test.describe('the setup option', () => {
     expect(starts(b).at(-1)?.body).toMatchObject({ path: 'trader', includeGame: false });
 
     // The choice is kept for the trader path; the researcher path starts without one.
-    await page.goto('/quant');
+    await page.goto('/quant/interviews');
     await expect(
       page.getByRole('switch', { name: 'Include a market-making game' }),
     ).toHaveAttribute('aria-checked', 'false');
-    await page.goto('/quant?path=researcher');
+    await page.goto('/quant/interviews?path=researcher');
     const researcher = page.getByRole('switch', { name: 'Include a market-making game' });
     await expect(researcher).toHaveAttribute('aria-checked', 'false');
     await researcher.click();

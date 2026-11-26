@@ -278,6 +278,7 @@ describe('quiz roadmap', () => {
       title: 'C++',
       description: 'd',
       track: 'fundamentals',
+      also: ['quant'],
       ...progress,
       nodes: [
         {

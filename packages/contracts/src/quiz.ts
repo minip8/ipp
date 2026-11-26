@@ -1,27 +1,19 @@
 import { z } from 'zod';
 import { Id, IsoDate, Language, Slug } from './common';
 import { NUMERIC_INPUT_MAX, parseNumeric } from './numeric';
+import { Track } from './track';
 
 /**
- * Which part of the site a quiz topic belongs to. The Quizzes page and the roadmap group topics
- * by track, in this order; within a track topics keep the study order of `quiz/topics.yaml`.
+ * A quiz topic's home (`track` in `quiz/topics.yaml`, `quiz_topics.track`). It decides the
+ * topic's content rules (a quant topic's Markdown must typeset as maths and every numeric answer
+ * is recomputed by a quant check; a fundamentals topic has no maths at all), what the seed treats
+ * as quant, and what a quant round may draw from: only home `quant` topics. The site track the
+ * header switch chooses is `Track` in `track.ts`; `homeTrack` maps a home to it, and a topic's
+ * `also` lists the other site tracks it shows in. The values are stored, so they stay as they are.
  */
 export const QUIZ_TRACKS = ['fundamentals', 'quant'] as const;
 export const QuizTrack = z.enum(QUIZ_TRACKS);
 export type QuizTrack = z.infer<typeof QuizTrack>;
-
-export const QUIZ_TRACK_INFO: Record<QuizTrack, { label: string; description: string }> = {
-  fundamentals: {
-    label: 'Fundamentals',
-    description:
-      'Languages and systems: what a developer interview asks beyond the coding problem.',
-  },
-  quant: {
-    label: 'Quant',
-    description:
-      'Probability, statistics, markets and puzzles for trading and research interviews.',
-  },
-};
 
 /**
  * The Quant page's guided paths through the quant track: topic slugs in the order to study them.
@@ -55,6 +47,8 @@ export const QuizTopic = z.object({
   title: z.string(),
   description: z.string(),
   track: QuizTrack.default('fundamentals'),
+  /** The other site tracks this topic also shows in, beside its home's (see `topicTracks`). */
+  also: z.array(Track).default([]),
 });
 export type QuizTopic = z.infer<typeof QuizTopic>;
 

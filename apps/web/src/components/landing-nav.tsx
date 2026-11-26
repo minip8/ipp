@@ -2,6 +2,7 @@
 import { ArrowRightIcon } from 'lucide-react';
 import Link from 'next/link';
 import { useMe } from '@/lib/queries';
+import { tabHref } from '@/lib/track';
 import { AppHeader } from './app-header';
 import { Logo } from './logo';
 import { ThemeToggle } from './theme-toggle';
@@ -41,8 +42,8 @@ export function LandingHeader() {
 }
 
 /**
- * The hero's buttons: signed in, straight into each side of the app (a coding interview, the
- * quant paths); signed out, to the account pages.
+ * The hero's buttons: signed in, straight into each track (a coding interview, the quant
+ * questions); signed out, to the account pages.
  */
 export function LandingActions() {
   const { loading, account } = useAccount();
@@ -51,12 +52,12 @@ export function LandingActions() {
       {account ? (
         <>
           <Button asChild variant="primary" size="lg">
-            <Link href="/dashboard">
+            <Link href={tabHref('software', 'interviews')}>
               Start a coding interview <ArrowRightIcon />
             </Link>
           </Button>
           <Button asChild variant="secondary" size="lg">
-            <Link href="/quant">
+            <Link href={tabHref('quant', 'practice')}>
               Quant questions <ArrowRightIcon />
             </Link>
           </Button>

@@ -2,10 +2,13 @@ import {
   Difficulty,
   ProblemCategory,
   type ProblemProgress,
+  SetTrackRequest,
+  type SetTrackResponse,
   Slug,
+  type Track,
   WsTicketRequest,
 } from '@ipp/contracts';
-import { pads, problems, problemTests, runs } from '@ipp/db';
+import { pads, problems, problemTests, runs, user as users } from '@ipp/db';
 import { and, arrayContains, asc, eq, ilike, isNotNull, max, or, type SQL, sql } from '@ipp/db/orm';
 import { Hono } from 'hono';
 import type { Ctx } from '../context';
@@ -17,8 +20,18 @@ import { problemDetail, problemSummary } from '../views';
 export function miscRoutes(ctx: Ctx) {
   const r = new Hono<Env>();
 
-  r.get('/me', (c) => {
+  r.get('/me', async (c) => {
     const user = requireUser(c);
+    // Read from the row, not the session: the column is ours (Better Auth does not know it), and
+    // a choice made a moment ago must show at once. A guest has no track.
+    let track: Track | null = null;
+    if (!user.guest) {
+      const [row] = await ctx.db
+        .select({ track: users.track })
+        .from(users)
+        .where(eq(users.id, user.id));
+      track = row?.track ?? null;
+    }
     return c.json({
       user: {
         id: user.id,
@@ -26,8 +39,22 @@ export function miscRoutes(ctx: Ctx) {
         email: user.email,
         image: user.image,
         guest: user.guest,
+        track,
       },
     });
+  });
+
+  /** The site track the header switch chose, remembered for the account. */
+  r.put('/me/track', async (c) => {
+    const user = requireAccount(c);
+    const { track } = await parseBody(c, SetTrackRequest);
+    const wait = await ctx.limiter.hit([
+      { key: `track:u:${user.id}`, ...ctx.config.limits.trackChanges.userBurst },
+    ]);
+    if (wait > 0) throw rateLimited(wait);
+    await ctx.db.update(users).set({ track, updatedAt: new Date() }).where(eq(users.id, user.id));
+    const out: SetTrackResponse = { track };
+    return c.json(out);
   });
 
   // Server facts only. Whether the AI features work is per user (their own key): GET /api/ai-key,

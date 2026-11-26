@@ -1,5 +1,5 @@
 /**
- * The mental math drill (/quant/drill): setup, a run against the clock, results, and recording
+ * The mental math drill (/quant/practice/drill): setup, a run against the clock, results, and recording
  * the run. Runs are deterministic with `?seed=`, and every answer is computed here from the same
  * generator the page uses (src/features/drill/logic.ts), never hard-coded.
  */
@@ -61,7 +61,7 @@ async function remember(page: Page, config: DrillConfig) {
 /** Open the drill with a seed and a remembered setup, press Start, wait out the countdown. */
 async function begin(page: Page, seed: number, config: DrillConfig) {
   await remember(page, config);
-  await page.goto(`/quant/drill?seed=${seed}`);
+  await page.goto(`/quant/practice/drill?seed=${seed}`);
   await page.getByRole('button', { name: 'Start' }).click();
   const deck = deckFor(seed, config);
   await expect(question(page)).toHaveText(deck.at(0).text);
@@ -96,7 +96,7 @@ test('a short run, from setup to results, recorded exactly', async ({ page }) =>
   const backend = await setup(page, (b) => {
     b.drillRuns = [];
   });
-  await page.goto('/quant/drill?seed=101');
+  await page.goto('/quant/practice/drill?seed=101');
   await expect(page.getByRole('heading', { level: 1, name: 'Mental math' })).toBeVisible();
   await expect(page).toHaveTitle(/^Mental math · interview\+\+/);
   // Defaults: 2 min, Standard, every category.
@@ -351,7 +351,7 @@ test('a new best is marked, and Play again starts the next seed', async ({ page 
   });
   const config: DrillConfig = { durationSec: 60, level: 'warmup', categories: ALL };
   await remember(page, config);
-  await page.goto('/quant/drill?seed=500');
+  await page.goto('/quant/practice/drill?seed=500');
   await expect(page.getByTestId('drill-best-score')).toHaveText('1');
   await page.getByRole('button', { name: 'Start' }).click();
   const deck = deckFor(500, config);
@@ -378,7 +378,7 @@ test('a run on some categories sets no best, and says so', async ({ page }) => {
   await setup(page, (b) => {
     b.drillRuns = [];
   });
-  await page.goto('/quant/drill?seed=8');
+  await page.goto('/quant/practice/drill?seed=8');
   await expect(page.getByTestId('drill-mix-note')).toHaveText(
     'Every category is on, so this run can set a best.',
   );
@@ -401,7 +401,7 @@ test('a run on some categories sets no best, and says so', async ({ page }) => {
 
 test('history and bests, and an empty state on a first visit', async ({ page }) => {
   await setup(page);
-  await page.goto('/quant/drill');
+  await page.goto('/quant/practice/drill');
   const runs = page.getByTestId('drill-runs').getByRole('listitem');
   await expect(runs).toHaveCount(4);
   await expect(runs.nth(0)).toContainText('2 min · Standard · All categories');
@@ -421,14 +421,14 @@ test('history and bests, and an empty state on a first visit', async ({ page }) 
   await setup(first, (b) => {
     b.drillRuns = [];
   });
-  await first.goto('/quant/drill');
+  await first.goto('/quant/practice/drill');
   await expect(first.getByText('No runs yet')).toBeVisible();
   await expect(first.getByTestId('drill-best')).toContainText('No best yet at');
 });
 
 test('the setup is remembered after a reload', async ({ page }) => {
   await setup(page);
-  await page.goto('/quant/drill');
+  await page.goto('/quant/practice/drill');
   await page.getByRole('radio', { name: '5 min' }).click();
   await page.getByRole('radio', { name: 'Warm-up' }).click();
   await page.getByRole('checkbox', { name: 'Fractions' }).click();
@@ -446,34 +446,41 @@ test('the setup is remembered after a reload', async ({ page }) => {
   await expect(page.getByRole('radio', { name: 'Standard' })).toBeChecked();
 });
 
-test.describe('on the Quant page', () => {
-  test('a card on both paths leads to the drill, with the best when there is one', async ({
+test.describe('in the Quant track', () => {
+  test('a card on Practice and the study path leads to the drill, with the best', async ({
     page,
   }) => {
     await setup(page);
-    await page.goto('/quant');
+    await page.goto('/quant/roadmap');
     const card = page.getByTestId('drill-card');
     await expect(card.getByRole('heading', { name: 'Mental math drill' })).toBeVisible();
     // The default setup (2 min · Standard) has a best of 31 in the fixtures.
     await expect(card.getByTestId('drill-card-best')).toHaveText(
       'Your best at 2 min · Standard: 31',
     );
-    await page.getByRole('tab', { name: 'Researcher' }).click();
+    await page.getByRole('radio', { name: 'Researcher' }).click();
     await expect(card).toBeVisible();
+    await page.goto('/quant/practice');
+    await expect(card.getByTestId('drill-card-best')).toBeVisible();
     await card.getByRole('link', { name: 'Start a drill' }).click();
-    await expect(page).toHaveURL(/\/quant\/drill$/);
+    await expect(page).toHaveURL(/\/quant\/practice\/drill$/);
     await expect(page.getByRole('heading', { level: 1, name: 'Mental math' })).toBeVisible();
-    // Not in the main navigation; Quant stays marked.
+    // Under Practice: the tab stays marked, and the way back is there.
     const nav = page.getByRole('navigation', { name: 'Main' });
-    await expect(nav.getByRole('link')).toHaveText(['Interviews', 'Quant', 'Quizzes']);
-    await expect(nav.getByRole('link', { name: 'Quant' })).toHaveAttribute('aria-current', 'page');
+    await expect(nav.getByRole('link')).toHaveText(['Interviews', 'Practice', 'Roadmap']);
+    await expect(nav.getByRole('link', { name: 'Practice' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    await page.getByRole('main').getByRole('link', { name: 'Practice' }).click();
+    await expect(page).toHaveURL(/\/quant\/practice$/);
   });
 
   test('without a best, the card leaves it out', async ({ page }) => {
     await setup(page, (b) => {
       b.drillRuns = [];
     });
-    await page.goto('/quant');
+    await page.goto('/quant/practice');
     const card = page.getByTestId('drill-card');
     await expect(card.getByRole('link', { name: 'Start a drill' })).toBeVisible();
     await expect(card.getByTestId('drill-card-best')).toHaveCount(0);
@@ -492,7 +499,7 @@ test.describe('on a phone', () => {
     page,
   }) => {
     await setup(page);
-    await page.goto('/quant/drill?seed=77');
+    await page.goto('/quant/practice/drill?seed=77');
     await noSideScroll(page);
     const config: DrillConfig = { durationSec: 120, level: 'standard', categories: ALL };
     const deck = deckFor(77, config);

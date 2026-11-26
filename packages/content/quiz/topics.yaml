@@ -1,9 +1,12 @@
 # In study order: the roadmap on the Quizzes page lists topics in this order.
+# `track` is the topic's home (fundamentals, the default, or quant): it sets the content rules and
+# what a quant round draws from. `also` lists other site tracks the topic shows in (`also: [quant]`).
 - slug: cpp
   title: C++
   description: Language rules, the standard library, object lifetime, templates, and what programs actually print.
 - slug: python
   title: Python
+  also: [quant]
   description: Language semantics, the data model, the standard library, and common gotchas.
 - slug: computer-architecture
   title: Computer architecture

@@ -44,6 +44,8 @@ const CONTENT = [
   {
     slug: "python",
     track: "fundamentals",
+    // Shared into the Quant track, as in quiz/topics.yaml: the same topic and progress in both.
+    also: ["quant"],
     title: "Python",
     description: "Language semantics, the data model, the standard library, and common gotchas.",
     nodes: [
@@ -240,6 +242,7 @@ function build(progress: Record<string, [number, number]>) {
         slug: t.slug,
         title: t.title,
         track: t.track,
+        also: t.also ?? [],
         description: t.description,
         questionCount: sum(nodes, (x) => x.questionCount),
         shortCount: sum(nodes, (x) => x.shortCount),

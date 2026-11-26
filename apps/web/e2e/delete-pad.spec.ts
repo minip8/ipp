@@ -4,7 +4,7 @@ import { setup } from './helpers';
 
 const history = (page: import('@playwright/test').Page) => page.getByRole('table').getByRole('row');
 /** Finished interviews are in the History view of the Interviews page. */
-const HISTORY = '/dashboard?view=history';
+const HISTORY = '/software/interviews?view=history';
 
 test('owner deletes a finished interview from history after confirming', async ({ page }) => {
   const backend = await setup(page);
@@ -73,7 +73,7 @@ test('a collaborator removes a joined interview from their history', async ({ pa
 
 test('deleting an in-progress interview says it ends the session', async ({ page }) => {
   const backend = await setup(page);
-  await page.goto('/dashboard');
+  await page.goto('/software/interviews');
   const inProgress = page.getByRole('region', { name: 'In progress' });
   await expect(inProgress).toContainText('Two Sum');
   await inProgress.getByRole('button', { name: 'Delete interview: Two Sum' }).click();
@@ -90,7 +90,7 @@ test('delete from the report page returns to the dashboard', async ({ page }) =>
   await expect(page.getByRole('heading', { level: 1, name: 'LRU Cache' })).toBeVisible();
   await page.getByRole('button', { name: 'Delete interview' }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Delete interview' }).click();
-  await expect(page).toHaveURL(/\/dashboard$/);
+  await expect(page).toHaveURL(/\/software\/interviews$/);
   await expect(page.getByText('Interview deleted')).toBeVisible();
   await page.getByRole('tab', { name: /^History/ }).click();
   await expect(history(page).filter({ hasText: 'Merge Intervals' })).toHaveCount(1);

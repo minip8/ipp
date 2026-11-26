@@ -155,6 +155,7 @@ describe('quiz', () => {
         title: 'Test topic',
         description: 'Questions for the API tests',
         track: 'fundamentals',
+        also: [],
         questionCount: 4,
         shortCount: 1,
         answered: 2,

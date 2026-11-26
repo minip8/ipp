@@ -1,13 +1,14 @@
 'use client';
 /**
- * The Quizzes page's Roadmap view: one graph of study areas per topic, with what to learn before
- * what, the user's progress on each, and a way to practise any area. Nothing is locked; the
- * arrows are advice.
+ * The Roadmap tab's topic maps: one graph of study areas per topic of the track, with what to
+ * learn before what, the user's progress on each, and a way to practise any area. Nothing is
+ * locked; the arrows are advice.
  *
- * URL: /quiz?view=roadmap&roadmap=<topic>&node=<id> (both kept with replaceState, so a reload or a
- * link lands on the same graph and area).
+ * URL: /{track}/roadmap?view=maps&roadmap=<topic>&node=<id> (both kept with replaceState, so a
+ * reload or a link lands on the same graph and area). A topic of the other track only (a link,
+ * or a related area in it) sends the user to that track's maps, query and all.
  */
-import type { QuizRoadmapNodeProgress, QuizRoadmapTopic } from '@ipp/contracts';
+import type { QuizRoadmapNodeProgress, QuizRoadmapTopic, Track } from '@ipp/contracts';
 import { useQuery } from '@tanstack/react-query';
 import {
   ArrowRightIcon,
@@ -18,7 +19,7 @@ import {
   PlayIcon,
 } from 'lucide-react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { ToggleGroup } from 'radix-ui';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { EmptyState, ErrorState, InlineError, useRetryCountdown } from '@/components/states';
@@ -31,21 +32,23 @@ import { api } from '@/lib/api';
 import { formatPercent, plural } from '@/lib/format';
 import { qk } from '@/lib/queries';
 import { storage } from '@/lib/storage';
+import { misplacedTopic, tabHref, topicsOf } from '@/lib/track';
 import { cn } from '@/lib/utils';
 import { bankHref, DEFAULT_FILTERS } from './bank-logic';
-import { DISCUSSION_ROUND, groupByTrack, PRACTICE_ROUND } from './logic';
+import { DISCUSSION_ROUND, PRACTICE_ROUND } from './logic';
 import { NodeBar, RoadmapGraph, StateIcon } from './roadmap-graph';
 import {
   browseSubtopic,
   COMPLETE_ACCURACY,
+  LEGACY_ROADMAP_STORAGE_KEY,
   type NodeStatus,
   pickTopic,
   ROADMAP_NODE_PARAM,
-  ROADMAP_STORAGE_KEY,
   ROADMAP_TOPIC_PARAM,
   relatedAreas,
   relations,
   roadmapStatuses,
+  roadmapStorageKey,
   STATE_LABEL,
   summarise,
 } from './roadmap-logic';
@@ -73,7 +76,7 @@ function useWide() {
   );
 }
 
-/** The topic and selected node, in the URL alongside `?view=`. */
+/** The topic and selected node, in the URL alongside `?view=maps`. */
 function useRoadmapParams() {
   const params = useSearchParams();
   const set = useCallback((patch: Record<string, string | null>) => {
@@ -120,10 +123,6 @@ function TopicSwitcher({
     else if (right > el.scrollLeft + el.clientWidth) el.scrollLeft = right + 16 - el.clientWidth;
   }, [value]);
   // Phones: one row that scrolls on its own; wider: a grid.
-  const rowClass =
-    '-mx-4 -my-1 flex gap-2 overflow-x-auto overscroll-x-contain px-4 py-1 sm:m-0 sm:flex-wrap sm:overflow-visible sm:p-0';
-  // More than one track: a row per track under its name (one radio group all the same).
-  const tracks = groupByTrack(topics);
   return (
     <ToggleGroup.Root
       ref={root}
@@ -131,27 +130,17 @@ function TopicSwitcher({
       value={value}
       onValueChange={(v) => v && onChange(v)}
       aria-label="Roadmap topic"
-      data-topic-row={tracks.length > 1 ? undefined : ''}
-      className={tracks.length > 1 ? 'space-y-4' : rowClass}
+      data-topic-row=""
+      className="-mx-4 -my-1 flex gap-2 overflow-x-auto overscroll-x-contain px-4 py-1 sm:m-0 sm:flex-wrap sm:overflow-visible sm:p-0"
     >
-      {tracks.length > 1
-        ? tracks.map((g) => (
-            <div key={g.track} data-testid="roadmap-track">
-              <p className="mb-2 text-xs font-medium text-fg-muted">{g.label}</p>
-              <div data-topic-row className={rowClass}>
-                {g.items.map((t) => (
-                  // A track of one topic would stretch it across the row.
-                  <TopicChip key={t.slug} t={t} className="sm:max-w-72" />
-                ))}
-              </div>
-            </div>
-          ))
-        : topics.map((t) => <TopicChip key={t.slug} t={t} />)}
+      {topics.map((t) => (
+        <TopicChip key={t.slug} t={t} />
+      ))}
     </ToggleGroup.Root>
   );
 }
 
-function TopicChip({ t, className }: { t: QuizRoadmapTopic; className?: string }) {
+function TopicChip({ t }: { t: QuizRoadmapTopic }) {
   const sum = summarise(t.nodes);
   const answered = t.questionCount ? t.answered / t.questionCount : 0;
   return (
@@ -160,10 +149,9 @@ function TopicChip({ t, className }: { t: QuizRoadmapTopic; className?: string }
       data-topic={t.slug}
       aria-label={`${t.title}: ${sum.complete} of ${plural(sum.total, 'area')} complete, ${formatPercent(answered)} answered`}
       className={cn(
-        'group flex min-w-36 shrink-0 flex-col gap-2 rounded-lg border bg-surface px-3 py-2.5 text-left transition-[border-color,box-shadow,background-color] focus-visible:outline-offset-[-2px] sm:min-w-40 sm:flex-[1_1_auto]',
+        'group flex min-w-36 shrink-0 flex-col gap-2 rounded-lg border bg-surface px-3 py-2.5 text-left transition-[border-color,box-shadow,background-color] focus-visible:outline-offset-[-2px] sm:max-w-64 sm:min-w-40 sm:flex-[1_1_auto]',
         'data-[state=off]:border-border data-[state=off]:hover:border-border-strong data-[state=off]:hover:shadow-pop',
         'data-[state=on]:border-accent data-[state=on]:bg-accent-soft/30 data-[state=on]:ring-1 data-[state=on]:ring-accent',
-        className,
       )}
     >
       <span className="flex items-baseline justify-between gap-2">
@@ -309,7 +297,7 @@ function NodeDetails({
   onSelectIn,
   headingAs = 'h2',
 }: {
-  /** every topic: related areas are in the other ones */
+  /** every topic, of both tracks: related areas are in the other ones */
   topics: QuizRoadmapTopic[];
   topic: QuizRoadmapTopic;
   node: QuizRoadmapNodeProgress;
@@ -600,21 +588,35 @@ function TopicOverview({
 
 // ---------------------------------------------------------------- the view
 
-export function QuizRoadmap() {
+export function QuizRoadmap({ track }: { track: Track }) {
   const roadmap = useQuery({ queryKey: qk.quizRoadmap, queryFn: api.quizRoadmap });
   const params = useRoadmapParams();
+  const router = useRouter();
   const wide = useWide();
-  const [remembered] = useState(() => storage.get<string | null>(ROADMAP_STORAGE_KEY, null));
-  const topics = roadmap.data ?? [];
+  const [remembered] = useState(
+    () =>
+      storage.get<string | null>(roadmapStorageKey(track), null) ??
+      storage.get<string | null>(LEGACY_ROADMAP_STORAGE_KEY, null),
+  );
+  /** Every topic (related areas may be in the other track); the chips are this track's. */
+  const all = roadmap.data ?? [];
+  const topics = useMemo(() => topicsOf(all, track), [all, track]);
+  const elsewhere = misplacedTopic(params.topic, all, track);
+  useEffect(() => {
+    if (elsewhere)
+      router.replace(`${tabHref(elsewhere, 'roadmap')}${window.location.search}`, {
+        scroll: false,
+      });
+  }, [elsewhere, router]);
   const slug = pickTopic(
     topics.map((t) => t.slug),
     params.topic,
     remembered,
   );
-  const topic = topics.find((t) => t.slug === slug) ?? null;
+  const topic = elsewhere ? null : (topics.find((t) => t.slug === slug) ?? null);
   useEffect(() => {
-    if (slug) storage.set(ROADMAP_STORAGE_KEY, slug);
-  }, [slug]);
+    if (topic) storage.set(roadmapStorageKey(track), topic.slug);
+  }, [topic, track]);
 
   const statuses = useMemo(() => roadmapStatuses(topic?.nodes ?? []), [topic]);
   const selected = topic?.nodes.find((n) => n.id === params.node) ?? null;
@@ -639,7 +641,7 @@ export function QuizRoadmap() {
   const chooseTopic = (next: string) =>
     params.set({ [ROADMAP_TOPIC_PARAM]: next, [ROADMAP_NODE_PARAM]: null });
 
-  if (roadmap.isPending) return <RoadmapSkeleton />;
+  if (roadmap.isPending || elsewhere) return <RoadmapSkeleton />;
   if (roadmap.isError)
     return (
       <Card>
@@ -659,7 +661,7 @@ export function QuizRoadmap() {
   const details = selected ? (
     <NodeDetails
       key={selected.id}
-      topics={topics}
+      topics={all}
       topic={topic}
       node={selected}
       statuses={statuses}

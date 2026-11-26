@@ -44,7 +44,9 @@ import {
   ReviewRequest,
   type Run,
   ServerEvent,
+  SetTrackRequest,
   SubmitAnswerRequest,
+  type Track,
   UpdateHostNotesRequest,
   UpdatePadRequest,
 } from '@ipp/contracts';
@@ -95,6 +97,10 @@ export class MockBackend {
   signedIn = true;
   /** Who /api/me says is signed in (a guest after joining a room by its link). */
   me: { id: string; name: string; email: string; image?: string | null; guest?: boolean } = USER;
+  /** The account's remembered site track on /api/me (null: never chosen, so the home asks). */
+  track: Track | null = 'software';
+  /** Bodies of PUT /api/me/track, in order. */
+  trackSaves: Track[] = [];
   /** Room hosts' private notes, by pad. */
   hostNotes = new Map<string, string>();
   /** Questions sent with second-opinion requests (undefined = none). */
@@ -470,7 +476,15 @@ export class MockBackend {
     }
     inv = null;
     if (!this.signedIn) return this.status(401, 'unauthorized', 'Sign in to continue.');
-    if (path === '/api/me') return { user: this.me };
+    if (path === '/api/me')
+      return { user: { ...this.me, track: this.me.guest ? null : this.track } };
+    if (path === '/api/me/track' && method === 'PUT') {
+      if (this.me.guest)
+        return this.status(403, 'account_required', 'Sign in with an account to do this');
+      this.track = SetTrackRequest.parse(body).track;
+      this.trackSaves.push(this.track);
+      return { track: this.track };
+    }
     if (
       this.me.guest &&
       (path === '/api/pads' ||

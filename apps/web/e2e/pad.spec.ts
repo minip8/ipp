@@ -13,7 +13,7 @@ async function openPad(page: Page, configure?: (b: MockBackend) => void) {
 
 test('create a pad from the library with the chosen settings', async ({ page }) => {
   const backend = await setup(page);
-  await page.goto('/new');
+  await page.goto('/software/interviews');
   await page.getByRole('searchbox', { name: 'Search problems' }).fill('lru');
   await expect(page.getByRole('button', { name: /^Two Sum/ })).toHaveCount(0);
   await page.getByRole('button', { name: /^LRU Cache/ }).click();
@@ -36,7 +36,7 @@ test('a pad without a time limit shows the time elapsed instead of a countdown',
   page,
 }) => {
   const backend = await setup(page);
-  await page.goto('/new');
+  await page.goto('/software/interviews');
   await page.getByRole('button', { name: /^LRU Cache/ }).click();
   await expect(page.getByTestId('duration-note')).toHaveCount(0);
   await page.getByRole('radio', { name: 'No limit' }).click();
@@ -50,7 +50,7 @@ test('a pad without a time limit shows the time elapsed instead of a countdown',
   await timer.hover();
   await expect(page.getByRole('tooltip')).toContainText('No time limit, started');
   // The choice is remembered for the next interview.
-  await page.goto('/new');
+  await page.goto('/software/interviews');
   await expect(page.getByRole('radio', { name: 'No limit' })).toHaveAttribute(
     'aria-checked',
     'true',
@@ -61,9 +61,9 @@ test('a link with a difficulty picks a random problem and waits for Start', asyn
   const backend = await setup(page);
   const medium = PROBLEMS.filter((p) => p.difficulty === 'medium');
   // The old address of the setup page still works and is sent on to the Interviews page.
-  await page.goto('/new?difficulty=medium&random=1');
+  await page.goto('/software/interviews?difficulty=medium&random=1');
   // The pick lands in the setup panel (and the URL) without creating a pad.
-  await expect(page).toHaveURL(/\/dashboard\?difficulty=medium&problem=[a-z0-9-]+$/);
+  await expect(page).toHaveURL(/\/software\/interviews\?difficulty=medium&problem=[a-z0-9-]+$/);
   const first = new URL(page.url()).searchParams.get('problem');
   const title = page.getByTestId('selected-problem');
   await expect(title).toHaveText(medium.find((p) => p.slug === first)?.title ?? '?');

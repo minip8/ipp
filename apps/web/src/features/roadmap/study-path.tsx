@@ -1,51 +1,50 @@
 'use client';
 /**
- * The Quant page: the guided way into the quant track. Two paths (trader, researcher), each a
- * short sequence of topics to work through in order, with the same progress the Quizzes page shows
- * and one-click ways into practice, the topic's bank and its roadmap; above them a live interview
- * round on the path with the AI interviewer, and beside them a discussion of the path's open
- * questions and the mental math drill. The Quizzes page stays the full bank of every
- * topic.
+ * The Roadmap tab's study path: a track's topics as numbered steps to work through in order,
+ * with the progress Practice shows and one-click ways into practice, the topic's bank and its
+ * map; beside them a discussion of the path's open questions and, in Quant, the mental math
+ * drill. Quant has two curated paths (trader, researcher, in `?path=`); Software walks all its
+ * topics in study order.
  */
-import { QUANT_PATH_INFO, type QuantPath, type QuizTopicStats } from '@ipp/contracts';
-import { useQuery } from '@tanstack/react-query';
+import type { QuizTopicStats, Track } from '@ipp/contracts';
 import {
   CheckIcon,
   LibraryIcon,
   MapIcon,
   MessagesSquareIcon,
   PlayIcon,
-  SigmaIcon,
+  RouteIcon,
 } from 'lucide-react';
 import Link from 'next/link';
-import { PageTabPanel, PageTabs, usePageView } from '@/components/page-tabs';
-import { EmptyState, ErrorState, InlineError, useRetryCountdown } from '@/components/states';
+import type { ReactNode } from 'react';
+import { usePageView } from '@/components/page-tabs';
+import { EmptyState, InlineError, useRetryCountdown } from '@/components/states';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
 import { DrillCard } from '@/features/drill/drill-card';
+import { PATH_PARAM, PATHS } from '@/features/quant/logic';
+import { QuantPathPicker } from '@/features/quant/path-picker';
 import { DISCUSSION_ROUND, PRACTICE_ROUND } from '@/features/quiz/logic';
 import { COMPLETE_ACCURACY } from '@/features/quiz/roadmap-logic';
 import { DiscussionKeyPrompt, useDiscussionKey, useStartAttempt } from '@/features/quiz/start';
 import { TopicProgress } from '@/features/quiz/topic-progress';
-import { api } from '@/lib/api';
 import { formatPercent, plural } from '@/lib/format';
-import { qk } from '@/lib/queries';
 import { cn } from '@/lib/utils';
 import {
   discussionPool,
   listTitles,
-  PATH_PARAM,
-  PATHS,
   type PathStep,
   pathSteps,
+  pathTopicSlugs,
+  pickPath,
   practiceCount,
+  type StudyPath,
   topicBankHref,
   topicRoadmapHref,
 } from './logic';
-import { RoundSetup } from './round-setup';
 
 type Start = ReturnType<typeof useStartAttempt>;
 
@@ -76,11 +75,13 @@ function StepMarker({ step }: { step: PathStep }) {
 }
 
 function TopicStep({
+  track,
   step,
   last,
   start,
   blocked,
 }: {
+  track: Track;
   step: PathStep;
   last: boolean;
   start: Start;
@@ -91,7 +92,7 @@ function TopicStep({
   const auto = practiceCount(t);
   const busy =
     start.isPending && start.variables.mode === 'practice' && start.variables.topics[0] === t.slug;
-  const titleId = `quant-step-${t.slug}`;
+  const titleId = `path-step-${t.slug}`;
   return (
     <li className="relative flex gap-3 sm:gap-4" aria-labelledby={titleId}>
       {/* The rail: a line from this step's marker down to the next. */}
@@ -105,7 +106,7 @@ function TopicStep({
         <StepMarker step={step} />
       </div>
       <article
-        data-testid="quant-step"
+        data-testid="path-step"
         aria-labelledby={titleId}
         className={cn(
           'mb-3 min-w-0 flex-1 rounded-lg border bg-surface p-4',
@@ -155,9 +156,9 @@ function TopicStep({
             </Link>
           </Button>
           <Button asChild variant="ghost" size="sm" className={ACTION}>
-            <Link href={topicRoadmapHref(t.slug)} aria-label={`${t.title} roadmap`}>
+            <Link href={topicRoadmapHref(track, t.slug)} aria-label={`${t.title} topic map`}>
               <MapIcon />
-              Roadmap
+              Topic map
             </Link>
           </Button>
         </div>
@@ -180,9 +181,9 @@ function DiscussionCard({
   const titles = steps.filter((s) => pool.topics.includes(s.topic.slug)).map((s) => s.topic.title);
   const busy = start.isPending && start.variables.mode === 'discussion';
   return (
-    <Card aria-labelledby="quant-discuss-heading" className="space-y-3 p-4">
+    <Card aria-labelledby="path-discuss-heading" className="space-y-3 p-4">
       <div className="space-y-1">
-        <h2 id="quant-discuss-heading" className="text-sm font-semibold">
+        <h2 id="path-discuss-heading" className="text-sm font-semibold">
           Talk it through with the interviewer
         </h2>
         <p className="text-sm text-fg-muted">
@@ -192,7 +193,7 @@ function DiscussionCard({
         </p>
       </div>
       {missing && pool.questions > 0 && (
-        <DiscussionKeyPrompt state={missing} testId="quant-key-prompt" />
+        <DiscussionKeyPrompt state={missing} testId="path-key-prompt" />
       )}
       <Button
         variant="secondary"
@@ -215,53 +216,72 @@ function DiscussionCard({
   );
 }
 
-function PathView({ path, topics }: { path: QuantPath; topics: QuizTopicStats[] }) {
-  const steps = pathSteps(path, topics);
+function PathView({
+  track,
+  path,
+  topics,
+  picker,
+}: {
+  track: Track;
+  path: StudyPath;
+  topics: QuizTopicStats[];
+  /** The path choice, when the track has more than one. */
+  picker: ReactNode;
+}) {
+  const steps = pathSteps(pathTopicSlugs(path, topics, track), topics);
   const start = useStartAttempt();
   const wait = useRetryCountdown(start.error);
   const blocked = start.isPending || wait > 0;
-  const info = QUANT_PATH_INFO[path];
+  const intro = (
+    <div className="mb-4 space-y-3">
+      {picker}
+      <p className="text-sm text-fg-muted" data-testid="path-description">
+        {path.description}
+      </p>
+    </div>
+  );
   if (steps.length === 0)
     return (
-      <Card>
-        <EmptyState icon={SigmaIcon} title="No quant topics yet">
-          The {info.label.toLowerCase()} path&apos;s question banks have not been loaded on this
-          server.
-        </EmptyState>
-      </Card>
+      <>
+        {intro}
+        <Card>
+          <EmptyState icon={RouteIcon} title="No topics on this path yet">
+            The {path.label.toLowerCase()} path&apos;s question banks have not been loaded on this
+            server.
+          </EmptyState>
+        </Card>
+      </>
     );
   return (
-    <div className="space-y-6">
-      <RoundSetup path={path} />
-      <div className="grid items-start gap-x-6 gap-y-4 lg:grid-cols-[minmax(0,1fr)_340px]">
-        <section aria-labelledby={`quant-${path}-heading`} className="min-w-0">
-          <h2 id={`quant-${path}-heading`} className="sr-only">
-            {info.label} path
-          </h2>
-          <p className="mb-4 text-sm text-fg-muted">{info.description}</p>
-          <InlineError error={failed(start, 'practice')} className="mb-3" />
-          <ol className="list-none" data-testid="quant-steps">
-            {steps.map((s, i) => (
-              <TopicStep
-                key={s.topic.slug}
-                step={s}
-                last={i === steps.length - 1}
-                start={start}
-                blocked={blocked}
-              />
-            ))}
-          </ol>
-        </section>
-        <div className="min-w-0 space-y-4 lg:sticky lg:top-20 lg:mt-9">
-          <DiscussionCard steps={steps} start={start} blocked={blocked} />
-          <DrillCard />
-        </div>
+    <div className="grid items-start gap-x-6 gap-y-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+      <section aria-labelledby="path-heading" className="min-w-0">
+        <h2 id="path-heading" className="sr-only">
+          {path.label} path
+        </h2>
+        {intro}
+        <InlineError error={failed(start, 'practice')} className="mb-3" />
+        <ol className="list-none" data-testid="path-steps">
+          {steps.map((s, i) => (
+            <TopicStep
+              key={s.topic.slug}
+              track={track}
+              step={s}
+              last={i === steps.length - 1}
+              start={start}
+              blocked={blocked}
+            />
+          ))}
+        </ol>
+      </section>
+      <div className="min-w-0 space-y-4 lg:sticky lg:top-20">
+        <DiscussionCard steps={steps} start={start} blocked={blocked} />
+        {track === 'quant' && <DrillCard />}
       </div>
     </div>
   );
 }
 
-function PathSkeleton() {
+export function PathSkeleton() {
   return (
     <div role="status" aria-busy="true" aria-label="Loading topics" className="space-y-3">
       <Skeleton className="h-4 w-2/3" />
@@ -280,37 +300,19 @@ function PathSkeleton() {
   );
 }
 
-export function QuantPage() {
+function QuantStudyPath({ topics }: { topics: QuizTopicStats[] }) {
   const [path, setPath] = usePageView(PATHS, PATH_PARAM);
-  const topics = useQuery({ queryKey: qk.quizTopics, queryFn: api.quizTopics });
   return (
-    <div className="mx-auto max-w-6xl px-4 pt-8 pb-[calc(2rem_+_env(safe-area-inset-bottom))] sm:px-6">
-      <h1 className="text-xl font-semibold tracking-tight">Quant</h1>
-      <p className="mt-1 text-sm text-fg-muted">
-        The quant question banks in the order to work through them for a trading or research
-        interview.
-      </p>
-      <PageTabs
-        className="mt-6"
-        label="Path"
-        value={path}
-        onValueChange={setPath}
-        tabs={PATHS.map((p) => ({ value: p, label: QUANT_PATH_INFO[p].label }))}
-      >
-        {PATHS.map((p) => (
-          <PageTabPanel key={p} value={p} className="mt-5">
-            {topics.isPending ? (
-              <PathSkeleton />
-            ) : topics.isError ? (
-              <Card>
-                <ErrorState error={topics.error} onRetry={() => topics.refetch()} />
-              </Card>
-            ) : (
-              <PathView path={p} topics={topics.data} />
-            )}
-          </PageTabPanel>
-        ))}
-      </PageTabs>
-    </div>
+    <PathView
+      track="quant"
+      path={pickPath('quant', path)}
+      topics={topics}
+      picker={<QuantPathPicker value={path} onValueChange={setPath} />}
+    />
   );
+}
+
+export function StudyPathView({ track, topics }: { track: Track; topics: QuizTopicStats[] }) {
+  if (track === 'quant') return <QuantStudyPath topics={topics} />;
+  return <PathView track={track} path={pickPath(track, null)} topics={topics} picker={null} />;
 }

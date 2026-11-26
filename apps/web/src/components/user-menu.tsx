@@ -3,12 +3,30 @@ import { useQueryClient } from '@tanstack/react-query';
 import { KeyRoundIcon, LayoutGridIcon, ListChecksIcon, LogOutIcon } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useSyncExternalStore } from 'react';
 import { toast } from 'sonner';
 import { errorMessage } from '@/lib/api';
 import { auth } from '@/lib/auth';
 import { useAiKey, useMe } from '@/lib/queries';
+import { tabHref } from '@/lib/track';
+import { useTrack } from '@/lib/track-hooks';
 import { cn } from '@/lib/utils';
+import { ThemeItems } from './theme-toggle';
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from './ui/menu';
+
+/** Below `sm` the header has no theme button (see app-header.tsx): the theme is in this menu. */
+const PHONE = '(max-width: 639.98px)';
+function subscribePhone(cb: () => void) {
+  const m = window.matchMedia(PHONE);
+  m.addEventListener('change', cb);
+  return () => m.removeEventListener('change', cb);
+}
+const usePhone = () =>
+  useSyncExternalStore(
+    subscribePhone,
+    () => window.matchMedia(PHONE).matches,
+    () => false,
+  );
 
 export function Avatar({
   name,
@@ -53,6 +71,8 @@ export function UserMenu() {
   const router = useRouter();
   // A guest has no key and may not ask (403 account_required): only an account has one.
   const key = useAiKey(Boolean(me.data && !me.data.guest));
+  const track = useTrack();
+  const phone = usePhone();
   if (!me.data) return <span className="skeleton size-7 rounded-full" />;
   const u = me.data;
   return (
@@ -67,15 +87,21 @@ export function UserMenu() {
         </div>
         <MenuSeparator />
         <MenuItem asChild>
-          <Link href="/dashboard">
+          <Link href={tabHref(track, 'interviews')}>
             <LayoutGridIcon /> Interviews
           </Link>
         </MenuItem>
         <MenuItem asChild>
-          <Link href="/quiz">
-            <ListChecksIcon /> Quizzes
+          <Link href={tabHref(track, 'practice')}>
+            <ListChecksIcon /> Practice
           </Link>
         </MenuItem>
+        {phone && (
+          <>
+            <MenuSeparator />
+            <ThemeItems />
+          </>
+        )}
         <MenuSeparator />
         <MenuItem asChild>
           <Link href="/settings/ai-key">

@@ -86,6 +86,7 @@ export function HostBankSheet({ compact }: { compact: boolean }) {
           </div>
           <BankBrowser
             className="min-h-0 flex-1"
+            trackFilter={false}
             query={query}
             onQuery={onQuery}
             view={view}

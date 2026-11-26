@@ -1,26 +1,31 @@
 'use client';
 /**
- * Starting a live quant round from the Quant page, on the chosen path: its length, the
+ * Starting a live quant round (the Quant track's Interviews tab, "Practise with the AI"), in the
+ * Interviews tab's skeleton: what the round is and what the chosen path draws on, on the left;
+ * the setup panel on the right (on a phone, first), with the page's `header` (the kind-of-interview
+ * switch) at its top, then the path (Trader | Researcher), its length, the game, the
  * interviewer's options and, without a usable key, the way to add one (the interviewer runs the
  * round, so it cannot start without). Start creates the pad and opens it.
  */
 import { QUANT_PATH_INFO, type QuantPath, quantQuestionCount } from '@ipp/contracts';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangleIcon, PlayIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useId, useState } from 'react';
+import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { useRetryCountdown } from '@/components/states';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { Label } from '@/components/ui/input';
 import { Segmented } from '@/components/ui/segmented';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
 import { Switch } from '@/components/ui/switch';
 import { AiKeyDialog } from '@/features/ai-key/ai-key-dialog';
 import { AiKeyPrompt } from '@/features/ai-key/ai-key-prompt';
 import { rejectedTitle } from '@/features/ai-key/logic';
 import { InterviewerOptions, useSpeechSupported } from '@/features/new/interviewer-options';
+import { TopicProgress } from '@/features/quiz/topic-progress';
 import { ApiRequestError, api } from '@/lib/api';
+import { useFitBelow } from '@/lib/layout-hooks';
 import { loadStartPrefs } from '@/lib/prefs';
 import { qk, useAiKey } from '@/lib/queries';
 import {
@@ -32,19 +37,66 @@ import {
   roundStartError,
   saveRoundPrefs,
 } from './logic';
+import { QuantPathPicker } from './path-picker';
 
 function initialPrefs(): RoundPrefs {
   const { style, proactivity, voice, model } = loadStartPrefs().interviewer;
   return loadRoundPrefs({ style, proactivity, voice, model });
 }
 
-export function RoundSetup({ path }: { path: QuantPath }) {
+/** The path's topics in order, each with how far the user is through its questions. */
+function PathTopics({ path }: { path: QuantPath }) {
+  const topics = useQuery({ queryKey: qk.quizTopics, queryFn: api.quizTopics });
+  const steps = QUANT_PATH_INFO[path].topics.flatMap((slug) => {
+    const t = topics.data?.find((x) => x.slug === slug);
+    return t ? [t] : [];
+  });
+  if (topics.isPending)
+    return (
+      <div className="space-y-3" role="status" aria-label="Loading topics">
+        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-10 w-full" />
+      </div>
+    );
+  // The round still starts without them: the server draws the questions.
+  if (steps.length === 0) return null;
+  return (
+    <ol className="divide-y divide-border" data-testid="round-topics">
+      {steps.map((t, i) => (
+        <li key={t.slug} className="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
+          <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-surface-3 text-2xs font-semibold text-fg-muted tabular">
+            {i + 1}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-medium">{t.title}</span>
+            <span className="mt-0.5 line-clamp-1 block text-xs text-fg-muted">{t.description}</span>
+            <TopicProgress t={t} className="mt-2" />
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+export function RoundSetup({
+  path,
+  onPathChange,
+  header,
+}: {
+  path: QuantPath;
+  onPathChange: (p: QuantPath) => void;
+  /** Shown at the top of the setup panel (the kind-of-interview switch). */
+  header?: ReactNode;
+}) {
   const router = useRouter();
   const qc = useQueryClient();
   const aiKey = useAiKey();
   const voiceOk = useSpeechSupported();
   const durationId = useId();
   const gameId = useId();
+  const panel = useRef<HTMLElement>(null);
+  useFitBelow(panel);
   const [prefs, setPrefs] = useState<RoundPrefs>(initialPrefs);
   const [keyDialog, setKeyDialog] = useState(false);
   // Unknown (loading or failed) counts as usable: the server says so if it is not.
@@ -76,34 +128,64 @@ export function RoundSetup({ path }: { path: QuantPath }) {
     },
   });
   const wait = useRetryCountdown(start.error);
+  // An error was about the path it was started on.
+  const { reset } = start;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset when the path changes
+  useEffect(() => reset(), [path, reset]);
 
   return (
-    <Card
-      aria-labelledby={`quant-round-${path}-heading`}
-      className="border-accent/50 ring-1 ring-accent/20"
+    <div
+      className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_380px]"
       data-testid="round-setup"
     >
-      <div className="grid gap-x-8 gap-y-5 p-4 sm:p-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,400px)] lg:grid-rows-[auto_1fr]">
-        <div className="min-w-0 space-y-4 lg:col-start-1 lg:row-start-1">
-          <div className="space-y-1.5">
-            <h2 id={`quant-round-${path}-heading`} className="text-base font-semibold">
-              Live interview round
-            </h2>
-            <p className="text-sm text-fg-muted">
-              The AI interviewer asks you {questions} questions from the {info.label.toLowerCase()}{' '}
-              path, one after another, against the clock. Think out loud in the chat or by voice and
-              work on a shared scratchpad; it probes your reasoning, gives a hint when you are stuck
-              and asks a follow-up before it moves on.
-            </p>
-            <p className="text-sm text-fg-muted">
-              Afterwards the report scores each answer and shows the solutions.
-            </p>
-          </div>
+      <section
+        aria-labelledby="quant-round-heading"
+        className="min-w-0 rounded-lg border border-border bg-surface max-lg:order-2"
+      >
+        <div className="space-y-1.5 border-b border-border p-4 sm:p-5">
+          <h2 id="quant-round-heading" className="text-base font-semibold">
+            Live interview round
+          </h2>
+          <p className="text-sm text-fg-muted">
+            The AI interviewer asks you {questions} questions from the {info.label.toLowerCase()}{' '}
+            path, one after another, against the clock. Think out loud in the chat or by voice and
+            work on a shared scratchpad; it probes your reasoning, gives a hint when you are stuck
+            and asks a follow-up before it moves on.
+          </p>
+          <p className="text-sm text-fg-muted">
+            Afterwards the report scores each answer and shows the solutions.
+          </p>
+        </div>
+        <div className="p-4 sm:p-5">
+          <h3 className="mb-3 text-2xs font-medium tracking-wider text-fg-subtle uppercase">
+            What the {info.label.toLowerCase()} path draws on
+          </h3>
+          <PathTopics path={path} />
+        </div>
+      </section>
+
+      <section
+        ref={panel}
+        aria-label="Round setup"
+        id="round-setup-panel"
+        // Never taller than the window (useFitBelow refines it): the options scroll inside and
+        // Start stays in view, as on the Software setup.
+        className="min-w-0 scroll-mt-20 rounded-lg border border-border bg-surface max-lg:order-1 lg:sticky lg:top-20 lg:max-h-[calc(100dvh-6rem)] lg:overflow-y-auto"
+      >
+        {header && <div className="border-b border-border p-4">{header}</div>}
+        <div className="space-y-1.5 border-b border-border p-4">
+          <Label>Path</Label>
+          <QuantPathPicker value={path} onValueChange={onPathChange} className="flex w-full" />
+          <p className="text-xs text-fg-muted" data-testid="path-description">
+            {info.description}
+          </p>
+        </div>
+        <div className="space-y-5 p-4">
           <div className="space-y-1.5">
             <Label id={durationId}>Length</Label>
             <Segmented
               aria-label="Round length"
-              className="flex w-full max-w-sm max-sm:max-w-none max-sm:[&>*]:h-9"
+              className="flex w-full max-sm:[&>*]:h-9"
               value={String(prefs.durationMin)}
               onValueChange={(v) => update({ durationMin: Number(v) as RoundPrefs['durationMin'] })}
               options={ROUND_OPTIONS.map((o) => ({
@@ -135,8 +217,6 @@ export function RoundSetup({ path }: { path: QuantPath }) {
               </p>
             </div>
           </div>
-        </div>
-        <div className="min-w-0 space-y-3 lg:col-start-2 lg:row-span-2 lg:row-start-1">
           {needsKey && (
             <AiKeyPrompt
               size="sm"
@@ -164,8 +244,8 @@ export function RoundSetup({ path }: { path: QuantPath }) {
             />
           </div>
         </div>
-        {/* Last on a phone (after the options), under the description on a wide screen. */}
-        <div className="min-w-0 space-y-2.5 lg:col-start-1 lg:row-start-2 lg:self-end">
+        {/* Pinned to the bottom of the panel, as the Software setup's Start is. */}
+        <div className="sticky bottom-0 z-10 space-y-2 rounded-b-lg border-t border-border bg-surface p-4 pb-[calc(1rem_+_env(safe-area-inset-bottom))] lg:pb-4">
           {start.error && (
             <p
               role="alert"
@@ -176,21 +256,19 @@ export function RoundSetup({ path }: { path: QuantPath }) {
               <span>{roundStartError(start.error, prefs.durationMin)}</span>
             </p>
           )}
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-            <Button
-              variant="primary"
-              size="lg"
-              className="max-sm:w-full"
-              disabled={start.isPending || wait > 0}
-              onClick={() => (needsKey ? setKeyDialog(true) : start.mutate())}
-            >
-              {start.isPending ? <Spinner /> : <PlayIcon />}
-              Start the round
-            </Button>
-            <p className="text-xs text-fg-muted">The clock starts when the pad opens.</p>
-          </div>
+          <Button
+            variant="primary"
+            size="lg"
+            className="w-full"
+            disabled={start.isPending || wait > 0}
+            onClick={() => (needsKey ? setKeyDialog(true) : start.mutate())}
+          >
+            {start.isPending ? <Spinner /> : <PlayIcon />}
+            Start the round
+          </Button>
+          <p className="text-center text-xs text-fg-muted">The clock starts when the pad opens.</p>
         </div>
-      </div>
+      </section>
       <AiKeyDialog
         open={keyDialog}
         onOpenChange={setKeyDialog}
@@ -199,6 +277,6 @@ export function RoundSetup({ path }: { path: QuantPath }) {
         submitLabel="Save key and start"
         onSaved={() => start.mutate()}
       />
-    </Card>
+    </div>
   );
 }

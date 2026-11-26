@@ -4,9 +4,10 @@
 Usage (from packages/content):
     python3 scripts/verify-quant-quiz.py [topic ...]
 
-With no arguments it takes every topic whose `track` is `quant` in quiz/topics.yaml. Questions
-are read by scripts/quant-dump.ts, so they are parsed by the same schema as the app and a
-numeric answer arrives as an exact rational. The checks live in scripts/quant_checks/<topic>.py
+With no arguments it takes every topic whose home (`track`) is `quant` in quiz/topics.yaml; a
+topic shown in the Quant site track by `also` is not one. Questions are read by
+scripts/quant-dump.ts, so they are parsed by the same schema as the app and a numeric answer
+arrives as an exact rational. The checks live in scripts/quant_checks/<topic>.py
 (hyphens become underscores); scripts/quant_checks/__init__.py says what a check returns.
 The games of those topics (games/*.yaml, dumped by the same script) are checked by
 scripts/quant_checks/games.py, one check per game id, against the game's `expect`.
@@ -40,14 +41,19 @@ SIM_SIGMAS = 4.0
 SIM_MAX_REL_STDERR = 0.01
 
 
-def quant_topics() -> list[str]:
+def quant_topics(topics_file: str = os.path.join(CONTENT, "quiz", "topics.yaml")) -> list[str]:
+    """Slugs of the topics whose home (`track`) is quant; `also: [quant]` does not make one."""
     js = (
         "import {readFileSync} from 'node:fs'; import {parse} from 'yaml';"
-        "const t = parse(readFileSync('quiz/topics.yaml','utf8'));"
+        "const t = parse(readFileSync(process.argv[1],'utf8'));"
         "console.log(JSON.stringify(t.filter(x => x.track === 'quant').map(x => x.slug)));"
     )
     out = subprocess.run(
-        ["node", "--input-type=module", "-e", js], cwd=CONTENT, capture_output=True, text=True, check=True
+        ["node", "--input-type=module", "-e", js, topics_file],
+        cwd=CONTENT,
+        capture_output=True,
+        text=True,
+        check=True,
     )
     return json.loads(out.stdout)
 

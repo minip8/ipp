@@ -118,9 +118,9 @@ test('signed in, the hero leads to each side of the app', async ({ page }) => {
   const main = page.getByRole('main');
   await expect(main.getByRole('link', { name: 'Start a coding interview' })).toHaveAttribute(
     'href',
-    '/dashboard',
+    '/software/interviews',
   );
   await main.getByRole('link', { name: 'Quant questions' }).click();
-  await expect(page).toHaveURL('/quant');
-  await expect(page.getByRole('heading', { level: 1, name: 'Quant' })).toBeVisible();
+  await expect(page).toHaveURL('/quant/practice');
+  await expect(page.getByRole('heading', { level: 1, name: 'Practice' })).toBeVisible();
 });

@@ -1,5 +1,12 @@
 'use client';
-import type { QuizAttemptSummary, QuizTopicStats } from '@ipp/contracts';
+/**
+ * The Practice tab, the same page in both tracks: the track's quiz topics as one grid (its own
+ * topics, then those shared into it, each in study order) with the quiz setup beside it (and, in
+ * Quant, the mental math drill), and the history of attempts that include a topic of the track.
+ * Software also has the problem library (`?view=problems`, problems-view.tsx), where a session on
+ * one problem starts. The setup is remembered per track in this browser.
+ */
+import type { QuizAttemptSummary, QuizTopicStats, Track } from '@ipp/contracts';
 import { useQuery } from '@tanstack/react-query';
 import {
   ArrowRightIcon,
@@ -12,8 +19,9 @@ import {
   Trash2Icon,
 } from 'lucide-react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
-import { type RefObject, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { PageHeader } from '@/components/page-header';
 import { PageTabPanel, PageTabs, usePageView } from '@/components/page-tabs';
 import { EmptyState, ErrorState, InlineError, useRetryCountdown } from '@/components/states';
 import { Badge } from '@/components/ui/badge';
@@ -35,47 +43,39 @@ import {
   attemptTarget,
   clearQuizHistoryCopy,
 } from '@/features/delete-history/logic';
+import { DrillCard } from '@/features/drill/drill-card';
 import { api } from '@/lib/api';
 import { formatPercent, formatRelative, plural } from '@/lib/format';
+import { useOnScreen } from '@/lib/layout-hooks';
 import { qk } from '@/lib/queries';
 import { storage } from '@/lib/storage';
+import { misplacedTopic, PRACTICE_VIEWS, type PracticeView, tabHref, topicsOf } from '@/lib/track';
 import { cn } from '@/lib/utils';
 import { bankHref } from './bank-logic';
 import {
+  attemptsInTrack,
   DISCUSSION_COUNTS,
-  groupByTrack,
-  MODE_HINT,
+  LEGACY_SETUP_STORAGE_KEY,
   MODE_LABEL,
+  modeHint,
   parseSetup,
   QUIZ_COUNTS,
   type QuizSetup,
   questionsFor,
-  SETUP_STORAGE_KEY,
+  setupStorageKey,
 } from './logic';
-import { QuizRoadmap } from './roadmap';
+import { ProblemsView } from './problems-view';
 import { DiscussionKeyPrompt, useDiscussionKey, useStartAttempt } from './start';
 import { TopicProgress } from './topic-progress';
 
-/** The page's views; the first is the default and keeps `?view=` out of the URL. */
-const VIEWS = ['start', 'roadmap', 'history'] as const;
+const BLURB: Record<Track, string> = {
+  software: 'Short quizzes on the fundamentals developer interviewers like to probe.',
+  quant:
+    'Probability, markets and statistics, with numeric answers marked as you go and open questions to talk through.',
+};
 
 /** Phones: segmented controls at a size a finger can hit (desktop keeps the compact size). */
 const TOUCH_SEGMENTS = 'max-sm:[&>*]:h-9';
-
-/** Whether any of the element is on screen. */
-function useOnScreen(ref: RefObject<HTMLElement | null>) {
-  const [onScreen, setOnScreen] = useState(false);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el || typeof IntersectionObserver === 'undefined') return;
-    const io = new IntersectionObserver((entries) =>
-      setOnScreen(Boolean(entries[entries.length - 1]?.isIntersecting)),
-    );
-    io.observe(el);
-    return () => io.disconnect();
-  }, [ref]);
-  return onScreen;
-}
 
 function TopicCard({
   t,
@@ -155,10 +155,12 @@ function TopicGridSkeleton() {
 }
 
 function SetupPanel({
+  track,
   topics,
   setup,
   update,
 }: {
+  track: Track;
   topics: QuizTopicStats[];
   setup: QuizSetup;
   update: (patch: Partial<QuizSetup>) => void;
@@ -192,7 +194,7 @@ function SetupPanel({
               label: MODE_LABEL[m],
             }))}
           />
-          <p className="text-xs text-fg-muted">{MODE_HINT[mode]}</p>
+          <p className="text-xs text-fg-muted">{modeHint(mode, track)}</p>
         </div>
         <div className="space-y-1.5">
           <Label>Difficulty</Label>
@@ -277,11 +279,22 @@ function scoreTone(score: number) {
   return score >= 0.8 ? 'text-ok-text' : score >= 0.5 ? 'text-warn-text' : 'text-bad-text';
 }
 
-function HistoryList({ topics }: { topics: QuizTopicStats[] }) {
+function HistoryList({
+  track,
+  topics,
+  pending,
+}: {
+  track: Track;
+  /** every topic: an attempt shows the titles of all of its topics */
+  topics: QuizTopicStats[];
+  /** the topics are still loading, so which attempts are this track's is not known yet */
+  pending: boolean;
+}) {
   // The same query as the page's tab count, so one request.
   const attempts = useQuery({ queryKey: qk.attempts, queryFn: api.attempts });
   const title = (slug: string) => topics.find((t) => t.slug === slug)?.title ?? slug;
-  const items = attempts.data ?? [];
+  const all = attempts.data ?? [];
+  const items = attemptsInTrack(all, topics, track);
   const [toDelete, setToDelete] = useState<AttemptTarget | null>(null);
   const [clearing, setClearing] = useState(false);
   const { remove } = useDeleteAttempt();
@@ -306,7 +319,7 @@ function HistoryList({ topics }: { topics: QuizTopicStats[] }) {
           </span>
         )}
       </CardHeader>
-      {attempts.isPending ? (
+      {attempts.isPending || pending ? (
         <div role="status" className="space-y-3 p-4" aria-busy="true" aria-label="Loading history">
           <Skeleton className="h-10 w-full" />
           <Skeleton className="h-10 w-full" />
@@ -315,7 +328,7 @@ function HistoryList({ topics }: { topics: QuizTopicStats[] }) {
         <ErrorState error={attempts.error} onRetry={() => attempts.refetch()} compact />
       ) : items.length === 0 ? (
         <EmptyState icon={HistoryIcon} title="No quizzes yet">
-          Quizzes and discussions you start show up here with their scores.
+          Quizzes and discussions you start on these topics show up here with their scores.
         </EmptyState>
       ) : (
         <ul className="divide-y divide-border">
@@ -377,7 +390,7 @@ function HistoryList({ topics }: { topics: QuizTopicStats[] }) {
         onClose={() => setToDelete(null)}
       />
       <ConfirmDeleteDialog
-        copy={clearing ? clearQuizHistoryCopy(items.length) : null}
+        copy={clearing ? clearQuizHistoryCopy(all.length, all.length - items.length) : null}
         confirmKey={clearing ? 'all' : null}
         onConfirm={clearAll}
         onClose={() => setClearing(false)}
@@ -386,40 +399,53 @@ function HistoryList({ topics }: { topics: QuizTopicStats[] }) {
   );
 }
 
-export function QuizHub() {
-  const [view, setView] = usePageView(VIEWS);
+export function QuizHub({ track }: { track: Track }) {
+  const views: readonly [PracticeView, ...PracticeView[]] = PRACTICE_VIEWS[track];
+  const [view, setView] = usePageView(views);
+  // The library loads the first time its view is shown, then stays mounted (its filters too).
+  const [problemsSeen, setProblemsSeen] = useState(view === 'problems');
+  if (view === 'problems' && !problemsSeen) setProblemsSeen(true);
   const topics = useQuery({ queryKey: qk.quizTopics, queryFn: api.quizTopics });
   const attempts = useQuery({ queryKey: qk.attempts, queryFn: api.attempts });
   const params = useSearchParams();
-  // The choices are remembered in this browser, so leaving the page and coming back keeps them.
-  // "Take a quiz instead" in the question bank links here with its topic preselected.
+  const router = useRouter();
+  // The choices are remembered in this browser, one setup per track, so leaving the page and
+  // coming back keeps them. "Take a quiz instead" in the question bank links here with its topic
+  // preselected.
   const [setup, setSetup] = useState<QuizSetup>(() => {
-    const stored = parseSetup(storage.get<unknown>(SETUP_STORAGE_KEY, null));
+    const stored = parseSetup(
+      storage.get<unknown>(setupStorageKey(track), null) ??
+        storage.get<unknown>(LEGACY_SETUP_STORAGE_KEY, null),
+    );
     const t = params.get('topic');
     return t ? { ...stored, topics: [t] } : stored;
   });
-  useEffect(() => storage.set(SETUP_STORAGE_KEY, setup), [setup]);
+  useEffect(() => storage.set(setupStorageKey(track), setup), [setup, track]);
   const update = (patch: Partial<QuizSetup>) => setSetup((s) => ({ ...s, ...patch }));
   const selected = setup.topics;
-  // Ignore a remembered or preselected slug that is not a topic.
-  const known = topics.data;
-  if (known && selected.some((s) => !known.some((t) => t.slug === s)))
-    update({ topics: selected.filter((s) => known.some((t) => t.slug === s)) });
+  const mine = useMemo(() => topicsOf(topics.data ?? [], track), [topics.data, track]);
+  // A preselected topic of the other track only: that track's Practice has it.
+  const elsewhere = misplacedTopic(params.get('topic'), topics.data ?? [], track);
+  useEffect(() => {
+    if (elsewhere)
+      router.replace(`${tabHref(elsewhere, 'practice')}${window.location.search}`, {
+        scroll: false,
+      });
+  }, [elsewhere, router]);
+  // Ignore a remembered or preselected slug that is not a topic of this track.
+  if (topics.data && !elsewhere && selected.some((s) => !mine.some((t) => t.slug === s)))
+    update({ topics: selected.filter((s) => mine.some((t) => t.slug === s)) });
   const toggle = (slug: string) =>
     update({
       topics: selected.includes(slug) ? selected.filter((x) => x !== slug) : [...selected, slug],
     });
   const totals = useMemo(() => {
-    const list = topics.data ?? [];
-    const answered = list.reduce((s, t) => s + t.answered, 0);
-    const weighted = list.reduce((s, t) => s + (t.accuracy ?? 0) * t.answered, 0);
-    return {
-      answered,
-      accuracy: answered ? weighted / answered : null,
-      questions: list.reduce((s, t) => s + t.questionCount, 0),
-    };
-  }, [topics.data]);
-  const tracks = useMemo(() => groupByTrack(topics.data ?? []), [topics.data]);
+    const answered = mine.reduce((s, t) => s + t.answered, 0);
+    const weighted = mine.reduce((s, t) => s + (t.accuracy ?? 0) * t.answered, 0);
+    return { answered, accuracy: answered ? weighted / answered : null };
+  }, [mine]);
+  const history =
+    attempts.data && topics.data ? attemptsInTrack(attempts.data, topics.data, track) : null;
   const card = (t: QuizTopicStats) => (
     <TopicCard
       key={t.slug}
@@ -437,44 +463,34 @@ export function QuizHub() {
     <div
       className={cn(
         'mx-auto max-w-6xl px-4 pt-8 sm:px-6 lg:pb-8',
-        // Room for the bar fixed to the bottom of phones (start view only).
-        view === 'start'
-          ? 'pb-[calc(6rem_+_env(safe-area-inset-bottom))]'
-          : 'pb-[calc(2rem_+_env(safe-area-inset-bottom))]',
+        // Room for the bar fixed to the bottom of phones (the quizzes and the library).
+        view === 'history'
+          ? 'pb-[calc(2rem_+_env(safe-area-inset-bottom))]'
+          : 'pb-[calc(6rem_+_env(safe-area-inset-bottom))]',
       )}
     >
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div className="min-w-0">
-          <h1 className="text-xl font-semibold tracking-tight">Quizzes</h1>
-          <p className="mt-1 text-sm text-fg-muted">
-            {tracks.length > 1
-              ? 'Short drills on what developer and quant interviewers like to probe.'
-              : 'Short drills on the fundamentals interviewers like to probe.'}
-          </p>
-        </div>
-        {topics.data && topics.data.length > 0 && (
-          <dl className="flex gap-6 text-right">
-            <div>
-              <dt className="text-xs text-fg-muted">Answered</dt>
-              <dd className="text-lg font-semibold tabular">{totals.answered}</dd>
-            </div>
-            <div>
-              <dt className="text-xs text-fg-muted">Accuracy</dt>
-              <dd className="text-lg font-semibold tabular">{formatPercent(totals.accuracy)}</dd>
-            </div>
-          </dl>
-        )}
-      </div>
+      <PageHeader
+        title="Practice"
+        description={BLURB[track]}
+        stats={
+          mine.length > 0
+            ? [
+                { label: 'Answered', value: totals.answered },
+                { label: 'Accuracy', value: formatPercent(totals.accuracy) },
+              ]
+            : null
+        }
+      />
 
       <PageTabs
         className="mt-6"
-        label="Quizzes"
+        label="Practice"
         value={view}
         onValueChange={setView}
         tabs={[
-          { value: 'start', label: 'Start a quiz' },
-          { value: 'roadmap', label: 'Roadmap' },
-          { value: 'history', label: 'History', count: attempts.data?.length ?? null },
+          { value: 'start', label: 'Quizzes' },
+          ...(track === 'software' ? [{ value: 'problems' as const, label: 'Problems' }] : []),
+          { value: 'history', label: 'History', count: history?.length ?? null },
         ]}
       >
         {/* Kept mounted while hidden, like the setup on the Interviews page. */}
@@ -482,55 +498,43 @@ export function QuizHub() {
           <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
             <div className="min-w-0 space-y-3">
               <h2 className="sr-only">Topics</h2>
-              {topics.isPending ? (
+              {topics.isPending || elsewhere ? (
                 <TopicGridSkeleton />
               ) : topics.isError ? (
                 <Card>
                   <ErrorState error={topics.error} onRetry={() => topics.refetch()} />
                 </Card>
-              ) : topics.data.length === 0 ? (
+              ) : mine.length === 0 ? (
                 <Card>
                   <EmptyState icon={ListChecksIcon} title="No quiz topics yet">
                     The question bank has not been loaded on this server.
                   </EmptyState>
                 </Card>
-              ) : tracks.length > 1 ? (
-                // Headed by track, once there is more than one.
-                <div className="space-y-7">
-                  {tracks.map((g) => (
-                    <section
-                      key={g.track}
-                      aria-labelledby={`track-${g.track}`}
-                      data-testid="topic-track"
-                    >
-                      <div className="mb-3 space-y-0.5">
-                        <h3 id={`track-${g.track}`} className="text-sm font-semibold">
-                          {g.label}
-                        </h3>
-                        <p className="text-xs text-fg-muted">{g.description}</p>
-                      </div>
-                      <div className="grid gap-3 sm:grid-cols-2">{g.items.map(card)}</div>
-                    </section>
-                  ))}
-                </div>
               ) : (
-                <div className="grid gap-3 sm:grid-cols-2">{topics.data.map(card)}</div>
+                <div className="grid gap-3 sm:grid-cols-2" data-testid="topic-grid">
+                  {mine.map(card)}
+                </div>
               )}
             </div>
-            <div ref={setupColumn} className="min-w-0 lg:sticky lg:top-20">
-              {topics.data && topics.data.length > 0 ? (
-                <SetupPanel topics={topics.data} setup={setup} update={update} />
-              ) : (
-                topics.isPending && <Skeleton className="h-96 w-full rounded-lg" />
-              )}
+            <div className="min-w-0 space-y-4 lg:sticky lg:top-20">
+              <div ref={setupColumn}>
+                {mine.length > 0 ? (
+                  <SetupPanel track={track} topics={mine} setup={setup} update={update} />
+                ) : (
+                  topics.isPending && <Skeleton className="h-96 w-full rounded-lg" />
+                )}
+              </div>
+              {track === 'quant' && <DrillCard />}
             </div>
           </div>
         </PageTabPanel>
-        <PageTabPanel value="roadmap" className="mt-5">
-          <QuizRoadmap />
-        </PageTabPanel>
+        {track === 'software' && (
+          <PageTabPanel value="problems" keepMounted={problemsSeen} className="mt-5">
+            <ProblemsView />
+          </PageTabPanel>
+        )}
         <PageTabPanel value="history" className="mt-5">
-          <HistoryList topics={topics.data ?? []} />
+          <HistoryList track={track} topics={topics.data ?? []} pending={topics.isPending} />
         </PageTabPanel>
       </PageTabs>
       {showBar && (

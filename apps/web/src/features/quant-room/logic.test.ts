@@ -33,6 +33,7 @@ import {
   promptLine,
   removeFromQueue,
   searchPublicBank,
+  topicsForTrack,
   verdictEditable,
   verdictOf,
   withFilter,
@@ -304,13 +305,21 @@ describe('the bank browser', () => {
     });
     expect(withFilter(q, { topic: 'options' })).toEqual({ topic: 'options', offset: 0 });
     expect(withFilter(q, { track: 'quant' })).toEqual({ track: 'quant', offset: 0 });
+    expect(withFilter({ offset: 0, track: 'software' }, { track: 'software' })).toEqual({
+      track: 'software',
+      offset: 0,
+    });
     expect(withFilter(q, { q: '' })).not.toHaveProperty('q');
     expect(filtersActive(NO_BANK_FILTERS)).toBe(false);
     expect(filtersActive({ offset: 0, q: '  ' })).toBe(false);
     expect(filtersActive({ offset: 0, type: 'output' })).toBe(true);
+    // The track is a scope, not a filter to clear.
+    expect(filtersActive({ offset: 0, track: 'quant' })).toBe(false);
   });
 
   it('builds the host’s search query', () => {
+    // The server's track is a topic's home: the desk never sends one.
+    expect(hostBankParams({ offset: 0, track: 'quant' })).toEqual({ limit: 30, offset: 0 });
     expect(hostBankParams({ offset: 30, q: ' dice ', type: 'numeric' })).toEqual({
       q: 'dice',
       type: 'numeric',
@@ -335,9 +344,15 @@ describe('the bank browser', () => {
   });
 
   it('searches the public bank as the host’s search does', () => {
-    const bank = (slug: string, title: string, track: 'quant' | 'fundamentals', ids: string[]) =>
+    const bank = (
+      slug: string,
+      title: string,
+      track: 'quant' | 'fundamentals',
+      ids: string[],
+      also: ('software' | 'quant')[] = [],
+    ) =>
       ({
-        topic: { slug, title, description: '', track },
+        topic: { slug, title, description: '', track, also },
         items: QUESTIONS.filter((q) => ids.includes(q.id)).map((q) => ({
           question: publicOf(q),
           status: 'unanswered',
@@ -346,7 +361,7 @@ describe('the bank browser', () => {
         })),
       }) as QuizBank;
     const banks = [
-      bank('python', 'Python', 'fundamentals', ['q-output']),
+      bank('python', 'Python', 'fundamentals', ['q-output'], ['quant']),
       bank('probability', 'Probability', 'quant', ['q-single', 'q-numeric']),
       bank('options', 'Options', 'quant', ['q-multiple']),
       bank('cpp', 'C++', 'fundamentals', []),
@@ -362,7 +377,20 @@ describe('the bank browser', () => {
     ]);
     expect(all.items.find((i) => i.question.id === 'q-numeric')?.status).toBe('queued');
     expect(all.items.every((i) => i.material === null)).toBe(true);
-    expect(searchPublicBank(banks, { offset: 0, track: 'fundamentals' }, []).total).toBe(1);
+    // By site track: Python is shared into Quant, so it is under both, after Quant's own.
+    expect(
+      searchPublicBank(banks, { offset: 0, track: 'software' }, []).items.map((i) => i.question.id),
+    ).toEqual(['q-output']);
+    expect(
+      searchPublicBank(banks, { offset: 0, track: 'quant' }, []).items.map((i) => i.question.id),
+    ).toEqual(['q-single', 'q-numeric', 'q-multiple', 'q-output']);
+    expect(topicsForTrack(all.topics, 'quant').map((t) => t.slug)).toEqual([
+      'probability',
+      'options',
+      'python',
+    ]);
+    expect(topicsForTrack(all.topics, 'software').map((t) => t.slug)).toEqual(['python']);
+    expect(topicsForTrack(all.topics, undefined)).toEqual(all.topics);
     expect(searchPublicBank(banks, { offset: 0, q: 'PARITY' }, []).items[0]?.question.id).toBe(
       'q-multiple',
     );

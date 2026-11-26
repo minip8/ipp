@@ -139,7 +139,7 @@ async function twoPeople(browser: Browser, queue: string[]) {
 }
 
 test.describe('creating a quant room', () => {
-  test('lines questions up from the bank: filtered, searched, reordered and removed', async ({
+  test('from the Quant tab, lines questions up from the bank: filtered, searched, reordered and removed', async ({
     page,
   }) => {
     const backend = await setup(page, (b) => {
@@ -147,19 +147,32 @@ test.describe('creating a quant room', () => {
       // No AI key is needed to host.
       b.aiKey = aiKeyStatus('missing');
     });
-    await page.goto('/dashboard');
+    await page.goto('/quant/interviews');
     await page.getByRole('radio', { name: 'Interview someone' }).click();
-    await page.getByRole('radio', { name: 'Quant questions' }).click();
-    await expect(page).toHaveURL(/\/dashboard\?mode=host&format=quant$/);
+    await expect(page).toHaveURL(/\/quant\/interviews\?mode=host$/);
     const setupPanel = page.getByTestId('quant-room-setup');
     await expect(setupPanel.getByTestId('setup-queue-empty')).toContainText('Nothing lined up');
     await expect(page.getByTestId('create-quant-room')).toHaveText('Create an empty room');
     await expect(page.getByTestId('create-quant-room')).toBeEnabled();
 
     const rows = page.getByTestId('bank-row');
+    const track = page.getByRole('radiogroup', { name: 'Track' });
+    const page1 = page.getByTestId('bank-page');
+    // From the Quant tab the bank starts on Quant: its own topics, then Python, shared into it.
+    await expect(track.getByRole('radio', { checked: true })).toHaveText('Quant');
+    await expect(page1).toHaveText('1–9 of 9');
+    await expect(rows.first()).toHaveAttribute('data-question', 'rb-prob-dice-eight');
+    await expect(rows.last()).toHaveAttribute('data-question', 'rb-py-default-list');
+    // Software has Python too; All has every question, which the host may pose.
+    await track.getByRole('radio', { name: 'Software' }).click();
+    await expect(page1).toHaveText('1–3 of 3');
+    await expect
+      .poll(() => rows.evaluateAll((els) => els.map((e) => e.getAttribute('data-question'))))
+      .toEqual(['rb-cpp-vector-reserve', 'rb-py-default-list', 'rb-os-fork-child']);
+    await track.getByRole('radio', { name: 'All' }).click();
     // Both tracks, quant first.
     await expect(rows.first()).toHaveAttribute('data-question', 'rb-prob-dice-eight');
-    await expect(page.getByTestId('bank-page')).toHaveText('1–11 of 11');
+    await expect(page1).toHaveText('1–11 of 11');
     // By type.
     await page.getByRole('combobox', { name: 'Type' }).click();
     await page.getByRole('option', { name: 'Program output' }).click();
@@ -177,10 +190,20 @@ test.describe('creating a quant room', () => {
     await page.getByLabel('Search the bank').fill('ropes');
     await expect(rows).toHaveCount(1);
     await page.getByRole('button', { name: 'Queue rb-teaser-ropes' }).click();
-    // By track and topic.
+    // By track and topic: one track's topics are one list, Python among Quant's.
     await page.getByLabel('Search the bank').fill('');
-    await page.getByRole('radio', { name: 'Quant', exact: true }).click();
+    await track.getByRole('radio', { name: 'Quant' }).click();
     await page.getByRole('combobox', { name: 'Topic' }).click();
+    await expect(page.getByRole('option')).toHaveText([
+      'All topics',
+      /^Probability/,
+      /^Brainteasers/,
+      /^Betting/,
+      /^Options/,
+      /^Statistics/,
+      /^Linear algebra/,
+      /^Python/,
+    ]);
     await page.getByRole('option', { name: /^Probability/ }).click();
     await expect(rows).toHaveCount(3);
     await page.getByRole('combobox', { name: 'Subtopic' }).click();
@@ -221,7 +244,7 @@ test.describe('creating a quant room', () => {
 
   test('or an empty room, with nothing to pick', async ({ page }) => {
     const backend = await setup(page, (b) => b.useRoomBank());
-    await page.goto('/dashboard?mode=host&format=quant');
+    await page.goto('/quant/interviews?mode=host');
     await page.getByTestId('create-quant-room').click();
     await expect(page).toHaveURL(/\/pads\/[0-9a-f-]{36}$/);
     const sent = backend.requests.find((r) => r.method === 'POST' && r.path === '/api/pads');
@@ -232,15 +255,50 @@ test.describe('creating a quant room', () => {
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Quant interview');
   });
 
-  test('switching back to a coding problem keeps the coding setup', async ({ page }) => {
+  test('switching to practise is the round setup, with the switch where it was', async ({
+    page,
+  }) => {
     await setup(page, (b) => b.useRoomBank());
-    await page.goto('/dashboard?mode=host&format=quant');
+    await page.goto('/quant/interviews?mode=host');
     await expect(page.getByTestId('quant-room-setup')).toBeVisible();
-    await page.getByRole('radio', { name: 'A coding problem' }).click();
-    await expect(page).toHaveURL(/\/dashboard\?mode=host$/);
-    await expect(page.getByRole('button', { name: 'Create room' })).toBeDisabled();
-    await expect(page.getByText('You are the interviewer')).toBeVisible();
+    const kind = page.getByRole('radiogroup', { name: 'Kind of interview' });
+    const before = await kind.boundingBox();
+    await kind.getByRole('radio', { name: 'Practise with the AI' }).click();
+    await expect(page).toHaveURL(/\/quant\/interviews$/);
+    await expect(page.getByRole('button', { name: 'Start the round' })).toBeVisible();
+    await expect(page.getByTestId('quant-room-setup')).toHaveCount(0);
+    expect(await kind.boundingBox()).toEqual(before);
+    await kind.getByRole('radio', { name: 'Interview someone' }).click();
+    await expect(page).toHaveURL(/\/quant\/interviews\?mode=host$/);
+    await expect(page.getByTestId('quant-room-setup')).toBeVisible();
+    expect(await kind.boundingBox()).toEqual(before);
   });
+
+  test('is offered in Quant only: Software hosts a coding room', async ({ page }) => {
+    await setup(page, (b) => b.useRoomBank());
+    await page.goto('/software/interviews?mode=host');
+    await expect(page.getByRole('heading', { name: 'Host an interview' })).toBeAttached();
+    await expect(page.getByRole('radiogroup', { name: 'Kind of interview' })).toBeVisible();
+    await expect(page.getByRole('radio', { name: 'Quant questions' })).toHaveCount(0);
+    await expect(page.getByTestId('quant-room-setup')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Create room' })).toBeDisabled();
+  });
+
+  for (const from of ['/dashboard', '/new'])
+    test(`the old link ${from}?mode=host&format=quant opens it in Quant`, async ({ page }) => {
+      await setup(page, (b) => {
+        b.useRoomBank();
+        b.track = 'software';
+      });
+      await page.goto(`${from}?mode=host&format=quant`);
+      await expect(page).toHaveURL(/\/quant\/interviews\?mode=host$/);
+      await expect(page.getByTestId('quant-room-setup')).toBeVisible();
+      await expect(
+        page.getByRole('radiogroup', { name: 'Kind of interview' }).getByRole('radio', {
+          checked: true,
+        }),
+      ).toHaveText('Interview someone');
+    });
 });
 
 test.describe('the host and a guest candidate in one room', () => {
@@ -595,18 +653,22 @@ test.describe('the report', () => {
     await expect(page.getByText('Could not start the assessment')).toHaveCount(0);
   });
 
-  test('the dashboard lists a quant room as one, without coding things', async ({ page }) => {
+  test("Quant's history lists a quant room as one, without coding things; Software's does not", async ({
+    page,
+  }) => {
     await setup(page, (b) => {
       b.useRoomBank();
       b.quantRooms.listOnDashboard();
     });
-    await page.goto('/dashboard?view=history');
+    await page.goto('/quant/interviews?view=history');
     const row = page.getByRole('row', { name: /Quant interview with Casey/ });
     await expect(row.getByTestId('quant-badge')).toHaveText('Quant questions');
     await expect(row).toContainText('Hosting');
     await expect(row).toContainText('Your verdicts in the report');
     await expect(row).not.toContainText('Solved');
     await expect(row).not.toContainText('Python');
+    await page.goto('/software/interviews?view=history');
+    await expect(page.getByRole('row', { name: /Quant interview with Casey/ })).toHaveCount(0);
   });
 });
 

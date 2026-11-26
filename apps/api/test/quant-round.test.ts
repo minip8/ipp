@@ -8,6 +8,7 @@ import {
   LANGUAGES,
   type Pad,
   Playback,
+  QUANT_PATHS,
   QuantGame,
   type QuantGameMove,
   type QuantRoundState,
@@ -39,6 +40,7 @@ import { WebSocket } from 'ws';
 import * as Y from 'yjs';
 import { DEFAULT_LIMITS, loadConfig } from '../src/config';
 import { interviewerMessageCap, QUANT_SCRATCH_CHARS, quantTrigger } from '../src/interviewer/host';
+import { eligibleQuestions } from '../src/quant/assemble';
 import { finishRound } from '../src/quant/round';
 import { startQuantSweeper, sweepQuantRounds } from '../src/quant/sweeper';
 import {
@@ -391,6 +393,55 @@ describe('creating a quant round', () => {
       for (const q of (await roundRow(pad.id)).state.questions) seen.add(q.questionId);
     }
     for (const q of [...INELIGIBLE, INACTIVE]) expect(seen.has(q.id)).toBe(false);
+  });
+
+  it('never draws from a fundamentals topic that also shows in the Quant track', async () => {
+    // Python's case: home fundamentals, `also: [quant]`, with questions that would qualify.
+    const shared = LAYOUT.map(([d, type], i) => quantQuestion(70 + i, 'python', d, type));
+    await db()
+      .insert(quizTopics)
+      .values({
+        slug: 'python',
+        title: 'Python',
+        description: 'shown in both tracks',
+        track: 'fundamentals',
+        also: ['quant'],
+      })
+      .onConflictDoNothing();
+    for (const raw of shared) {
+      const q = QuizQuestion.parse(raw);
+      await db().insert(quizQuestions).values({
+        id: q.id,
+        topic: q.topic,
+        subtopic: q.subtopic,
+        difficulty: q.difficulty,
+        type: q.type,
+        data: q,
+      });
+    }
+    try {
+      const ids = new Set(shared.map((q) => q.id));
+      for (const path of QUANT_PATHS)
+        expect((await eligibleQuestions(h.api.ctx, path)).filter((q) => ids.has(q.id))).toEqual([]);
+      const c = await account('Shared');
+      for (let i = 0; i < 3; i++) {
+        for (const path of QUANT_PATHS) {
+          const pad = await createRound(c, { path, durationMin: 20 });
+          for (const q of (await roundRow(pad.id)).state.questions)
+            expect(ids.has(q.questionId), q.questionId).toBe(false);
+        }
+      }
+    } finally {
+      await db()
+        .delete(quizQuestions)
+        .where(
+          inArray(
+            quizQuestions.id,
+            shared.map((q) => q.id),
+          ),
+        );
+      await db().delete(quizTopics).where(eq(quizTopics.slug, 'python'));
+    }
   });
 
   it('refuses without a usable key, a guest, a bad body, and when the pool is too small', async () => {

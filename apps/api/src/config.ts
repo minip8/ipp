@@ -103,6 +103,8 @@ export interface Limits {
   drillRuns: { userBurst: RateLimit; userDaily: RateLimit };
   /** Deleting quiz attempts and drill runs from the user's own history (one or all at a time). */
   historyDeletes: { userBurst: RateLimit };
+  /** Remembering the site track the header switch chose (`PUT /api/me/track`). */
+  trackChanges: { userBurst: RateLimit };
   /** Hard cap on interviewer messages per pad (spend guard). */
   interviewerMessagesPerPad: number;
   /**
@@ -148,6 +150,7 @@ export const DEFAULT_LIMITS: Limits = {
   invites: { ipBurst: { limit: 30, windowSec: 60 }, ipDaily: { limit: 600, windowSec: 86_400 } },
   problemChange: { userBurst: { limit: 10, windowSec: 60 } },
   historyDeletes: { userBurst: { limit: 30, windowSec: 60 } },
+  trackChanges: { userBurst: { limit: 30, windowSec: 60 } },
   drillRuns: {
     userBurst: { limit: 6, windowSec: 60 },
     userDaily: { limit: 200, windowSec: 86_400 },

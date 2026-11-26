@@ -139,10 +139,10 @@ describe('seed', () => {
     expect(await h.db.select().from(quizAnswers)).toHaveLength(1);
   });
 
-  it('writes topic order, tracks and roadmaps; a broken roadmap keeps the stored one', async () => {
+  it('writes topic order, tracks, also and roadmaps; a broken roadmap keeps the stored one', async () => {
     writeFileSync(
       join(root, 'quiz', 'topics.yaml'),
-      '- { slug: cpp, title: C++, description: d }\n- { slug: py, title: Python, description: d, track: quant }\n',
+      '- { slug: cpp, title: C++, description: d, also: [quant] }\n- { slug: py, title: Python, description: d, track: quant }\n',
     );
     const file = join(root, 'quiz', 'roadmap.yaml');
     writeFileSync(file, 'cpp:\n  - { id: cpp-s, title: S, description: d, subtopics: [s] }\n');
@@ -154,6 +154,7 @@ describe('seed', () => {
           slug: quizTopics.slug,
           position: quizTopics.position,
           track: quizTopics.track,
+          also: quizTopics.also,
           roadmap: quizTopics.roadmap,
         })
         .from(quizTopics)
@@ -163,6 +164,7 @@ describe('seed', () => {
           slug: 'cpp',
           position: 0,
           track: 'fundamentals',
+          also: ['quant'],
           roadmap: [
             {
               id: 'cpp-s',
@@ -174,7 +176,7 @@ describe('seed', () => {
             },
           ],
         },
-        { slug: 'py', position: 1, track: 'quant', roadmap: [] },
+        { slug: 'py', position: 1, track: 'quant', also: [], roadmap: [] },
       ]);
 
       // A cycle: reported, and the roadmap already stored stays.
@@ -186,6 +188,15 @@ describe('seed', () => {
       expect(broken.skipped.map((s) => s.where)).toContain('quiz/roadmap.yaml');
       const [cpp] = await h.db.select().from(quizTopics).where(eq(quizTopics.slug, 'cpp'));
       expect(cpp?.roadmap.map((n) => n.id)).toEqual(['cpp-s']);
+
+      // Taking `also` away from a topic clears it on the next seed.
+      writeFileSync(
+        join(root, 'quiz', 'topics.yaml'),
+        '- { slug: cpp, title: C++, description: d }\n- { slug: py, title: Python, description: d, track: quant }\n',
+      );
+      await seed(h.db, { root });
+      const [plain] = await h.db.select().from(quizTopics).where(eq(quizTopics.slug, 'cpp'));
+      expect(plain?.also).toEqual([]);
     } finally {
       rmSync(file, { force: true });
       writeFileSync(
@@ -196,9 +207,10 @@ describe('seed', () => {
   });
 
   it('seeds games, skips a broken one, and retires a removed one', async () => {
+    // cpp shows in the Quant track too, but its home is fundamentals: no game may name it.
     writeFileSync(
       join(root, 'quiz', 'topics.yaml'),
-      '- { slug: cpp, title: C++, description: d }\n- { slug: mm, title: MM, description: d, track: quant }\n',
+      '- { slug: cpp, title: C++, description: d, also: [quant] }\n- { slug: mm, title: MM, description: d, track: quant }\n',
     );
     const dir = join(root, 'games');
     mkdirSync(dir, { recursive: true });
@@ -225,11 +237,17 @@ expect: { fair: 1, sd: 0.7071, min: 0, max: 2 }
         game('broken').replace('payoff: sum', 'payoff: mean'),
       );
       writeFileSync(join(dir, 'g-x.yaml'), game('g-3'));
+      writeFileSync(join(dir, 'g-cpp.yaml'), game('g-cpp').replace('topic: mm', 'topic: cpp'));
       const first = await seed(h.db, { root });
       expect(first.games).toBe(1);
-      expect(first.skipped.map((s) => s.where)).toEqual(
-        expect.arrayContaining(['games/broken.yaml', 'games/g-x.yaml']),
+      expect(first.skipped).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ where: 'games/broken.yaml' }),
+          expect.objectContaining({ where: 'games/g-x.yaml' }),
+          { where: 'games/g-cpp.yaml', error: expect.stringMatching(/not a quant topic/) },
+        ]),
       );
+      rmSync(join(dir, 'g-cpp.yaml'));
       const [row] = await h.db.select().from(quantGames).where(eq(quantGames.id, 'g-1'));
       expect(row).toMatchObject({ topic: 'mm', difficulty: 'easy', active: true });
       expect(row?.data).toMatchObject({ title: 'Two coins', hints: ['Count the heads.'] });

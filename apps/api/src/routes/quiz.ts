@@ -139,6 +139,7 @@ export function quizRoutes(ctx: Ctx) {
         title: quizTopics.title,
         description: quizTopics.description,
         track: quizTopics.track,
+        also: quizTopics.also,
         questionCount:
           sql<number>`count(${quizQuestions.id}) filter (where ${quizQuestions.active})`.mapWith(
             Number,

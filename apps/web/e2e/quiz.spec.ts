@@ -6,7 +6,7 @@ import { setup } from './helpers';
 test.describe('quizzes', () => {
   test('starts a practice attempt from the hub', async ({ page }) => {
     const backend = await setup(page);
-    await page.goto('/quiz');
+    await page.goto('/software/practice');
     await expect(page.getByRole('button', { name: /^Computer architecture/ })).toContainText(
       '0 of 40 questions answered',
     );
@@ -178,14 +178,14 @@ test.describe('quizzes', () => {
     });
     await page.goto('/quiz/00000000-0000-4000-8000-00000000dead');
     await expect(page.getByText('This quiz does not exist')).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Back to quizzes' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Back to practice' })).toBeVisible();
   });
 });
 
 test.describe('quiz setup and discussions', () => {
   test('remembers the choices after leaving the page and coming back', async ({ page }) => {
     await setup(page);
-    await page.goto('/quiz');
+    await page.goto('/software/practice');
     await page.getByRole('button', { name: /^Networking/ }).click();
     await page.getByRole('radio', { name: 'Exam' }).click();
     await page.getByRole('radio', { name: 'Hard' }).click();
@@ -193,8 +193,8 @@ test.describe('quiz setup and discussions', () => {
     await page.getByRole('switch').click();
 
     await page.getByRole('link', { name: 'Interviews' }).click();
-    await expect(page).toHaveURL(/\/dashboard$/);
-    await page.getByRole('link', { name: 'Quizzes' }).click();
+    await expect(page).toHaveURL(/\/software\/interviews$/);
+    await page.getByRole('link', { name: 'Practice' }).click();
     await expect(page.getByRole('button', { name: /^Networking/ })).toHaveAttribute(
       'aria-pressed',
       'true',
@@ -211,7 +211,7 @@ test.describe('quiz setup and discussions', () => {
 
   test('a discussion talks an open question through and then grades it', async ({ page }) => {
     const backend = await setup(page);
-    await page.goto('/quiz');
+    await page.goto('/software/practice');
     await page.getByRole('button', { name: /^Networking/ }).click();
     await page.getByRole('radio', { name: 'Discussion' }).click();
     await expect(page.getByTestId('setup-summary')).toContainText('open questions to draw from');
@@ -247,7 +247,7 @@ test.describe('quiz setup and discussions', () => {
     await setup(page, (b) => {
       b.aiKey = aiKeyStatus('missing');
     });
-    await page.goto('/quiz');
+    await page.goto('/software/practice');
     await page.getByRole('button', { name: /^Networking/ }).click();
     await expect(page.getByRole('button', { name: 'Start quiz' })).toBeEnabled();
     await page.getByRole('radio', { name: 'Discussion' }).click();
@@ -261,7 +261,7 @@ test.describe('question bank', () => {
 
   test('is reachable from the hub and browsed by subtopic', async ({ page }) => {
     await setup(page);
-    await page.goto('/quiz');
+    await page.goto('/software/practice');
     await page.getByRole('link', { name: 'Browse Operating systems questions' }).click();
     await expect(page).toHaveURL(new RegExp(`${BANK}$`));
     await expect(page.getByRole('heading', { name: 'Operating systems' })).toBeVisible();
@@ -308,7 +308,7 @@ test.describe('question bank', () => {
 
     // The quiz flow stays one click away, with this topic preselected.
     await page.getByRole('link', { name: 'Take a quiz instead' }).click();
-    await expect(page).toHaveURL(/\/quiz\?topic=operating-systems$/);
+    await expect(page).toHaveURL(/\/software\/practice\?topic=operating-systems$/);
     await expect(page.getByRole('button', { name: /^Operating systems/ })).toHaveAttribute(
       'aria-pressed',
       'true',

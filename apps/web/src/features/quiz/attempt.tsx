@@ -33,6 +33,8 @@ import { DeleteAttemptButton } from '@/features/delete-history/delete-attempt-bu
 import { ApiRequestError, api } from '@/lib/api';
 import { humanize, plural } from '@/lib/format';
 import { qk, useAiKey } from '@/lib/queries';
+import { practiceHref } from '@/lib/track';
+import { useTrack } from '@/lib/track-hooks';
 import { cn } from '@/lib/utils';
 import { DiscussionFlow } from './discussion';
 import {
@@ -97,6 +99,7 @@ function AttemptSkeleton() {
 
 export function QuizAttemptView({ id }: { id: string }) {
   const attempt = useQuery({ queryKey: qk.attempt(id), queryFn: () => api.attempt(id) });
+  const back = practiceHref(useTrack());
   if (attempt.isPending) return <AttemptSkeleton />;
   if (attempt.isError) {
     const notFound = attempt.error instanceof ApiRequestError && attempt.error.isNotFound;
@@ -109,8 +112,8 @@ export function QuizAttemptView({ id }: { id: string }) {
         />
         <div className="text-center">
           <Button asChild variant="ghost" size="sm">
-            <Link href="/quiz">
-              <ArrowLeftIcon /> Back to quizzes
+            <Link href={back}>
+              <ArrowLeftIcon /> Back to practice
             </Link>
           </Button>
         </div>
@@ -139,6 +142,7 @@ function DiscussionRoute({ attempt }: { attempt: QuizAttempt }) {
 
 function QuizFlow({ attempt }: { attempt: QuizAttempt }) {
   const qc = useQueryClient();
+  const back = practiceHref(useTrack());
   const aiKey = useAiKey();
   const titleOf = useTopicTitles();
   const exam = attempt.mode === 'exam';
@@ -348,10 +352,10 @@ function QuizFlow({ attempt }: { attempt: QuizAttempt }) {
     <div className={cn('mx-auto max-w-3xl px-4 py-6 sm:px-6 max-sm:pt-3', PHONE_FIT)}>
       <div className="flex items-center gap-3">
         <Link
-          href="/quiz"
+          href={back}
           className="inline-flex items-center gap-1 text-sm text-fg-muted hover:text-fg max-sm:min-h-10"
         >
-          <ArrowLeftIcon className="size-3.5" /> Quizzes
+          <ArrowLeftIcon className="size-3.5" /> Practice
         </Link>
         <span className="text-xs text-fg-subtle">Progress is saved</span>
         <DeleteAttemptButton

@@ -20,7 +20,8 @@ test('signed-out visitors are sent to sign-in and come back after signing in', a
 
   await page.getByLabel('Password').fill('correct-horse');
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page).toHaveURL(/\/dashboard$/);
+  // The home sends a remembered track on to its Interviews.
+  await expect(page).toHaveURL(/\/software\/interviews$/);
   await expect(page.getByRole('heading', { level: 1, name: 'Interviews' })).toBeVisible();
   expect(
     backend.requests.findLast((r) => r.path === '/api/auth/sign-in/email')?.body,
@@ -45,9 +46,11 @@ test('sign-in shows a countdown when rate limited', async ({ page }) => {
   await expect(page.getByRole('button', { name: /Try again in \d+s/ })).toBeDisabled();
 });
 
-test('sign-up creates the account and opens the dashboard', async ({ page }) => {
+test('sign-up creates the account and asks which track it is for', async ({ page }) => {
   const backend = await setup(page, (b) => {
     b.signedIn = false;
+    // A new account has no track yet.
+    b.track = null;
   });
   await page.goto('/sign-up');
   await page.getByLabel('Name').fill('Ada Lovelace');
@@ -55,6 +58,7 @@ test('sign-up creates the account and opens the dashboard', async ({ page }) => 
   await page.getByLabel('Password').fill('correct-horse');
   await page.getByRole('button', { name: 'Create account' }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
+  await expect(page.getByTestId('track-chooser')).toBeVisible();
   expect(backend.requests.find((r) => r.path === '/api/auth/sign-up/email')?.body).toMatchObject({
     name: 'Ada Lovelace',
   });
@@ -81,7 +85,7 @@ test('Google sign-in starts the provider flow, and a linking failure is explaine
 
 test('the home page is reachable when signed in and leads into the app', async ({ page }) => {
   await setup(page);
-  await page.goto('/dashboard');
+  await page.goto('/software/interviews');
   await page.getByRole('banner').getByRole('link', { name: 'interview++' }).click();
   await expect(page).toHaveURL('/');
   await expect(page.getByRole('link', { name: 'Sign in' })).toHaveCount(0);
@@ -89,16 +93,17 @@ test('the home page is reachable when signed in and leads into the app', async (
   // One way into each side of the app.
   await expect(
     page.getByRole('main').getByRole('link', { name: 'Quant questions' }),
-  ).toHaveAttribute('href', '/quant');
+  ).toHaveAttribute('href', '/quant/practice');
   await page.getByRole('link', { name: 'Start a coding interview' }).click();
-  await expect(page).toHaveURL('/dashboard');
+  await expect(page).toHaveURL('/software/interviews');
   await expect(page.getByRole('heading', { name: 'Problem library' })).toBeAttached();
 });
 
 test('the account pages send a signed-in visitor on instead of asking again', async ({ page }) => {
   await setup(page);
   await page.goto('/sign-in');
-  await expect(page).toHaveURL(/\/dashboard$/);
+  await expect(page).toHaveURL(/\/software\/interviews$/);
+  // An old link still lands where it meant.
   await page.goto('/sign-up?next=/quiz');
-  await expect(page).toHaveURL(/\/quiz$/);
+  await expect(page).toHaveURL(/\/software\/practice$/);
 });

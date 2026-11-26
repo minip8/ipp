@@ -1,4 +1,4 @@
-/** The New / History view switch on the Interviews and Quizzes pages, and their phone layout. */
+/** The New / History view switch on the Interviews and Practice tabs, and their phone layout. */
 import { expect, type Page, test } from '@playwright/test';
 import { setup } from './helpers';
 
@@ -10,7 +10,7 @@ const noSideScroll = (page: Page) =>
 test.describe('Interviews page views', () => {
   test('History is its own view, in the URL; the setup survives a look at it', async ({ page }) => {
     await setup(page);
-    await page.goto('/dashboard?mode=host');
+    await page.goto('/software/interviews?mode=host');
     const tabs = page.getByRole('tablist', { name: 'Interviews' });
     const start = tabs.getByRole('tab', { name: /^New interview/ });
     const history = tabs.getByRole('tab', { name: /^History/ });
@@ -24,7 +24,7 @@ test.describe('Interviews page views', () => {
     await page.getByRole('radio', { name: 'Python' }).click();
     await history.click();
     // The page's other params are kept.
-    await expect(page).toHaveURL(/\/dashboard\?mode=host&view=history$/);
+    await expect(page).toHaveURL(/\/software\/interviews\?mode=host&view=history$/);
     await expect(history).toHaveAttribute('aria-selected', 'true');
     await expect(
       page.getByRole('table').getByRole('row').filter({ hasText: 'LRU Cache' }),
@@ -35,7 +35,7 @@ test.describe('Interviews page views', () => {
 
     // Back returns to the setup as it was left.
     await page.goBack();
-    await expect(page).toHaveURL(/\/dashboard\?mode=host$/);
+    await expect(page).toHaveURL(/\/software\/interviews\?mode=host$/);
     await expect(start).toHaveAttribute('aria-selected', 'true');
     await expect(page.getByTestId('selected-problem')).toHaveText('LRU Cache');
     await expect(page.getByRole('radio', { name: 'Python' })).toHaveAttribute(
@@ -45,12 +45,12 @@ test.describe('Interviews page views', () => {
     await expect(page.getByRole('button', { name: 'Create room' })).toBeEnabled();
     // And choosing the mode afterwards does not bring the view back into the URL.
     await page.getByRole('radio', { name: 'Practise with the AI' }).click();
-    await expect(page).toHaveURL(/\/dashboard$/);
+    await expect(page).toHaveURL(/\/software\/interviews$/);
   });
 
   test('a link opens History directly; arrow keys switch views', async ({ page }) => {
     await setup(page);
-    await page.goto('/dashboard?view=history');
+    await page.goto('/software/interviews?view=history');
     const history = page.getByRole('tab', { name: /^History/ });
     await expect(history).toHaveAttribute('aria-selected', 'true');
     await expect(page.getByRole('tabpanel', { name: /^History/ })).toContainText('Merge Intervals');
@@ -58,7 +58,7 @@ test.describe('Interviews page views', () => {
 
     await history.focus();
     await page.keyboard.press('ArrowLeft');
-    await expect(page).toHaveURL(/\/dashboard$/);
+    await expect(page).toHaveURL(/\/software\/interviews$/);
     await expect(page.getByRole('tab', { name: /^New interview/ })).toHaveAttribute(
       'aria-selected',
       'true',
@@ -68,12 +68,12 @@ test.describe('Interviews page views', () => {
   });
 });
 
-test.describe('Quizzes page views', () => {
+test.describe('Practice views', () => {
   test('History is its own view; the topics and mode survive a switch', async ({ page }) => {
     await setup(page);
-    await page.goto('/quiz?topic=networking');
+    await page.goto('/software/practice?topic=networking');
     const history = page.getByRole('tab', { name: /^History/ });
-    await expect(page.getByRole('tab', { name: /^Start a quiz/ })).toHaveAttribute(
+    await expect(page.getByRole('tab', { name: /^Quizzes/ })).toHaveAttribute(
       'aria-selected',
       'true',
     );
@@ -86,14 +86,14 @@ test.describe('Quizzes page views', () => {
     await page.getByRole('radio', { name: 'Exam' }).click();
 
     await history.click();
-    await expect(page).toHaveURL(/\/quiz\?topic=networking&view=history$/);
+    await expect(page).toHaveURL(/\/software\/practice\?topic=networking&view=history$/);
     await expect(page.getByRole('region', { name: 'Past quizzes' }).getByRole('link')).toHaveCount(
       3,
     );
     await expect(page.getByRole('button', { name: 'Start quiz' })).toBeHidden();
 
-    await page.getByRole('tab', { name: /^Start a quiz/ }).click();
-    await expect(page).toHaveURL(/\/quiz\?topic=networking$/);
+    await page.getByRole('tab', { name: /^Quizzes/ }).click();
+    await expect(page).toHaveURL(/\/software\/practice\?topic=networking$/);
     await expect(page.getByRole('button', { name: /^Networking/ })).toHaveAttribute(
       'aria-pressed',
       'true',
@@ -111,7 +111,7 @@ test.describe('on a small phone', () => {
   }) => {
     await setup(page);
     // Chosen by the link, so nothing has scrolled the setup into view yet.
-    await page.goto('/dashboard?problem=lru-cache');
+    await page.goto('/software/interviews?problem=lru-cache');
     await expect(page.getByTestId('selected-problem')).toHaveText('LRU Cache');
     await noSideScroll(page);
     const toSetup = page.getByRole('button', { name: 'Set up interview' });
@@ -132,11 +132,11 @@ test.describe('on a small phone', () => {
     await noSideScroll(page);
   });
 
-  test('Quizzes: no sideways scroll; the bottom bar is only on the start view', async ({
+  test('Practice: no sideways scroll; the bottom bar is only on the start view', async ({
     page,
   }) => {
     await setup(page);
-    await page.goto('/quiz?topic=networking');
+    await page.goto('/software/practice?topic=networking');
     await expect(page.getByTestId('setup-summary')).toContainText('Networking');
     await noSideScroll(page);
     const toSetup = page.getByRole('button', { name: 'Choose mode' });
@@ -147,7 +147,7 @@ test.describe('on a small phone', () => {
       3,
     );
     await noSideScroll(page);
-    await page.getByRole('tab', { name: /^Start a quiz/ }).click();
+    await page.getByRole('tab', { name: /^Quizzes/ }).click();
     await expect(toSetup).toBeVisible();
   });
 });

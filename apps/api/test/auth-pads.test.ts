@@ -37,7 +37,9 @@ describe('auth', () => {
     expect([...a.cookies.keys()]).toContain('better-auth.session_token');
     const me = await a.get('/api/me');
     expect(me.status).toBe(200);
-    expect(me.json).toEqual({ user: { id, name: 'Alice', email, image: null, guest: false } });
+    expect(me.json).toEqual({
+      user: { id, name: 'Alice', email, image: null, guest: false, track: null },
+    });
 
     const out = await a.post('/api/auth/sign-out', {});
     expect(out.status).toBe(200);

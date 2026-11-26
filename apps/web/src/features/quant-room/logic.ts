@@ -20,9 +20,10 @@ import {
   type QuantSecondOpinion,
   type QuizBank,
   type QuizDifficulty,
-  type QuizTrack,
+  type Track,
 } from '@ipp/contracts';
 import { formatClock, plural } from '@/lib/format';
+import { topicsOf } from '@/lib/track';
 
 // ---------------------------------------------------------------- labels
 
@@ -32,11 +33,6 @@ export const TYPE_LABEL: Record<QuantQuestionType, string> = {
   output: 'Program output',
   short: 'Open-ended',
   numeric: 'Numeric',
-};
-
-export const TRACK_LABEL: Record<QuizTrack, string> = {
-  quant: 'Quant',
-  fundamentals: 'Fundamentals',
 };
 
 export const STATUS_LABEL: Record<HostBankStatus, string | null> = {
@@ -295,9 +291,12 @@ export function hostedEndNote(round: Pick<QuantRoundView, 'questions' | 'phase'>
 
 // ---------------------------------------------------------------- the bank browser
 
-/** The browser's filters; `undefined` is "any". */
+/**
+ * The browser's filters; `undefined` is "any". `track` is a site track (`topicInTrack`: a topic
+ * shared into a track is in it), offered where the browser filters itself (the public bank).
+ */
 export type BankQuery = {
-  track?: QuizTrack;
+  track?: Track;
   topic?: string;
   subtopic?: string;
   difficulty?: QuizDifficulty;
@@ -322,13 +321,19 @@ export function withFilter(query: BankQuery, patch: Partial<Omit<BankQuery, 'off
   return next;
 }
 
+/**
+ * Whether anything narrows the bank beyond its track. The track is a scope that is always shown
+ * as chosen (a room made from the Quant tab starts on Quant), so it is not something to clear.
+ */
 export const filtersActive = (q: BankQuery) =>
-  Boolean(q.track || q.topic || q.subtopic || q.difficulty || q.type || q.q?.trim());
+  Boolean(q.topic || q.subtopic || q.difficulty || q.type || q.q?.trim());
 
-/** The host's bank search's query string (`HostBankQuery`) for these filters. */
+/**
+ * The host's bank search's query string (`HostBankQuery`) for these filters. Its `track` is a
+ * topic's home, not a site track, so the desk's browser offers no track filter and none is sent.
+ */
 export function hostBankParams(query: BankQuery, limit = BANK_PAGE): Partial<HostBankQuery> {
   return {
-    ...(query.track ? { track: query.track } : {}),
     ...(query.topic ? { topic: query.topic } : {}),
     ...(query.subtopic ? { subtopic: query.subtopic } : {}),
     ...(query.difficulty ? { difficulty: query.difficulty } : {}),
@@ -347,7 +352,12 @@ export type BankItem = {
   status: HostBankStatus;
 };
 
-export type BankTopic = HostBankPage['topics'][number];
+/** A topic of the browser's filter; `also` (the site tracks it is shared into) when known. */
+export type BankTopic = HostBankPage['topics'][number] & { also?: readonly Track[] };
+
+/** The topics a track filter leaves, in that track's order (its own first, then shared ones). */
+export const topicsForTrack = (topics: readonly BankTopic[], track: Track | undefined) =>
+  track ? topicsOf(topics, track) : [...topics];
 
 /** A page of the browser, whichever source it came from. */
 export type BankView = {
@@ -378,7 +388,8 @@ export function fromHostPage(page: HostBankPage): BankView {
  * The browser's page put together from the public question bank (`GET /api/quiz/topics/:slug/
  * questions`, prompts only), for building a queue before the room exists: the same filters as
  * the host's bank search (`q` matches the prompt, the subtopic or the id), quant topics first and
- * then each track in study order, and `queued` for what is in the queue being built.
+ * then each home in study order (with a track filter: that track's own topics, then those shared
+ * into it), and `queued` for what is in the queue being built.
  */
 export function searchPublicBank(
   banks: readonly QuizBank[],
@@ -395,13 +406,20 @@ export function searchPublicBank(
       slug: b.topic.slug,
       title: b.topic.title,
       track: b.topic.track,
+      also: b.topic.also,
       questionCount: b.items.length,
     }));
+  const inTrack = query.track
+    ? topicsOf(
+        ordered.map((b) => b.topic),
+        query.track,
+      )
+    : ordered.map((b) => b.topic);
+  const searched = inTrack.flatMap((t) => ordered.filter((b) => b.topic.slug === t.slug));
   const text = query.q?.trim().toLowerCase() ?? '';
   const inQueue = new Set(queued);
   const all: BankItem[] = [];
-  for (const b of ordered) {
-    if (query.track && b.topic.track !== query.track) continue;
+  for (const b of searched) {
     if (query.topic && b.topic.slug !== query.topic) continue;
     for (const { question } of b.items) {
       if (query.subtopic && question.subtopic !== query.subtopic) continue;

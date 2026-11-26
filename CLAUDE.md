@@ -4,8 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 interview++ is a prep site for quant and software interviews: collaborative coding pads (C++,
 Python, Java) with an AI interviewer that speaks up on its own, quant question banks (numeric
-answers, multiple choice, and open questions discussed with the interviewer; the Quant page lays
-them out as trader and researcher paths) and fundamentals quizzes for developers.
+answers, multiple choice, and open questions discussed with the interviewer) and fundamentals
+quizzes for developers. A header switch splits the site into a Software track and a Quant track,
+each with the same three tabs: Interviews, Practice and Roadmap.
 `docs/ARCHITECTURE.md` is the design and security reference; `docs/DEPLOY.md` covers production.
 
 ## Git and deploys
@@ -163,6 +164,18 @@ browser ── /api/* (Next rewrite, same origin, cookie session) ──▶ apps
   interviewer reads a game's slot as a `kind: 'game'` entry of `QuantContext.questions` (content
   and `gameBooks`), whose books, counterparty notes and explanation stay out of every prompt
   until it can make moves.
+- **Site tracks** (`packages/contracts/src/track.ts`): the header switch chooses a `Track`
+  (`software` or `quant`), remembered on `user.track` (null until chosen; `GET /api/me`,
+  `PUT /api/me/track`, accounts only) and set by the switch or by arriving on a track page. The
+  pages are `/{track}/interviews`, `/{track}/practice` and `/{track}/roadmap`
+  (`apps/web/src/lib/track.ts` has every href and the redirects from the old `/dashboard`, `/new`,
+  `/quiz` and `/quant`); `/dashboard` stays as the app's home and asks an account with no track
+  which one it wants. A pad, its report, a quiz and a question bank keep track-free URLs.
+  Everything on a track page is scoped to it: pads by `padTrack` (their format), topics by
+  `topicInTrack`. A quiz topic's `track` (`fundamentals` or `quant`) is its home, not the site
+  track: it decides the content rules and what a quant round draws from, and `also` lists the
+  other site tracks the topic shows in. Scope with the helpers, never by comparing `track`, and do
+  not group or head anything by track inside a page: the switch replaces that.
 - **`apps/web`** is UI only. Read `apps/web/AGENTS.md` first: this Next.js version differs from
   older ones, and the relevant guide under `apps/web/node_modules/next/dist/docs/` should be read
   before writing Next-specific code. Features live in `src/features/<name>/`, with pure logic in
@@ -180,8 +193,10 @@ browser ── /api/* (Next rewrite, same origin, cookie session) ──▶ apps
   `packages/contracts/src/taxonomy.ts` or be listed in its excluded tags; a content test fails
   otherwise.
 - Quiz questions are YAML arrays under `packages/content/quiz/<topic>/`; topics are declared in
-  `quiz/topics.yaml` (in study order), each with a `track`: `fundamentals` (the default) or
-  `quant`. A `numeric` question's `answer` is an integer, a fraction (`5/36`), a decimal or a
+  `quiz/topics.yaml` (in study order), each with a `track`, its home: `fundamentals` (the default)
+  or `quant`. A topic shows in its home's site track; `also: [quant]` (or `[software]`) on its
+  entry shows it in the other one too, without changing its content rules (Python is in both). A
+  `numeric` question's `answer` is an integer, a fraction (`5/36`), a decimal or a
   percentage; without a `tolerance` a typed decimal or whole number within 0.5% (three
   significant figures) counts for a non-integer answer and everything else must be exact (`numericMatches` in
   `packages/contracts/src/numeric.ts`), with a `tolerance` (`abs`/`rel`) anything within it counts.

@@ -22,6 +22,8 @@ import { DeleteAttemptButton } from '@/features/delete-history/delete-attempt-bu
 import { api } from '@/lib/api';
 import { formatDuration, formatPercent, humanize, plural } from '@/lib/format';
 import { qk } from '@/lib/queries';
+import { practiceHref } from '@/lib/track';
+import { useTrack } from '@/lib/track-hooks';
 import { cn } from '@/lib/utils';
 import {
   formatCorrect,
@@ -209,6 +211,7 @@ function ReviewItem({
 
 export function QuizResults({ attempt }: { attempt: QuizAttempt }) {
   const router = useRouter();
+  const back = practiceHref(useTrack());
   const qc = useQueryClient();
   const titleOf = useTitles();
   const fbOf = useMemo(
@@ -272,10 +275,10 @@ export function QuizResults({ attempt }: { attempt: QuizAttempt }) {
     <div className={cn('mx-auto max-w-3xl px-4 py-6 sm:px-6 max-sm:pt-3', PHONE_FIT)}>
       <div className="flex items-center gap-3">
         <Link
-          href="/quiz"
+          href={back}
           className="inline-flex items-center gap-1 text-sm text-fg-muted hover:text-fg max-sm:min-h-10"
         >
-          <ArrowLeftIcon className="size-3.5" /> Quizzes
+          <ArrowLeftIcon className="size-3.5" /> Practice
         </Link>
         <DeleteAttemptButton
           attempt={attempt}
@@ -359,7 +362,7 @@ export function QuizResults({ attempt }: { attempt: QuizAttempt }) {
             variant={missed.length > 0 ? 'secondary' : 'primary'}
             className="max-sm:h-10 max-sm:flex-auto"
           >
-            <Link href="/quiz">
+            <Link href={back}>
               <PlusIcon /> New quiz
             </Link>
           </Button>

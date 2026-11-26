@@ -13,7 +13,9 @@
  *                                   judged runs; defines the signature's class (server-only)
  *   Starter, harness and solution files may exist only for the problem's languages.
  *   quiz/topics.yaml                QuizTopic[] in study order; `track` (fundamentals | quant)
- *                                   defaults to fundamentals
+ *                                   is the home, fundamentals by default, and decides the content
+ *                                   rules; `also` (software | quant, none by default) lists the
+ *                                   other site tracks the topic shows in, never its home's own
  *   quiz/<topic>/<anything>.yaml    QuizQuestion[] (topic must equal the directory name)
  *   games/<id>.yaml                 QuantGame, one market-making game per file (the id is the
  *                                   file name; its topic a quant topic of quiz/topics.yaml)
@@ -25,6 +27,7 @@ import {
   composeJudgedSource,
   EXCLUDED_TAGS,
   groupOfTag,
+  homeTrack,
   type Language,
   ProblemContent,
   QuantGame,
@@ -149,7 +152,17 @@ export function loadQuizTopics(root = CONTENT_ROOT): QuizTopic[] {
   const file = join(root, 'quiz', 'topics.yaml');
   if (!existsSync(file)) return [];
   const parsed = z.array(QuizTopic).safeParse(parseYaml(read(file)));
-  return parsed.success ? parsed.data : fail('quiz/topics.yaml', parsed.error);
+  if (!parsed.success) return fail('quiz/topics.yaml', parsed.error);
+  for (const t of parsed.data) {
+    const home = homeTrack(t.track);
+    if (t.also.includes(home))
+      throw new Error(
+        `quiz/topics.yaml ${t.slug}: also lists "${home}", the site track of its home (${t.track}); list only other tracks`,
+      );
+    if (new Set(t.also).size !== t.also.length)
+      throw new Error(`quiz/topics.yaml ${t.slug}: also repeats a track`);
+  }
+  return parsed.data;
 }
 
 export function loadQuizQuestions(root = CONTENT_ROOT): QuizQuestion[] {
@@ -204,7 +217,8 @@ export function listQuantGameFiles(root = CONTENT_ROOT): string[] {
 
 /**
  * One game file, parsed and checked against the rules the schema cannot see: its id is its file
- * name, and its topic is a quant topic of `quantTopics` (slugs of quiz/topics.yaml's `quant` track).
+ * name, and its topic is a quant topic of `quantTopics` (slugs of quiz/topics.yaml's topics whose
+ * home is `quant`; `also: [quant]` does not make a topic one).
  * Whether `expect` matches the engine is `quantGameErrors` (`check` and the tests), not this.
  */
 export function loadQuantGame(file: string, quantTopics: ReadonlySet<string>, root = CONTENT_ROOT) {

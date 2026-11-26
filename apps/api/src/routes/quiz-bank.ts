@@ -83,6 +83,7 @@ export function quizBankRoutes(ctx: Ctx) {
         title: topic.title,
         description: topic.description,
         track: topic.track,
+        also: topic.also,
       },
       items: questions.map((q) => itemOf(q, latest.get(q.id))),
     };
