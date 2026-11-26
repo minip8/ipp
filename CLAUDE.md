@@ -146,7 +146,13 @@ browser ── /api/* (Next rewrite, same origin, cookie session) ──▶ apps
   `packages/contracts/src/quant-game.ts`): its hidden values, quotes, position and P&L live in the
   round's state and change only through `advanceRound`; a stored trade names the interviewer's
   side, everything shown names the candidate's, and the browser gets `gameView` only (never a
-  hidden value or the fair value).
+  hidden value or the fair value). A trader round has one in its second slot
+  (`includeGame` overrides); the candidate quotes through `POST /api/pads/:id/round/quote`, posted
+  as their chat message and handed to the interviewer as one, a refusal being 409 with the
+  round's reason as the code; every step's game entries become `game` timeline events. The
+  interviewer reads a game's slot as a `kind: 'game'` entry of `QuantContext.questions` (content
+  and `gameBooks`), whose books, counterparty notes and explanation stay out of every prompt
+  until it can make moves.
 - **`apps/web`** is UI only. Read `apps/web/AGENTS.md` first: this Next.js version differs from
   older ones, and the relevant guide under `apps/web/node_modules/next/dist/docs/` should be read
   before writing Next-specific code. Features live in `src/features/<name>/`, with pure logic in

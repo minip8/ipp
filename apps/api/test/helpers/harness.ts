@@ -123,6 +123,8 @@ export class FakeInterviewer implements Interviewer {
 
   /** false: `session_started` does not start the round (a test drives it with `quantStep`). */
   quantAutoStart = true;
+  /** false: a candidate message on a quant pad is recorded as a trigger and not answered. */
+  quantReplies = true;
   /** Every quant context the fake loaded, in order. */
   quantContexts: QuantContext[] = [];
   /** Every step the fake applied, with its result. */
@@ -161,6 +163,7 @@ export class FakeInterviewer implements Interviewer {
   }
 
   private async quantReply(padId: string, ctx: QuantContext, text: string) {
+    if (!this.quantReplies) return;
     const current = ctx.questions[0];
     const version = ctx.round.version;
     // Nothing to step on before the round starts or after it finished.
@@ -170,7 +173,8 @@ export class FakeInterviewer implements Interviewer {
     let step: QuantStep;
     if (cmd.startsWith('hint')) {
       const given = current.hintRungs.filter((r) => r > 0).length;
-      const rung = given < (current.question.hints ?? []).length ? given + 1 : 0;
+      const ladder = current.kind === 'game' ? current.game.hints : (current.question.hints ?? []);
+      const rung = given < ladder.length ? given + 1 : 0;
       step = {
         type: 'turn',
         version,

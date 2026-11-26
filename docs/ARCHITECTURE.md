@@ -107,7 +107,8 @@ Every body is validated with the contracts schema named below.
 | `GET /api/problems?difficulty=&tag=&q=` | | `ProblemSummary[]` |
 | `GET /api/problems/:slug` | | `ProblemDetail` |
 | `POST /api/pads` | `CreatePadRequest` (`kind: 'room'` hosts an interview; a room may be `blank`) | `Pad` |
-| `POST /api/pads/quant` | `CreateQuantPadRequest` (`path`, `durationMin` 20 / 30 / 45, `interviewer` without `enabled`, `title?`) | `Pad` (`format: 'quant'`, §8.2); 409 `ai_key_missing` without a usable key, 409 `quant_unavailable` when the path has too few questions, 429 (the `POST /api/pads` allowance) |
+| `POST /api/pads/quant` | `CreateQuantPadRequest` (`path`, `durationMin` 20 / 30 / 45, `interviewer` without `enabled`, `title?`, `includeGame?`: a market-making game in the second slot, §8.3; absent, a trader round has one) | `Pad` (`format: 'quant'`, §8.2); 409 `ai_key_missing` without a usable key, 409 `quant_unavailable` when the path has too few questions, 429 (the `POST /api/pads` allowance) |
+| `POST /api/pads/:id/round/quote` | `PostQuantQuoteRequest` (`index`, `bid`, `ask`, `size`; any member) | `QuantRoundView` (the quote posted as the poster's chat message, §8.3); 409 `wrong_format` on a pad that is not a quant pad, 409 with the round's refusal as the code (`bad_quote`, `quote_limit`, `wrong_index`, `not_game`, `wrong_phase`, `ended`, …), 429 (the chat allowance) |
 | `GET /api/pads` | | `PadSummary[]` (mine, newest first, with `format`, and `quantPath` for a quant pad) |
 | `GET /api/pads/:id` | | `PadDetail` (`round`: a quant pad's `QuantRoundView`, else null) |
 | `PATCH /api/pads/:id` | `UpdatePadRequest` | `Pad` (a quant pad: 409 `wrong_format` with `language`; `interviewer.enabled` stays true) |
@@ -149,7 +150,8 @@ provider); collaborators learn nothing else about it.
 Problem responses never contain hidden tests, interviewer notes or reference solutions; the one
 exception is `GET /api/pads/:id/host`, for the host of a room. Nothing a member reads about an
 active quant pad contains a question's id, answer, explanation, hints or follow-ups, a verdict, or
-any question not yet posed (§8.2).
+any question not yet posed (§8.2), nor a game's hidden values, fair value, marks, counterparty
+notes or hints (§8.3).
 
 ### 4.1 Interview rooms
 
@@ -700,7 +702,8 @@ joining by the link, as on any practice pad) see exactly what the owner sees.
   least one of each type when the pool has both, the owner's weak questions first (the quiz's
   latest answers, as "focus weak"), and none posed in the owner's last five rounds (unless the
   pool would then be too small). An empty cell relaxes the topic, then the difficulty, and only
-  then allows a repeated subtopic. Too few questions is 409 `quant_unavailable`. The prompt, unit,
+  then allows a repeated subtopic. A trader round's second slot holds a market-making game when
+  one is active (§8.3), and the bank fills the rest. Too few questions is 409 `quant_unavailable`. The prompt, unit,
   the topic's title and the number of authored hints are copied into the round when it is built
   (a round stored before titles were copied has none, and is shown with the topic's slug).
 - **State** (`quant_rounds.state`, server-only) changes only through `advanceRound`
@@ -775,7 +778,8 @@ joining by the link, as on any practice pad) see exactly what the owner sees.
 - **What the interviewer sees** (`InterviewerHost.loadQuantContext`): the current question in full
   (scope `all`, for the assessment: every posed one), a code-built summary of the closed ones, the
   transcript from the latest posed question's message on, and the scratchpad cut at 8,000
-  characters. A later question is in it in no form.
+  characters. A later question is in it in no form. A game's slot is an entry of its own kind,
+  with the game's content and books (§8.3).
 - **Refused on a quant pad**: runs and a language change (409 / WS `error` `wrong_format`), the
   room-only endpoints (403 as for any practice pad; `POST …/problem` also checks the format).
 
@@ -796,14 +800,15 @@ The pieces, and what is **built** and **not yet built**:
 | engine, view, books, review | `packages/contracts/src/quant-game.ts` | built |
 | steps and refusals in the round | `packages/contracts/src/quant-round.ts` (`advanceRound`) | built |
 | `quant_games` table and seed | `packages/db` | built |
-| report builder takes a game | `buildQuantReport(state, bank, games)` in `apps/api/src/quant/round.ts` | built; `quantReport` does not load the games yet (explanation empty) |
-| the quote route or event, the effects' I/O | `apps/api` | **not yet** |
-| the assembly rule (one game in a trader round's second slot) and `includeGame` | `apps/api/src/quant/assemble.ts` | **not yet** (the flag parses and is ignored) |
-| the interviewer's moves, its books in the prompt, a quote as a trigger | `packages/interviewer/src/quant/` | **not yet** |
+| report builder takes a game, `quantReport` loads the games | `buildQuantReport(state, bank, games)` in `apps/api/src/quant/round.ts` | built |
+| the quote route, the effects' I/O (quote message, `game` timeline events) | `apps/api/src/routes/pads.ts`, `src/quant/round.ts` | built |
+| the assembly rule (one game in a trader round's second slot) and `includeGame` | `apps/api/src/quant/assemble.ts` | built |
+| the interviewer's seam: a game's entry in `QuantContext.questions` (content and books) | `packages/interviewer/src/types.ts`, `InterviewerHost.loadQuantContext` | built |
+| the interviewer's moves, its books in the prompt | `packages/interviewer/src/quant/` | **not yet** (a game is a conversation about its prompt with the hint ladder, and no move is made) |
 | the quote widget, the blotter, the report's game section | `apps/web` | **not yet** |
 
-Until those land a round never contains a game, and a round without one behaves exactly as
-before (its stored state is byte-for-byte what it was).
+A round without a game behaves exactly as before (its stored state is byte-for-byte what it
+was, and so is its assembly: the same draws from the same generator).
 
 - **Content** (`QuantGame`): one YAML file per game, `packages/content/games/<id>.yaml`, the id
   the file name and distinct from every quiz question id (a round names either by
@@ -827,8 +832,21 @@ before (its stored state is byte-for-byte what it was).
   not a quiz question: it is never in the question bank, an attempt, the stats or the roadmap,
   and a verdict on it is never a quiz answer (`recordAnswers` only records ids found in
   `quiz_questions`).
+- **Assembly** (`assembleWithGame` in `apps/api/src/quant/assemble.ts`, pure and seeded,
+  unit-tested over many seeds). `CreateQuantPadRequest.includeGame`: absent, the path decides (a
+  trader round has a game, a researcher round none); true, a game whenever an active one exists
+  (of any topic, so a researcher round can ask for one); false, none. The game takes the second
+  slot (the first in a one-question round): an active game (`quant_games.active`) not posed in
+  the owner's last five rounds (`recentlyPosed` collects game ids with question ids) unless every
+  one was, of the slot's difficulty or else the nearest, at random among equals; its hidden
+  values are drawn by the same generator through `quantGamePick`. The bank fills the other slots
+  by §8.2's rules, as a round one question shorter whose slots keep their own difficulties (a
+  20-minute round: easy, the game, hard), so a game round needs one bank question fewer. No
+  active game, or none wanted, and the round is assembled exactly as before. The server draws
+  with a cryptographic generator (`secureRand`), so the dice cannot be worked out from the
+  questions a round shows; the tests pass a seeded one.
 - **The engine** (`quant-game.ts`, pure). `drawGame(spec, rand)` draws the values from the
-  assembler's seeded PRNG; `createGameState(game, values)` snapshots the mechanics and the title
+  assembler's PRNG; `createGameState(game, values)` snapshots the mechanics and the title
   (never the counterparty, hints, explanation or expect) into a `QuantGameState`;
   `quantGamePick(game, topicTitle, rand)` (in `quant-round.ts`) makes the slot's `QuantPick`.
   `gameValue`, `gameStats` (unconditional) and `gameConditional(spec, values, revealedCount)` /
@@ -870,7 +888,28 @@ before (its stored state is byte-for-byte what it was).
     `index`'s game, in order (`QuantGameEntry`: quote, trade, reveal, settle). The API records
     each as a timeline event `{ type: 'game', index, entry }` (`TimelineEvent`), in the step's
     transaction, after `say` (and after the quote's candidate message) and before the next
-    question's `reveal`.
+    question's `reveal`: the messages are at the step's `now`, the game events a microsecond
+    apart after it (`timeline_events.at` keeps microseconds), the next question's event at
+    `now` + 1 ms, so playback, which orders by `at`, replays them as they happened. Playback and
+    every other reader pass the entry through as it is: it is the public form (a trade from the
+    candidate's side, a reveal with the value shown, the settlement once the question closed).
+- **The quote route**: `POST /api/pads/:id/round/quote`, body `PostQuantQuoteRequest`
+  (`{ index, bid, ask, size }`). Any member of the pad may quote (a collaborator does what the
+  owner does on a practice pad). 400 `validation_error` for a body the schema refuses (a size
+  that is not a whole number, a price that is not a number, …); 404 for a non-member; 409
+  `wrong_format` on a pad that is not a quant pad; 409 `ended` once the pad has ended; 429 under
+  the chat allowance (`limits.chat`, per user, burst and daily: a quote is a chat message);
+  otherwise the `quote` step through `applyStep` (`postQuote` in `quant/round.ts`), decided again
+  when a concurrent step wins the compare-and-swap (it is not versioned, like `end`). A refusal
+  by the round is 409 with the refusal as the error code (`bad_quote`, `quote_limit`,
+  `wrong_index`, `not_game`, `wrong_phase`, `ended`, …) and a fixed message (no figure of the
+  game). The step's transaction posts `formatQuote` of the snapped quote as the poster's chat
+  message (role `candidate`, kind `chat`, no intent, their user id) and its `game` timeline
+  event; after the commit the room gets `message.created`, then `round.updated`, and the
+  response is 200 with the round's new `QuantRoundView`. The quote then reaches the interviewer
+  as a typed chat message does (`candidate_message`, via `text`), so it answers it. There is no
+  per-pad cap on candidate messages (the interviewer's own messages have one); the engine caps
+  quotes at 100 per game.
 - **What the browser sees**: `QuantQuestionView.game` is `gameView(state)` (null for a bank
   question), built field by field: the title, each component's label with its value only once
   shown (all once settled), payoff, tick, maxSize, the live quote, the log (quotes, trades from
@@ -883,7 +922,20 @@ before (its stored state is byte-for-byte what it was).
   and range now, the true value, the live quote with its mid, width, whether fair is inside it
   and the interviewer's edge per contract at the bid (`hitBid`) and the offer (`liftOffer`)
   against both fair and true value, the candidate's position and cash marked to both, the log
-  and the quotes left. The counterparty notes and hints come from the content.
+  and the quotes left. The counterparty notes and hints come from the content. The seam is a
+  discriminated entry of `QuantContext.questions` (`packages/interviewer/src/types.ts`): a bank
+  question is `QuantBankEntry` (`kind` `'question'`, or absent in code written before games,
+  with `question`), a game's slot `QuantGameSlotEntry` (`kind: 'game'`, with `game`, its
+  `QuantGameContent`: id, topic, title, difficulty, the posted prompt, `counterparty`, the hints
+  cut to `hintsAvailable`, `explanation` and the round's snapshot of the mechanics; and `books`,
+  `gameBooks` of the state at the context load), both with `index`, `hintRungs` and
+  `followUpAsked`. `InterviewerHost.loadQuantContext` fills it from `quant_games` (a missing row
+  leaves the notes, hints and explanation empty). `quant/entry.ts` reads what both kinds have
+  (prompt, hints, topic, difficulty, type). Until the interviewer gets its moves, a game is run
+  as a conversation about its prompt with the hint ladder (`gameBlock` in `quant/prompts.ts`):
+  the block has the prompt and the hints and tells the model it cannot trade or show a value;
+  the books, the counterparty notes and the explanation are in no prompt, and no step carries a
+  game move.
 - **The report** (`QuantQuestionReview` with `type: 'game'`, only after the pad ended):
   `subtopic` empty, `solution` the figures before anything was shown (`gameSolution`: "Fair value
   10.5, standard deviation 2.96, from 3 to 18"), `keyPoints` empty, `explanation` the game's,
@@ -903,21 +955,25 @@ before (its stored state is byte-for-byte what it was).
   per game that recomputes the fair value and sd (optionally min and max) by its own enumeration
   or simulation from the game as its prompt describes it, returned as `GameFigures`. A game
   without a check fails the check and a content test, as a numeric question does.
+- **In the API, proven by tests** (`apps/api/test/quant-round.test.ts`, "market-making games";
+  `quant-game-real.test.ts` with the real interviewer): a game played through the route and
+  `applyQuantStep` (quotes, a trade and a reveal, a second quote and trade, the close settling
+  it) with position, cash and settlement as the engine computes them; every refusal; a quote
+  racing an interviewer step (the quote is decided again, the step goes `stale`); the sweeper
+  closing an unattended game and settling it; ending the pad mid-game; a verdict on a game
+  never recorded as a quiz answer; a played game kept out of the owner's next rounds. While the
+  pad is active no hidden value, public fair value, sd, mark or edge, counterparty note, hint or
+  explanation is in `PadDetail`, the list, `round.updated`, `message.created`, the quote
+  route's response or errors, the timeline or the playback (the tests choose values no visible
+  number can contain and scan every payload); after it ended, the report shows the review.
 - **To build next** (specified, not implemented):
-  - API: the quote route or event (`PostQuantQuoteRequest` → a `quote` step through `applyStep`,
-    refusing a pad that is not a quant pad with 409 `wrong_format`; post `effects.quote` as the
-    candidate's message with the poster's user id, then the game timeline events; then feed the
-    interviewer a trigger so it answers the quote); record `effects.game` from every step;
-    `quantReport` loads the round's games from `quant_games` for `buildQuantReport`; the
-    assembler puts one active game of the path's topics in a trader round's second slot when
-    one exists (`includeGame` absent or true; false for none; a researcher round has none unless
-    asked), drawing it with the round's seeded PRNG through `quantGamePick`. The browser tests'
-    mock (`apps/web/e2e/mock-quant-round.ts`) must mirror the route and post the same
-    `formatQuote` text.
-  - Interviewer: `gameBooks` in the per-turn books and the game's counterparty notes and hints in
-    the question's system block; the turn schema gains the trade and reveal; `normaliseTurn`
-    keeps a move the server would refuse out of the step (no live quote, a quantity beyond the
-    size, nothing left to reveal), so a step is never refused for the books' sake.
+  - The browser tests' mock (`apps/web/e2e/mock-quant-round.ts`) must mirror the route and post
+    the same `formatQuote` text.
+  - Interviewer: `gameBooks` (from the entry's `books`) in the per-turn books and the game's
+    counterparty notes in the question's system block (replacing `gameBlock`); the turn schema
+    gains the trade and reveal; `normaliseTurn` keeps a move the server would refuse out of the
+    step (no live quote, a quantity beyond the size, nothing left to reveal), so a step is never
+    refused for the books' sake.
   - Web: a quote widget (bid, ask, size, checked with `quoteProblem`), the components and the
     blotter from `QuantQuestionView.game`, and the report's game section from
     `QuantQuestionReview.game`.

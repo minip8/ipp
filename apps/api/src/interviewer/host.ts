@@ -8,6 +8,7 @@ import {
   type AiModelChoice,
   type DiscussionTurn,
   effectiveModel,
+  gameBooks,
   type InterviewerModel,
   type InterviewerSettings,
   type Language,
@@ -24,7 +25,7 @@ import { aiUsage, interviewerNotes, messages, pads, problems, runs, timelineEven
 import { and, asc, count, desc, eq, gte, inArray, sql } from '@ipp/db/orm';
 import type { Limits } from '../config';
 import type { Ctx } from '../context';
-import { applyStep, bankQuestions, loadRound } from '../quant/round';
+import { applyStep, bankQuestions, gameContent, loadRound } from '../quant/round';
 import { toInterviewerRun } from '../runs/redact';
 import { messageView, padView, storedRun } from '../views';
 import type {
@@ -389,6 +390,8 @@ export class InterviewerHost {
    * A quant pad as its interviewer sees it; null for any other pad. Only the current question is
    * in it in full (`all`, for the assessment: every posed one), and nothing at all about the
    * questions still to come: they are not in the transcript either, as they have not been posed.
+   * A game's slot (§8.3) is a `kind: 'game'` entry: its content from `quant_games` (counterparty
+   * notes, hints, explanation) and `gameBooks` of its state, the hidden values included.
    */
   async loadQuantContext(
     padId: string,
@@ -408,12 +411,45 @@ export class InterviewerHost {
       scope === 'all'
         ? posed
         : posed.filter(({ index }) => phase === 'asking' && index === state.current);
-    const bank = await bankQuestions(
-      this.ctx,
-      shown.map(({ q }) => q.questionId),
-    );
+    const isGame = (q: (typeof shown)[number]['q']) => (q.game ?? null) !== null;
+    const [bank, gameRows] = await Promise.all([
+      bankQuestions(
+        this.ctx,
+        shown.filter(({ q }) => !isGame(q)).map(({ q }) => q.questionId),
+      ),
+      gameContent(
+        this.ctx,
+        shown.filter(({ q }) => isGame(q)).map(({ q }) => q.questionId),
+      ),
+    ]);
     const questions: QuantContext['questions'] = [];
     for (const { q, index } of shown) {
+      if (q.game) {
+        // A market-making game (§8.3): its content (private material) and its books.
+        const g = gameRows.get(q.questionId);
+        if (!g)
+          this.ctx.log.warn({ padId, questionId: q.questionId }, 'quant game missing its content');
+        questions.push({
+          kind: 'game',
+          index,
+          game: {
+            id: q.questionId,
+            topic: q.topic,
+            title: q.game.title,
+            difficulty: q.difficulty,
+            // What was posted and what the round plays, should the content have changed since.
+            prompt: q.prompt,
+            counterparty: g?.counterparty ?? '',
+            hints: (g?.hints ?? []).slice(0, q.hintsAvailable),
+            explanation: g?.explanation ?? '',
+            mechanics: q.game.spec,
+          },
+          books: gameBooks(q.game),
+          hintRungs: [...q.hintRungs],
+          followUpAsked: q.followUpAsked,
+        });
+        continue;
+      }
       const b = bank.get(q.questionId);
       if (b?.type !== 'short' && b?.type !== 'numeric') {
         this.ctx.log.warn(
@@ -432,6 +468,7 @@ export class InterviewerHost {
         followUps: b.followUps ?? [],
       };
       questions.push({
+        kind: 'question',
         index,
         question,
         hintRungs: [...q.hintRungs],

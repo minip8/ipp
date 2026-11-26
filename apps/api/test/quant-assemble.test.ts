@@ -1,10 +1,16 @@
-import type { QuizDifficulty } from '@ipp/contracts';
+import { QuantGame, type QuizDifficulty } from '@ipp/contracts';
 import { describe, expect, it } from 'vitest';
 import {
+  type AssembledRound,
   type AssembleInput,
+  type AssembleWithGameInput,
   assembleRound,
+  assembleWithGame,
+  chooseGame,
   difficultySlots,
+  gameSlot,
   type PoolQuestion,
+  roundPicks,
 } from '../src/quant/assemble';
 import { seededRand, shuffle } from '../src/random';
 
@@ -254,5 +260,176 @@ describe('assembleRound over a thin pool', () => {
       for (const q of all.filter((q) => !recent.has(q.id)))
         expect(picks.map((p) => p.id)).toContain(q.id);
     }
+  });
+});
+
+// ---------------------------------------------------------------- market-making games (§8.3)
+
+function game(id: string, difficulty: QuizDifficulty, dice = 3): QuantGame {
+  return QuantGame.parse({
+    id,
+    topic: 'betting-market-making',
+    title: `Game ${id}`,
+    difficulty,
+    prompt: `Make me a market on game ${id}.`,
+    components: Array.from({ length: dice }, (_, i) => ({
+      label: `Die ${i + 1}`,
+      faces: [1, 2, 3, 4, 5, 6],
+    })),
+    payoff: 'sum',
+    reveal: [0],
+    tick: 0.5,
+    maxSize: 5,
+    counterparty: 'COUNTERPARTY',
+    hints: ['HINT-1', 'HINT-2'],
+    explanation: 'EXPLANATION',
+    expect: { fair: 3.5 * dice, sd: 1, min: dice, max: 6 * dice },
+  });
+}
+const GAMES = [game('g-easy', 'easy'), game('g-medium', 'medium'), game('g-hard', 'hard')];
+
+function gameInput(
+  over: Partial<AssembleWithGameInput> & { seed?: number } = {},
+): AssembleWithGameInput {
+  const { difficulties: _unused, ...bank } = input(over);
+  return {
+    ...bank,
+    games: GAMES,
+    wantGame: true,
+    topicTitle: (slug) => `Title of ${slug}`,
+    ...over,
+  };
+}
+
+describe('assembleWithGame', () => {
+  it.each([3, 4, 6])('a %i-question round has one game, in the second slot', (n) => {
+    for (const seed of SEEDS) {
+      const round = assembleWithGame(gameInput({ n, seed }));
+      expect(round, `seed ${seed}`).not.toBeNull();
+      const r = round as AssembledRound;
+      expect(r.game?.index).toBe(gameSlot(n));
+      expect(gameSlot(n)).toBe(1);
+      // The bank fills the other slots, each with its own difficulty, rising.
+      const slots = difficultySlots(n);
+      expect(r.questions.map((q) => q.difficulty)).toEqual(slots.filter((_, i) => i !== 1));
+      expect(new Set(r.questions.map((q) => q.id)).size).toBe(n - 1);
+      expect(new Set(r.questions.map((q) => `${q.topic}/${q.subtopic}`)).size).toBe(n - 1);
+      // The game of the slot's difficulty (every difficulty has one here).
+      const pick = r.game?.pick;
+      expect(pick?.difficulty).toBe(slots[1]);
+      expect(pick).toMatchObject({
+        questionId: 'g-medium',
+        topic: 'betting-market-making',
+        topicTitle: 'Title of betting-market-making',
+        unit: null,
+        hintsAvailable: 2,
+      });
+      // Its hidden values, drawn from the faces; nothing shown and nothing traded.
+      const g = pick?.game;
+      expect(g?.values).toHaveLength(3);
+      for (const v of g?.values ?? []) expect([1, 2, 3, 4, 5, 6]).toContain(v);
+      expect(g).toMatchObject({ revealed: 0, quote: null, events: [], position: 0, cash: 0 });
+      // In its slot, and the only game of the round.
+      const picks = roundPicks(r, (q) => ({
+        questionId: q.id,
+        topic: q.topic,
+        topicTitle: q.topic,
+        difficulty: q.difficulty,
+        prompt: q.id,
+        unit: null,
+        hintsAvailable: 0,
+      }));
+      expect(picks).toHaveLength(n);
+      expect(picks.flatMap((p, i) => (p.game ? [i] : []))).toEqual([1]);
+    }
+  });
+
+  it('puts the game first in a one-question round', () => {
+    const r = assembleWithGame(gameInput({ n: 1 }));
+    expect(r?.questions).toEqual([]);
+    expect(r?.game).toMatchObject({ index: 0, pick: { questionId: 'g-medium' } });
+    expect(gameSlot(1)).toBe(0);
+  });
+
+  it('never takes a recent game while another is left, and one when none is', () => {
+    const seen = new Set<string>();
+    for (const seed of SEEDS) {
+      const r = assembleWithGame(gameInput({ n: 4, seed, recent: new Set(['g-medium']) }));
+      const id = r?.game?.pick.questionId as string;
+      expect(id).not.toBe('g-medium');
+      seen.add(id);
+      const all = assembleWithGame(
+        gameInput({ n: 4, seed, recent: new Set(GAMES.map((g) => g.id)) }),
+      );
+      expect(all?.game?.pick.questionId).toBe('g-medium');
+    }
+    // Easy and hard are equally near a medium slot: either, at random.
+    expect(seen).toEqual(new Set(['g-easy', 'g-hard']));
+  });
+
+  it('takes the nearest difficulty, at random among equals', () => {
+    const counts = new Map<string, number>();
+    for (const seed of SEEDS) {
+      const r = assembleWithGame(
+        gameInput({ n: 4, seed, games: [game('g-hard-a', 'hard'), game('g-hard-b', 'hard')] }),
+      );
+      const id = r?.game?.pick.questionId as string;
+      counts.set(id, (counts.get(id) ?? 0) + 1);
+      const either = assembleWithGame(
+        gameInput({ n: 4, seed, games: [game('g-hard-a', 'hard'), game('g-easy', 'easy', 2)] }),
+      );
+      // Both are one step from medium.
+      expect(['g-hard-a', 'g-easy']).toContain(either?.game?.pick.questionId);
+      const near = assembleWithGame(
+        gameInput({ n: 4, seed, games: [game('g-hard-a', 'hard'), game('g-medium', 'medium')] }),
+      );
+      expect(near?.game?.pick.questionId).toBe('g-medium');
+    }
+    expect(counts.get('g-hard-a')).toBeGreaterThan(SEEDS.length / 4);
+    expect(counts.get('g-hard-b')).toBeGreaterThan(SEEDS.length / 4);
+  });
+
+  it('is deterministic for a seed, whatever order the games come in, and the dice vary', () => {
+    const many = [
+      game('g-a', 'medium'),
+      game('g-b', 'medium'),
+      game('g-c', 'medium'),
+      game('g-d', 'easy'),
+    ];
+    const draws = new Set<string>();
+    for (const seed of SEEDS) {
+      const a = assembleWithGame(gameInput({ n: 4, seed, games: many }));
+      const b = assembleWithGame(gameInput({ n: 4, seed, games: [...many].reverse() }));
+      expect(b).toEqual(a);
+      draws.add(JSON.stringify(a?.game?.pick.game?.values));
+    }
+    // Three dice have 216 outcomes: 400 seeds see many of them.
+    expect(draws.size).toBeGreaterThan(100);
+  });
+
+  it('is exactly assembleRound when no game is wanted or none is active', () => {
+    for (const seed of SEEDS) {
+      for (const n of [3, 4, 6]) {
+        const plain = assembleRound(input({ n, seed }));
+        const off = assembleWithGame(gameInput({ n, seed, wantGame: false }));
+        const none = assembleWithGame(gameInput({ n, seed, games: [] }));
+        expect(off).toEqual({ questions: plain, game: null });
+        expect(none).toEqual({ questions: plain, game: null });
+      }
+    }
+  });
+
+  it('needs the bank for one question fewer, and is null below that', () => {
+    const pool = richPool(1, ['probability']); // one easy, one medium, one hard
+    const r = assembleWithGame(gameInput({ pool, n: 4, topics: ['probability'] }));
+    expect(r?.questions.map((q) => q.difficulty)).toEqual(['easy', 'medium', 'hard']);
+    expect(r?.game?.index).toBe(1);
+    expect(assembleWithGame(gameInput({ pool: pool.slice(0, 2), n: 4 }))).toBeNull();
+    // Without the game the same bank is too small for the round.
+    expect(assembleWithGame(gameInput({ pool, n: 4, wantGame: false }))).toBeNull();
+  });
+
+  it('chooseGame is null without games', () => {
+    expect(chooseGame([], new Set(), 'medium', seededRand(1))).toBeNull();
   });
 });

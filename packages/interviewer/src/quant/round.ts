@@ -290,7 +290,8 @@ export function createQuantRuntime<R extends QuantPad>(core: QuantCore<R>) {
 
   const booksOf = (entry: QuantContext['questions'][number]): TurnBooks => ({
     hintRungs: entry.hintRungs,
-    hintsAvailable: (entry.question.hints ?? []).length,
+    hintsAvailable: (entry.kind === 'game' ? entry.game.hints : (entry.question.hints ?? []))
+      .length,
     followUpAsked: entry.followUpAsked,
   });
 
