@@ -1,0 +1,438 @@
+# Logic and deduction: liars and truth-tellers, hat puzzles, and what people can infer from what others know.
+- id: bt-logic-001
+  topic: brainteasers
+  subtopic: Logic and deduction
+  type: short
+  difficulty: easy
+  tags: [knights-and-knaves, liars, self-reference]
+  prompt: |
+    You reach a fork in the road. One road leads to the city, the other into a swamp. Two guards
+    stand at the fork: one always tells the truth and the other always lies, and you do not know
+    which is which. Both guards know which road is which and which of them is the liar.
+
+    You may ask **one** of the guards (your choice) **one** question that can be answered "yes"
+    or "no". What do you ask, and how do you then choose your road?
+  reference: |
+    Point at one road, say the left one, and ask either guard: "If I asked the other guard whether
+    the left road leads to the city, would he say yes?" Then take the road opposite to what the
+    answer suggests: if the reply is "yes", take the right road; if "no", take the left.
+
+    Why it works: the reply passes through exactly one truth-teller and one liar, whichever guard
+    you ask. If you ask the truth-teller, he truthfully reports the liar's false answer. If you ask
+    the liar, he falsely reports the truth-teller's true answer. Either way the reply is the
+    opposite of the truth.
+
+    An equally good question uses only the guard you ask: "If I asked you whether the left road
+    leads to the city, would you say yes?" The truth-teller says the true answer; the liar would
+    lie to the inner question, and lies about that too, so he also gives the true answer. Here you
+    follow the reply.
+  keyPoints:
+    - Asking directly about the road fails, because the same reply could come from either guard
+    - Gives a question that nests a guard's answer inside another question, such as asking what the other guard would say
+    - Shows both cases (asking the truth-teller, asking the liar) give the same reply
+    - States how to act on the reply (take the opposite road for the other-guard question, follow it for the would-you-say question)
+  hints:
+    - A plain question about the road is useless. Why?
+    - Can you make the answer pass through both a truth and a lie, so the two cancel or combine predictably?
+    - Try asking one guard what the other guard would say.
+  followUps:
+    - Now there are three guards, one truthful, one a liar, and one who answers at random. What changes?
+    - Could you also find out, with one question, which guard is the liar? Why or why not?
+  explanation: |
+    The trick is to make the answer independent of who you asked. A question like "Does the left
+    road lead to the city?" gets "yes" from the truth-teller and "no" from the liar, so it tells you
+    nothing without knowing which guard is which.
+
+    Nesting fixes that. "What would the other guard say?" always combines one true statement and one
+    lie, so the reply is reliably false. "What would *you* say?" makes the liar lie about a lie, so
+    the reply is reliably true. Check every case explicitly: there are only four (which guard you
+    ask, which road is right), and an answer that skips the case check usually has the final
+    instruction backwards.
+
+    A common slip is to ask a question that is not yes-or-no ("Which road would the other guard
+    say?"), which the problem as stated does not allow, or to forget to say what to do with the
+    reply.
+  source: { name: "Classic knights-and-knaves puzzle (e.g. Smullyan, What Is the Name of This Book?)" }
+
+- id: bt-logic-002
+  topic: brainteasers
+  subtopic: Logic and deduction
+  type: numeric
+  difficulty: hard
+  tags: [common-knowledge, induction, eye-colour]
+  prompt: |
+    An island has 100 inhabitants: 40 have green eyes and 60 have brown eyes. Nobody can see their
+    own eyes, there are no mirrors, and eye colour is never discussed. Everyone sees everyone else
+    every day. The island has one law: anyone who works out that their own eyes are green must leave
+    at the next midnight, and in the morning everyone sees who has gone. All islanders reason
+    perfectly, and all of this is common knowledge.
+
+    One day a visitor announces to everybody at once: "At least one of you has green eyes." Counting
+    the midnight right after the announcement as the first, on which midnight do the green-eyed
+    islanders leave?
+  answer: 40
+  hints:
+    - Suppose only one islander had green eyes. What happens on the first midnight?
+    - Now suppose there are exactly two. Each sees one green-eyed person. What does each conclude when nobody leaves on the first midnight?
+    - Look for a statement of the form "if there are exactly $k$ green-eyed islanders, they all leave on midnight $k$", and prove it by induction.
+  followUps:
+    - Every islander could already see at least 39 green-eyed people, so they all knew that "at least one has green eyes". What did the announcement add?
+    - What do the brown-eyed islanders learn, and when?
+    - What if the visitor had instead said "at least ten of you have green eyes"?
+  explanation: |
+    Prove by induction on $k$: if exactly $k$ islanders have green eyes, all of them leave on
+    midnight $k$, and nobody leaves before.
+
+    - $k = 1$: the green-eyed islander sees no green eyes, so after the announcement knows they must
+      be the one, and leaves on midnight 1.
+    - From $k - 1$ to $k$: each green-eyed islander sees $k - 1$ green-eyed people. If those were all
+      of them, by the induction hypothesis they would leave on midnight $k - 1$. When nobody leaves
+      then, each green-eyed islander concludes there is one more, themselves, and all $k$ leave on
+      midnight $k$. Brown-eyed islanders see $k$ green-eyed people and are expecting them to leave on
+      midnight $k$, so they learn nothing about themselves earlier.
+
+    With 40 green-eyed islanders they leave on midnight 40.
+
+    The puzzle is about common knowledge. Before the visitor, everyone knew "at least one has green
+    eyes", but not that everyone knew that everyone knew it, and so on to 40 levels. The
+    announcement makes it common knowledge, which is what starts the clock. The usual wrong answers
+    are "nothing happens, since the visitor said nothing new" and "they leave on the first night".
+  source: { name: "Blue-eyed islanders / muddy children puzzle (e.g. Tao's blog; Winkler, Mathematical Puzzles)" }
+
+- id: bt-logic-003
+  topic: brainteasers
+  subtopic: Logic and deduction
+  type: short
+  difficulty: medium
+  tags: [hats, parity, strategy]
+  prompt: |
+    100 prisoners stand in a line, all facing forward. Each wears a red or a blue hat, placed in any
+    way the warden likes. Each prisoner sees the hats of everyone in front of them, but not their
+    own or those behind. Starting from the back, each prisoner in turn says one word, "red" or
+    "blue", which everyone hears; a prisoner who names their own hat colour is freed. They may agree
+    on a strategy beforehand, but the only communication during the calls is the words themselves.
+
+    Give a strategy that guarantees as many prisoners as possible are freed, say how many it
+    guarantees, and explain why no strategy can guarantee more.
+  reference: |
+    Agree on parity. The prisoner at the back counts the red hats he sees in front of him and says
+    "red" if that number is odd, "blue" if it is even. He has no information about his own hat, so he
+    is freed only by luck.
+
+    Each later prisoner knows the parity announced at the back, sees every hat in front, and has
+    heard the calls of everyone between the back and himself, which (by induction) were all correct.
+    So he knows every hat except his own, and the parity tells him its colour. All 99 prisoners in
+    front of the back one are freed, whatever the hats.
+
+    No strategy can guarantee 100: the back prisoner's word depends only on hats he can see, so for
+    any strategy the warden can give him the other colour.
+  keyPoints:
+    - The back prisoner announces the parity (odd or even) of the number of red hats he sees
+    - Every other prisoner deduces their own colour from that parity, the hats ahead and the earlier calls
+    - The strategy guarantees 99 freed (the back prisoner only has a 50% chance)
+    - No strategy guarantees 100, because the back prisoner's call cannot depend on his own hat
+  hints:
+    - Nobody can help the prisoner at the back. What is the most useful thing he can say for the others?
+    - The others only need one bit of information each. Is there one bit that serves everyone?
+    - Think about the parity of a count of red hats.
+  followUps:
+    - What if hats come in three colours?
+    - Why does it not matter that the prisoners are never told whether earlier calls were right?
+    - Suppose the hats are chosen uniformly at random. What is the expected number freed under this strategy?
+  explanation: |
+    The point most candidates miss at first is that one word from the back can help everyone at
+    once. A strategy where the back prisoner names the hat of the person in front of him (and that
+    person repeats it) saves only about half: each pair sacrifices one.
+
+    Parity works because "the number of red hats ahead is odd" is a single bit that, combined with
+    what each prisoner sees and hears, pins down exactly one unknown hat. With $k$ colours, use the
+    sum of colour labels mod $k$ and the same argument guarantees 99.
+
+    The bound is also part of the answer: 99 is optimal, since no rule lets the back prisoner's call
+    depend on his own hat.
+  source: { name: "Classic prisoners-and-hats puzzle (e.g. Winkler, Mathematical Puzzles; techinterview.org)", url: "https://www.techinterview.org/post/3233476822/quant-interview-logic-puzzles/" }
+
+- id: bt-logic-004
+  topic: brainteasers
+  subtopic: Logic and deduction
+  type: numeric
+  difficulty: hard
+  tags: [sum-and-product, deduction, number-theory]
+  prompt: |
+    Two different whole numbers $x$ and $y$ are chosen with $2 \le x < y$ and $x + y \le 100$. Sam is
+    told only their sum and Polly only their product. Both know these rules, and both reason
+    perfectly and tell the truth. They then say, in this order:
+
+    1. Polly: "I don't know the two numbers."
+    2. Sam: "I knew you didn't know."
+    3. Polly: "Now I know them."
+    4. Sam: "Now I know them too."
+
+    What is the product of the two numbers?
+  answer: 52
+  hints:
+    - Sam's line 2 means that every way of splitting his sum into $x + y$ gives a product Polly could not have decoded. When can Polly decode a product immediately?
+    - If the sum can be written as a sum of two primes, or as 2 plus a prime, Sam could not have been sure. Which sums survive?
+    - The surviving sums are 11, 17, 23, 27, 29, 35, 37, 41, 47 and 53. For each, which splits give a product with exactly one split among those sums?
+  followUps:
+    - Why can the sum never be even? Which famous conjecture is lurking, and why is it safe to use here?
+    - How would you organise a program that checks the answer, and how would you check it does not depend on the bound 100?
+  explanation: |
+    Work through what each line rules out.
+
+    1. Polly cannot tell, so the product has at least two factorisations of the allowed form (it is
+       not, say, a product of two primes).
+    2. Sam knew this in advance, so *every* split of his sum gives such an ambiguous product. That
+       excludes every even sum (by Goldbach, verified far beyond 100, an even sum is a sum of two
+       primes $p + q$, and the product $pq$ would be decodable) and every sum $s$ with $s - 2$ prime
+       (product $2(s - 2)$). Checking the rest leaves the sums 11, 17, 23, 27, 29, 35, 37, 41, 47, 53.
+    3. Polly now knows: of the factorisations of her product, exactly one has a sum on that list.
+    4. Sam now knows: of the splits of his sum, exactly one has a product with property 3.
+
+    Only the sum 17 passes line 4, with the split $4 + 13$: the other splits of 17 give products (such
+    as $2 \cdot 15 = 30$, which also arises from $5 + 6$ with sum 11) that leave Polly with more than
+    one candidate. So the numbers are 4 and 13, and the product is 52.
+
+    This is a bookkeeping puzzle with a real idea in step 2, the "for every split" quantifier. The
+    common mistake is to read line 2 as "Sam doesn't know either", which removes far less and leads
+    nowhere.
+  source: { name: "Freudenthal's sum and product puzzle (1969)", url: "https://en.wikipedia.org/wiki/Sum_and_Product_Puzzle" }
+
+- id: bt-logic-005
+  topic: brainteasers
+  subtopic: Logic and deduction
+  type: single
+  difficulty: easy
+  tags: [hats, deduction]
+  prompt: |
+    Three people stand in a column, one behind another, all facing forward. They know that their
+    hats were taken from a box of 3 white and 2 black hats. The person at the back (A) sees the hats
+    of the two in front; the middle person (B) sees only the front person's hat; the front person (C)
+    sees no hats. Everyone reasons perfectly and hears everything said.
+
+    A says: "I can't tell my hat's colour." Then B says: "I can't tell mine either." What colour is
+    C's hat?
+  choices:
+    - { id: a, text: "White" }
+    - { id: b, text: "Black" }
+    - { id: c, text: "It cannot be determined" }
+  answer: a
+  explanation: |
+    A could only know his colour if he saw two black hats (then his own must be white, since there
+    are only two black ones). So A's statement tells everyone: B and C are not both black.
+
+    B knows that. If B saw a black hat on C, B would conclude his own hat is white. B says he cannot
+    tell, so C's hat is not black: it is white. C, who sees nothing, works this out from the two
+    statements alone.
+
+    Choice c comes from thinking that C, seeing nothing, cannot know anything; but "I don't know" is
+    information. Choice b usually comes from misreading A's statement as telling something about A's
+    own hat.
+  source: { name: "Classic three-hats deduction puzzle" }
+
+- id: bt-logic-006
+  topic: brainteasers
+  subtopic: Logic and deduction
+  type: numeric
+  difficulty: medium
+  tags: [knights-and-knaves, liars, counting]
+  prompt: |
+    Ten islanders stand in a row. Each is either a knight, who always tells the truth, or a knave,
+    who always lies. For $k = 1, 2, \ldots, 10$, the $k$-th islander says: "At least $k$ of the ten
+    of us are knaves." How many of them are knaves?
+  answer: 5
+  unit: knaves
+  hints:
+    - Suppose there are exactly $K$ knaves. Which of the ten statements are then true?
+    - Statements 1 to $K$ are true and the rest are false. Who must be the knights?
+  followUps:
+    - What if the $k$-th islander says "at most $k$ of us are knaves"?
+    - With 11 islanders and the same statements, what goes wrong?
+  explanation: |
+    If there are $K$ knaves, the statement "at least $k$ are knaves" is true exactly for
+    $k \le K$. So islanders $1, \ldots, K$ speak the truth and are knights, and islanders
+    $K + 1, \ldots, 10$ are knaves. That makes $10 - K$ knaves, so $10 - K = K$ and $K = 5$.
+
+    Checking: with knights in positions 1 to 5 and knaves in 6 to 10, the five knights' statements
+    ("at least 1, ..., at least 5 knaves") are true and the knaves' statements ("at least 6, ...,
+    at least 10") are false, as they must be.
+
+    The method is the standard one for liar puzzles: fix the unknown count, see which statements it
+    makes true, and require consistency. With an odd number of islanders the same equation has no
+    whole-number solution, so the situation is impossible.
+  source: { name: "Classic knights-and-knaves counting puzzle" }
+
+- id: bt-logic-007
+  topic: brainteasers
+  subtopic: Logic and deduction
+  type: short
+  difficulty: hard
+  tags: [prisoners, strategy, protocol]
+  prompt: |
+    100 prisoners are held in separate cells. Each day the warden picks one of them uniformly at
+    random (independently of earlier days) and takes them to a room containing a single light switch,
+    which starts **off**. The prisoner may flip the switch or leave it; nobody else ever touches it.
+    At any time, any prisoner in the room may declare "every prisoner has now been in this room". If
+    that is true, all go free; if false, all are executed. The prisoners may plan together once,
+    before the first day, and never communicate again.
+
+    Describe a strategy that makes the declaration certain to be correct, and explain why it is
+    eventually made.
+  reference: |
+    Choose one prisoner as the **counter**. Every other prisoner follows one rule: the first time
+    they enter the room and find the light off, they switch it on; after that they never touch it
+    again (and they also leave it alone whenever they find it on).
+
+    The counter, whenever he finds the light on, switches it off and adds one to his count. When the
+    count reaches 99, he declares.
+
+    Correctness: each "on" was produced by a different non-counter, each of whom switches it on at
+    most once, and the counter resets it before anyone else can use it. So a count of 99 means all 99
+    others have been in the room, and the counter obviously has too.
+
+    It terminates with probability 1: every prisoner is chosen infinitely often, so each uncounted
+    prisoner eventually finds the light off and the counter eventually finds it on. It is slow: after
+    each count the light waits for one of the $k$ remaining uncounted prisoners (on average $100/k$
+    days), then for the counter (on average 100 days), about 10,400 days (28 years) in all.
+  keyPoints:
+    - Designates a single counter; everyone else is a signaller
+    - Each non-counter switches the light on exactly once, the first time they find it off
+    - Only the counter switches it off, adding one to a count each time; he declares at 99
+    - Explains why a count of 99 means everyone has visited (each signal comes from a distinct prisoner)
+    - Explains that it ends with probability 1 because everyone is chosen infinitely often (and notes it takes on the order of 10,000 days)
+  hints:
+    - One bit of state is shared. Who should be allowed to reset it?
+    - Try giving one prisoner a special role.
+    - Make sure no prisoner can be counted twice.
+  followUps:
+    - What if nobody knows whether the switch starts off or on?
+    - Can you speed it up, for example by using the first part of the time differently?
+    - What if the warden is adversarial rather than random, but must bring everyone in eventually, infinitely often?
+  explanation: |
+    The difficulty is that one switch carries one bit, and you need to aggregate 99 independent
+    facts. The counter breaks the symmetry: everyone else may only send a signal (switch on), and only
+    he may consume it (switch off), so signals cannot collide or be lost. "Only once each" stops any
+    prisoner being counted twice.
+
+    Weak answers declare after some number of days ("after 2,000 days it is very likely"), which is
+    not certain, or let everyone toggle freely, which makes the count meaningless. The question asks
+    for certainty, so the termination argument (everyone is chosen infinitely often) is needed
+    alongside correctness.
+
+    For an unknown starting state, each non-counter switches it on twice instead of once, and the
+    counter waits for $2 \times 99 = 198$ signals; at most one of them can be spurious.
+  source: { name: "Prisoners and a light bulb (widely asked; e.g. Winkler, Mathematical Puzzles; techinterview.org)" }
+
+- id: bt-logic-008
+  topic: brainteasers
+  subtopic: Logic and deduction
+  type: numeric
+  difficulty: hard
+  tags: [hats, strategy, counting]
+  prompt: |
+    Three players each have a red or blue hat placed on their head, each colour with probability
+    $1/2$ independently. Each sees the other two hats but not their own. They may agree on a strategy
+    beforehand but cannot communicate once the hats are on. Then, simultaneously, each player either
+    names a colour for their own hat or passes. The team wins if at least one player names a colour
+    and nobody names a wrong one.
+
+    What is the largest probability of winning that any strategy can achieve?
+  answer: 3/4
+  hints:
+    - Any player who guesses is right exactly half the time, whatever the strategy. So the trick must be in *when* the wrong guesses happen.
+    - Can you arrange for all the wrong guesses to fall in the same few hat configurations?
+    - Look at what a player sees when all three hats are the same colour.
+  followUps:
+    - Show that no strategy can do better than 3/4.
+    - With 7 players, what probability can be achieved, and what does it have to do with error-correcting codes?
+  explanation: |
+    Strategy: a player who sees two hats of the same colour names the *other* colour; a player who
+    sees two different colours passes.
+
+    Of the 8 equally likely configurations, 6 have two hats of one colour and one of the other. In
+    each, the odd one out sees two equal hats and guesses correctly, while the other two see
+    different colours and pass: a win. In the 2 configurations where all three match, all three
+    guess wrongly: a loss. Winning probability $6/8 = 3/4$.
+
+    It cannot be beaten. Each player's guess is right in exactly as many configurations as it is
+    wrong, because their own hat is independent of what they see. So over the 8 configurations,
+    correct guesses equal wrong guesses. A winning configuration needs at least one correct guess,
+    and a losing configuration can hold at most 3 wrong ones, so
+    $\#\text{wins} \le \#\text{correct} = \#\text{wrong} \le 3 \cdot \#\text{losses}$, which gives at
+    most 6 wins out of 8.
+
+    The common wrong answer is $1/2$ ("one person guesses, the others pass"), from not seeing that
+    wrong guesses can be piled into the losing configurations.
+  source: { name: "Hat guessing with passes (Ebert, 1998; e.g. Winkler, Mathematical Puzzles)" }
+
+- id: bt-logic-009
+  topic: brainteasers
+  subtopic: Logic and deduction
+  type: short
+  difficulty: medium
+  tags: [hats, strategy, coordination]
+  prompt: |
+    Alice and Bob each get a hat, red or blue, chosen by an adversary. Each sees the other's hat but
+    not their own. Without any communication after the hats are on, they simultaneously write down a
+    guess for their own hat. They may agree a strategy beforehand.
+
+    Find a strategy that guarantees at least one of them guesses correctly, and explain why no
+    strategy can guarantee that both do.
+  reference: |
+    Alice writes the colour she sees on Bob; Bob writes the opposite of the colour he sees on Alice.
+
+    If the hats are the same colour, Alice is right. If they differ, Bob is right. One of the two
+    cases always holds, so exactly one of them is correct every time.
+
+    Both cannot be guaranteed: Alice's guess depends only on Bob's hat, so for each colour of Bob's
+    hat the adversary can give Alice the other colour, making her wrong. The same holds for Bob.
+  keyPoints:
+    - Alice bets that the hats match (copies Bob's colour)
+    - Bob bets that the hats differ (writes the opposite of Alice's colour)
+    - Exactly one of "same" and "different" is true, so exactly one guess is correct
+    - Nobody's guess can depend on their own hat, so the adversary can always defeat any single player and both cannot be guaranteed
+  hints:
+    - Instead of thinking about individual hats, think about the pair. What are the two possibilities?
+    - Let each player be responsible for one of those possibilities.
+  followUps:
+    - "With three players and three colours, each seeing the other two hats: can you guarantee at least one correct guess?"
+    - Generalise to $n$ players and $n$ colours.
+  explanation: |
+    The idea is to split the possible worlds between the players: "the hats match" and "the hats
+    differ" cover every case, and each player assumes one of them. This is the smallest instance of a
+    general trick: with $n$ players and $n$ colours labelled $0, \ldots, n - 1$, player $i$ guesses
+    the colour that would make the sum of all hats congruent to $i$ modulo $n$, and exactly one
+    player is right.
+
+    A common wrong answer is that it cannot be done since each guess is a coin flip. That is true of
+    each guess separately, but the guesses can be correlated so that their failures never coincide.
+  source: { name: "Classic two-player hat puzzle (e.g. Winkler, Mathematical Puzzles)" }
+
+- id: bt-logic-010
+  topic: brainteasers
+  subtopic: Logic and deduction
+  type: single
+  difficulty: easy
+  tags: [deduction, labels]
+  prompt: |
+    Three closed boxes are labelled "Apples", "Oranges" and "Apples and oranges". One box holds only
+    apples, one only oranges and one a mix of both, but **every** label is wrong. You may take one
+    fruit from one box without looking inside, and then you must relabel all three boxes correctly.
+    Which box should you take the fruit from?
+  choices:
+    - { id: a, text: "The box labelled Apples" }
+    - { id: b, text: "The box labelled Oranges" }
+    - { id: c, text: "The box labelled Apples and oranges" }
+    - { id: d, text: "No single fruit can be enough" }
+  answer: c
+  explanation: |
+    The box labelled "Apples and oranges" is not the mixed box, so it holds only one kind of fruit,
+    and one fruit tells you which. Say it is an apple: that box is the apples box. The box labelled
+    "Oranges" is not oranges and is not apples (taken), so it is the mixed box, and the box labelled
+    "Apples" holds the oranges. An orange works the same way.
+
+    Choices a and b fail because those boxes might be the mixed one: from the box labelled "Apples"
+    (which holds oranges or the mix) an orange does not tell you which. Choice d is the instinct that
+    one fruit is too little information, missing that the "all labels wrong" rule does most of the
+    work.
+  source: { name: "Mislabelled boxes (classic; e.g. Zhou, A Practical Guide to Quantitative Finance Interviews)" }

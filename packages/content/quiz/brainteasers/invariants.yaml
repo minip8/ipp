@@ -1,0 +1,313 @@
+# Invariants, parity and colouring: find the quantity a move cannot change, or colour the board so a tile must cover the same pattern.
+- id: bt-invariants-001
+  topic: brainteasers
+  subtopic: Invariants, parity and colouring
+  type: single
+  difficulty: easy
+  tags: [colouring, dominoes, chessboard]
+  prompt: |
+    Two diagonally opposite corner squares are removed from an $8 \times 8$ chessboard, leaving 62
+    squares. Can the remaining board be covered exactly by 31 dominoes, each covering two adjacent
+    squares?
+  choices:
+    - { id: a, text: "Yes: 62 squares is exactly 31 dominoes, and a covering can be found" }
+    - { id: b, text: "No: the two removed squares are the same colour, so 32 squares of one colour and 30 of the other remain, but each domino covers one of each" }
+    - { id: c, text: "No: 62 is not a multiple of 4" }
+    - { id: d, text: "It depends on which pair of opposite corners is removed" }
+  answer: b
+  explanation: |
+    Every domino covers one black and one white square, so any set of 31 dominoes covers 31 of each.
+    Diagonally opposite corners have the same colour, so the board that is left has 30 squares of
+    that colour and 32 of the other. No covering exists.
+
+    Choice a is the area argument, which is necessary but not sufficient. Choice c invents a
+    condition: dominoes cover 2 squares each, and 62 is even. Choice d fails because both pairs of
+    opposite corners are same-coloured pairs. (Removing two squares of *different* colours, by
+    contrast, always leaves a board that can be covered, a theorem of Gomory.)
+  source: { name: "Mutilated chessboard (Gamow and Stern; e.g. techinterview.org)", url: "https://www.techinterview.org/post/3233476822/quant-interview-logic-puzzles/" }
+
+- id: bt-invariants-002
+  topic: brainteasers
+  subtopic: Invariants, parity and colouring
+  type: single
+  difficulty: medium
+  tags: [invariant, modular-arithmetic, chameleons]
+  prompt: |
+    An island has 10 red, 14 green and 19 blue chameleons. Whenever two chameleons of **different**
+    colours meet, both change to the third colour (a red and a green both become blue, and so on).
+    Meetings of two chameleons of the same colour change nothing. Meetings can happen in any order.
+    Which is true?
+  choices:
+    - { id: a, text: "They can all end up red" }
+    - { id: b, text: "They can all end up green, and no other single colour" }
+    - { id: c, text: "They can all end up blue" }
+    - { id: d, text: "They can never all be the same colour" }
+    - { id: e, text: "Any of the three colours can be reached" }
+  answer: b
+  explanation: |
+    Look at the differences between the counts modulo 3. A meeting of red and green changes the
+    counts $(R, G, B)$ by $(-1, -1, +2)$: $R - G$ is unchanged, and $R - B$ and $G - B$ each change
+    by $-3$. The other meetings act the same way, so every pairwise difference is invariant modulo
+    3.
+
+    All green means $R = B = 0$, which needs $R - B \equiv 0 \pmod 3$: here $10 - 19 = -9$, so it is
+    allowed. All red needs $G - B \equiv 0$, but $14 - 19 = -5 \not\equiv 0$; all blue needs
+    $R - G \equiv 0$, but $10 - 14 = -4 \not\equiv 0$. And green can actually be reached: for
+    example, red and blue meet ten times, giving $(0, 34, 9)$, then a green and blue meeting gives
+    $(2, 33, 8)$, and pairing the two reds with blues brings it to $(0, 37, 6)$; repeating this
+    reaches $(0, 43, 0)$.
+
+    Choice d is the classic answer for the 13/15/17 version, where all three differences are
+    non-zero modulo 3, and choice e is the guess that enough meetings can reach anything. The lesson
+    is that an invariant proves impossibility, and possibility then needs an explicit sequence.
+  source: { name: "Chameleon colours (e.g. Zhou, A Practical Guide to Quantitative Finance Interviews)" }
+
+- id: bt-invariants-003
+  topic: brainteasers
+  subtopic: Invariants, parity and colouring
+  type: multiple
+  difficulty: medium
+  tags: [parity, invariant, board-game]
+  prompt: |
+    The numbers $1, 2, \ldots, 10$ are written on a board. A move is: erase any two numbers $a$ and
+    $b$ and write $|a - b|$ in their place. After nine moves one number is left. Which of these values
+    can it be? Select all that apply.
+  choices:
+    - { id: a, text: "0" }
+    - { id: b, text: "1" }
+    - { id: c, text: "5" }
+    - { id: d, text: "9" }
+    - { id: e, text: "10" }
+    - { id: f, text: "55" }
+  answer: [b, c, d]
+  explanation: |
+    **Parity is invariant.** Replacing $a$ and $b$ by $|a - b|$ changes the sum by $a + b - |a - b|$,
+    which is $2 \min(a, b)$, an even number. The starting sum is 55, odd, so the last number is odd.
+    That rules out 0 and 10.
+
+    **Size is bounded.** $|a - b|$ is never larger than the larger of $a$ and $b$, so no number ever
+    exceeds 10. That rules out 55 (the sum, which is what you would get if the move were $a + b$).
+
+    **The odd values up to 10 are all reachable.** For example, pair up $(10, 9), (8, 7), (6, 5),
+    (4, 3)$ to get four 1s, leaving $1, 1, 1, 1, 1, 2$; combining $2$ and $1$ gives $1$, and then the
+    five 1s reduce to a single 1 (two 1s give 0, and $|1 - 0| = 1$). An exhaustive search confirms
+    that the reachable final values are exactly 1, 3, 5, 7 and 9.
+
+    The mistakes this catches: choosing 0 (assuming everything can cancel), and 55 (confusing the
+    move with addition, which preserves the sum itself rather than only its parity).
+  source: { name: "Classic board-erasing invariant puzzle (e.g. Engel, Problem-Solving Strategies)" }
+
+- id: bt-invariants-004
+  topic: brainteasers
+  subtopic: Invariants, parity and colouring
+  type: numeric
+  difficulty: medium
+  tags: [invariant, product, board-game]
+  prompt: |
+    The 100 numbers $1, \tfrac12, \tfrac13, \ldots, \tfrac{1}{100}$ are written on a board. A move
+    is: erase any two numbers $a$ and $b$ and write $a + b + ab$ in their place. After 99 moves one
+    number is left. What is it?
+  answer: 100
+  hints:
+    - Try it with just $1$ and $\tfrac12$, and then with $1, \tfrac12, \tfrac13$. Does the order matter?
+    - Look at $1 + a + b + ab$.
+  followUps:
+    - What if the move is $a + b - ab$ instead?
+    - Why does the answer not depend on the order of the moves?
+  explanation: |
+    The move is the product of $(1 + a)$ and $(1 + b)$ in disguise:
+
+    $$1 + (a + b + ab) = (1 + a)(1 + b).$$
+
+    So the product of $(1 + x)$ over all numbers on the board never changes. At the start it is
+
+    $$\prod_{k=1}^{100}\left(1 + \frac1k\right) = \prod_{k=1}^{100} \frac{k+1}{k} = \frac{101}{1} = 101,$$
+
+    a telescoping product. At the end it is $1 + x$ for the last number $x$, so $x = 100$, whatever
+    order the moves are made in.
+
+    The hard part is spotting the invariant; trying two or three numbers first and noticing the
+    answers $2$ and $3$ is the usual way in. A common error is to multiply the original numbers
+    instead and get $1/100!$.
+  source: { name: "Classic invariant problem (e.g. Engel, Problem-Solving Strategies)" }
+
+- id: bt-invariants-005
+  topic: brainteasers
+  subtopic: Invariants, parity and colouring
+  type: short
+  difficulty: hard
+  tags: [colouring, tiling, tetromino]
+  prompt: |
+    Can a $10 \times 10$ board be tiled exactly by 25 straight tiles of size $1 \times 4$, each placed
+    horizontally or vertically along the grid lines? Prove your answer.
+  reference: |
+    No.
+
+    Colour the square in row $i$, column $j$ (counting from 0) with colour $(i + j) \bmod 4$, so the
+    colours run in diagonal stripes 0, 1, 2, 3, 0, 1, ... . Any $1 \times 4$ tile, horizontal or
+    vertical, covers four consecutive values of $i + j$, so it covers exactly one square of each
+    colour. Twenty-five tiles would cover exactly 25 squares of each colour.
+
+    Count the colours on the board: the number of squares with $i + j = s$ is $s + 1$ for $s \le 9$
+    and $19 - s$ for $s \ge 9$. Adding over $s \equiv c \pmod 4$ gives 25 squares of colour 0, 26 of
+    colour 1, 25 of colour 2 and 24 of colour 3. Since these are not all 25, no tiling exists.
+  keyPoints:
+    - "The answer is no, even though the area works (100 = 25 × 4)"
+    - Uses a four-colouring, such as (row + column) mod 4, in which every 1 × 4 tile covers one square of each colour
+    - Counts the colours and finds they are unequal (26 of one colour and 24 of another)
+    - Concludes that 25 tiles, covering 25 of each colour, cannot fit
+  hints:
+    - The area does not rule it out. You need a colouring that every tile must respect.
+    - The chessboard colouring is not enough. Try four colours.
+    - Colour along diagonals, so that four squares in a row or a column always get four different colours.
+  followUps:
+    - For which $n$ can an $n \times n$ board be tiled by $1 \times 4$ tiles?
+    - Which single square can be removed from an $8 \times 8$ board so that the rest can be tiled by $1 \times 3$ tiles?
+  explanation: |
+    Tiling impossibility proofs almost always come from a colouring in which every tile covers a
+    fixed pattern of colours, followed by a count showing the board does not have that pattern. Two
+    colours (the chessboard) are not enough here: every $1 \times 4$ tile covers two of each, and the
+    board has 50 of each. Four diagonal colours work because they make a tile cover one of each.
+    Answers that only check the area, or that try a few placements and give up, have not proved
+    anything.
+
+    In general an $m \times n$ rectangle can be tiled by $1 \times k$ tiles exactly when $k$ divides
+    $m$ or $n$ (de Bruijn), so a $10 \times 10$ board fails because 4 divides neither side.
+  source: { name: "Classic colouring proof (e.g. Winkler, Mathematical Puzzles; Engel, Problem-Solving Strategies)" }
+
+- id: bt-invariants-006
+  topic: brainteasers
+  subtopic: Invariants, parity and colouring
+  type: single
+  difficulty: medium
+  tags: [parity, chessboard, invariant]
+  prompt: |
+    An $8 \times 8$ board is coloured like a chessboard. A move is to pick an entire row or an entire
+    column and swap the colour of each of its 8 squares (black becomes white and white becomes black).
+    Can some sequence of moves leave **exactly one** black square?
+  choices:
+    - { id: a, text: "Yes" }
+    - { id: b, text: "No: every move changes the number of black squares by an even amount, and it starts at 32" }
+    - { id: c, text: "No: every move keeps the number of black squares the same" }
+    - { id: d, text: "Only if you may also swap the colours of a 2 × 2 block" }
+  answer: b
+  explanation: |
+    If a row has $k$ black squares, swapping it leaves $8 - k$, a change of $8 - 2k$, which is even.
+    The same holds for a column. The count starts at 32, even, so it stays even, and 1 is impossible.
+
+    Choice c is tempting because the very first move on a chessboard changes nothing (every row and
+    column has 4 black squares), but later moves do change the count: swapping rows 2, 4, 6 and 8
+    gives vertical stripes, and then swapping one column changes the count by 8. Choice d fails
+    because swapping a $2 \times 2$ block changes the count by $4 - 2k$, also even, so it does not
+    help.
+
+    The general technique: when a question asks whether some position is reachable, look first for a
+    quantity whose parity (or residue) every move preserves.
+  source: { name: "Classic parity puzzle (e.g. Engel, Problem-Solving Strategies)" }
+
+- id: bt-invariants-007
+  topic: brainteasers
+  subtopic: Invariants, parity and colouring
+  type: short
+  difficulty: hard
+  tags: [monovariant, perimeter, grid]
+  prompt: |
+    Some squares of an $8 \times 8$ grid are infected. Every minute, each healthy square with at least
+    two infected neighbours (sharing an edge) becomes infected; infected squares stay infected. What
+    is the smallest number of initially infected squares from which the whole grid can become
+    infected? Prove that fewer cannot work.
+  reference: |
+    **8.** Infecting the 8 squares of a diagonal works: the squares next to two consecutive diagonal
+    squares become infected first, and the infection spreads outwards until the grid is full.
+
+    **Fewer cannot work.** Consider the perimeter of the infected region: the number of edges between
+    an infected square and a healthy square or the edge of the board. When a healthy square with
+    $m \ge 2$ infected neighbours becomes infected, its $m$ shared edges stop counting and its other
+    $4 - m$ edges start counting, so the perimeter changes by $4 - 2m \le 0$. (Squares infected in the
+    same minute can be added one at a time; each still has at least two infected neighbours.) So the
+    perimeter never increases.
+
+    At the end the whole grid is infected, with perimeter $4 \times 8 = 32$. Each initially infected
+    square contributes at most 4 to the starting perimeter, so we need $4k \ge 32$, that is, at least
+    8 squares.
+  keyPoints:
+    - "The answer is 8, achieved for example by a diagonal"
+    - Uses the perimeter of the infected region as the quantity to track
+    - Shows a new infection with at least two infected neighbours never increases the perimeter
+    - Compares the final perimeter (32) with at most 4 per initial square to get at least 8
+  hints:
+    - Find a small starting set that works, then look for a quantity that never increases as the infection spreads.
+    - Think about the boundary between infected and healthy squares, counting the edge of the board too.
+    - What happens to that boundary when a square with two (or three, or four) infected neighbours becomes infected?
+  followUps:
+    - What is the answer for an $m \times n$ grid?
+    - What if a healthy square needs three infected neighbours instead of two?
+  explanation: |
+    This is a monovariant argument: not a quantity that stays fixed, but one that can only move one
+    way. The perimeter works because the rule "at least two infected neighbours" is exactly what makes
+    each new infection remove at least as many boundary edges as it adds.
+
+    The example and the bound are both needed. Many candidates find the diagonal and stop, or guess
+    "about 8" by symmetry; the interviewer wants the reason 7 cannot work, and the perimeter makes it
+    two lines. The same argument gives $n$ for an $n \times n$ grid.
+  source: { name: "Square infection (classic olympiad problem; e.g. Brainstellar, Winkler, Mathematical Puzzles)", url: "https://brainstellar.com/puzzles/medium/130" }
+
+- id: bt-invariants-008
+  topic: brainteasers
+  subtopic: Invariants, parity and colouring
+  type: short
+  difficulty: easy
+  tags: [colouring, knight, parity]
+  prompt: |
+    Can a knight move around a $5 \times 5$ board visiting every square exactly once and finish on a
+    square from which it could jump back to its starting square in one move (a closed tour)? Explain.
+  reference: |
+    No. Colour the board like a chessboard. Every knight move goes from one colour to the other. A
+    closed tour visits all 25 squares and returns to the start, so it is a cycle of 25 moves. After an
+    odd number of moves the knight is on the opposite colour to where it started, so it cannot be
+    back on the starting square. Hence no closed tour exists. (Open tours, which need not return, do
+    exist on the $5 \times 5$ board.)
+  keyPoints:
+    - Colours the board in the usual way and notes that a knight's move always changes colour
+    - A closed tour on 25 squares is a cycle of 25 moves
+    - An odd number of colour changes cannot bring the knight back to its starting colour
+    - Concludes that no closed tour exists
+  hints:
+    - Colour the board. What does a knight's move do to the colour of its square?
+    - How many moves does a closed tour on 25 squares take?
+  followUps:
+    - Does the same argument rule out an open tour? On which colour must an open tour start?
+    - On which rectangular boards can a closed tour exist at all?
+  explanation: |
+    Whenever moves alternate between two classes of square, any closed route has an even number of
+    moves. The board has an odd number of squares, so a route through all of them and back is
+    impossible. This is the parity of a bipartite graph in disguise.
+
+    A common wrong answer is "yes, knight's tours exist on most boards", which confuses open and
+    closed tours. An open tour here must start and end on the colour with 13 squares.
+  source: { name: "Classic knight's tour parity argument" }
+
+- id: bt-invariants-009
+  topic: brainteasers
+  subtopic: Invariants, parity and colouring
+  type: numeric
+  difficulty: easy
+  tags: [invariant, counting, chocolate-bar]
+  prompt: |
+    A chocolate bar is a $6 \times 8$ grid of 48 squares. A break takes **one** piece and snaps it
+    along a straight line between squares into two pieces (you may not stack pieces). What is the
+    smallest number of breaks needed to separate all 48 squares?
+  answer: 47
+  unit: breaks
+  followUps:
+    - Does the order of the breaks matter at all? Why?
+    - "How many matches are played in a knockout tournament with 73 players?"
+  explanation: |
+    Each break turns one piece into two, so it increases the number of pieces by exactly one. You
+    start with 1 piece and need 48, so every way of breaking takes exactly 47 breaks: no strategy
+    is better or worse.
+
+    Candidates often start optimising (break along the long side first, halve each piece) before
+    noticing that the count is fixed. Allowing pieces to be stacked would change the answer, since a
+    break could then split several pieces at once, which is why the rule matters.
+  source: { name: "Chocolate bar problem (classic; e.g. Zhou, A Practical Guide to Quantitative Finance Interviews)" }

@@ -1,0 +1,280 @@
+# Pigeonhole and extremal arguments: more objects than boxes, and choosing the best or worst configuration to force a property.
+- id: bt-pigeonhole-001
+  topic: brainteasers
+  subtopic: Pigeonhole and extremal arguments
+  type: numeric
+  difficulty: easy
+  tags: [pigeonhole, worst-case, socks]
+  prompt: |
+    A drawer holds 10 black, 8 brown and 6 grey socks, all mixed up. In the dark you take socks out
+    one at a time without seeing them. What is the smallest number you must take to be sure of having
+    two socks of the same colour?
+  answer: 4
+  unit: socks
+  followUps:
+    - How many must you take to be sure of two **black** socks?
+    - The drawer instead holds 10 pairs of black gloves and 10 pairs of brown gloves. How many must you take to be sure of a matching pair (same colour, one left and one right)?
+  explanation: |
+    There are three colours. Three socks can all be different, one of each colour, so three is not
+    enough. With four socks, two must share a colour, since there are only three colours to go round.
+
+    The numbers of socks of each colour are a distraction for this question. They matter for the
+    follow-up: to be sure of two black socks the worst case is all 8 brown and all 6 grey first, so
+    you need $8 + 6 + 2 = 16$. The common wrong answers to the main question are 3, forgetting that
+    three socks can all differ, and 16 or more, from answering the harder question instead.
+  source: { name: "Matching socks (classic; e.g. Zhou, A Practical Guide to Quantitative Finance Interviews)" }
+
+- id: bt-pigeonhole-002
+  topic: brainteasers
+  subtopic: Pigeonhole and extremal arguments
+  type: short
+  difficulty: medium
+  tags: [pigeonhole, handshakes, graphs]
+  prompt: |
+    At a party of $n \ge 2$ people, some pairs shake hands (nobody shakes their own hand or the same
+    person's hand twice). Prove that two people shook the same number of hands.
+  reference: |
+    Each person shook between $0$ and $n - 1$ hands: $n$ possible values for $n$ people, so the
+    pigeonhole principle does not apply directly.
+
+    But $0$ and $n - 1$ cannot both occur: someone with $n - 1$ handshakes shook hands with everyone,
+    so nobody has $0$. So the $n$ people's counts take at most $n - 1$ values, and by the pigeonhole
+    principle two people have the same count.
+  keyPoints:
+    - Each count lies between 0 and n - 1, giving n possible values
+    - Notes that n values for n people is not yet enough for the pigeonhole principle
+    - Shows 0 and n - 1 cannot both occur, since someone who shook every hand rules out someone who shook none
+    - Concludes there are at most n - 1 values for n people, so two coincide
+  hints:
+    - What are the possible handshake counts?
+    - That gives as many values as people. Can all of them actually occur at once?
+  followUps:
+    - Give a party of three or more people in which only one pair of people share a handshake count.
+    - Is the same true if people may shake hands with themselves?
+  explanation: |
+    The pigeonhole principle needs strictly more pigeons than holes, and a first count of the holes
+    gives exactly as many. The extra observation, that the two extremes exclude each other, removes
+    one hole. Candidates who stop at "there are $n$ possible values" have not proved anything; those
+    who claim "someone must have 0" are wrong (everyone could shake everyone's hand).
+
+    In graph terms: every finite simple graph with at least two vertices has two vertices of the same
+    degree.
+  source: { name: "Handshake problem (classic; e.g. Zhou, A Practical Guide to Quantitative Finance Interviews)" }
+
+- id: bt-pigeonhole-003
+  topic: brainteasers
+  subtopic: Pigeonhole and extremal arguments
+  type: short
+  difficulty: medium
+  tags: [ramsey, pigeonhole, graphs]
+  prompt: |
+    Prove that in any group of six people there are either three who all know each other or three
+    who are all strangers to each other (knowing is mutual). Then show that five people are not
+    always enough.
+  reference: |
+    Pick one person, $A$. Of the other five, by the pigeonhole principle at least three are all
+    acquaintances of $A$ or at least three are all strangers to $A$. Say three, $B$, $C$, $D$, know
+    $A$ (the other case is the same with the roles swapped). If any two of $B$, $C$, $D$ know each
+    other, those two together with $A$ are three mutual acquaintances. If no two of them know each
+    other, $B$, $C$, $D$ are three mutual strangers.
+
+    Five are not enough: seat five people round a table so that each knows exactly their two
+    neighbours. Any three people include two who are not neighbours, so no three all know each
+    other; and any three include two who are neighbours, so no three are all strangers.
+  keyPoints:
+    - Fixes one person and splits the other five into acquaintances and strangers of that person
+    - Uses pigeonhole to get at least three on one side
+    - Checks both cases for those three, finding a triangle of acquaintances or of strangers
+    - Gives a five-person counterexample (each knows exactly their two neighbours in a cycle)
+  hints:
+    - Focus on one person. How many of the other five do they know?
+    - At least three of the five are on the same side. What about the relations among those three?
+    - For five people, try arranging the acquaintances in a cycle.
+  followUps:
+    - In any group of six there are at least two such triples. Can you see why?
+    - How large must a group be to guarantee four mutual acquaintances or three mutual strangers?
+  explanation: |
+    This is the Ramsey number $R(3, 3) = 6$. The proof is the standard pattern: use pigeonhole on one
+    vertex to get a large uniform neighbourhood, then look inside it. The counterexample is half the
+    question: without it, the candidate has shown 6 is enough but not that it is the smallest.
+
+    A common gap is treating only the "acquaintances" case and forgetting to say the strangers case
+    is symmetric, or giving a five-person example that does contain a triangle (check every triple).
+  source: { name: "Have we met before? (R(3,3) = 6; e.g. Zhou, A Practical Guide to Quantitative Finance Interviews)" }
+
+- id: bt-pigeonhole-004
+  topic: brainteasers
+  subtopic: Pigeonhole and extremal arguments
+  type: short
+  difficulty: medium
+  tags: [pigeonhole, geometry, covering]
+  prompt: |
+    76 darts have landed on (or on the edge of) a square board 1 metre on each side. Show that some
+    circle of radius $\tfrac17$ metre contains at least 4 of the darts.
+  reference: |
+    Divide the board into a $5 \times 5$ grid of small squares with side $\tfrac15$ metre (a dart on a
+    shared edge is assigned to either square). There are 25 small squares and 76 darts, and
+    $25 \times 3 = 75 < 76$, so some small square holds at least 4 darts.
+
+    A circle of radius $\tfrac17$ centred at the centre of that small square covers it entirely: the
+    farthest points of the square, its corners, are at distance half the diagonal,
+    $\tfrac{\sqrt2}{10} \approx 0.1414$, which is less than $\tfrac17 \approx 0.1429$. So that circle
+    contains at least 4 darts.
+  keyPoints:
+    - Divides the board into 25 squares of side 1/5
+    - Uses pigeonhole (76 > 3 × 25) to find a small square with at least 4 darts
+    - Checks that a circle of radius 1/7 covers a square of side 1/5, since half the diagonal is √2/10 < 1/7
+  hints:
+    - Divide the board into equal cells. How many cells would guarantee 4 darts in one of them?
+    - Which cell shape and size fits inside a circle of radius $\tfrac17$?
+  followUps:
+    - With the same argument, what is the smallest radius that works?
+    - With 51 darts, how many can you guarantee in some circle of radius $\tfrac17$?
+  explanation: |
+    The two halves are a pigeonhole count and a covering check, and the numbers are chosen so that both
+    just work: 25 cells is the right number because $3 \times 25 < 76$, and a $\tfrac15$ square only
+    just fits in the circle. Candidates often get the count right and forget to check that the circle
+    covers a whole cell, or try to place the circle over arbitrary darts, which cannot be made to work.
+  source: { name: "Ants on a square (Zhou, A Practical Guide to Quantitative Finance Interviews)" }
+
+- id: bt-pigeonhole-005
+  topic: brainteasers
+  subtopic: Pigeonhole and extremal arguments
+  type: numeric
+  difficulty: medium
+  tags: [pigeonhole, divisibility, antichain]
+  prompt: |
+    What is the largest number of integers you can choose from $1, 2, \ldots, 100$ so that no chosen
+    number divides another chosen number?
+  answer: 50
+  unit: numbers
+  hints:
+    - Find a large set that works. Where are numbers least likely to divide one another?
+    - For the bound, write every number as $2^k \times m$ with $m$ odd. What happens to two numbers with the same $m$?
+  followUps:
+    - Show that among any 51 numbers from 1 to 100, two are consecutive (and hence coprime).
+    - How would your argument change for $1, \ldots, 2n$?
+  explanation: |
+    **50 is possible.** Take $51, 52, \ldots, 100$: if one divided another, the quotient would be at
+    least 2, but $2 \times 51 > 100$.
+
+    **51 is impossible.** Write each number as $2^k \cdot m$ with $m$ odd. There are only 50 odd
+    numbers $m$ below 100, so among 51 chosen numbers two share the same $m$, say $2^a m$ and $2^b m$
+    with $a < b$. Then the first divides the second.
+
+    The pigeonholes here are the odd parts, which is the idea to find. A common wrong answer is the
+    number of primes up to 100 (25), which is a valid set but far from the largest.
+  source: { name: "Classic pigeonhole problem (Erdős; e.g. Engel, Problem-Solving Strategies)" }
+
+- id: bt-pigeonhole-006
+  topic: brainteasers
+  subtopic: Pigeonhole and extremal arguments
+  type: short
+  difficulty: hard
+  tags: [extremal-principle, geometry, matching]
+  prompt: |
+    There are $n$ red points and $n$ blue points in the plane, with no three of the $2n$ points on a
+    line. Prove that you can pair each red point with a blue point and join each pair by a straight
+    segment so that no two segments cross.
+  reference: |
+    Among the finitely many ways ($n!$) of pairing red with blue, choose one whose **total segment
+    length is as small as possible**. Claim: it has no crossing.
+
+    Suppose segments $R_1B_1$ and $R_2B_2$ crossed at a point $X$. Swap partners to $R_1B_2$ and
+    $R_2B_1$. By the triangle inequality,
+
+    $$|R_1B_2| < |R_1X| + |XB_2| \quad\text{and}\quad |R_2B_1| < |R_2X| + |XB_1|,$$
+
+    with strict inequality because no three points are on a line. Adding, the new pair of segments is
+    strictly shorter than $|R_1B_1| + |R_2B_2|$. That contradicts minimality, so the shortest pairing
+    has no crossings.
+  keyPoints:
+    - Chooses the pairing that minimises the total length (finitely many pairings, so a minimum exists)
+    - Assumes two of its segments cross and swaps the partners
+    - Uses the triangle inequality at the crossing point to show the swap strictly shortens the total
+    - Uses "no three on a line" for strictness, and concludes by contradiction
+  hints:
+    - Rather than building the pairing step by step, consider the best pairing under some measure.
+    - Which measure gets smaller when you uncross two crossing segments?
+    - Look at the crossing point and use the triangle inequality.
+  followUps:
+    - Why does a greedy approach (repeatedly uncross any crossing pair) also terminate?
+    - Where does the argument use that no three points are on a line?
+  explanation: |
+    This is the extremal principle: choose the object that is best by some measure and show that a
+    defect would let you improve it. Constructive approaches (sweep lines, recursive halving) can be
+    made to work but are much longer; the minimal-length argument is two lines once the measure is
+    found.
+
+    Candidates sometimes argue "uncross pairs until none cross" without saying why it stops;
+    uncrossing one pair can create new crossings elsewhere. Total length strictly decreases at each
+    uncrossing and there are finitely many pairings, which is the missing justification.
+  source: { name: "Classic extremal-principle problem (e.g. Putnam 1979; Engel, Problem-Solving Strategies)" }
+
+- id: bt-pigeonhole-007
+  topic: brainteasers
+  subtopic: Pigeonhole and extremal arguments
+  type: numeric
+  difficulty: hard
+  tags: [erdos-szekeres, sequences, pigeonhole]
+  prompt: |
+    What is the length of the longest sequence of distinct real numbers that contains no increasing
+    subsequence of length 4 and no decreasing subsequence of length 4? (A subsequence keeps the
+    original order but need not be consecutive.)
+  answer: 9
+  hints:
+    - Try to build a long one. Blocks of decreasing runs placed in increasing order work well.
+    - For the bound, label each term with two numbers - the length of the longest increasing subsequence ending there, and of the longest decreasing one.
+    - Can two different terms have the same pair of labels?
+  followUps:
+    - State and prove the general version for subsequences of length $n + 1$.
+    - How many permutations of $1, \ldots, 9$ achieve the maximum? (Hard; it is connected to Young tableaux.)
+  explanation: |
+    **Nine is possible:** $3, 2, 1, 6, 5, 4, 9, 8, 7$. Any increasing subsequence takes at most one
+    term from each block of three, so has length at most 3; any decreasing one stays inside a block,
+    so also has length at most 3.
+
+    **Ten is impossible** (Erdős-Szekeres). Give term $i$ the label $(a_i, d_i)$: the lengths of the
+    longest increasing and longest decreasing subsequences ending at it. For $i < j$, if
+    $x_i < x_j$ then $a_j > a_i$, and if $x_i > x_j$ then $d_j > d_i$, so different terms have
+    different labels. With no run of length 4, each label lies in $\{1, 2, 3\}^2$, which has only 9
+    pairs. Ten terms would need ten different labels.
+
+    In general, every sequence of $n^2 + 1$ distinct numbers has a monotone subsequence of length
+    $n + 1$, and $n^2$ is not enough. A common wrong answer is 6 or 7 from trying examples by hand
+    without the block construction.
+  source: { name: "Erdős-Szekeres theorem (1935)" }
+
+- id: bt-pigeonhole-008
+  topic: brainteasers
+  subtopic: Pigeonhole and extremal arguments
+  type: multiple
+  difficulty: medium
+  tags: [pigeonhole, subset-sums, divisibility]
+  prompt: |
+    Ten different integers are chosen from $1, 2, \ldots, 100$. Which of these statements are true
+    for **every** such choice? Select all that apply.
+  choices:
+    - { id: a, text: "Two of them leave the same remainder when divided by 9" }
+    - { id: b, text: "Two of them differ by a multiple of 10" }
+    - { id: c, text: "There are two disjoint non-empty subsets of them with the same sum" }
+    - { id: d, text: "One of them divides another" }
+    - { id: e, text: "Two of them have no common factor greater than 1" }
+  answer: [a, c]
+  explanation: |
+    **a is true:** there are only 9 remainders modulo 9 and 10 numbers.
+
+    **c is true:** ten numbers have $2^{10} - 1 = 1023$ non-empty subsets, but every subset sum is at
+    most $91 + 92 + \cdots + 100 = 955$. So two different subsets have the same sum. Remove the
+    elements they have in common: what is left is two disjoint subsets, still with equal sums, and
+    neither is empty (if one were, the other would have sum 0).
+
+    **b is false:** $1, 2, \ldots, 10$ use all ten remainders modulo 10. This is choice a's argument
+    applied where it no longer works, since now there are as many remainders as numbers.
+
+    **d is false:** $51, \ldots, 60$ (no quotient can be 2 or more). **e is false:**
+    $2, 4, \ldots, 20$ are all even.
+
+    Statement c is a well-known olympiad problem; its pigeonholes are the possible sums, and the step
+    candidates forget is making the two subsets disjoint.
+  source: { name: "Subset sums (IMO 1972, Problem 1) and classic pigeonhole facts" }
