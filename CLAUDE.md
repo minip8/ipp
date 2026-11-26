@@ -72,7 +72,12 @@ over `next build`, and do not run several heavy builds at once.
   1440 and 390 px to `apps/web/e2e/.screens/` (`ONLY=dashboard,new` and `SCREEN_WIDTHS=1440`
   narrow it). Use it to look at UI changes.
 - `test:e2e:real` and `packages/interviewer/scripts/simulate.ts` hit the running stack and a live
-  model; they are not part of the normal checks.
+  model; they are not part of the normal checks. `simulate.ts --quant` plays a quant round against
+  a live model: run it after changing `packages/interviewer/src/quant/` (the prompt's behaviour is
+  the one thing the tests, which script the model, cannot show).
+- `apps/api/test/quant-round-real.test.ts` runs the real interviewer against the real API, database
+  and socket with only the model scripted; it is where a mismatch between the two halves of a
+  quant round shows up.
 
 ## Architecture
 
@@ -134,7 +139,9 @@ browser ── /api/* (Next rewrite, same origin, cookie session) ──▶ apps
   a compare-and-swap on its version; the browser gets `publicRound` (`PadDetail.round`,
   `round.updated`), and question ids, answers, verdicts, hints and later questions reach it only in
   the report after the pad ended (hint and follow-up text never). Assembly is
-  `apps/api/src/quant/assemble.ts`. A route or event that assumes code or a problem must refuse a
+  `apps/api/src/quant/assemble.ts`; the interviewer's side is `packages/interviewer/src/quant/`
+  (one structured turn per message, the books and the clock kept in code); the web's is
+  `apps/web/src/features/quant-pad/`, loaded only for a quant pad. A route or event that assumes code or a problem must refuse a
   quant pad (409 `wrong_format`).
 - **`apps/web`** is UI only. Read `apps/web/AGENTS.md` first: this Next.js version differs from
   older ones, and the relevant guide under `apps/web/node_modules/next/dist/docs/` should be read
