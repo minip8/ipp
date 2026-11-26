@@ -1,0 +1,322 @@
+# Continuous distributions and geometric probability: uniforms as areas, exponentials, sampling.
+- id: prob-continuous-001
+  topic: probability
+  subtopic: Continuous distributions and geometric probability
+  type: numeric
+  difficulty: easy
+  tags: [uniform, geometric-probability, expectation]
+  prompt: |
+    Two points are chosen independently and uniformly at random on the interval $[0, 1]$. What is the
+    expected distance between them?
+  answer: 1/3
+  explanation: |
+    The pair $(U, V)$ is uniform on the unit square, so $E|U - V| = \iint |u - v|\,du\,dv$. By symmetry
+    take twice the integral over the triangle $u > v$:
+
+    $$E|U - V| = 2\int_0^1 \int_0^u (u - v)\,dv\,du = 2\int_0^1 \frac{u^2}{2}\,du = \frac13.$$
+
+    A slicker argument: the two points cut $[0,1]$ into three pieces whose lengths have the same
+    distribution by symmetry, so each has mean $1/3$, and the middle piece is the distance.
+
+    The common wrong answer is $1/2$, the distance between independent points' *means*, or a guess
+    that the typical gap is half the interval.
+  source: { name: "Classic interview problem" }
+
+- id: prob-continuous-002
+  topic: probability
+  subtopic: Continuous distributions and geometric probability
+  type: numeric
+  difficulty: easy
+  tags: [uniform, geometric-probability, meeting-problem]
+  prompt: |
+    Two friends each arrive at a café at a time chosen uniformly between 12:00 and 13:00,
+    independently. Each waits 15 minutes for the other and then leaves (or leaves at 13:00 if that is
+    sooner). What is the probability that they meet?
+  answer: 7/16
+  explanation: |
+    Measure time in hours from 12:00, so the arrival times $(x, y)$ are uniform on the unit square,
+    and they meet when $|x - y| \le \tfrac14$. The complement is two corner triangles, each with legs
+    $\tfrac34$:
+
+    $$P(\text{meet}) = 1 - 2 \cdot \frac12\left(\frac34\right)^2 = 1 - \frac{9}{16} = \frac{7}{16}.$$
+
+    The common wrong answer is $1/2$ (each waits a quarter of the hour, "so half the time they
+    overlap"), or $1/4$; drawing the square is the method.
+  source: { name: "Classic meeting problem (e.g. Zhou, ch. 4)" }
+
+- id: prob-continuous-003
+  topic: probability
+  subtopic: Continuous distributions and geometric probability
+  type: numeric
+  difficulty: medium
+  tags: [uniform, quadratic, geometric-probability]
+  prompt: |
+    $a$ and $b$ are independent and uniform on $[0, 1]$. What is the probability that the equation
+    $x^2 + a x + b = 0$ has real roots?
+  answer: 1/12
+  hints:
+    - When does a quadratic have real roots?
+    - Sketch the region $a^2 \ge 4b$ in the unit square.
+  followUps:
+    - What if $a$ and $b$ are uniform on $[0, 2]$?
+    - What if the equation is $a x^2 + b x + c = 0$ with all three uniform on $[0, 1]$?
+  explanation: |
+    Real roots need the discriminant $a^2 - 4b \ge 0$, so $b \le a^2/4$. The region under the curve
+    $b = a^2/4$ inside the unit square has area
+
+    $$\int_0^1 \frac{a^2}{4}\,da = \frac{1}{12}.$$
+
+    Common slips are to use $a^2 \ge b$ (forgetting the 4, giving $1/3$) or to integrate over $b$
+    first and lose track of where $\sqrt{4b}$ exceeds 1.
+  source: { name: "Quant job interview problem collection (Kent State)", url: "https://www.math.kent.edu/~oana/math60070/InterviewProblems.pdf" }
+
+- id: prob-continuous-004
+  topic: probability
+  subtopic: Continuous distributions and geometric probability
+  type: numeric
+  difficulty: medium
+  tags: [stick-breaking, triangle, geometric-probability]
+  prompt: |
+    A stick of length 1 is broken at two points chosen independently and uniformly along its length.
+    What is the probability that the three pieces can form a triangle?
+  answer: 1/4
+  hints:
+    - Three lengths that sum to 1 form a triangle exactly when each is less than $1/2$.
+    - Draw the two break points as a point in the unit square and shade the good region.
+  followUps:
+    - If you break the stick once, then break the longer piece at a uniform point, what is the probability?
+    - Break the stick at $n - 1$ uniform points. What is the probability the $n$ pieces form an $n$-gon?
+  explanation: |
+    Three lengths summing to 1 form a triangle exactly when every piece is shorter than $1/2$ (the
+    triangle inequality $a < b + c$ is $a < 1 - a$). With break points $x < y$, the pieces are $x$,
+    $y - x$, $1 - y$, and all three are below $1/2$ in a triangle of area $1/8$ inside the half-square
+    $x < y$ (area $1/2$). So the probability is $\frac{1/8}{1/2} = \frac14$.
+
+    Another way: a piece is at least $1/2$ only if both break points fall in the same half beyond it;
+    each of the three pieces is "too long" with probability $1/4$, these events are disjoint, so the
+    answer is $1 - 3/4$.
+
+    A common wrong answer is $1/2$, from forgetting that *any* of the three pieces can be too long,
+    not just the middle one. Be careful also to answer the process asked about: breaking once and
+    then breaking the longer piece gives a different answer, $2\ln 2 - 1 \approx 0.386$.
+  source: { name: "Classic stick-breaking problem (e.g. Zhou, ch. 4)" }
+
+- id: prob-continuous-005
+  topic: probability
+  subtopic: Continuous distributions and geometric probability
+  type: numeric
+  difficulty: medium
+  tags: [exponential, memoryless, queues]
+  prompt: |
+    You enter a post office with two clerks. Both are busy, each serving one customer, and nobody
+    else is waiting; you will be served by whichever clerk frees up first. All service times
+    (including yours) are independent and exponentially distributed with the same mean. What is
+    the probability that you are the **last** of the three customers to leave?
+  answer: 1/2
+  hints:
+    - When one of the two customers leaves and you start, what can you say about the other customer's remaining time?
+    - The exponential distribution is memoryless.
+  followUps:
+    - What if the two clerks work at different rates?
+    - What is the expected time until you leave, if the mean service time is 10 minutes?
+  explanation: |
+    One of the two customers leaves first and you take that clerk. At that moment the other
+    customer's *remaining* service time is again exponential with the same mean, by memorylessness,
+    and it does not matter how long they have already been served. So you and that customer are in a
+    fair race between two independent, identically distributed exponentials, and you finish last with
+    probability $1/2$.
+
+    The common wrong answer is 1 ("I start last, so I finish last") or $2/3$; both ignore that the
+    other customer has no head start in an exponential world.
+  source: { name: "Classic memorylessness problem (e.g. Ross, A First Course in Probability)" }
+
+- id: prob-continuous-006
+  topic: probability
+  subtopic: Continuous distributions and geometric probability
+  type: single
+  difficulty: medium
+  tags: [exponential, gamma, beta, transformations]
+  prompt: |
+    $X$ and $Y$ are independent and exponentially distributed with the same rate. What is the
+    distribution of $R = \dfrac{X}{X + Y}$?
+  choices:
+    - { id: a, text: "Uniform on $[0, 1]$" }
+    - { id: b, text: "Concentrated near $1/2$, like a Beta(2, 2)" }
+    - { id: c, text: "Concentrated near 0 and 1, like a Beta(1/2, 1/2)" }
+    - { id: d, text: "It depends on the rate" }
+  answer: a
+  explanation: |
+    $P(R \le r) = P\big(X \le \tfrac{r}{1-r} Y\big)$. Given $Y = y$ this is $1 - e^{-\lambda r y/(1-r)}$,
+    and averaging over $y$:
+
+    $$P(R \le r) = 1 - \int_0^\infty \lambda e^{-\lambda y} e^{-\lambda r y / (1 - r)}\,dy = 1 - (1 - r) = r.$$
+
+    So $R$ is uniform. A process view: in a Poisson process the first two arrival times are $X$ and
+    $X + Y$, and given the second arrival, the first is uniform before it.
+
+    - b is the intuition that "the two shares are usually about equal", which is true for sums of many
+      variables but not for two exponentials, whose ratio can easily be lopsided.
+    - c is the opposite over-correction.
+    - d forgets that the rate is a scale and cancels in a ratio.
+  source: { name: "Standard result (Beta-Gamma relations; e.g. Blitzstein and Hwang, ch. 8)" }
+
+- id: prob-continuous-007
+  topic: probability
+  subtopic: Continuous distributions and geometric probability
+  type: multiple
+  difficulty: hard
+  tags: [sampling, uniform-disc, simulation]
+  prompt: |
+    $U$, $V$, $U_1$, $U_2$ are independent Uniform$(0, 1)$. Which methods produce a point
+    **uniformly distributed on the unit disc**? Select all that apply. (Polar coordinates $(r, \theta)$
+    mean the point $(r\cos\theta, r\sin\theta)$.)
+  choices:
+    - { id: a, text: 'Polar: $r = U$, $\theta = 2\pi V$' }
+    - { id: b, text: 'Polar: $r = \sqrt{U}$, $\theta = 2\pi V$' }
+    - { id: c, text: 'Draw $(x, y)$ uniform on the square $[-1, 1]^2$, and repeat until $x^2 + y^2 \le 1$' }
+    - { id: d, text: 'Polar: $r = \max(U_1, U_2)$, $\theta = 2\pi V$' }
+    - { id: e, text: 'Draw $x$ uniform on $[-1, 1]$, then $y$ uniform on $[-\sqrt{1 - x^2}, \sqrt{1 - x^2}]$' }
+  answer: [b, c, d]
+  explanation: |
+    For a uniform point the radius has $P(r \le s) = s^2$ (area $\pi s^2$ out of $\pi$), so its
+    density is $2s$, and the angle is uniform and independent of it.
+
+    - **a, no.** A uniform radius puts as much mass in the small disc $r \le \tfrac12$ (a quarter of
+      the area) as in the outer ring: points cluster at the centre.
+    - **b, yes.** $P(\sqrt{U} \le s) = P(U \le s^2) = s^2$. This is inverse-transform sampling.
+    - **c, yes.** Rejection sampling: conditioned on landing in the disc, a uniform point in the
+      square is uniform in the disc. It accepts with probability $\pi/4$.
+    - **d, yes.** $P(\max(U_1, U_2) \le s) = s^2$, the same distribution as $\sqrt{U}$, without a
+      square root.
+    - **e, no.** $x$ should have density proportional to the chord length $2\sqrt{1 - x^2}$, not be
+      uniform, so this over-samples the left and right edges.
+
+    a and e are the two mistakes people actually ship. d is the one candidates miss: any method that
+    gives the right radius distribution works.
+  source: { name: "Quant, FM and Data Science Interview Compilation (LSU), sampling a disc", url: "https://www.math.lsu.edu/~smolinsk/Quant_Interview_Prep.pdf" }
+
+- id: prob-continuous-008
+  topic: probability
+  subtopic: Continuous distributions and geometric probability
+  type: short
+  difficulty: hard
+  tags: [inspection-paradox, poisson-process, length-biased-sampling]
+  prompt: |
+    Buses arrive at a stop as a Poisson process, on average every 10 minutes. You turn up at a random
+    time, knowing nothing about the timetable. What is your expected wait? What is the expected length
+    of the gap between the bus before you arrived and the bus you catch, and why is it not 10 minutes?
+    How does the expected wait change if the buses instead come exactly every 10 minutes?
+  reference: |
+    By memorylessness, the time until the next bus is exponential with mean 10 minutes whenever you
+    arrive, so the expected wait is **10 minutes**. Looking backwards, the time since the last bus is
+    also exponential with mean 10 (ignoring the start of the day), so the gap you land in has expected
+    length **20 minutes**, twice the average gap.
+
+    That is the inspection paradox, or length-biased sampling: a random moment is more likely to fall
+    in a long gap than a short one, in proportion to its length. If gaps have length $L$, the gap
+    containing a random time has mean $E[L^2]/E[L] = E[L] + \operatorname{Var}(L)/E[L]$, which for
+    exponential gaps is $10 + 100/10 = 20$. You then wait on average half of that gap.
+
+    With buses exactly every 10 minutes the gap is always 10 and the expected wait is **5 minutes**.
+    Irregularity alone, with the same average frequency, doubles the expected wait.
+  keyPoints:
+    - Expected wait is 10 minutes, from memorylessness
+    - The gap containing your arrival has expected length 20 minutes
+    - Explains length-biased sampling, that long gaps are more likely to contain a random time
+    - Gives E[L²]/E[L] or an equivalent argument for the size of the bias
+    - With regular buses every 10 minutes the expected wait is 5 minutes
+  hints:
+    - Use memorylessness for the wait ahead of you. What about the time since the last bus?
+    - If gaps of 1 minute and 19 minutes alternate, which kind of gap are you more likely to arrive in?
+  followUps:
+    - Gaps are 1 minute or 19 minutes, equally often. What is your expected wait?
+    - Why does the average class size reported by students exceed the average class size reported by the school?
+  explanation: |
+    The usual answer is 5 minutes, half the average gap, which is right only for perfectly regular
+    buses. A strong answer resolves the apparent contradiction (average gap 10, but the gap you see
+    averages 20) through length-biased sampling and gives the general formula, which also explains
+    everyday versions such as class sizes or friends' friend counts.
+  source: { name: "Inspection paradox (e.g. Feller, vol. 2; Ross, Stochastic Processes)" }
+
+- id: prob-continuous-009
+  topic: probability
+  subtopic: Continuous distributions and geometric probability
+  type: short
+  difficulty: hard
+  tags: [bertrand-paradox, random-chord, ill-posed]
+  prompt: |
+    "A chord of a circle is chosen at random. What is the probability that it is longer than the side
+    of the equilateral triangle inscribed in the circle?" Show that reasonable readings of this give
+    different answers, and say what you would need to know to give a single answer.
+  reference: |
+    The chord is longer than the triangle's side $\sqrt3\,R$ exactly when its distance from the centre
+    is less than $R/2$. Three natural ways to pick a chord give three answers:
+
+    1. **Random endpoints**, two independent uniform points on the circle: fix one endpoint, the chord
+       is long when the other falls in the opposite third of the circle: $1/3$.
+    2. **Random distance from the centre**, along a random radius, uniform on $[0, R]$: long when the
+       distance is below $R/2$: $1/2$.
+    3. **Random midpoint**, uniform in the disc: long when the midpoint is within $R/2$ of the
+       centre: area ratio $(1/2)^2 = 1/4$.
+
+    Each is a legitimate uniform distribution, just on a different parametrisation of chords, and
+    "uniform" is not preserved when you change coordinates nonlinearly. So the question is ill-posed
+    until it says how the chord is generated. If it describes a physical process, that settles it:
+    for example, long straws thrown at random onto a small circle give lines with uniform position and
+    direction, which matches method 2 and gives $1/2$.
+  keyPoints:
+    - Reduces "longer than the side" to "distance from the centre less than R/2"
+    - Gives at least two methods with different answers, among 1/3, 1/2 and 1/4
+    - Explains that "uniformly random chord" depends on the parametrisation, so the question is ill-posed
+    - Says a generating mechanism must be specified, and gives an example of how it picks one answer
+  hints:
+    - Find a simple condition, in terms of the chord's distance from the centre, for being longer than the side.
+    - Try picking the chord by its two endpoints. Then try picking it by its midpoint.
+  followUps:
+    - Under the random-midpoint method, what is the expected length of the chord?
+    - Name a quant problem where "pick uniformly at random" is similarly ambiguous.
+  explanation: |
+    This is the classic example of an ill-posed probability question. Candidates who confidently
+    give one number miss the point; those who only say "it's ambiguous" miss the other half, which is
+    to show concretely why and to say what extra information fixes it. In interviews, recognising
+    that a question needs a modelling assumption and stating it is the skill being tested.
+  source: { name: "Bertrand's paradox (Bertrand, 1889)" }
+
+- id: prob-continuous-010
+  topic: probability
+  subtopic: Continuous distributions and geometric probability
+  type: short
+  difficulty: easy
+  tags: [inverse-transform, simulation, exponential]
+  prompt: |
+    $U$ is uniform on $(0, 1)$ and $F$ is a continuous, strictly increasing cumulative distribution
+    function. What is the distribution of $X = F^{-1}(U)$, and why? Use this to turn $U$ into an
+    exponential random variable with rate $\lambda$.
+  reference: |
+    $X$ has CDF $F$:
+
+    $$P(X \le x) = P(F^{-1}(U) \le x) = P(U \le F(x)) = F(x),$$
+
+    using that $F$ is increasing and that $P(U \le u) = u$ for $u \in [0,1]$.
+
+    For an exponential, $F(x) = 1 - e^{-\lambda x}$, so $F^{-1}(u) = -\ln(1 - u)/\lambda$, and
+    $X = -\ln(1 - U)/\lambda$ is exponential with rate $\lambda$. Since $1 - U$ is also uniform,
+    $-\ln(U)/\lambda$ works too. The converse also holds: if $X$ has continuous CDF $F$, then $F(X)$
+    is uniform (the probability integral transform).
+  keyPoints:
+    - X has CDF F, which is inverse-transform sampling
+    - The proof is P(F⁻¹(U) ≤ x) = P(U ≤ F(x)) = F(x)
+    - Exponential sample is -ln(1 - U)/λ, or equivalently -ln(U)/λ
+    - Mentions the converse, that F(X) is uniform
+  hints:
+    - Compute $P(X \le x)$ directly.
+    - Invert $u = 1 - e^{-\lambda x}$.
+  followUps:
+    - How would you sample from a distribution whose CDF you cannot invert in closed form, such as the normal?
+    - How do you sample from a discrete distribution with a single uniform?
+  explanation: |
+    This is the basis of most random-variate generation. Candidates usually remember the recipe but
+    not the one-line proof, and sometimes invert the wrong way ($F(U)$ instead of $F^{-1}(U)$). The
+    follow-ups lead to Box-Muller or rejection sampling for the normal, and to binary search on a
+    cumulative table for discrete distributions.
+  source: { name: "Quant job interview problem collection (Kent State)", url: "https://www.math.kent.edu/~oana/math60070/InterviewProblems.pdf" }

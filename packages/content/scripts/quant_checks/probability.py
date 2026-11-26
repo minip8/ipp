@@ -567,3 +567,319 @@ def _():
 
     sim = simulate(trial, n=50_000)
     assert abs(sim.mean - 1 / 0.09) < 4 * sim.stderr
+
+
+# ---------------------------------------------------------------- continuous and geometric
+
+
+@check("prob-continuous-001")
+def _():
+    return simulate(lambda r: abs(r.random() - r.random()))
+
+
+@check("prob-continuous-002")
+def _():
+    return simulate(lambda r: abs(r.uniform(0, 60) - r.uniform(0, 60)) <= 15)
+
+
+@check("prob-continuous-003")
+def _():
+    def trial(r):
+        a, b = r.random(), r.random()
+        return a * a - 4 * b >= 0
+
+    return simulate(trial, n=600_000)
+
+
+@check("prob-continuous-004")
+def _():
+    def trial(r):
+        x, y = sorted((r.random(), r.random()))
+        pieces = (x, y - x, 1 - y)
+        a, b, c = sorted(pieces)
+        return a + b > c
+
+    return simulate(trial)
+
+
+@check("prob-continuous-005")
+def _():
+    def trial(r):
+        a, b = r.expovariate(1.0), r.expovariate(1.0)
+        start = min(a, b)
+        me = start + r.expovariate(1.0)
+        return me > max(a, b)
+
+    return simulate(trial)
+
+
+@check("prob-continuous-006")
+def _():
+    def frac_below(q):
+        def trial(r):
+            x, y = r.expovariate(3.0), r.expovariate(3.0)
+            return x / (x + y) <= q
+
+        return simulate(trial, n=100_000)
+
+    candidates = {
+        "a": lambda q: q,  # uniform
+        "b": lambda q: 3 * q**2 - 2 * q**3,  # Beta(2, 2)
+        "c": lambda q: 2 / math.pi * math.asin(math.sqrt(q)),  # Beta(1/2, 1/2)
+    }
+    fits = set(candidates)
+    for q in (0.1, 0.25, 0.4):
+        sim = frac_below(q)
+        fits = {k for k in fits if abs(sim.mean - candidates[k](q)) < 4 * sim.stderr}
+    assert len(fits) == 1, fits
+    return fits.pop()
+
+
+@check("prob-continuous-007")
+def _():
+    import random
+
+    def method_a(r):
+        rad, th = r.random(), 2 * math.pi * r.random()
+        return rad * math.cos(th), rad * math.sin(th)
+
+    def method_b(r):
+        rad, th = math.sqrt(r.random()), 2 * math.pi * r.random()
+        return rad * math.cos(th), rad * math.sin(th)
+
+    def method_c(r):
+        while True:
+            x, y = r.uniform(-1, 1), r.uniform(-1, 1)
+            if x * x + y * y <= 1:
+                return x, y
+
+    def method_d(r):
+        rad, th = max(r.random(), r.random()), 2 * math.pi * r.random()
+        return rad * math.cos(th), rad * math.sin(th)
+
+    def method_e(r):
+        x = r.uniform(-1, 1)
+        h = math.sqrt(1 - x * x)
+        return x, r.uniform(-h, h)
+
+    # targets for a uniform point: P(r <= 1/2) = 1/4, P(x > 0.8) = segment area / pi
+    t = math.acos(0.8)
+    seg = (2 * t - math.sin(2 * t)) / 2 / math.pi
+    tests = [(lambda p: p[0] ** 2 + p[1] ** 2 <= 0.25, 0.25), (lambda p: p[0] > 0.8, seg)]
+    good = set()
+    n = 100_000
+    for name, method in zip("abcde", (method_a, method_b, method_c, method_d, method_e)):
+        ok = True
+        for test, target in tests:
+            rng = random.Random(11)
+            hits = sum(test(method(rng)) for _ in range(n))
+            se = math.sqrt(target * (1 - target) / n)
+            ok &= abs(hits / n - target) < 4 * se
+        if ok:
+            good.add(name)
+    return good
+
+
+@check("prob-continuous-008")
+def _():
+    import random
+
+    rng = random.Random(5)
+    t, buses = 0.0, []
+    while t < 2_000_000:
+        t += rng.expovariate(1 / 10)
+        buses.append(t)
+    import bisect
+
+    waits, gaps = [], []
+    for _ in range(100_000):
+        u = rng.uniform(1000, 1_999_000)
+        i = bisect.bisect_right(buses, u)
+        waits.append(buses[i] - u)
+        gaps.append(buses[i] - buses[i - 1])
+    assert abs(sum(waits) / len(waits) - 10) < 0.2
+    assert abs(sum(gaps) / len(gaps) - 20) < 0.3
+
+
+@check("prob-continuous-009")
+def _():
+    import random
+
+    rng = random.Random(9)
+    n = 200_000
+    side = math.sqrt(3)
+
+    def endpoints():
+        a, b = rng.uniform(0, 2 * math.pi), rng.uniform(0, 2 * math.pi)
+        return 2 * abs(math.sin((a - b) / 2))
+
+    def radius():
+        d = rng.random()
+        return 2 * math.sqrt(1 - d * d)
+
+    def midpoint():
+        while True:
+            x, y = rng.uniform(-1, 1), rng.uniform(-1, 1)
+            if x * x + y * y <= 1:
+                return 2 * math.sqrt(1 - x * x - y * y)
+
+    for gen, target in ((endpoints, 1 / 3), (radius, 1 / 2), (midpoint, 1 / 4)):
+        p = sum(gen() > side for _ in range(n)) / n
+        assert abs(p - target) < 0.005, (gen.__name__, p)
+
+
+@check("prob-continuous-010")
+def _():
+    def trial(r):
+        return -math.log(1 - r.random()) / 2.0 <= 0.5
+
+    sim = simulate(trial, n=100_000)
+    assert abs(sim.mean - (1 - math.exp(-1))) < 4 * sim.stderr
+
+
+# ---------------------------------------------------------------- variance, covariance, correlation
+
+
+def moments(pmf: dict) -> tuple[Fraction, Fraction]:
+    """Mean and variance of a pmf {value: probability}."""
+    mean = sum(p * x for x, p in pmf.items())
+    return mean, sum(p * (x - mean) ** 2 for x, p in pmf.items())
+
+
+def convolve(a: dict, b: dict) -> dict:
+    out: dict = {}
+    for x, p in a.items():
+        for y, q in b.items():
+            out[x + y] = out.get(x + y, 0) + p * q
+    return out
+
+
+DIE_PMF = {k: Fraction(1, 6) for k in DIE}
+
+
+@check("prob-variance-001")
+def _():
+    return moments(DIE_PMF)[1]
+
+
+@check("prob-variance-002")
+def _():
+    # X, Y independent fair +-1 (variance 1 each): enumerate
+    pmf = convolve({1: Fraction(1, 2), -1: Fraction(1, 2)}, {-1: Fraction(1, 2), 1: Fraction(1, 2)})
+    var = moments(pmf)[1]
+    return {Fraction(0): "a", Fraction(1): "b", Fraction(2): "d"}[var]
+
+
+@check("prob-variance-003")
+def _():
+    outcomes = list(dice(2))
+    n = len(outcomes)
+    ex = Fraction(sum(o[0] for o in outcomes), n)
+    es = Fraction(sum(sum(o) for o in outcomes), n)
+    cov = Fraction(sum((o[0] - ex) * (sum(o) - es) for o in outcomes), n)
+    vx = Fraction(sum((o[0] - ex) ** 2 for o in outcomes), n)
+    vs = Fraction(sum((sum(o) - es) ** 2 for o in outcomes), n)
+    return float(cov) / math.sqrt(vx * vs)
+
+
+@check("prob-variance-004")
+def _():
+    total = math.comb(52, 13)
+    pmf = {k: Fraction(math.comb(13, k) * math.comb(39, 13 - k), total) for k in range(14)}
+    assert sum(pmf.values()) == 1
+    return moments(pmf)[1]
+
+
+@check("prob-variance-005")
+def _():
+    s_pmf: dict = {}
+    sum_n = {0: Fraction(1)}
+    for n in DIE:
+        sum_n = convolve(sum_n, DIE_PMF)  # distribution of the sum of n dice
+        for s, p in sum_n.items():
+            s_pmf[s] = s_pmf.get(s, 0) + Fraction(1, 6) * p
+    return moments(s_pmf)[1]
+
+
+def psd3(a: Fraction, b: Fraction, c: Fraction) -> bool:
+    """Is [[1,a,b],[a,1,c],[b,c,1]] positive semidefinite? (all principal minors >= 0)"""
+    minors = [1 - a * a, 1 - b * b, 1 - c * c, 1 + 2 * a * b * c - a * a - b * b - c * c]
+    return all(m >= 0 for m in minors)
+
+
+@check("prob-variance-006")
+def _():
+    grid = [Fraction(k, 1000) for k in range(-1000, 1001)]
+    return min(r for r in grid if psd3(r, r, r))
+
+
+@check("prob-variance-007")
+def _():
+    rho = 0.5
+    s = math.sqrt(1 - rho * rho)
+
+    def trial(r):
+        x, z = r.gauss(0, 1), r.gauss(0, 1)
+        return x > 0 and rho * x + s * z > 0
+
+    return simulate(trial)
+
+
+@check("prob-variance-008")
+def _():
+    picked = set()
+    # a: X uniform on {-1,0,1}, Y = X^2 is a counterexample
+    xs = [-1, 0, 1]
+    cov = Fraction(sum(x * x * x for x in xs), 3) - Fraction(sum(xs), 3) * Fraction(sum(x * x for x in xs), 3)
+    assert cov == 0  # uncorrelated, yet Y is a function of X: a is false
+    picked.add("b")  # independence => E[XY] = E[X]E[Y]; checked on dice
+    outcomes = list(dice(2))
+    assert Fraction(sum(a * b for a, b in outcomes), 36) == Fraction(7, 2) ** 2
+    # c: exact on a lopsided joint distribution
+    joint = {(1, 2): Fraction(1, 5), (2, 7): Fraction(2, 5), (4, 3): Fraction(2, 5)}
+
+    def corr(f, g):
+        ef = sum(p * f(*k) for k, p in joint.items())
+        eg = sum(p * g(*k) for k, p in joint.items())
+        c = sum(p * (f(*k) - ef) * (g(*k) - eg) for k, p in joint.items())
+        vf = sum(p * (f(*k) - ef) ** 2 for k, p in joint.items())
+        vg = sum(p * (g(*k) - eg) ** 2 for k, p in joint.items())
+        return c * c / (vf * vg), c > 0  # squared correlation and its sign, exact
+
+    if corr(lambda x, y: 2 * x + 3, lambda x, y: 5 * y - 1) == corr(lambda x, y: x, lambda x, y: y):
+        picked.add("c")
+    # d, e: smallest feasible Corr(X, Z) given the other two, from positive semidefiniteness
+    grid = [Fraction(k, 1000) for k in range(-1000, 1001)]
+    for key, r in (("d", Fraction(9, 10)), ("e", Fraction(1, 2))):
+        lo = min(c for c in grid if psd3(r, r, c))
+        if lo > 0:
+            picked.add(key)
+    # f: X normal, Y = S X with a random sign: uncorrelated, |X| = |Y|
+    import random
+
+    rng = random.Random(3)
+    pairs = [(x, x * rng.choice((-1, 1))) for x in (rng.gauss(0, 1) for _ in range(100_000))]
+    c = sum(x * y for x, y in pairs) / len(pairs)
+    assert abs(c) < 0.02 and all(abs(x) == abs(y) for x, y in pairs)
+    return picked
+
+
+@check("prob-variance-009")
+def _():
+    xs = {-1: Fraction(1, 3), 0: Fraction(1, 3), 1: Fraction(1, 3)}
+    exy = sum(p * x * x * x for x, p in xs.items())
+    ex = sum(p * x for x, p in xs.items())
+    ey = sum(p * x * x for x, p in xs.items())
+    assert exy - ex * ey == 0
+    assert ey == Fraction(2, 3)  # P(Y = 0) = 1/3, but P(Y = 0 | X = 0) = 1
+
+
+@check("prob-variance-010")
+def _():
+    sigma2, rho = Fraction(1), Fraction(3, 10)
+    for n in (1, 2, 10, 1000):
+        cov = [[sigma2 if i == j else rho * sigma2 for j in range(n)] for i in range(n)] if n <= 10 else None
+        formula = sigma2 / n + (1 - Fraction(1, n)) * rho * sigma2
+        if cov is not None:
+            assert sum(sum(row) for row in cov) / n**2 == formula
+    assert abs(math.sqrt(0.3) - 0.55) < 0.01
