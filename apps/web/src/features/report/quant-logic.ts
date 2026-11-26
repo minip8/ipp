@@ -89,3 +89,156 @@ export function timeLabel(
     over: q.timeSec > q.budgetSec,
   };
 }
+
+// ---------------------------------------------------------------- a market-making game's review
+
+type GameReview = NonNullable<QuantQuestionReview['game']>;
+type ReviewQuote = GameReview['quotes'][number];
+
+/** Where the fair value stood against a market: inside it, or above or below it. */
+export type FairSide = 'inside' | 'above' | 'below';
+
+export const FAIR_SIDE_LABEL: Record<FairSide, string> = {
+  inside: 'Inside',
+  above: 'Above your offer',
+  below: 'Below your bid',
+};
+
+export function fairSide(q: Pick<ReviewQuote, 'bid' | 'ask' | 'fair'>): FairSide {
+  if (q.fair > q.ask) return 'above';
+  if (q.fair < q.bid) return 'below';
+  return 'inside';
+}
+
+export type QuoteRow = ReviewQuote & {
+  /** 1-based, in the order posted. */
+  n: number;
+  side: FairSide;
+  /** The width in standard deviations of the contract at the time (null when it was known). */
+  widthSd: number | null;
+};
+
+export const quoteRows = (g: Pick<GameReview, 'quotes'>): QuoteRow[] =>
+  g.quotes.map((q, i) => ({
+    ...q,
+    n: i + 1,
+    side: fairSide(q),
+    widthSd: q.sd > 0 ? q.width / q.sd : null,
+  }));
+
+/** The markets at a glance: how many had fair value inside, were traded, and how wide they were. */
+export function quoteSummary(g: Pick<GameReview, 'quotes'>): {
+  count: number;
+  inside: number;
+  traded: number;
+  meanWidth: number;
+  /** Mean width in standard deviations, over the markets made while something was still random. */
+  meanWidthSd: number | null;
+} | null {
+  const rows = quoteRows(g);
+  if (rows.length === 0) return null;
+  const sds = rows.flatMap((r) => (r.widthSd === null ? [] : [r.widthSd]));
+  return {
+    count: rows.length,
+    inside: rows.filter((r) => r.side === 'inside').length,
+    traded: rows.filter((r) => r.traded).length,
+    meanWidth: rows.reduce((s, r) => s + r.width, 0) / rows.length,
+    meanWidthSd: sds.length ? sds.reduce((s, x) => s + x, 0) / sds.length : null,
+  };
+}
+
+/**
+ * How the candidate's market moved when a component was shown, against how the fair value moved:
+ *  followed   the mid moved most of the way (75% to 125%)
+ *  partly     a quarter to three quarters of the way
+ *  overshot   further than the fair value did
+ *  barely     less than a quarter of the way
+ *  wrong_way  the opposite way
+ *  no_change  the fair value did not move (nothing to follow)
+ *  no_quote   no market before it, or none after it
+ */
+export type RevealVerdict =
+  | 'followed'
+  | 'partly'
+  | 'overshot'
+  | 'barely'
+  | 'wrong_way'
+  | 'no_change'
+  | 'no_quote';
+
+export const REVEAL_TONE: Record<RevealVerdict, Tone> = {
+  followed: 'ok',
+  partly: 'warn',
+  overshot: 'warn',
+  barely: 'bad',
+  wrong_way: 'bad',
+  no_change: 'neutral',
+  no_quote: 'neutral',
+};
+
+export type RevealRow = GameReview['reveals'][number] & {
+  fairMove: number;
+  midMove: number | null;
+  /** midMove / fairMove (null without both mids, or when fair did not move). */
+  share: number | null;
+  verdict: RevealVerdict;
+  /** The verdict in words ("Moved 60% of the way"). */
+  verdictLabel: string;
+};
+
+const EPS = 1e-9;
+
+export function revealRows(g: Pick<GameReview, 'reveals'>): RevealRow[] {
+  return g.reveals.map((r) => {
+    const fairMove = r.fairAfter - r.fairBefore;
+    const midMove = r.midBefore !== null && r.midAfter !== null ? r.midAfter - r.midBefore : null;
+    let verdict: RevealVerdict;
+    let share: number | null = null;
+    if (midMove === null) verdict = 'no_quote';
+    else if (Math.abs(fairMove) < EPS) verdict = 'no_change';
+    else {
+      share = midMove / fairMove;
+      verdict =
+        share < 0
+          ? 'wrong_way'
+          : share < 0.25
+            ? 'barely'
+            : share < 0.75
+              ? 'partly'
+              : share <= 1.25
+                ? 'followed'
+                : 'overshot';
+    }
+    const pct = share === null ? '' : `${Math.round(share * 100)}%`;
+    const verdictLabel = {
+      followed: 'Moved with it',
+      partly: `Moved ${pct} of the way`,
+      overshot: `Moved too far (${pct})`,
+      barely: 'Barely moved',
+      wrong_way: 'Moved the wrong way',
+      no_change: 'Fair value did not move',
+      no_quote: r.midBefore === null ? 'No market before it' : 'No market after it',
+    }[verdict];
+    return { ...r, fairMove, midMove, share, verdict, verdictLabel };
+  });
+}
+
+/**
+ * The P&L, split the way the report teaches it: the expected edge (each trade against the fair
+ * value when it was made: the decisions) and the realised P&L at the true value; the difference
+ * is what the hidden values and an informed counterparty added or took.
+ */
+export function pnlParts(g: Pick<GameReview, 'expectedEdge' | 'pnl'>): {
+  expectedEdge: number;
+  pnl: number;
+  luck: number;
+} {
+  return {
+    expectedEdge: g.expectedEdge,
+    pnl: g.pnl,
+    luck: Number((g.pnl - g.expectedEdge).toPrecision(12)) + 0,
+  };
+}
+
+/** A figure's tone: a gain good, a loss bad, nothing neutral. */
+export const signTone = (x: number): Tone => (x > EPS ? 'ok' : x < -EPS ? 'bad' : 'neutral');
