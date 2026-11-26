@@ -26,11 +26,11 @@ import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Spinner } from '@/components/ui/spinner';
 import { AiKeyPrompt } from '@/features/ai-key/ai-key-prompt';
-import { api, errorMessage } from '@/lib/api';
+import { ApiRequestError, api, errorMessage } from '@/lib/api';
 import { formatDuration, plural } from '@/lib/format';
 import { qk, useAiKey } from '@/lib/queries';
 import { cn } from '@/lib/utils';
-import { answeredDetail, roundFigures, scoreView } from './quant-logic';
+import { answeredDetail, hostedAskedDetail, roundFigures, scoreView } from './quant-logic';
 
 type Recommendation = ReportAssessment['recommendation'];
 type Dimension = ReportDimension;
@@ -266,27 +266,39 @@ function codingTiles(stats: Report['stats']): { label: string; value: ReactNode 
 /** The stats strip of a quant round: how far it got, how well, with how much help, how long. */
 export function QuantStatsStrip({ stats, quant }: { stats: Report['stats']; quant: QuantReport }) {
   const f = roundFigures(quant);
+  // A quant room's: the questions its host asked and the host's own verdicts; no total.
+  const hosted = quant.mode === 'hosted';
   const tiles: { label: string; value: ReactNode; sub?: string }[] = [
     { label: 'Duration', value: formatDuration(stats.durationSec) },
-    {
-      label: 'Answered',
-      value: `${f.answered} of ${f.total}`,
-      sub: answeredDetail(f),
-    },
+    hosted
+      ? { label: 'Asked', value: f.posed, sub: hostedAskedDetail(f) }
+      : {
+          label: 'Answered',
+          value: `${f.answered} of ${f.total}`,
+          sub: answeredDetail(f),
+        },
     {
       label: 'Mean score',
       value: f.meanScore === null ? '—' : scoreView(f.meanScore).label,
-      sub: f.judged ? `over ${plural(f.judged, 'judged answer')}` : 'no answer judged',
+      sub: hosted
+        ? f.judged
+          ? `over ${plural(f.judged, 'verdict')} of yours`
+          : 'no verdict given'
+        : f.judged
+          ? `over ${plural(f.judged, 'judged answer')}`
+          : 'no answer judged',
     },
     {
-      label: 'Hints used',
+      label: hosted ? 'Hints given' : 'Hints used',
       value: f.hintsGiven,
       sub: f.hintsAvailable ? `${f.hintsAvailable} written for these questions` : undefined,
     },
     {
       label: 'Messages',
       value: stats.candidateMessages + stats.interviewerMessages,
-      sub: `${stats.candidateMessages} you · ${stats.interviewerMessages} interviewer`,
+      sub: hosted
+        ? `${stats.candidateMessages} candidate · ${stats.interviewerMessages} you`
+        : `${stats.candidateMessages} you · ${stats.interviewerMessages} interviewer`,
     },
   ];
   return (
@@ -340,6 +352,9 @@ function Notice({
   );
 }
 
+const isNothingToAssess = (e: unknown) =>
+  e instanceof ApiRequestError && e.code === 'nothing_to_assess';
+
 /** Ask for the assessment now (the owner just added a key, or an earlier attempt failed). */
 function useRequestAssessment(padId: string) {
   const qc = useQueryClient();
@@ -347,17 +362,31 @@ function useRequestAssessment(padId: string) {
     mutationFn: () => api.requestAssessment(padId),
     // A pending report makes the page poll until the assessment is written.
     onSuccess: (r) => qc.setQueryData(qk.report(padId), r),
-    onError: (e) => toast.error('Could not start the assessment', { description: errorMessage(e) }),
+    onError: (e) => {
+      // An empty quant room: said in place of the offer, not as an error.
+      if (isNothingToAssess(e)) return;
+      toast.error('Could not start the assessment', { description: errorMessage(e) });
+    },
   });
 }
 
 /** A room's host has not asked for an assessment yet: offer it (it runs on their own key). */
-function RoomAssessmentOffer({ padId }: { padId: string }) {
+function RoomAssessmentOffer({ pad }: { pad: PadDetail }) {
+  const padId = pad.pad.id;
   const ask = useRequestAssessment(padId);
   const key = useAiKey();
   const state = key.data?.state;
-  const body =
-    'The AI reads the chat, the code history, the runs and your notes, and writes its own assessment of the candidate. It is a second opinion for you: nobody else sees it.';
+  const quant = pad.pad.format === 'quant';
+  const body = quant
+    ? 'The AI reads the chat, the scratchpad, the questions you asked with your verdicts, and your notes, and writes its own assessment of the candidate. It never changes your verdicts. It is a second opinion for you: nobody else sees it.'
+    : 'The AI reads the chat, the code history, the runs and your notes, and writes its own assessment of the candidate. It is a second opinion for you: nobody else sees it.';
+  if (isNothingToAssess(ask.error))
+    return (
+      <Notice icon={<BotOffIcon className="size-4" />} title="Nothing to assess">
+        No question was asked, the candidate wrote nothing in the chat and the scratchpad is empty,
+        so there is nothing for the AI to read.
+      </Notice>
+    );
   if (state && state !== 'active')
     return (
       <AiKeyPrompt
@@ -397,7 +426,7 @@ function NoAssessment({ report, pad }: { report: Report; pad: PadDetail }) {
   const why =
     report.assessmentUnavailable ?? (pad.pad.interviewer.enabled ? 'failed' : 'interviewer_off');
   const below = 'Stats, transcript and playback are below.';
-  if (why === 'not_requested') return <RoomAssessmentOffer padId={pad.pad.id} />;
+  if (why === 'not_requested') return <RoomAssessmentOffer pad={pad} />;
   if (why === 'interviewer_off')
     return (
       <Notice icon={<BotOffIcon className="size-4" />} title="No AI assessment for this interview">
