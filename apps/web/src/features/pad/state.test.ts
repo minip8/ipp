@@ -401,13 +401,16 @@ describe('quant rounds', () => {
     questions: Array.from({ length: questions }, (_, index) => ({
       index,
       topic: 'probability',
+      topicTitle: 'Probability',
       difficulty: 'easy' as const,
       prompt: `Question ${index + 1}`,
       unit: null,
       posedAt: '2026-01-01T00:01:00.000Z',
       budgetSec: 420,
       closedAt: null,
+      closedBy: null,
       hintsGiven: 0,
+      posedMessageId: null,
     })),
   });
   const quant: PadDetail = {

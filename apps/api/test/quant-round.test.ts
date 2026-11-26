@@ -5,6 +5,7 @@ import {
   type QuantRoundState,
   type QuantStep,
   QuizQuestion,
+  Report,
   type ServerEvent,
   YDOC,
 } from '@ipp/contracts';
@@ -17,6 +18,7 @@ import {
   quizQuestions,
   quizStandaloneAnswers,
   quizTopics,
+  reports,
   timelineEvents,
 } from '@ipp/db';
 import { and, asc, eq, inArray, like } from '@ipp/db/orm';
@@ -42,6 +44,7 @@ const QUANT_TOPICS = [
   { slug: 'probability', title: 'Probability', description: 'quant round tests', track: 'quant' },
   { slug: 'brainteasers', title: 'Brainteasers', description: 'quant round tests', track: 'quant' },
 ] as const;
+const topicTitle = (slug: string | undefined) => QUANT_TOPICS.find((t) => t.slug === slug)?.title;
 
 /**
  * Every server-only text carries a marker, so a leak is a substring search. A prompt's own
@@ -129,9 +132,9 @@ const ALWAYS_SECRET = [
   '"questionId"',
   '"verdict"',
   '"hintRungs"',
-  '"closedBy"',
+  // `closedBy` and `posedMessageId` are on the view: how a question closed happened in front of
+  // everyone, and the posing message is in the transcript anyway.
   '"subtopic"',
-  '"posedMessageId"',
   '"nudgedAt"',
   '"hintsAvailable"',
   '"followUpAsked"',
@@ -345,6 +348,7 @@ describe('creating a quant round', () => {
       kind: 'practice',
       problemSlug: null,
       problemTitle: null,
+      quantPath: 'trader',
     });
     await expectNoLeak(pad.id, [res.text, detail.text, list.text]);
 
@@ -585,15 +589,20 @@ describe('a round, step by step', () => {
         {
           index: 0,
           topic: q0?.topic,
+          // Snapshotted from the topic's row when the round was assembled.
+          topicTitle: topicTitle(q0?.topic),
           difficulty: 'easy',
           prompt: q0?.prompt,
           unit: q0?.unit,
           posedAt: q0?.posedAt,
           budgetSec: q0?.budgetSec,
           closedAt: null,
+          closedBy: null,
           hintsGiven: 0,
+          posedMessageId: posedMsg?.message.id,
         },
       ]);
+      expect(q0?.topicTitle).toBe(topicTitle(q0?.topic));
       await leakCheck();
 
       // A hint (asked by the owner), then the follow-up (asked by the collaborator).
@@ -622,7 +631,9 @@ describe('a round, step by step', () => {
       const view4 = (await os.waitFor('round.updated', (e) => e.round.version === 4)).round;
       expect(view4.questions).toHaveLength(2);
       expect(view4.questions[0]?.closedAt).toEqual(expect.any(String));
+      expect(view4.questions[0]?.closedBy).toBe('interviewer');
       expect(view4.questions[1]?.closedAt).toBeNull();
+      expect(view4.questions[1]?.closedBy).toBeNull();
       await leakCheck();
 
       // The interviewer, asking question 1, sees question 1 in full and nothing of the others.
@@ -954,11 +965,11 @@ describe('a round, step by step', () => {
         phase: 'asking',
         clock: { index: 1 },
       });
-      expect((await stepEvents(s, mark, 2)).map(label)).toEqual([
-        'interviewer:feedback',
-        'interviewer:question',
-        'round:2',
-      ]);
+      const step2 = await stepEvents(s, mark, 2);
+      expect(step2.map(label)).toEqual(['interviewer:feedback', 'interviewer:question', 'round:2']);
+      // The pad says the question timed out without waiting for the report.
+      const view2 = step2.at(-1);
+      expect(view2?.type === 'round.updated' && view2.round.questions[0]?.closedBy).toBe('timeout');
       expect((await roundRow(id)).state.questions[0]).toMatchObject({
         closedBy: 'timeout',
         verdict: null,
@@ -1058,6 +1069,8 @@ describe('ending a quant pad', () => {
     expect(report.status).toBe(200);
     expect(report.json.assessment).toBeNull();
     expect(report.json.assessmentUnavailable).toBe('no_key');
+    // No runs on a quant pad: no run figures either.
+    expect(report.json.stats).toMatchObject({ runs: null, submissions: null, accepted: null });
     const bank = new Map(ALL_FIXTURES.map((q) => [q.id, QuizQuestion.parse(q)]));
     const review = (index: number) => {
       const q = state.questions[index];
@@ -1067,6 +1080,7 @@ describe('ending a quant pad', () => {
         index,
         questionId: q.questionId,
         topic: q.topic,
+        topicTitle: topicTitle(q.topic),
         subtopic: b.subtopic,
         difficulty: q.difficulty,
         type: b.type,
@@ -1112,6 +1126,29 @@ describe('ending a quant pad', () => {
     const theirs = await collab.get(`/api/pads/${id}/report`);
     expect(theirs.status).toBe(200);
     expect(theirs.json.quant).toEqual(report.json.quant);
+
+    // A round and a report stored before titles were snapshotted and run figures were dropped:
+    // the titles fall back to the slugs, and the stored 0 / 0 / false read as null.
+    await setState(id, (st) => {
+      for (const q of st.questions) delete q.topicTitle;
+    });
+    await db()
+      .update(reports)
+      .set({ stats: { ...report.json.stats, runs: 0, submissions: 0, accepted: false } })
+      .where(eq(reports.padId, id));
+    const old = await owner.get(`/api/pads/${id}/report`);
+    expect(Report.parse(old.json).stats).toMatchObject({
+      runs: null,
+      submissions: null,
+      accepted: null,
+    });
+    expect(old.json.quant.questions.map((q: { topicTitle: string }) => q.topicTitle)).toEqual(
+      state.questions.map((q) => q.topic),
+    );
+    const oldDetail = await owner.get(`/api/pads/${id}`);
+    expect(oldDetail.json.round.questions.map((q: { topicTitle: string }) => q.topicTitle)).toEqual(
+      state.questions.filter((q) => q.posedAt !== null).map((q) => q.topic),
+    );
 
     // With a key again the owner asks for the assessment: it judges the two closed questions.
     await owner.saveKey();

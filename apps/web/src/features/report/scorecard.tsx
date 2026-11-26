@@ -30,7 +30,7 @@ import { api, errorMessage } from '@/lib/api';
 import { formatDuration, plural } from '@/lib/format';
 import { qk, useAiKey } from '@/lib/queries';
 import { cn } from '@/lib/utils';
-import { roundFigures, scoreView } from './quant-logic';
+import { answeredDetail, roundFigures, scoreView } from './quant-logic';
 
 type Recommendation = ReportAssessment['recommendation'];
 type Dimension = ReportDimension;
@@ -186,25 +186,16 @@ function ListBlock({
   );
 }
 
-/** Stats strip; works for any report status because stats are always present. */
-/** `room`: read by the host, so the interviewer's messages are the reader's own. */
+/**
+ * Stats strip; works for any report status because stats are always present. `room`: read by
+ * the host, so the interviewer's messages are the reader's own. The run figures are null for a
+ * quant pad (whose report normally gets `QuantStatsStrip`); their tiles are left out then.
+ */
 export function StatsStrip({ stats, room }: { stats: Report['stats']; room?: boolean }) {
+  const runTiles = stats.runs !== null;
   const tiles: { label: string; value: ReactNode; sub?: string }[] = [
     { label: 'Duration', value: formatDuration(stats.durationSec) },
-    {
-      label: 'Result',
-      value: stats.accepted ? (
-        <span className="inline-flex items-center gap-1.5 text-ok-text">
-          <CircleCheckIcon className="size-4.5 text-ok" aria-hidden /> Solved
-        </span>
-      ) : (
-        <span className="inline-flex items-center gap-1.5 text-fg-muted">
-          <CircleDashedIcon className="size-4.5 text-fg-subtle" aria-hidden /> Not solved
-        </span>
-      ),
-    },
-    { label: 'Runs', value: stats.runs },
-    { label: 'Submissions', value: stats.submissions },
+    ...(runTiles ? codingTiles(stats) : []),
     {
       label: 'Messages',
       value: stats.candidateMessages + stats.interviewerMessages,
@@ -214,7 +205,12 @@ export function StatsStrip({ stats, room }: { stats: Report['stats']; room?: boo
     },
   ];
   return (
-    <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border sm:grid-cols-3 lg:grid-cols-5">
+    <dl
+      className={cn(
+        'grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border sm:grid-cols-3',
+        runTiles && 'lg:grid-cols-5',
+      )}
+    >
       {tiles.map((t, i) => (
         <div
           key={t.label}
@@ -236,6 +232,25 @@ export function StatsStrip({ stats, room }: { stats: Report['stats']; room?: boo
   );
 }
 
+function codingTiles(stats: Report['stats']): { label: string; value: ReactNode }[] {
+  return [
+    {
+      label: 'Result',
+      value: stats.accepted ? (
+        <span className="inline-flex items-center gap-1.5 text-ok-text">
+          <CircleCheckIcon className="size-4.5 text-ok" aria-hidden /> Solved
+        </span>
+      ) : (
+        <span className="inline-flex items-center gap-1.5 text-fg-muted">
+          <CircleDashedIcon className="size-4.5 text-fg-subtle" aria-hidden /> Not solved
+        </span>
+      ),
+    },
+    { label: 'Runs', value: stats.runs },
+    { label: 'Submissions', value: stats.submissions },
+  ];
+}
+
 /** The stats strip of a quant round: how far it got, how well, with how much help, how long. */
 export function QuantStatsStrip({ stats, quant }: { stats: Report['stats']; quant: QuantReport }) {
   const f = roundFigures(quant);
@@ -244,7 +259,7 @@ export function QuantStatsStrip({ stats, quant }: { stats: Report['stats']; quan
     {
       label: 'Answered',
       value: `${f.answered} of ${f.total}`,
-      sub: f.posed < f.total ? `${f.total - f.posed} not reached` : 'every question posed',
+      sub: answeredDetail(f),
     },
     {
       label: 'Mean score',
@@ -278,7 +293,7 @@ export function QuantStatsStrip({ stats, quant }: { stats: Report['stats']; quan
           <dt className="text-xs text-fg-muted">{t.label}</dt>
           <dd className="mt-1 text-lg font-semibold tabular">{t.value}</dd>
           {t.sub && (
-            <dd className="mt-0.5 truncate text-2xs text-fg-subtle tabular" title={t.sub}>
+            <dd className="mt-0.5 line-clamp-2 text-2xs text-fg-subtle tabular" title={t.sub}>
               {t.sub}
             </dd>
           )}

@@ -1,5 +1,5 @@
 'use client';
-import type { Message } from '@ipp/contracts';
+import type { Message, QuantRoundView } from '@ipp/contracts';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { storage } from '@/lib/storage';
 import { spokenText } from '../questions';
@@ -15,11 +15,14 @@ export type VoiceMode = 'push' | 'handsfree';
 export function useVoice({
   enabled,
   messages,
+  round = null,
   onUtterance,
   transportFactory = () => new WebSpeechTransport(),
 }: {
   enabled: boolean;
   messages: Message[];
+  /** A quant pad's round, which numbers its `question` messages. */
+  round?: QuantRoundView | null;
   onUtterance: (text: string) => void;
   transportFactory?: () => VoiceTransport;
 }) {
@@ -33,6 +36,9 @@ export function useVoice({
   const [error, setError] = useState<{ code: VoiceErrorCode; message: string } | null>(null);
   const onUtteranceRef = useRef(onUtterance);
   onUtteranceRef.current = onUtterance;
+  // Read when a message is spoken, not a reason to speak: a round update alone says nothing.
+  const roundRef = useRef(round);
+  roundRef.current = round;
   // Everything already in the transcript when the pad opens is history, never read aloud.
   const spoken = useRef<Set<string>>(null as unknown as Set<string>);
   spoken.current ??= new Set(messages.map((m) => m.id));
@@ -68,7 +74,7 @@ export function useVoice({
     for (const m of messages) {
       if (spoken.current.has(m.id)) continue;
       spoken.current.add(m.id);
-      if (m.role === 'interviewer') transport?.speak(spokenText(m, messages));
+      if (m.role === 'interviewer') transport?.speak(spokenText(m, roundRef.current));
     }
   }, [enabled, messages, transport]);
 

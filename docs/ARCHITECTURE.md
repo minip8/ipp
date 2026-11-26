@@ -106,7 +106,7 @@ Every body is validated with the contracts schema named below.
 | `GET /api/problems/:slug` | | `ProblemDetail` |
 | `POST /api/pads` | `CreatePadRequest` (`kind: 'room'` hosts an interview; a room may be `blank`) | `Pad` |
 | `POST /api/pads/quant` | `CreateQuantPadRequest` (`path`, `durationMin` 20 / 30 / 45, `interviewer` without `enabled`, `title?`) | `Pad` (`format: 'quant'`, §8.2); 409 `ai_key_missing` without a usable key, 409 `quant_unavailable` when the path has too few questions, 429 (the `POST /api/pads` allowance) |
-| `GET /api/pads` | | `PadSummary[]` (mine, newest first, with `format`) |
+| `GET /api/pads` | | `PadSummary[]` (mine, newest first, with `format`, and `quantPath` for a quant pad) |
 | `GET /api/pads/:id` | | `PadDetail` (`round`: a quant pad's `QuantRoundView`, else null) |
 | `PATCH /api/pads/:id` | `UpdatePadRequest` | `Pad` (a quant pad: 409 `wrong_format` with `language`; `interviewer.enabled` stays true) |
 | `POST /api/pads/:id/end` | | `Pad` (starts report generation) |
@@ -636,8 +636,9 @@ joining by the link, as on any practice pad) see exactly what the owner sees.
   least one of each type when the pool has both, the owner's weak questions first (the quiz's
   latest answers, as "focus weak"), and none posed in the owner's last five rounds (unless the
   pool would then be too small). An empty cell relaxes the topic, then the difficulty, and only
-  then allows a repeated subtopic. Too few questions is 409 `quant_unavailable`. The prompt, unit
-  and the number of authored hints are copied into the round when it is built.
+  then allows a repeated subtopic. Too few questions is 409 `quant_unavailable`. The prompt, unit,
+  the topic's title and the number of authored hints are copied into the round when it is built
+  (a round stored before titles were copied has none, and is shown with the topic's slug).
 - **State** (`quant_rounds.state`, server-only) changes only through `advanceRound`
   (`packages/contracts/src/quant-round.ts`): `start`, `turn`, `close`, `verdict` from the
   interviewer (`InterviewerDeps.applyQuantStep`) and `end` from the API. `apps/api/src/quant/round.ts`
@@ -656,12 +657,19 @@ joining by the link, as on any practice pad) see exactly what the owner sees.
   (`endPad`) closes the open question as `ended` before `session_ended`, and the assessment
   (`generateQuantAssessment`, quant dimensions) first judges questions closed without a verdict.
 - **What the browser sees**: `PadDetail.round` and `round.updated` carry `publicRound(state,
-  version)`, the posed questions only (topic, difficulty, prompt, unit, times, hints given as a
-  count); never a question id, a subtopic, a verdict, how a question closed or a question still to
-  come. The report (`Report.quant`, only after the pad ended) is built when read from the state and
-  the bank: per question its status (`answered`, `timed_out`, `unfinished`, `not_reached`),
-  solution, key points, explanation, verdict, time and budget, and hints as counts. The text of
-  hints and follow-ups never leaves the server, not even there.
+  version)`, the posed questions only (topic and its title, difficulty, prompt, unit, times, how a
+  question closed, hints given as a count, and the id of the `question` message that posed it,
+  by which the chat and voice number question messages); never a question id, a subtopic, a
+  verdict or a question still to come. How a question closed is not sensitive (everyone saw it
+  happen), so the pad says "Timed out" without waiting for the report. `PadSummary.quantPath`
+  gives the dashboard the round's path ("Quant · Trader"). The report (`Report.quant`, only after
+  the pad ended) is built when read from the state and the bank: per question its status
+  (`answered`, `timed_out`, `unfinished`, `not_reached`), topic title, solution, key points,
+  explanation, verdict, time and budget, and hints as counts. The text of hints and follow-ups
+  never leaves the server, not even there. A quant pad's `Report.stats` has `runs`,
+  `submissions` and `accepted` null (the API nulls them too in reports stored when they were
+  0 / 0 / false); the report shows the round's figures instead, derived from `Report.quant` in
+  the web app.
 - **What the interviewer sees** (`InterviewerHost.loadQuantContext`): the current question in full
   (scope `all`, for the assessment: every posed one), a code-built summary of the closed ones, the
   transcript from the latest posed question's message on, and the scratchpad cut at 8,000

@@ -235,6 +235,8 @@ export function buildQuantReport(
       index,
       questionId: q.questionId,
       topic: q.topic,
+      // Rounds stored before the title was snapshotted lack it.
+      topicTitle: q.topicTitle ?? q.topic,
       subtopic: b?.subtopic ?? '',
       difficulty: q.difficulty,
       type: numeric ? 'numeric' : 'short',

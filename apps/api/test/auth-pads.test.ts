@@ -191,6 +191,7 @@ describe('pads', () => {
       problemTitle: 'Two Sum',
       difficulty: 'easy',
       accepted: false,
+      quantPath: null,
     });
 
     // Another user cannot see it.

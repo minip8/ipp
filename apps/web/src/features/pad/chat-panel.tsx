@@ -59,7 +59,7 @@ import { ManageKeyDialog } from '@/features/ai-key/saved-key-line';
 import { formatTimeOfDay, humanize } from '@/lib/format';
 import { useAiKey } from '@/lib/queries';
 import { cn } from '@/lib/utils';
-import { questionNumbers } from './questions';
+import { questionNumber } from './questions';
 import { usePad } from './session';
 import { type ChatItem, chatItems, type PendingMessage } from './state';
 import { useVoice, type VoiceMode } from './voice/use-voice';
@@ -70,12 +70,15 @@ export type ChatHandle = { focus(): void; toggleMic(): void };
 export type MessageText = ComponentType<{ children: string; className?: string }>;
 
 /**
- * What the messages of this chat are rendered with, and each posed question's number (a quant
- * round's `question` messages, in order).
+ * What the messages of this chat are rendered with, and a quant round's `question` message's
+ * number (looked up by its id in the round view).
  */
-const ChatCtx = createContext<{ Text: MessageText; questionNumber: Map<string, number> }>({
+const ChatCtx = createContext<{
+  Text: MessageText;
+  questionNumber: (messageId: string) => number | null;
+}>({
   Text: Markdown,
-  questionNumber: new Map(),
+  questionNumber: () => null,
 });
 
 const INTENT_LABEL: Partial<Record<NonNullable<Message['intent']>, string>> = {
@@ -101,7 +104,7 @@ function InterviewerMark({ className }: { className?: string }) {
 /** A question the round posed: the bank's prompt, set apart from the conversation around it. */
 function QuestionMessage({ m }: { m: Message }) {
   const { Text, questionNumber } = useContext(ChatCtx);
-  const n = questionNumber.get(m.id);
+  const n = questionNumber(m.id);
   return (
     <div className="animate-fade-in" data-testid="question-message">
       <div className="rounded-lg border border-accent/40 bg-accent-soft/30 px-3.5 py-3">
@@ -475,8 +478,11 @@ export const ChatPanel = forwardRef<ChatHandle, ChatPanelProps>(function ChatPan
   const [stuck, setStuck] = useState(true);
   const [unseen, setUnseen] = useState(0);
   const items = useMemo(() => chatItems(state), [state]);
-  const questionNumber = useMemo(() => questionNumbers(state.messages), [state.messages]);
-  const ctx = useMemo(() => ({ Text, questionNumber }), [Text, questionNumber]);
+  const round = state.round;
+  const ctx = useMemo(
+    () => ({ Text, questionNumber: (id: string) => questionNumber(round, id) }),
+    [Text, round],
+  );
   const enabled = state.pad.interviewer.enabled;
   const available = state.interviewerAvailable && enabled;
   const voiceOn = available && state.pad.interviewer.voice && !readOnly;
@@ -484,6 +490,7 @@ export const ChatPanel = forwardRef<ChatHandle, ChatPanelProps>(function ChatPan
   const voice = useVoice({
     enabled: voiceOn,
     messages: state.messages,
+    round,
     onUtterance: (t) => sendChat(t, 'voice'),
   });
 

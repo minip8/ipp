@@ -307,6 +307,7 @@ export class MockQuantRounds {
       difficulty: null,
       accepted: false,
       role: d.role,
+      quantPath: this.rounds.get(id)?.state.path ?? null,
     };
   }
 
@@ -679,6 +680,7 @@ export class MockQuantRounds {
         index,
         questionId: q.questionId,
         topic: q.topic,
+        topicTitle: q.topicTitle ?? q.topic,
         subtopic: bank.subtopic,
         difficulty: q.difficulty,
         type: bank.type,
@@ -704,9 +706,10 @@ export class MockQuantRounds {
       generatedAt: d.pad.endedAt,
       stats: {
         durationSec,
-        runs: 0,
-        submissions: 0,
-        accepted: false,
+        // A quant pad has no runs (`Report.stats`).
+        runs: null,
+        submissions: null,
+        accepted: null,
         candidateMessages: d.messages.filter((m) => m.role === 'candidate').length,
         interviewerMessages: d.messages.filter((m) => m.role === 'interviewer').length,
       },
