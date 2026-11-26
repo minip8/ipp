@@ -702,9 +702,16 @@ neither it behaves as before. The grader sees them as context and does not requi
 stored before these fields existed lack them (and `unit`), so the API and the interviewer read
 them as `?? []`.
 
-Every topic belongs to a track (`QUIZ_TRACKS`: `fundamentals`, the default, and `quant`), set in
-`quiz/topics.yaml` and stored on `quiz_topics.track`; every topic shape the API returns carries
-it, and the Quizzes page and the roadmap group topics by track. Quiz Markdown is rendered with
+Every topic has a home (`track`, a `QuizTrack`: `fundamentals`, the default, or `quant`), set in
+`quiz/topics.yaml` and stored on `quiz_topics.track`. The home decides the content rules below,
+what the seed treats as quant and what a quant round may draw from (home `quant` topics only).
+It is not the site track: the header switch chooses a `Track` (`software` or `quant`,
+`packages/contracts/src/track.ts`), home `fundamentals` belonging to `software` and home `quant`
+to `quant` (`homeTrack`). A topic may also show in other site tracks, listed as `also` in
+`topics.yaml` (`also: [quant]` puts Python in both); `topicTracks` gives the home's track first,
+then `also`. It is the same topic in each, so progress on it is shared. Every topic shape the API
+returns carries `track` and `also`. A pad belongs to a site track by its format (`padTrack`:
+`coding` is `software`). Quiz Markdown is rendered with
 remark-math and KaTeX, so `$...$` and `$$...$$` are LaTeX and a literal dollar is `\$`; the
 grading and discussion prompts tell the model the same. A content test enforces it: a
 fundamentals topic has no math at all and no bare `$`, and every formula in a quant topic must
