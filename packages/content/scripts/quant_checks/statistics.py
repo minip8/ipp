@@ -1205,3 +1205,213 @@ def _():
     se_d, se_m = math.sqrt(var(daily)), math.sqrt(var(monthly))
     assert abs(se_d - 0.5) < 0.04 and abs(se_m - 0.5 * math.sqrt(1 + (sr / math.sqrt(12)) ** 2 / 2)) < 0.05
     assert se_m / se_d < 1.15  # monthly sampling is barely worse
+
+
+# ---------------------------------------------------------------- time series
+
+
+def garch(rng, n, omega=0.05, alpha=0.1, beta=0.85):
+    s2 = omega / (1 - alpha - beta)
+    out = []
+    for _ in range(n):
+        r = math.sqrt(s2) * rng.gauss(0, 1)
+        out.append(r)
+        s2 = omega + alpha * r * r + beta * s2
+    return out
+
+
+def autocorr(xs, lag):
+    m = mean(xs)
+    num = sum((xs[t] - m) * (xs[t - lag] - m) for t in range(lag, len(xs)))
+    return num / sum((x - m) ** 2 for x in xs)
+
+
+@check("stat-time-series-001")
+def _():
+    rng = random.Random(91)
+    # the variance of a random walk's level grows linearly; its steps' variance does not
+    ends = {100: [], 400: []}
+    for _ in range(2000):
+        w = random_walk(rng, 400)
+        ends[100].append(w[99])
+        ends[400].append(w[399])
+    assert 3 < var(ends[400]) / var(ends[100]) < 5
+    return "a"
+
+
+@check("stat-time-series-002")
+def _():
+    # expected deviation after k days, run forward in steps of 1/1000 day between 6 and 7
+    k = bisect(lambda k: 0.9**k - 0.5, 0, 20)
+    assert 0.9**6 > 0.5 > 0.9**7
+    return k
+
+
+@check("stat-time-series-003")
+def _():
+    v = 0.0
+    for _ in range(500):  # iterate Var(x_t) = 0.64 Var(x_{t-1}) + 1 from 0
+        v = 0.64 * v + 1
+    rng = random.Random(93)
+    x, xs = 0.0, []
+    for t in range(400_000):
+        x = 0.8 * x + rng.gauss(0, 1)
+        if t > 100:
+            xs.append(x)
+    assert abs(var(xs) - 25 / 9) < 0.05
+    options = {"a": 25 / 9, "b": 5.0, "c": 1.0, "d": 1.64}
+    return min(options, key=lambda key: abs(options[key] - v))
+
+
+@check("stat-time-series-004")
+def _():
+    # an MA(1) with lag-1 autocorrelation 0.1: r_t = e_t + theta e_{t-1}, theta / (1 + theta^2) = 0.1
+    theta = bisect(lambda t: t / (1 + t * t) - 0.1, 0, 1)
+    # the 10-day sum as a combination of e_0, ..., e_10: coefficients theta, 1 + theta, ..., 1
+    coeffs = [theta] + [1 + theta] * 9 + [1]
+    var10 = sum(c * c for c in coeffs)
+    var1 = 1 + theta * theta
+    return math.sqrt(var10 / (10 * var1))
+
+
+@check("stat-time-series-005")
+def _():
+    rng = random.Random(95)
+    ts, bs = [], []
+    for _ in range(2000):
+        p = random_walk(rng, 251)
+        dp = [p[t] - p[t - 1] for t in range(1, 251)]
+        lag = p[:250]
+        beta, se, _, _ = ols_fit([[1.0] * 250, lag], dp)
+        ts.append(beta[1] / se[1])
+        bs.append(beta[1])
+    ts.sort()
+    q05 = ts[100]
+    assert -3.1 < q05 < -2.6, q05
+    share = sum(t < -2.2 for t in ts) / len(ts)
+    assert 0.12 < share < 0.3, share
+    assert mean(bs) < -0.01  # biased negative, around -5.5/250
+    assert sum(t < -1.645 for t in ts) / len(ts) > 0.3
+
+
+@check("stat-time-series-006")
+def _():
+    def trial(r):
+        d = [r.gauss(0, 1) for _ in range(21)]
+        return sum(d[:20]) * sum(d[1:]) / 20
+
+    # also: naive OLS standard errors when both sides are overlapping 20-day sums
+    rng = random.Random(96)
+    betas, naive = [], []
+    for _ in range(300):
+        a = [rng.gauss(0, 1) for _ in range(519)]
+        b = [rng.gauss(0, 1) for _ in range(519)]
+        x = [sum(a[i : i + 20]) for i in range(500)]
+        y = [sum(b[i : i + 20]) for i in range(500)]
+        beta, se, _, _ = ols_fit([[1.0] * 500, x], y)
+        betas.append(beta[1])
+        naive.append(se[1])
+    ratio = math.sqrt(var(betas)) / mean(naive)
+    assert 2.8 < ratio < 4.6, ratio
+    return simulate(trial, n=60_000, seed=96)
+
+
+@check("stat-time-series-007")
+def _():
+    rng = random.Random(97)
+    # GARCH: the conditional variance mean-reverts, so 10 x today's high variance overstates
+    # the expected 10-day variance when today is a high-volatility day
+    omega, alpha, beta = 0.05, 0.1, 0.85
+    long_run = omega / (1 - alpha - beta)
+    s2 = 4 * long_run
+    expected = 0.0
+    for _ in range(10):
+        expected += s2
+        s2 = omega + (alpha + beta) * s2
+    assert expected < 0.9 * 10 * 4 * long_run
+    # fat tails: the 99% quantile of a 10-day sum of t(3) returns is not sqrt(10) x the daily one
+    def t3():
+        z = rng.gauss(0, 1)
+        return z / math.sqrt(sum(rng.gauss(0, 1) ** 2 for _ in range(3)) / 3)
+
+    one = sorted(t3() for _ in range(100_000))[990]
+    ten = sorted(sum(t3() for _ in range(10)) for _ in range(30_000))[297]
+    assert abs(ten / one / math.sqrt(10) - 1) > 0.05
+
+
+@check("stat-time-series-008")
+def _():
+    rng = random.Random(98)
+    reps = 1500
+    procs = {k: {20: [], 400: []} for k in "abcdef"}
+    for _ in range(reps):
+        g = garch(rng, 400)
+        rw, rwd, ar, tr, fx, fy = [], [], [], [], [], []
+        p = q = 0.0
+        x = rng.gauss(0, math.sqrt(4 / 3))
+        common = 0.0
+        for t in range(1, 401):
+            e = rng.gauss(0, 1)
+            p += e
+            q += 0.05 + e
+            x = 0.5 * x + rng.gauss(0, 1)
+            common += rng.gauss(0, 1)
+            rw.append(p)
+            rwd.append(q)
+            ar.append(x)
+            tr.append(0.1 * t + rng.gauss(0, 1))
+            fx.append(common)
+            fy.append(2 * common + rng.gauss(0, 1))
+        series = {"a": g, "b": rw, "c": ar, "d": tr, "e": rwd, "f": [b - 2 * a for a, b in zip(fx, fy)]}
+        for k, s in series.items():
+            for t in (20, 400):
+                procs[k][t].append(s[t - 1])
+    stationary = set()
+    for k, d in procs.items():
+        m20, m400 = mean(d[20]), mean(d[400])
+        v20, v400 = var(d[20]), var(d[400])
+        if abs(m400 - m20) < 0.5 and 0.8 < v400 / v20 < 1.25:
+            stationary.add(k)
+    return stationary
+
+
+@check("stat-time-series-009")
+def _():
+    rng = random.Random(99)
+    # unrelated random walks: |level correlation| > 0.5 is common
+    big = sum(abs(corr(random_walk(rng, 1250), random_walk(rng, 1250))) > 0.5 for _ in range(200))
+    assert big / 200 > 0.2
+    # highly correlated returns but a spread that drifts: common shocks plus a small drift difference
+    xs, ys, px, py = [], [], 0.0, 0.0
+    for _ in range(1250):
+        c = rng.gauss(0, 1)
+        px += c + 0.1 * rng.gauss(0, 1)
+        py += c + 0.1 * rng.gauss(0, 1) + 0.02
+        xs.append(px)
+        ys.append(py)
+    rx = [xs[i] - xs[i - 1] for i in range(1, 1250)]
+    ry = [ys[i] - ys[i - 1] for i in range(1, 1250)]
+    spread = [b - a for a, b in zip(xs, ys)]
+    assert corr(rx, ry) > 0.95 and spread[-1] - spread[0] > 15
+    # a cointegrated pair with weakly correlated returns
+    xs, ys, p = [], [], 0.0
+    for _ in range(1250):
+        p += 0.2 * rng.gauss(0, 1)
+        xs.append(p + rng.gauss(0, 1))
+        ys.append(p + rng.gauss(0, 1))
+    rx = [xs[i] - xs[i - 1] for i in range(1, 1250)]
+    ry = [ys[i] - ys[i - 1] for i in range(1, 1250)]
+    spread = [b - a for a, b in zip(xs, ys)]
+    assert corr(rx, ry) < 0.1 and abs(autocorr(spread, 1)) < 0.1
+
+
+@check("stat-time-series-010")
+def _():
+    rng = random.Random(100)
+    r = garch(rng, 100_000)
+    assert abs(autocorr(r, 1)) < 0.02
+    sq = [x * x for x in r]
+    assert autocorr(sq, 1) > 0.1 and autocorr(sq, 10) > 0.05
+    m, s = mean(r), math.sqrt(var(r))
+    kurt = mean([((x - m) / s) ** 4 for x in r])
+    assert kurt > 3.5  # conditionally normal, unconditionally fat-tailed
