@@ -1,0 +1,327 @@
+# The Greeks and hedging: signs and shapes, delta hedging, gamma against theta, and hedging with several instruments.
+- id: opt-greeks-001
+  topic: options
+  subtopic: The Greeks and hedging
+  type: multiple
+  difficulty: easy
+  tags: [greeks, signs, european-put]
+  prompt: |
+    For a **long** European put on a stock that pays no dividends, with a positive interest rate, which
+    of these Greeks are positive? Select all that apply.
+  choices:
+    - { id: a, text: "Delta" }
+    - { id: b, text: "Gamma" }
+    - { id: c, text: "Vega" }
+    - { id: d, text: "Rho" }
+  answer: [b, c]
+  explanation: |
+    - **Delta** is negative: the put gains when the stock falls, with delta between $-1$ and 0.
+    - **Gamma** is positive: the payoff is convex in the stock, as for any long option.
+    - **Vega** is positive: more volatility makes a large fall more likely, and the put's loss is
+      limited to its premium. Calls and puts with the same strike have the same vega.
+    - **Rho** is negative: the put holder receives the strike, so a higher rate lowers its present
+      value.
+
+    The usual slips are rho, by analogy with the call (the call's rho is positive because the call
+    holder *pays* the strike), and vega, from thinking a put "benefits from calm".
+  source: { name: "Standard Greeks (e.g. Hull, Options, Futures, and Other Derivatives)" }
+
+- id: opt-greeks-002
+  topic: options
+  subtopic: The Greeks and hedging
+  type: numeric
+  difficulty: easy
+  tags: [delta-hedging, delta]
+  prompt: |
+    You are long 2,000 call options, each on one share, and each has a delta of 0.35. How many shares
+    must you sell to make the position delta-neutral?
+  answer: 700
+  unit: shares
+  explanation: |
+    The position behaves like $2000 \times 0.35 = 700$ shares for small moves in the stock, so selling
+    700 shares makes it delta-neutral.
+
+    The hedge holds only for small moves: as the stock moves, the calls' delta changes (gamma), and the
+    hedge has to be adjusted. The common wrong answers are 2,000 (hedging one share per option) and
+    1,300 (using $1 - \Delta$).
+  source: { name: "Standard delta hedge (e.g. Hull, Options, Futures, and Other Derivatives)" }
+
+- id: opt-greeks-003
+  topic: options
+  subtopic: The Greeks and hedging
+  type: single
+  difficulty: easy
+  tags: [gamma, expiry, at-the-money]
+  prompt: |
+    The stock price stays exactly at the strike and its volatility stays constant. What happens to the
+    gamma of the at-the-money option as expiry approaches?
+  choices:
+    - { id: a, text: "It rises, without limit as expiry gets close" }
+    - { id: b, text: "It falls towards zero" }
+    - { id: c, text: "It stays roughly constant" }
+    - { id: d, text: "It rises and then falls back to zero" }
+  answer: a
+  explanation: |
+    At expiry the option's delta jumps from 0 to 1 at the strike. Shortly before, delta goes from
+    nearly 0 to nearly 1 over a narrow range of stock prices around the strike, so its slope, gamma,
+    is large. In Black-Scholes the at-the-money gamma is about
+
+    $$\Gamma \approx \frac{1}{S\sigma\sqrt{2\pi T}},$$
+
+    which grows like $1/\sqrt{T}$.
+
+    Choice d describes an option away from the money: its gamma first rises as expiry nears and then
+    collapses to zero, since it will almost surely finish in or out of the money. Choice b describes a
+    deep in- or out-of-the-money option.
+  source: { name: "Standard gamma profile (e.g. Natenberg, Option Volatility and Pricing)" }
+
+- id: opt-greeks-004
+  topic: options
+  subtopic: The Greeks and hedging
+  type: short
+  difficulty: medium
+  tags: [gamma-scalping, long-gamma, theta, delta-hedging]
+  prompt: |
+    You are long an at-the-money straddle and keep it delta-hedged by trading the stock. How do you make
+    money? What do you pay for the position, and what has to happen for it to be profitable?
+  reference: |
+    Being long gamma means your delta rises when the stock rises and falls when it falls. To stay
+    hedged you sell stock after it has gone up and buy it after it has gone down: you automatically
+    sell high and buy low. Each rebalance locks in a profit of roughly $\tfrac12 \Gamma (\Delta S)^2$ for
+    a move $\Delta S$, whichever way the stock moved.
+
+    You pay for this through time decay: the options lose value every day (negative theta) whether or
+    not the stock moves. In Black-Scholes terms, for a delta-hedged position
+    $\Theta \approx -\tfrac12\sigma_{\text{implied}}^2 S^2 \Gamma$ per unit time, so the daily P&L is
+    about
+
+    $$\tfrac12 \Gamma S^2\big(R^2 - \sigma_{\text{implied}}^2\,\Delta t\big),$$
+
+    where $R$ is the day's return on the stock and $\Delta t$ is one day as a fraction of a year. You make money if the stock's realised volatility is
+    higher than the implied volatility you paid; you lose if it moves less. You are also long vega, so a
+    rise in implied volatility helps too.
+  keyPoints:
+    - Long gamma means re-hedging sells after rises and buys after falls, so each rebalance captures a gain of about ½Γ(ΔS)²
+    - The gain comes from moves in either direction
+    - The cost is time decay (negative theta), paid whether or not the stock moves
+    - The position profits if realised volatility exceeds the implied volatility paid
+    - Mentions that the position is also long vega
+  hints:
+    - After the stock rises, what has happened to your delta? What trade restores the hedge?
+    - Where does the money you lose come from on a day the stock does not move?
+    - Which volatility is in the price you paid, and which one generates your hedging gains?
+  followUps:
+    - How large a daily move do you need to break even, for an implied volatility of 16%?
+    - Does it matter how often you re-hedge? What is the trade-off?
+  explanation: |
+    The answer interviewers want is "sell high, buy low through the hedge, paid for by theta, profitable
+    if realised beats implied". Weaker answers say "the stock needs to move a lot", without the
+    mechanism or the comparison with implied volatility, which is what makes it a trade.
+  source: { name: "Gamma scalping (e.g. Natenberg, Option Volatility and Pricing; Sinclair, Volatility Trading)" }
+
+- id: opt-greeks-005
+  topic: options
+  subtopic: The Greeks and hedging
+  type: numeric
+  difficulty: medium
+  tags: [gamma, theta, break-even, delta-hedging]
+  prompt: |
+    You hold one option on one share and keep it delta-hedged. Its gamma is 0.04 (its delta changes
+    by 0.04 for each \$1 move in the stock) and its theta is −\$0.08 per day. Ignoring interest, vega
+    and any change in the Greeks over the day, how large a one-day move in the stock, in either
+    direction, leaves you with zero P&L for the day?
+  answer: 2
+  unit: dollars
+  hints:
+    - Expand the option's value to second order in the stock move. The delta term is cancelled by the hedge.
+    - What does a delta-hedged option gain from a move of $x$ dollars?
+  followUps:
+    - What annual volatility does that break-even move correspond to, for a \$100 stock and about 256 trading days a year?
+    - What happens to your P&L if the stock moves \$4?
+  explanation: |
+    Over a day, the hedged option's P&L is about
+
+    $$\tfrac12 \Gamma x^2 + \Theta = \tfrac12 \times 0.04 \times x^2 - 0.08.$$
+
+    This is zero when $x^2 = 4$, so $x = 2$: a \$2 move either way pays for one day of decay; a larger
+    move makes money and a smaller one loses.
+
+    The common wrong answer is about \$1.41, from dropping the $\tfrac12$ in the gamma term
+    ($0.04 x^2 = 0.08$). Note the P&L is quadratic: a \$4 move earns four times the gamma gain of a \$2
+    move.
+  source: { name: "Standard gamma-theta break-even (e.g. Natenberg, Option Volatility and Pricing)" }
+
+- id: opt-greeks-006
+  topic: options
+  subtopic: The Greeks and hedging
+  type: single
+  difficulty: medium
+  tags: [gamma, vega, time-to-expiry]
+  prompt: |
+    Compare a 1-month and a 1-year at-the-money call on the same stock, with the same implied volatility
+    and zero interest rates. Which statement is right?
+  choices:
+    - { id: a, text: "The 1-year call has more gamma and more vega" }
+    - { id: b, text: "The 1-month call has more gamma; the 1-year call has more vega" }
+    - { id: c, text: "The 1-month call has more gamma and more vega" }
+    - { id: d, text: "The 1-year call has more gamma; the 1-month call has more vega" }
+  answer: b
+  explanation: |
+    For an at-the-money option in Black-Scholes, roughly
+
+    $$\text{vega} \approx 0.4\,S\sqrt{T}, \qquad \Gamma \approx \frac{0.4}{S\sigma\sqrt{T}}.$$
+
+    Vega grows with $\sqrt{T}$: a change in volatility moves the price of a long-dated option more,
+    because the option's value is roughly proportional to $\sigma\sqrt{T}$. Gamma falls with
+    $\sqrt{T}$: a short-dated option's delta swings from 0 to 1 over a narrow range of prices.
+
+    This is the trader's rule "short-dated options are gamma, long-dated options are vega". Choices a
+    and c come from assuming that the Greeks move together; d reverses both.
+  source: { name: "Standard Greeks term structure (e.g. Natenberg, Option Volatility and Pricing)" }
+
+- id: opt-greeks-007
+  topic: options
+  subtopic: The Greeks and hedging
+  type: single
+  difficulty: medium
+  tags: [delta, at-the-money, black-scholes]
+  prompt: |
+    Under Black-Scholes, what is the delta of a European call whose strike equals the current stock
+    price, on a stock that pays no dividends, with interest rate $r \ge 0$ and volatility $\sigma > 0$?
+  choices:
+    - { id: a, text: "Exactly 0.5" }
+    - { id: b, text: "Slightly above 0.5" }
+    - { id: c, text: "Slightly below 0.5" }
+    - { id: d, text: "It depends on the stock's expected return" }
+  answer: b
+  explanation: |
+    Delta is $N(d_1)$ with
+
+    $$d_1 = \frac{\ln(S/K) + (r + \tfrac12\sigma^2)T}{\sigma\sqrt{T}} = \Big(\frac{r}{\sigma} + \frac{\sigma}{2}\Big)\sqrt{T} > 0$$
+
+    when $S = K$, so delta is above one half. For a one-year option at 20% volatility and zero rates,
+    $d_1 = 0.1$ and delta is about 0.54.
+
+    Choice a is the rule of thumb, which is exact only in the limit of short expiry (or for a strike
+    slightly above spot, where $d_1 = 0$). Choice c confuses delta with $N(d_2)$, the risk-neutral
+    probability of finishing in the money, which is below one half here when $r$ is small. Choice d
+    misses that the real-world drift never enters Black-Scholes.
+  source: { name: "Standard result (e.g. QuantNet forum discussion of at-the-money delta)", url: "https://quantnet.com/threads/why-the-delta-of-atm-call-option-is-slightly-larger-than-0-5.39064" }
+
+- id: opt-greeks-008
+  topic: options
+  subtopic: The Greeks and hedging
+  type: numeric
+  difficulty: hard
+  tags: [gamma-hedging, delta-hedging, hedge-ratios]
+  prompt: |
+    Your options book has a delta of +200 (it behaves like 200 shares) and a gamma of −500 (its delta
+    falls by 500 shares for each \$1 rise in the stock). You can trade the stock and a listed option
+    whose delta is 0.6 and gamma 0.05, each on one share. To make the book both delta-neutral and
+    gamma-neutral, you trade the listed option and then the stock. How many shares do you sell?
+  answer: 6200
+  unit: shares
+  hints:
+    - The stock has delta 1 and gamma 0. Which instrument can change the book's gamma?
+    - First choose the number of listed options that cancels the gamma, then look at the delta you have.
+  followUps:
+    - Would you buy or sell the listed options, and how many?
+    - After the hedge, what exposure might you still have that you did not have before?
+  explanation: |
+    Only options carry gamma, so fix gamma first. Cancelling $-500$ with options of gamma 0.05 needs
+    $500/0.05 = 10{,}000$ options bought. Those add $10{,}000 \times 0.6 = 6{,}000$ of delta, so the
+    book's delta becomes $200 + 6{,}000 = 6{,}200$. Selling 6,200 shares, which have no gamma, brings
+    delta to zero without disturbing the gamma hedge.
+
+    The common wrong answer is 200, from hedging the delta first and forgetting that the gamma hedge
+    brings delta of its own. Answering "buy 5,800 shares" gets the sign of the options' delta wrong.
+
+    The hedged book is still exposed to vega (the new options bring vega that the old book may not
+    offset), and the hedge only holds near the current stock price.
+  source: { name: "Standard delta-gamma hedge (e.g. Hull, Options, Futures, and Other Derivatives)" }
+
+- id: opt-greeks-009
+  topic: options
+  subtopic: The Greeks and hedging
+  type: short
+  difficulty: hard
+  tags: [gamma, theta, black-scholes-pde, delta-neutral]
+  prompt: |
+    A trader claims to have a delta-neutral options position with positive gamma and positive theta: it
+    makes money when the stock moves and also when it does not. Under Black-Scholes assumptions, why is
+    this (essentially) impossible? What relationship links the two?
+  reference: |
+    Every option value satisfies the Black-Scholes equation, and so does any portfolio of options and
+    stock:
+
+    $$\Theta + \tfrac12\sigma^2 S^2\Gamma + rS\Delta = rV.$$
+
+    For a delta-neutral position $\Delta = 0$, so $\Theta = rV - \tfrac12\sigma^2 S^2 \Gamma$. Apart
+    from the small financing term $rV$, theta and gamma have opposite signs: positive gamma must be paid
+    for with negative theta, and a position that earns time decay is short gamma.
+
+    The economic reason: if a position gained from moves (convexity) and from the passage of time,
+    with no offsetting loss, it would be an arbitrage. Theta is the market price of gamma. The
+    exceptions are small: the $rV$ term (for instance a deep in-the-money European put can have
+    positive theta) or situations outside the model, such as a mispriced option or volatility
+    differing across strikes.
+  keyPoints:
+    - Uses the Black-Scholes equation Θ + ½σ²S²Γ + rSΔ = rV for the whole position
+    - With Δ = 0, Θ ≈ −½σ²S²Γ up to the financing term rV
+    - So positive gamma comes with negative theta, and positive theta with negative gamma
+    - Explains it economically, theta is the price paid for convexity, otherwise there is an arbitrage
+    - Mentions the small exceptions (interest term) or that it would mean the options are mispriced
+  hints:
+    - Which equation must every portfolio of options and stock satisfy in Black-Scholes?
+    - Set delta to zero in it.
+    - What would you do if such a position existed?
+  followUps:
+    - Why can a deep in-the-money European put have positive theta?
+    - In practice, how might a trader end up long gamma and long theta for a while?
+  explanation: |
+    The key is the Black-Scholes equation read as a statement about Greeks. Candidates often know
+    "long gamma means short theta" as a rule of thumb but cannot say why; a strong answer derives it
+    from the equation and recognises the arbitrage the claim would imply.
+  source: { name: "Standard gamma-theta relationship (e.g. Hull, Options, Futures, and Other Derivatives)" }
+
+- id: opt-greeks-010
+  topic: options
+  subtopic: The Greeks and hedging
+  type: short
+  difficulty: medium
+  tags: [short-straddle, pin-risk, gamma-risk, expiry]
+  prompt: |
+    It is the day before expiry. You are short a large at-the-money straddle and the stock is sitting
+    right at the strike. What is good about your position, what are you worried about, and how might you
+    manage it?
+  reference: |
+    The good: you are collecting the most time decay you ever will, since an at-the-money option loses
+    the last of its time value fastest just before expiry. If the stock stays put, both options expire
+    nearly worthless and you keep the premium.
+
+    The worries: gamma is enormous. Your delta flips between about $+1$ and $-1$ per share of the
+    straddle for small moves, so hedging is expensive and a jump (news, an earnings surprise) costs you a
+    lot quickly. At expiry there is **pin risk**: if the stock closes very near the strike you do not
+    know whether your short options will be assigned, so you may find yourself long or short a large
+    amount of stock over the weekend with no way to hedge it until the market reopens.
+
+    Management: buy back the straddle (or the option nearest the money) before the close to remove
+    the pin risk, keep the position small, hedge with nearby strikes, and watch for news.
+  keyPoints:
+    - Short the straddle collects the large theta of an at-the-money option near expiry
+    - Gamma is very large near expiry at the money, so small moves swing the delta and hedging is costly
+    - A jump in the stock causes a large loss
+    - Pin risk, uncertainty over assignment when the stock closes near the strike, leaves an unknown stock position after expiry
+    - Suggests ways to manage it, such as buying back the position before the close
+  hints:
+    - Which Greek works for you, and which against you, the day before expiry?
+    - What does your delta do if the stock moves 1% either way?
+    - What happens at the close if the stock is a cent above the strike?
+  followUps:
+    - How large is the theta of a one-day at-the-money straddle on a \$100 stock with 20% volatility, roughly?
+    - Why do some traders say that stocks tend to be pinned to strikes with large open interest?
+  explanation: |
+    Many candidates describe only the theta. The interviewer wants the gamma risk spelled out (delta
+    flipping sign over a small move) and the practical expiry problem of pin risk, which is specific to
+    options near the strike at expiry and invisible in a model that stops at the payoff.
+  source: { name: "Widely asked trading interview question (e.g. techinterview.org options guide)", url: "https://www.techinterview.org/post/3233477254/options-greeks-quant-trading-interview/" }

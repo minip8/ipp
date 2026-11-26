@@ -1,0 +1,253 @@
+# Forwards, futures and carry: discounting, the forward price by no arbitrage, dividends, currencies and commodities.
+- id: opt-forwards-001
+  topic: options
+  subtopic: Forwards, futures and carry
+  type: numeric
+  difficulty: easy
+  tags: [forward-price, cost-of-carry, no-arbitrage]
+  prompt: |
+    A stock trades at \$50 and pays no dividends before the delivery date. You can borrow and lend at
+    10% a year, compounded annually, and there are no transaction costs. What is the no-arbitrage price
+    for delivery of one share in one year?
+  answer: 55
+  unit: dollars
+  explanation: |
+    Replicate the forward. Borrow \$50, buy the share and hold it; in a year you own the share and owe
+    $50 \times 1.10 = 55$ dollars. Owning the share at the delivery date for a payment of \$55 then is
+    exactly what a long forward gives you, so the forward price must be \$55.
+
+    If the forward traded above \$55, you would sell it and do the trade above (cash and carry): deliver
+    the share, collect the forward price and repay \$55, keeping the difference. Below \$55, do the
+    reverse: short the share, lend the \$50 and buy forward.
+
+    The common wrong answer is \$50, from thinking a forward is "the price today, paid later". The
+    other is a guess at where the stock will be in a year: the forward price does not depend on
+    anyone's forecast.
+  source: { name: "Standard cost-of-carry argument (e.g. Hull, Options, Futures, and Other Derivatives)" }
+
+- id: opt-forwards-002
+  topic: options
+  subtopic: Forwards, futures and carry
+  type: numeric
+  difficulty: medium
+  tags: [forward-price, dividends, discount-factors]
+  prompt: |
+    A stock trades at \$100.90 and will pay a dividend of exactly \$2 per share in six months. A
+    zero-coupon bond paying \$1 in six months costs \$0.95 today, and one paying \$1 in a year costs
+    \$0.90. What is the no-arbitrage forward price for delivery of one share in one year (just after
+    the dividend has been paid)?
+  answer: 110
+  unit: dollars
+  hints:
+    - Whoever holds the share over the year receives the dividend; the forward buyer does not.
+    - What is the dividend worth today?
+    - Strip the dividend's present value out of the share price, then carry what is left forward to the delivery date.
+  followUps:
+    - Write down the cash-and-carry trade and its cash flows at each date.
+    - If the dividend were instead a continuous yield $q$, what would the forward price be?
+  explanation: |
+    A long forward gets the share at the delivery date but not the dividend paid before it. So the
+    forward is a claim on the share minus the dividend, and in today's money that is worth the share
+    price minus the present value of the dividend:
+
+    $$S_0 - D \cdot P(0, 0.5) = 100.90 - 2 \times 0.95 = 99.$$
+
+    Carrying that to the delivery date means dividing by the one-year discount factor:
+
+    $$F = \frac{99}{0.90} = 110.$$
+
+    The trade: buy the share for \$100.90 and sell it forward, financing the purchase with two loans:
+    \$1.90 for six months, repaid by the \$2 dividend, and \$99 for a year, repaid as
+    $99/0.90 = 110$ dollars out of the forward price.
+
+    The common wrong answer is $100.90/0.90 \approx 112.11$, forgetting the dividend. Subtracting
+    the full \$2 without discounting it gives $98.90/0.90 \approx 109.89$, a small but real error.
+  source: { name: "Standard forward price with known income (e.g. Hull, Options, Futures, and Other Derivatives)" }
+
+- id: opt-forwards-003
+  topic: options
+  subtopic: Forwards, futures and carry
+  type: numeric
+  difficulty: easy
+  tags: [forward-price, arbitrage, cash-and-carry]
+  prompt: |
+    A stock that pays no dividends trades at \$80. A zero-coupon bond paying \$1 in one year costs
+    \$0.96, and you can borrow or lend at that price. A dealer quotes a one-year forward on the stock at
+    \$85. Per share, how much riskless profit can you lock in, measured at the delivery date?
+  answer: 5/3
+  answerText: |-
+    $85 - 80/0.96 = 5/3 \approx 1.67$ dollars
+  unit: dollars
+  explanation: |
+    The fair forward price is $80/0.96 \approx 83.33$, so the quoted \$85 is too high: sell it.
+
+    The trade: sell the forward at \$85, borrow \$80 by selling bonds that pay $80/0.96 = 83.33$
+    dollars in a year, and buy the share. Cost today: zero. In a year, deliver the share for \$85 and
+    repay \$83.33, whatever the stock price is then:
+
+    $$85 - \frac{80}{0.96} = \frac{5}{3} \approx 1.67.$$
+
+    The common wrong answer is \$5, the forward minus spot, which forgets the cost of financing the
+    share. Using an interest rate of 4% (from $1 - 0.96$) gives $85 - 83.2 = 1.80$: a bond price of
+    0.96 means a rate of $1/0.96 - 1 \approx 4.17\%$, not 4%.
+  source: { name: "Standard cash-and-carry arbitrage (e.g. Hull, Options, Futures, and Other Derivatives)" }
+
+- id: opt-forwards-004
+  topic: options
+  subtopic: Forwards, futures and carry
+  type: single
+  difficulty: hard
+  tags: [futures, forwards, marking-to-market, stochastic-rates]
+  prompt: |
+    A futures contract and a forward contract on the same asset have the same delivery date. The futures
+    is marked to market daily (gains and losses are paid in cash every day); the forward settles only at
+    delivery. Interest rates are random and strongly **positively** correlated with the asset's price.
+    How do the two prices compare?
+  choices:
+    - { id: a, text: "The futures price is higher than the forward price" }
+    - { id: b, text: "The forward price is higher than the futures price" }
+    - { id: c, text: "They are equal, because both are fixed by the same cost-of-carry argument" }
+    - { id: d, text: "The futures price is higher only if the futures is cash-settled" }
+  answer: a
+  explanation: |
+    A long futures position receives cash when the price rises and pays when it falls. With positive
+    correlation, the gains tend to arrive when rates are high, so they are reinvested at high rates, and
+    the losses tend to arrive when rates are low, so they are financed cheaply. That makes a long
+    futures more attractive than a long forward with the same price, so in equilibrium the futures
+    price is bid above the forward price. With negative correlation the order reverses.
+
+    Choice c is right when interest rates are deterministic: then the daily settlement can be replicated by a known schedule of positions
+    and the two prices coincide. Choice b gets the sign backwards. Choice d is a distraction: how the
+    contract is finally settled does not matter; the daily cash flows do.
+
+    For short-dated contracts the difference is small, which is why the two prices are often treated as
+    equal; it matters for long-dated interest-rate futures (the "convexity adjustment").
+  source: { name: "Forward versus futures prices (Cox, Ingersoll and Ross, 1981; e.g. Hull, Options, Futures, and Other Derivatives)" }
+
+- id: opt-forwards-005
+  topic: options
+  subtopic: Forwards, futures and carry
+  type: short
+  difficulty: easy
+  tags: [forward-price, expectations, risk-neutral]
+  prompt: |
+    A colleague argues that the one-year forward price of a stock should be well below today's price,
+    because every analyst expects the stock to fall. The stock pays no dividends and the one-year
+    interest rate is $r$ (continuously compounded). What is the forward price, and what is wrong with
+    the colleague's argument? What does the forward price tell you about the expected future price?
+  reference: |
+    The forward price is $F = S_0 e^{rT}$ with $T = 1$, whatever anyone expects.
+
+    The forward can be replicated: borrow $S_0$, buy the share and hold it. At the delivery date you
+    own the share and owe $S_0 e^{rT}$, exactly the position of a long forward at that price. If the
+    quoted forward were lower, you would buy it, short the share and lend the proceeds, locking in a
+    profit; if higher, the reverse. So no-arbitrage pins the forward price to the spot price and the
+    interest rate.
+
+    Expectations enter only through the spot price itself: if everyone expected a fall, the stock
+    would already trade lower today. The forward price is not the real-world expected future price;
+    $E[S_T] = S_0 e^{\mu T}$ includes the stock's expected return $\mu$, which carries a risk premium.
+    $F$ is the expected future price under the risk-neutral measure, which is a pricing device, not a
+    forecast.
+  keyPoints:
+    - "States the forward price F = S_0 e^{rT} for a non-dividend stock"
+    - The forward can be replicated by buying the share with borrowed money and holding it to delivery
+    - Any other forward price allows a riskless arbitrage (cash and carry, or its reverse)
+    - Forecasts of the future price do not enter; they are already reflected in today's spot price
+    - The forward is the risk-neutral expectation, not the real-world expectation, which includes a risk premium
+  hints:
+    - Can you build the forward's payoff yourself from things you can trade today?
+    - If you buy the share now with borrowed money, what do you have and what do you owe in a year?
+    - Where do the analysts' views show up, if not in the forward price?
+  followUps:
+    - Is the forward price an unbiased forecast of the future spot price? Why or why not?
+    - How does the answer change if the stock pays a known dividend before delivery?
+  explanation: |
+    The key point is that a forward on a traded, storable asset is priced by replication, so its price
+    is a function of the spot price and the financing rate alone. Candidates often agree with the
+    colleague a little ("the forward should be somewhat lower"), or say the forward is "the market's
+    forecast". A strong answer separates the risk-neutral expectation (what prices are) from the
+    real-world one (what is forecast).
+  source: { name: "Standard no-arbitrage result (e.g. Hull, Options, Futures, and Other Derivatives)" }
+
+- id: opt-forwards-006
+  topic: options
+  subtopic: Forwards, futures and carry
+  type: numeric
+  difficulty: medium
+  tags: [fx-forward, covered-interest-parity, currencies]
+  prompt: |
+    The euro trades at 1.20 US dollars. The one-year interest rate is 5% in dollars and 2% in euros,
+    both compounded annually, and you can borrow and lend freely in either currency. What is the
+    no-arbitrage one-year forward exchange rate, in dollars per euro?
+  answer: 21/17
+  answerText: |-
+    $1.20 \times 1.05 / 1.02 = 21/17 \approx 1.2353$ dollars per euro
+  hints:
+    - A euro is an asset that pays interest, like a stock paying a dividend yield.
+    - Compare two ways to have euros in a year, starting from dollars today.
+    - Which currency has the higher interest rate, and should the forward value it higher or lower than spot?
+  followUps:
+    - Write down the arbitrage if the forward were quoted at 1.20.
+    - Why does the higher-yielding currency trade at a forward discount?
+  explanation: |
+    Start with \$1.20. Either convert it to €1 now and lend it at 2%, ending with €1.02 in a year,
+    or lend the \$1.20 at 5%, ending with \$1.26. A forward agreed today lets you convert one into the
+    other at no cost, so the two must be worth the same:
+
+    $$1.02\,F = 1.26 \quad\Longrightarrow\quad F = \frac{1.20 \times 1.05}{1.02} = \frac{21}{17} \approx 1.2353.$$
+
+    This is covered interest parity: the forward is spot times the ratio of the two growth factors,
+    domestic (dollars, the quote currency) over foreign. The low-yielding euro trades at a forward
+    premium so that no one gains by borrowing in one currency and lending in the other.
+
+    The common wrong answer is $1.20 \times 1.02/1.05 \approx 1.166$, with the ratio upside down. The
+    approximation $1.20 \times (1 + 0.05 - 0.02) = 1.236$ is fine for a quick answer; the exact value
+    uses the ratio.
+  source: { name: "Covered interest parity (e.g. Hull, Options, Futures, and Other Derivatives)" }
+
+- id: opt-forwards-007
+  topic: options
+  subtopic: Forwards, futures and carry
+  type: short
+  difficulty: medium
+  tags: [commodities, convenience-yield, backwardation, cost-of-carry]
+  prompt: |
+    For a stock with no dividends, any forward price other than $S_0 e^{rT}$ is an arbitrage. Yet the
+    one-year forward price of a physical commodity such as crude oil is often **below** the spot
+    price, even after storage costs. Why is that not an arbitrage? Which half of the no-arbitrage
+    argument still holds for the commodity?
+  reference: |
+    The cash-and-carry half still holds: buy the commodity now, pay to store it and sell it forward.
+    So the forward price cannot exceed spot plus financing and storage, $F \le S_0 e^{(r+u)T}$ with
+    storage cost rate $u$; otherwise that trade is an arbitrage.
+
+    The other half needs a reverse cash and carry: sell the commodity now (short it, or sell from
+    inventory), invest the proceeds and buy it back forward. For a stock this works because shares can
+    be borrowed and sold. For a consumption commodity, those who hold inventory hold it because they
+    need it (a refinery cannot stop for a year), so they will not sell it now and buy it back later
+    just because the forward is cheap. Holding the physical good has a benefit, the convenience
+    yield $y$, that the forward does not give.
+
+    So the forward is only bounded above, and in practice $F = S_0 e^{(r+u-y)T}$, which is below spot
+    (backwardation) when the convenience yield is large, typically when inventories are scarce.
+  keyPoints:
+    - Cash and carry (buy, store, sell forward) still gives an upper bound on the forward, including storage costs
+    - The lower bound needs the reverse trade, selling the commodity now and buying it back forward
+    - Holders of a consumption commodity keep inventory for use and will not do the reverse trade, so the lower bound does not bind
+    - The benefit of holding the physical good is the convenience yield, giving F = S e^{(r+u-y)T}
+    - A stock is an investment asset that can be borrowed and sold short, so its forward is pinned from both sides
+  hints:
+    - The no-arbitrage argument for a forward has two trades, one for each direction of mispricing. Write both down.
+    - For the commodity, which of the two trades can a typical market participant actually do?
+    - What does someone who holds oil in a tank get that the holder of a forward does not?
+  followUps:
+    - What makes a commodity market switch from contango to backwardation?
+    - Is gold more like a stock or more like crude oil in this respect? Why?
+  explanation: |
+    Candidates often say "storage costs" or "supply and demand", which explains nothing: storage costs
+    push the forward *up*. The point is that the no-arbitrage argument has two sides and the
+    commodity only supports one of them, because the lower bound needs someone willing to lend or sell
+    the physical good. Naming the convenience yield and writing the carry formula with it is the
+    complete answer.
+  source: { name: "Cost of carry and convenience yield (e.g. Hull, Options, Futures, and Other Derivatives)" }

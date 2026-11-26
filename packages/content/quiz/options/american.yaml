@@ -1,0 +1,265 @@
+# Early exercise and American options: when exercising early is never, sometimes or always optimal, and pricing on a tree.
+- id: opt-american-001
+  topic: options
+  subtopic: Early exercise and American options
+  type: short
+  difficulty: easy
+  tags: [american-call, early-exercise, no-dividends]
+  prompt: |
+    Explain why it is never optimal to exercise an American call on a stock that pays no dividends
+    before expiry (interest rates are positive). If you no longer want the position, what should you do
+    instead?
+  reference: |
+    Exercising now gives $S - K$. But the call is worth at least $S - K e^{-r(T-t)}$ (it pays at least
+    as much as the share minus a bond paying $K$ at expiry), which is more than $S - K$ when $r > 0$.
+    So the call is always worth more alive than exercised: selling it beats exercising it.
+
+    Two things are lost by exercising early. You pay the strike now instead of at expiry, giving up
+    the interest on $K$. And you give up the insurance: if you hold the call and the stock falls below
+    $K$, you lose less than someone holding the share. Holding the share gains you nothing in return,
+    since there are no dividends.
+
+    If you want out, sell the call. If you want to lock in its current gains while keeping it, short
+    the stock against it. Either way the American call is worth the same as the European one.
+  keyPoints:
+    - The call is worth at least S - K e^{-r(T-t)}, which exceeds the exercise value S - K when rates are positive
+    - Exercising early pays the strike sooner, losing interest on it
+    - Exercising gives up the protection (the put-like insurance) of holding the option instead of the share
+    - With no dividends, owning the share early brings no benefit
+    - "Better alternatives: sell the call, or short the stock against it; so American and European calls are worth the same"
+  hints:
+    - Compare what you get from exercising with a lower bound on the call's market value.
+    - What do you pay, and when, if you exercise today rather than at expiry?
+    - What happens to someone who exercised early if the stock then falls below the strike?
+  followUps:
+    - What changes if the stock pays a dividend before expiry?
+    - Does the argument still hold if interest rates are negative?
+  explanation: |
+    The cleanest answer is the bound $C \ge S - K e^{-r(T-t)} > S - K$. Many candidates give only the
+    intuition ("there is still time value") without saying where the value comes from, or forget the
+    practical point that you would sell rather than exercise. A good answer names both the interest on
+    the strike and the insurance value.
+  source: { name: "Merton (1973); standard result (e.g. Hull, Options, Futures, and Other Derivatives)" }
+
+- id: opt-american-002
+  topic: options
+  subtopic: Early exercise and American options
+  type: short
+  difficulty: hard
+  tags: [american-put, early-exercise]
+  prompt: |
+    Unlike the call, an American put on a stock that pays no dividends can be worth exercising early
+    when interest rates are positive. Explain why, with an extreme example, and say what trade-off
+    decides the exercise boundary.
+  reference: |
+    Extreme case: the stock price is (essentially) zero. Exercising now gives $K$ in cash, which you can
+    invest. Waiting can give at most $K$ at expiry, worth $K e^{-r(T-t)} < K$ today. So exercising is
+    strictly better: there is nothing left to gain from waiting, since the stock cannot fall further,
+    and waiting costs interest on $K$.
+
+    In general, exercising a put early receives the strike sooner (a gain of interest on $K$) but gives
+    up the option to benefit if the stock recovers above the strike before expiry (the insurance
+    value). Deep in the money the second is small and the first dominates, so there is a critical
+    stock price $S^*(t)$ below which you exercise. The boundary rises towards $K$ as expiry
+    approaches; higher interest rates raise it (exercise sooner), higher volatility lowers it (waiting
+    is worth more).
+
+    This is why the American put is worth strictly more than the European put when $r > 0$, while the
+    American call on a non-dividend stock is worth exactly the European call.
+  keyPoints:
+    - Exercising the put receives the strike now, earning interest on it, while waiting gives at most K at expiry
+    - In the extreme case of a stock price near zero, waiting cannot gain anything and costs interest, so exercise now
+    - The cost of exercising is giving up the insurance value of waiting (the chance the stock recovers)
+    - There is a critical stock price below which early exercise is optimal; deep in the money options are exercised
+    - Notes how interest rates or volatility move the boundary, or that the American put is then worth more than the European
+  hints:
+    - What do you receive if you exercise a put, and when?
+    - Suppose the stock price is zero. Can waiting possibly help?
+    - What do you give up by exercising when the stock is only slightly below the strike?
+  followUps:
+    - Is there a lower bound on the American put price that the European put can violate?
+    - How does a dividend before expiry affect early exercise of the put?
+  explanation: |
+    The symmetry candidates expect ("the call is never exercised early, so neither is the put")
+    fails because the payoffs are not symmetric: the call's exercise pays out the strike, the put's
+    exercise receives it. The stock-at-zero example makes this concrete. A strong answer states the
+    trade-off and the existence of an exercise boundary, without needing a formula for it.
+  source: { name: "Standard result (e.g. Hull, Options, Futures, and Other Derivatives)" }
+
+- id: opt-american-003
+  topic: options
+  subtopic: Early exercise and American options
+  type: single
+  difficulty: medium
+  tags: [american-call, dividends, early-exercise]
+  prompt: |
+    A stock will pay one known cash dividend before an American call on it expires. If it is ever optimal
+    to exercise the call early, when is it?
+  choices:
+    - { id: a, text: "Just before the stock goes ex-dividend" }
+    - { id: b, text: "Just after the stock goes ex-dividend" }
+    - { id: c, text: "At any time the call is deep enough in the money" }
+    - { id: d, text: "Never, just as when there are no dividends" }
+  answer: a
+  explanation: |
+    Between dividends the no-dividend argument applies: the call is worth more alive than exercised.
+    The only moment exercising can help is the instant before the stock drops by the dividend, because
+    exercising then captures the dividend, which the call holder otherwise loses. It is optimal when
+    the dividend is larger than what is given up, roughly the interest on the strike until expiry plus
+    the remaining time value of the call, which happens when the call is deep in the money and the
+    dividend large.
+
+    Choice b exercises after the price has dropped: the dividend is gone and nothing is gained. Choice c
+    is the right condition only at the moment just before the ex-date; at other times deep in the money
+    calls are still not exercised. Choice d forgets that the dividend is a cost of waiting that the
+    share holder does not bear.
+  source: { name: "Standard result (e.g. Hull, Options, Futures, and Other Derivatives)" }
+
+- id: opt-american-004
+  topic: options
+  subtopic: Early exercise and American options
+  type: numeric
+  difficulty: hard
+  tags: [american-put, binomial-tree, early-exercise]
+  prompt: |
+    A stock trades at \$40. In each of two periods it either doubles or halves. Over each period \$1
+    grows to \$1.25 at the risk-free rate (the numbers are chosen to keep the arithmetic easy). What is
+    the price of an American put struck at \$55 that expires at the end of the second period and can be
+    exercised at the start of either period or at expiry?
+  answer: 82/5
+  answerText: |-
+    16.40 dollars (the European put is worth 12)
+  unit: dollars
+  hints:
+    - First find the risk-neutral probability of an up move from $1.25 = 2q + \tfrac12(1 - q)$.
+    - Work backwards from expiry. At each node, compare the value of waiting with the value of exercising there.
+    - The early exercise decision matters at only one node.
+  followUps:
+    - What is the European put worth? Where does the difference come from?
+    - What is the replicating portfolio at the node where you exercise, and why do you not need it?
+  explanation: |
+    The risk-neutral up probability solves $1.25 = 2q + \tfrac12 (1 - q)$, so $q = \tfrac12$, and each
+    period's discount factor is $1/1.25 = 0.8$.
+
+    At expiry the stock is 160, 40 or 10, so the put pays 0, 15 or 45. One period in:
+
+    - at 80: waiting is worth $0.8 \times \tfrac12 (0 + 15) = 6$; exercising gives nothing. Value 6.
+    - at 20: waiting is worth $0.8 \times \tfrac12 (15 + 45) = 24$; exercising gives $55 - 20 = 35$.
+      Exercise: value 35.
+
+    At the start: waiting is worth $0.8 \times \tfrac12 (6 + 35) = 16.40$, more than the \$15 from
+    exercising now. So the American put is worth \$16.40.
+
+    The European put, which cannot exercise at 20, is worth $0.8 \times \tfrac12 (6 + 24) = 12$. The
+    \$4.40 difference is the early exercise premium. The common wrong answers are 12 (pricing it as
+    European) and 15 (exercising immediately because the put is in the money).
+  source: { name: "Two-period binomial American put (in the style of Shreve, Stochastic Calculus for Finance I)" }
+
+- id: opt-american-005
+  topic: options
+  subtopic: Early exercise and American options
+  type: multiple
+  difficulty: medium
+  tags: [american-options, put-call-parity, bounds]
+  prompt: |
+    For options on a stock that pays no dividends, with a constant positive interest rate $r$, which
+    statements are true? Select all that apply. ($C$ and $P$ are an American call and put with the same
+    strike $K$ and expiry $T$; $S$ is the stock price.)
+  choices:
+    - { id: a, text: "An American call is worth the same as the otherwise identical European call" }
+    - { id: b, text: "An American put is worth at least as much as the otherwise identical European put" }
+    - { id: c, text: "An American put is worth the same as the otherwise identical European put" }
+    - { id: d, text: "$C - P = S - K e^{-rT}$ holds exactly for the American options" }
+    - { id: e, text: "$S - K \\le C - P \\le S - K e^{-rT}$ for the American options" }
+  answer: [a, b, e]
+  explanation: |
+    - **a:** true. Early exercise of the call is never optimal, so the right to do it is worthless.
+    - **b:** true. The American put has every right the European one has, and more.
+    - **c:** false. Early exercise of a deep in-the-money put can be optimal when $r > 0$, so the
+      American put is worth strictly more.
+    - **d:** false. Parity holds exactly only for European options. With $C = C_E$ and $P > P_E$,
+      $C - P < S - K e^{-rT}$.
+    - **e:** true. The upper bound follows from $C = C_E$ and $P \ge P_E$. The lower bound comes from
+      comparing a call plus $K$ in cash with a put plus the share: the first is worth at least the
+      second at every date, so $C + K \ge P + S$.
+
+    The usual mistake is to choose d, carrying European parity over to American options, or c, by
+    symmetry with a.
+  source: { name: "Standard bounds for American options (e.g. Hull, Options, Futures, and Other Derivatives)" }
+
+- id: opt-american-006
+  topic: options
+  subtopic: Early exercise and American options
+  type: numeric
+  difficulty: medium
+  tags: [american-put, put-call-parity, lower-bound]
+  prompt: |
+    A stock that pays no dividends trades at \$100. A zero-coupon bond paying \$1 in one year costs
+    \$0.90. A one-year American call struck at \$100 trades at \$12. What is the largest lower bound on
+    the price of the one-year American put struck at \$100 that follows from no-arbitrage arguments?
+  answer: 2
+  unit: dollars
+  hints:
+    - What is the American call worth compared with the European call?
+    - Use European put-call parity to price the European put.
+    - How does the American put compare with the European put?
+  followUps:
+    - What upper bound on the American put follows from the same arguments?
+    - Why might the American put trade well above this lower bound?
+  explanation: |
+    On a non-dividend stock the American call is never exercised early, so it is worth the same as the
+    European call, \$12. European parity then gives the European put:
+
+    $$P_E = C - S + K \cdot P(0, 1) = 12 - 100 + 90 = 2.$$
+
+    The American put is worth at least the European put, so $P \ge 2$. Equivalently, from the
+    American bounds $C - P \le S - K\,P(0, 1)$, $P \ge 12 - 10 = 2$. The other bound,
+    $C - P \ge S - K$, gives $P \le 12$.
+
+    The common wrong answer is 0, from using only that an option is worth at least its intrinsic value
+    (here zero). Note that 2 is a bound, not the price: assuming European parity holds exactly for the
+    American put gives the same number for the wrong reason, and the American put is typically worth
+    more.
+  source: { name: "Standard bounds for American options (e.g. Hull, Options, Futures, and Other Derivatives)" }
+
+- id: opt-american-007
+  topic: options
+  subtopic: Early exercise and American options
+  type: short
+  difficulty: medium
+  tags: [american-put, interest-rates, volatility, early-exercise]
+  prompt: |
+    For an American put on a stock that pays no dividends, how do (a) higher interest rates and (b)
+    higher volatility change the incentive to exercise early? Explain each in terms of what exercising
+    gains and what it gives up.
+  reference: |
+    Exercising a put early gains interest on the strike received sooner, and gives up the option value
+    of waiting (the chance the stock rises back above the strike, in which case the put protected you
+    for free).
+
+    (a) Higher interest rates make early exercise **more** attractive: the interest earned on $K$ by
+    receiving it now is larger. The critical stock price below which you exercise rises.
+
+    (b) Higher volatility makes early exercise **less** attractive: the option value of waiting is
+    larger, because a big move either way is now more likely and the put's downside is limited. The
+    critical stock price falls.
+
+    (With dividends added: a dividend before expiry makes early exercise of the put less attractive,
+    since the stock will drop when it is paid, which helps the put holder who waits.)
+  keyPoints:
+    - Early exercise gains interest on the strike and gives up the value of waiting
+    - Higher interest rates make early exercise more attractive (raise the exercise boundary)
+    - Higher volatility makes early exercise less attractive (more value in waiting)
+    - Explains each effect through the trade-off, not just as a sign
+  hints:
+    - What do you receive when you exercise a put, and what is it worth to receive it sooner?
+    - What could happen to the stock price after you exercise that you would regret?
+  followUps:
+    - What is the effect of an expected dividend on early exercise of the put? On the call?
+    - Why is the American put's exercise boundary at the strike right at expiry?
+  explanation: |
+    The rate effect is usually answered correctly; the volatility effect is where candidates slip, often
+    reasoning that more volatility means "more chance to get deep in the money, so exercise more". The
+    point is that volatility raises the value of keeping the option alive, which is exactly what early
+    exercise throws away.
+  source: { name: "Standard comparative statics (e.g. Hull, Options, Futures, and Other Derivatives)" }

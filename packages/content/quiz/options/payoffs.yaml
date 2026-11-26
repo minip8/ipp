@@ -1,0 +1,268 @@
+# Payoffs and option strategies: spreads, straddles, butterflies, reading a payoff diagram, building a payoff from options.
+- id: opt-payoffs-001
+  topic: options
+  subtopic: Payoffs and option strategies
+  type: numeric
+  difficulty: easy
+  tags: [call-spread, payoff, profit]
+  prompt: |
+    You buy a call with strike \$100 for \$6 and sell a call with strike \$110 for \$2. Both are on one
+    share and expire on the same date. At expiry the stock is at \$107. Ignoring interest, what is
+    your profit?
+  answer: 3
+  unit: dollars
+  explanation: |
+    At expiry the 100 call pays $107 - 100 = 7$ and the 110 call expires worthless. You paid
+    $6 - 2 = 4$ for the spread, so the profit is $7 - 4 = 3$.
+
+    This is a bull call spread: it pays $\min\big(\max(S_T - 100, 0), 10\big)$, so its payoff is
+    capped at \$10 and its profit runs from $-4$ to $+6$.
+
+    The common wrong answers are \$7, the payoff without the premium, and \$11, from adding the
+    premium received to the payoff but forgetting the premium paid.
+  source: { name: "Standard option strategy (e.g. Hull, Options, Futures, and Other Derivatives)" }
+
+- id: opt-payoffs-002
+  topic: options
+  subtopic: Payoffs and option strategies
+  type: single
+  difficulty: medium
+  tags: [butterfly, call-spread, dominance]
+  prompt: |
+    All options below are European calls on the same stock with the same expiry. Which portfolio is
+    worth more today?
+
+    - **A:** long one call struck at 90, short two calls struck at 100, long one call struck at 110.
+    - **B:** long one call struck at 90, short one call struck at 110.
+  choices:
+    - { id: a, text: "A" }
+    - { id: b, text: "B" }
+    - { id: c, text: "They are worth the same, since both are combinations of the 90 and 110 calls" }
+    - { id: d, text: "It depends on the stock's volatility" }
+  answer: b
+  explanation: |
+    Subtract one from the other:
+
+    $$B - A = 2\,C(100) - 2\,C(110),$$
+
+    which is two 100/110 call spreads. A call spread pays $\min\big(\max(S_T - 100, 0), 10\big) \ge 0$,
+    and pays something whenever the stock ends above 100, so it has a positive price. Hence B is worth
+    more, whatever the model.
+
+    Payoff pictures say the same: A is a butterfly, a tent that is 0 below 90, peaks at 10 when
+    $S_T = 100$ and is back to 0 from 110 on. B is a call spread that rises from 0 at 90 to 20 at 110
+    and stays there. B's payoff is at least A's everywhere.
+
+    Choice d is the usual hedge when a candidate cannot decide: volatility changes both prices, but
+    never the sign of the difference, because one payoff dominates the other. Choice c ignores the
+    100-strike calls in A.
+  source: { name: "Quant job interview problem collection (Kent State)", url: "https://www.math.kent.edu/~oana/math60070/InterviewProblems.pdf" }
+
+- id: opt-payoffs-003
+  topic: options
+  subtopic: Payoffs and option strategies
+  type: multiple
+  difficulty: medium
+  tags: [payoff, risk, strategies]
+  prompt: |
+    Held to expiry, which of these positions have a **limited** maximum loss? The stock price cannot go
+    below zero but has no upper limit. Select all that apply.
+  choices:
+    - { id: a, text: "Long straddle (long a call and a put at the same strike)" }
+    - { id: b, text: "Short put" }
+    - { id: c, text: "Covered call (long the stock, short a call)" }
+    - { id: d, text: "Short call with no stock held" }
+    - { id: e, text: "Bear put spread (long a higher-strike put, short a lower-strike put)" }
+    - { id: f, text: "Short straddle" }
+  answer: [a, b, c, e]
+  explanation: |
+    Look at what happens as the stock goes to zero and as it goes to infinity.
+
+    - **Long straddle:** the worst case is the stock finishing at the strike, losing the premium.
+    - **Short put:** the worst case is the stock going to zero, losing the strike minus the premium.
+      Large, but limited.
+    - **Covered call:** the short call's losses above the strike are covered by the share; the worst
+      case is the stock going to zero.
+    - **Bear put spread:** a spread costs at most its premium.
+    - **Short call** and **short straddle:** each has a short call with no offsetting long upside, so
+      the loss grows without limit as the stock rises.
+
+    The usual mistake is to count the short put as an unlimited-loss position by analogy with the short
+    call. The two are not symmetric, because the stock can rise without bound but cannot fall below
+    zero.
+  source: { name: "Standard option strategies (e.g. Natenberg, Option Volatility and Pricing)" }
+
+- id: opt-payoffs-004
+  topic: options
+  subtopic: Payoffs and option strategies
+  type: short
+  difficulty: medium
+  tags: [replication, payoff, straddle, static-hedge]
+  prompt: |
+    Using only zero-coupon bonds, the stock and European calls (all with the same expiry $T$), how
+    would you build a position that pays $|S_T - 100|$ at expiry? Describe the general recipe for
+    replicating any piecewise-linear payoff of $S_T$ this way.
+  reference: |
+    Read the payoff from left to right. A piecewise-linear $f(S_T)$ is fixed by its value at $S_T = 0$,
+    its slope just above 0, and the change in slope at each kink $K_i$:
+
+    $$f(S_T) = f(0) + f'(0^+)\,S_T + \sum_i \Delta_i\,(S_T - K_i)^+,$$
+
+    where $\Delta_i$ is the jump in slope at $K_i$. So hold bonds paying $f(0)$, $f'(0^+)$ shares and
+    $\Delta_i$ calls struck at each kink (negative numbers mean short positions).
+
+    For $|S_T - 100|$: the value at 0 is 100, the slope starts at $-1$, and at 100 it jumps from $-1$
+    to $+1$, a change of 2. So hold a bond paying \$100 at $T$, short one share and buy two calls
+    struck at 100:
+
+    $$100 - S_T + 2\,(S_T - 100)^+ = |S_T - 100|.$$
+
+    Check: below 100 this is $100 - S_T$, above it is $S_T - 100$. By put-call parity,
+    $100 - S_T + (S_T - 100)^+$ is a put, so this is the same as a straddle: one call plus one put.
+  keyPoints:
+    - The value of the payoff at zero is held as zero-coupon bonds
+    - The initial slope is held as shares of stock
+    - Each kink needs calls struck there, as many as the change in slope (short if the slope falls)
+    - "For |S_T - 100|: a bond paying 100, short one share, long two 100-strike calls"
+    - Recognises this as a straddle (one call plus one put) via put-call parity
+  hints:
+    - What is the payoff when $S_T = 0$, and what is its slope just above 0?
+    - What does adding one call struck at $K$ do to the slope of a payoff?
+    - The payoff's slope changes only at 100. By how much?
+  followUps:
+    - How would you replicate a payoff that is 0 below 90, 10 above 110 and linear in between?
+    - How do you replicate a smooth payoff, such as $S_T^2$, with options? What weights do the strikes get?
+  explanation: |
+    The recipe is the static replication of a payoff by its slope changes, and it is the reason calls
+    of all strikes "span" European payoffs. Candidates often answer "buy a straddle" without being
+    able to build it from the allowed instruments, or put the calls in the right place but get the
+    number wrong (one call instead of two, because the slope changes from $-1$ to $+1$). For smooth
+    payoffs the same idea gives a density of options with weight $f''(K)$ at strike $K$.
+  source: { name: "Static replication of payoffs (e.g. Breeden and Litzenberger, 1978; Carr and Madan, 1998)" }
+
+- id: opt-payoffs-005
+  topic: options
+  subtopic: Payoffs and option strategies
+  type: single
+  difficulty: easy
+  tags: [covered-call, synthetic, put-call-parity]
+  prompt: |
+    A covered call is long one share and short one European call struck at \$100. At expiry, its payoff
+    is the same as which position?
+  choices:
+    - { id: a, text: 'A short put struck at 100 plus a zero-coupon bond paying \$100 at expiry' }
+    - { id: b, text: 'A long put struck at 100 plus a zero-coupon bond paying \$100 at expiry' }
+    - { id: c, text: 'A short put struck at 100 on its own' }
+    - { id: d, text: 'A long call struck at 100 minus a zero-coupon bond paying \$100 at expiry' }
+  answer: a
+  explanation: |
+    Compare payoffs. The covered call pays $S_T - (S_T - 100)^+ = \min(S_T, 100)$: the share, capped
+    at 100. A bond paying 100 plus a short put pays $100 - (100 - S_T)^+$, which is also
+    $\min(S_T, 100)$. Both have the shape "rising with the stock, flat above 100".
+
+    This is put-call parity rearranged: $S - C = PV(K) - P$.
+
+    Choice c has the right shape but sits 100 lower: a short put on its own pays at most zero. Choice
+    b gains when the stock falls, the opposite exposure. Choice d pays $(S_T - 100)^+ - 100$: flat
+    below 100 and rising above it, the shape of a call rather than of a capped share.
+  source: { name: "Standard synthetic positions (e.g. Natenberg, Option Volatility and Pricing)" }
+
+- id: opt-payoffs-006
+  topic: options
+  subtopic: Payoffs and option strategies
+  type: numeric
+  difficulty: medium
+  tags: [ratio-spread, break-even, payoff]
+  prompt: |
+    You buy one call struck at \$100 and sell two calls struck at \$110, all on one share each with the
+    same expiry, and receive a net credit of \$1 for the package. Held to expiry and ignoring interest,
+    above what stock price does the position start to lose money?
+  answer: 121
+  unit: dollars
+  hints:
+    - Write the payoff on each interval of $S_T$ separately, and remember the credit.
+    - Above 110, what is the slope of the position's payoff?
+  followUps:
+    - What is the maximum profit, and where does it occur?
+    - Is the position long or short volatility? Long or short gamma near 110?
+  explanation: |
+    Above 110 the payoff is
+
+    $$(S_T - 100) - 2\,(S_T - 110) = 120 - S_T,$$
+
+    so with the \$1 credit the profit is $121 - S_T$, which is zero at 121 and negative above it.
+
+    Below 100 everything expires worthless and you keep \$1. Between 100 and 110 the profit rises,
+    to $10 + 1 = 11$ at 110, and above 110 it falls by \$1 for every \$1 the stock rises.
+
+    The common wrong answers are 120 (forgetting the credit) and 111 (thinking the loss starts at the
+    upper strike).
+  source: { name: "Standard ratio spread (e.g. Natenberg, Option Volatility and Pricing)" }
+
+- id: opt-payoffs-007
+  topic: options
+  subtopic: Payoffs and option strategies
+  type: short
+  difficulty: easy
+  tags: [straddle, volatility, break-even]
+  prompt: |
+    Why would a trader buy an at-the-money straddle? What is the trader betting on, what is the most
+    they can lose, and what has to happen for it to pay off if they hold it to expiry?
+  reference: |
+    A straddle (a call and a put at the same strike) pays $|S_T - K|$, so it profits from a large move
+    in either direction. The buyer is betting that the stock moves more than the market expects, not
+    on its direction: they are long volatility.
+
+    The most they can lose is the premium, which happens if the stock finishes exactly at the strike.
+    Held to expiry it makes money if the stock finishes outside $K \pm$ premium, so the move must be
+    larger than the premium paid.
+
+    Before expiry the straddle also gains if implied volatility rises (it has positive vega) and, if
+    delta-hedged, if the stock's realised moves are bigger than those priced in (it has positive
+    gamma); it loses value every day the stock sits still (negative theta).
+  keyPoints:
+    - The straddle pays the absolute move from the strike, so it profits from a large move either way
+    - It is a bet on volatility (a move larger than priced in), not on direction
+    - The maximum loss is the premium, when the stock finishes at the strike
+    - At expiry it breaks even at the strike plus or minus the premium
+    - Before expiry it gains from rising implied volatility and loses to time decay
+  hints:
+    - Draw the payoff at expiry.
+    - Where does the payoff touch zero, and how much did the position cost?
+    - Besides the stock moving, what else could make the straddle more valuable before expiry?
+  followUps:
+    - A one-year at-the-money straddle costs \$8 on a \$100 stock. Roughly what volatility is the market pricing?
+    - How would you profit if you thought the stock would move a lot but implied volatility would fall?
+  explanation: |
+    Most candidates get "profits from big moves". The interviewer wants the next layer: it is a bet
+    against the move priced into the premium (so "the stock will be volatile" is not enough if
+    everyone already thinks so), the break-even points, and the Greeks: long vega, long gamma, short
+    theta.
+  source: { name: "Widely asked trading interview question (e.g. Natenberg, Option Volatility and Pricing)" }
+
+- id: opt-payoffs-008
+  topic: options
+  subtopic: Payoffs and option strategies
+  type: numeric
+  difficulty: easy
+  tags: [butterfly, replication, payoff-diagram]
+  prompt: |
+    A contract pays nothing if the stock finishes at or below \$90 or at or above \$110 at a given
+    expiry. Between those prices its payoff rises in a straight line from \$0 at \$90 to \$10 at \$100,
+    then falls in a straight line back to \$0 at \$110. European calls on the stock with that expiry,
+    struck at \$90, \$100 and \$110, trade at \$12, \$6 and \$2.50. What is the contract worth?
+  answer: 5/2
+  answerText: |-
+    $12 - 2 \times 6 + 2.50 = 2.50$ dollars
+  unit: dollars
+  explanation: |
+    The payoff is a butterfly: its slope is 0 below 90, $+1$ from 90 to 100, $-1$ from 100 to 110
+    and 0 above. Each change in slope is a call at that strike: $+1$ at 90, $-2$ at 100, $+1$ at 110.
+    So the contract pays exactly what one 90 call, minus two 100 calls, plus one 110 call pay, and by
+    no arbitrage it costs the same:
+
+    $$C(90) - 2\,C(100) + C(110) = 12 - 12 + 2.50 = 2.50.$$
+
+    The common wrong answer is $12 - 6 + 2.50 = 8.50$, from selling only one 100 call (that position
+    keeps rising above 110).
+  source: { name: "Standard butterfly replication (e.g. Hull, Options, Futures, and Other Derivatives)" }

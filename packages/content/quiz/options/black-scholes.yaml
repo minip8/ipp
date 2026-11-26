@@ -1,0 +1,315 @@
+# Black-Scholes: what the inputs do, quick at-the-money pricing, N(d1) and N(d2), limits, assumptions and the replication argument.
+- id: opt-black-scholes-001
+  topic: options
+  subtopic: Black-Scholes
+  type: numeric
+  difficulty: easy
+  tags: [at-the-money, approximation, mental-math]
+  prompt: |
+    A stock that pays no dividends trades at \$50, its volatility is 30% a year and interest rates are
+    zero. Without a calculator, roughly what is a 3-month at-the-money European call worth under
+    Black-Scholes? Any answer within 5 cents of the Black-Scholes value is accepted.
+  answer: 2.98926
+  answerText: |-
+    $\approx 2.99$ dollars; the rule of thumb $0.4\,\sigma\sqrt{T}\,S = 0.4 \times 0.3 \times 0.5 \times 50$ gives 3.00
+  tolerance: { abs: 0.05 }
+  unit: dollars
+  explanation: |
+    For an at-the-money option with small $\sigma\sqrt{T}$ and zero rates,
+
+    $$C \approx \frac{1}{\sqrt{2\pi}}\,\sigma\sqrt{T}\,S \approx 0.4\,\sigma\sqrt{T}\,S.$$
+
+    Here $\sigma\sqrt{T} = 0.3 \times \sqrt{0.25} = 0.15$, so $C \approx 0.4 \times 0.15 \times 50 = 3.00$.
+    The exact Black-Scholes value is $50\,(2N(0.075) - 1) \approx 2.99$.
+
+    The rule comes from expanding $C = S\,(N(d_1) - N(d_2))$ with $d_{1,2} = \pm\tfrac12\sigma\sqrt{T}$:
+    $N(x) - N(-x) \approx 2x \cdot \frac{1}{\sqrt{2\pi}}$ for small $x$. The usual mistakes are using
+    $T = 3$ instead of $T = 0.25$ years, or forgetting the square root, which gives \$1.50.
+  source: { name: "Standard at-the-money approximation (e.g. Brenner and Subrahmanyam, 1988)" }
+
+- id: opt-black-scholes-002
+  topic: options
+  subtopic: Black-Scholes
+  type: numeric
+  difficulty: medium
+  tags: [implied-volatility, straddle, approximation]
+  prompt: |
+    A stock trades at \$200, pays no dividends, and interest rates are zero. A 3-month at-the-money
+    straddle (a call and a put struck at \$200) costs \$12. Roughly what implied volatility is the
+    market pricing? Give it as a decimal or a percentage; any answer within 0.2 percentage points of the
+    Black-Scholes implied volatility is accepted.
+  answer: 0.150433
+  answerText: |-
+    about 15%: $12 / (0.8 \times 200 \times \sqrt{0.25}) = 0.15$; the exact Black-Scholes value is 15.04%
+  tolerance: { abs: 0.002 }
+  hints:
+    - What is an at-the-money call worth, roughly, in terms of $\sigma$, $T$ and $S$? And the put?
+    - The straddle is a call plus a put. Solve for $\sigma$.
+  followUps:
+    - If the stock moved \$5 on the first day, would you be happy to be long the straddle? (Hint, what daily move does 15% imply?)
+    - Why does the rule of thumb slightly overstate the option's price?
+  explanation: |
+    With zero rates an at-the-money call and put are worth the same, each about $0.4\,\sigma\sqrt{T}\,S$,
+    so the straddle is about $0.8\,\sigma\sqrt{T}\,S$. Solve:
+
+    $$\sigma \approx \frac{12}{0.8 \times 200 \times \sqrt{0.25}} = \frac{12}{80} = 0.15.$$
+
+    The exact Black-Scholes implied volatility is about 15.04%; the rule of thumb is accurate to a few
+    tenths of a percent for short-dated options.
+
+    The usual mistakes are using 0.4 for the straddle (giving 30%), which prices only the call, and
+    forgetting the square root of time (giving 7.5%).
+  source: { name: "Widely asked trading interview question (e.g. techinterview.org options guide)", url: "https://www.techinterview.org/post/3233477254/options-greeks-quant-trading-interview/" }
+
+- id: opt-black-scholes-003
+  topic: options
+  subtopic: Black-Scholes
+  type: short
+  difficulty: hard
+  tags: [n-d1, n-d2, delta, probability-interpretation]
+  prompt: |
+    The Black-Scholes price of a European call on a non-dividend stock is
+    $C = S_0 N(d_1) - K e^{-rT} N(d_2)$. Give a probabilistic interpretation of $N(d_2)$ and of
+    $N(d_1)$. Why is $N(d_1) > N(d_2)$?
+  reference: |
+    Split the call's payoff into "receive the share if it finishes in the money" minus "pay $K$ if it
+    finishes in the money":
+
+    $$C = e^{-rT}\,E^Q\big[S_T\,1\{S_T > K\}\big] - K e^{-rT}\,Q(S_T > K).$$
+
+    So $N(d_2) = Q(S_T > K)$ is the **risk-neutral probability** that the call finishes in the money,
+    and $K e^{-rT} N(d_2)$ is the value of paying the strike in that event (also the price of a digital
+    paying $K$).
+
+    $S_0 N(d_1)$ is the value of receiving the share in that event. $N(d_1)$ is the probability that
+    the call finishes in the money under the measure that uses the stock as numeraire (the "share
+    measure"), under which the stock's drift is $r + \sigma^2$ rather than $r$. It is also the call's
+    delta.
+
+    $N(d_1) > N(d_2)$ because $d_1 = d_2 + \sigma\sqrt{T}$: under the share measure, paths on which the
+    stock ends high are given more weight (each path is weighted by $S_T/E^Q[S_T]$), so finishing above
+    $K$ is more likely.
+  keyPoints:
+    - N(d2) is the risk-neutral probability that the option finishes in the money
+    - K e^{-rT} N(d2) is the present value of paying the strike when the option is exercised
+    - S N(d1) is the present value of receiving the stock when the option is exercised
+    - N(d1) is the probability of finishing in the money under the measure with the stock as numeraire, and it is the call's delta
+    - N(d1) exceeds N(d2) because d1 = d2 + σ√T, the share measure weighting high outcomes more
+  hints:
+    - Write the call's payoff as one term involving $S_T$ and one involving $K$, both on the event $S_T > K$.
+    - The second term is easier. What is the expected value of an indicator?
+    - For the first, what happens if you price in units of the stock instead of in units of cash?
+  followUps:
+    - Is delta the probability that the call finishes in the money? Which is larger, and by how much for an at-the-money option?
+    - What is the Black-Scholes price of a digital call that pays \$1 if $S_T > K$?
+  explanation: |
+    Most candidates know that $N(d_2)$ is "the probability of exercise" but forget to say it is the
+    risk-neutral probability, not the real-world one. The interpretation of $N(d_1)$ is the harder part:
+    "it is delta" is true but not a probability statement. Expect the interviewer to push on the
+    change of numeraire, or at least on why delta is larger than $N(d_2)$.
+  source: { name: "Quant job interview problem collection (Kent State)", url: "https://www.math.kent.edu/~oana/math60070/InterviewProblems.pdf" }
+
+- id: opt-black-scholes-004
+  topic: options
+  subtopic: Black-Scholes
+  type: single
+  difficulty: easy
+  tags: [black-scholes-inputs, risk-neutral, drift]
+  prompt: |
+    Which of these does **not** enter the Black-Scholes price of a European call on a stock that pays no
+    dividends?
+  choices:
+    - { id: a, text: "The volatility of the stock" }
+    - { id: b, text: "The risk-free interest rate" }
+    - { id: c, text: "The expected return of the stock" }
+    - { id: d, text: "The time to expiry" }
+  answer: c
+  explanation: |
+    The inputs are the stock price, the strike, the time to expiry, the risk-free rate and the
+    volatility. The expected return $\mu$ drops out: the option can be replicated by trading the stock
+    and the bond, and the cost of replicating depends on how much the stock moves (its volatility), not
+    on its average direction.
+
+    Choosing b is the common slip: the risk-free rate does appear, both in discounting the strike and
+    as the stock's drift under the risk-neutral measure. A forecaster who expects the stock to rise
+    faster does not pay more for the call, since the stock price already reflects that view.
+  source: { name: "Black and Scholes (1973); Merton (1973)" }
+
+- id: opt-black-scholes-005
+  topic: options
+  subtopic: Black-Scholes
+  type: multiple
+  difficulty: medium
+  tags: [assumptions, black-scholes, model-risk]
+  prompt: |
+    Which of these are assumptions of the Black-Scholes model for a European option on a stock that pays
+    no dividends? Select all that apply.
+  choices:
+    - { id: a, text: "The stock price follows geometric Brownian motion with constant volatility" }
+    - { id: b, text: "The stock's expected return equals the risk-free rate" }
+    - { id: c, text: "Trading is continuous, with no transaction costs, and short selling is allowed" }
+    - { id: d, text: "The stock price at expiry is normally distributed" }
+    - { id: e, text: "The risk-free rate is constant and you can borrow and lend at it" }
+  answer: [a, c, e]
+  explanation: |
+    The model assumes geometric Brownian motion with constant volatility (a), frictionless continuous
+    trading so that the option can be hedged at every instant (c), and a constant rate for borrowing
+    and lending (e).
+
+    Choice b is the classic confusion: the stock's real-world expected return $\mu$ can be anything.
+    Pricing works *as if* the stock grew at $r$ (under the risk-neutral measure), but that is a result
+    of the hedging argument, not an assumption about investors. Choice d is wrong by one word: the
+    stock price is lognormal; its log is normal, which keeps the price positive.
+
+    In practice volatility is not constant (hence the smile), prices jump, hedging is discrete and
+    costly, and borrowing and lending rates differ.
+  source: { name: "Black and Scholes (1973); e.g. Hull, Options, Futures, and Other Derivatives" }
+
+- id: opt-black-scholes-006
+  topic: options
+  subtopic: Black-Scholes
+  type: numeric
+  difficulty: medium
+  tags: [digital-option, n-d2, at-the-money]
+  prompt: |
+    Under Black-Scholes, a stock trades at \$100 with volatility 20% a year; it pays no dividends and
+    interest rates are zero. What is the price of a one-year digital option that pays \$1 if the stock
+    finishes above \$100 and nothing otherwise?
+  answer: 0.460172
+  answerText: |-
+    $N(-0.1) \approx 0.460$ dollars
+  unit: dollars
+  hints:
+    - With zero rates, the price is a risk-neutral probability. Of what event?
+    - What is the risk-neutral median of $S_T$? Is it above or below \$100?
+  followUps:
+    - Why is this less than 0.5 although the option is at the money?
+    - What is the call's delta here, and why is it above 0.5 while the digital is below?
+  explanation: |
+    With zero rates the digital is worth the risk-neutral probability that $S_T > 100$, which is
+    $N(d_2)$:
+
+    $$d_2 = \frac{\ln(S/K) - \tfrac12\sigma^2 T}{\sigma\sqrt{T}} = \frac{0 - 0.02}{0.2} = -0.1, \qquad N(-0.1) \approx 0.460.$$
+
+    It is below one half because under the risk-neutral measure the log price has mean
+    $-\tfrac12\sigma^2 T$: the expected price stays at 100, but the median is $100e^{-0.02} \approx 98$.
+    The lognormal is skewed, with a long right tail.
+
+    The common wrong answers are 0.5 ("at the money, so a coin flip") and $N(d_1) = N(0.1) \approx 0.540$,
+    the call's delta.
+  source: { name: "Standard digital-option result (e.g. Hull, Options, Futures, and Other Derivatives)" }
+
+- id: opt-black-scholes-007
+  topic: options
+  subtopic: Black-Scholes
+  type: numeric
+  difficulty: hard
+  tags: [power-option, risk-neutral, lognormal-moments]
+  prompt: |
+    Under Black-Scholes, a stock trades at \$10 with volatility 50% a year; it pays no dividends and
+    interest rates are zero. A contract pays $S_T^2$ dollars in one year, where $S_T$ is the stock price
+    in dollars then. What is it worth today?
+  answer: 128.4025
+  answerText: |-
+    $100\,e^{0.25} \approx 128.40$ dollars
+  unit: dollars
+  hints:
+    - The price is the risk-neutral expectation of $S_T^2$. Write $S_T$ as $S_0$ times the exponential of a normal variable.
+    - For a normal $X$ with mean $m$ and variance $v$, $E[e^{X}] = e^{m + v/2}$.
+  followUps:
+    - Is the price above or below the square of the forward price, and why must it be?
+    - What is the delta of this contract at time 0?
+  explanation: |
+    Under the risk-neutral measure $S_T = S_0\exp\big(-\tfrac12\sigma^2 T + \sigma W_T\big)$, so
+
+    $$S_T^2 = S_0^2 \exp\big(-\sigma^2 T + 2\sigma W_T\big), \qquad E^Q[S_T^2] = S_0^2 \exp\big(-\sigma^2 T + 2\sigma^2 T\big) = S_0^2 e^{\sigma^2 T}.$$
+
+    With $S_0 = 10$, $\sigma^2 T = 0.25$ and no discounting, the price is $100\,e^{0.25} \approx 128.40$.
+
+    By Jensen's inequality the price must exceed the square of the forward price, $100$: a convex payoff
+    is worth more than the payoff of the average. The common wrong answers are 100 (squaring the
+    forward), $100\,e^{0.125}$ (using $E[e^{\sigma W}]$ instead of $E[e^{2\sigma W}]$), and
+    $100\,e^{0.5}$ (forgetting the $-\tfrac12\sigma^2 T$ in the exponent).
+  source: { name: "Standard risk-neutral pricing exercise (power contract under Black-Scholes)" }
+
+- id: opt-black-scholes-008
+  topic: options
+  subtopic: Black-Scholes
+  type: multiple
+  difficulty: medium
+  tags: [limits, black-scholes, bounds]
+  prompt: |
+    Consider the Black-Scholes price of a European call on a stock that pays no dividends, with
+    interest rate $r > 0$, holding all other inputs fixed. Which statements are true? Select all that
+    apply.
+  choices:
+    - { id: a, text: "As the volatility goes to infinity, the price tends to the stock price $S$" }
+    - { id: b, text: "As the volatility goes to zero, the price tends to $\\max(S - Ke^{-rT}, 0)$" }
+    - { id: c, text: "As the time to expiry goes to zero, the price tends to $\\max(S - K, 0)$" }
+    - { id: d, text: "The price rises as the strike rises" }
+    - { id: e, text: "The price falls as the interest rate rises" }
+  answer: [a, b, c]
+  explanation: |
+    - **a:** true. With huge volatility, $d_1 \to +\infty$ and $d_2 \to -\infty$, so $C \to S$, the
+      model-free upper bound: the stock ends either near zero or enormous, and the strike hardly
+      matters.
+    - **b:** true. With no volatility the stock grows at $r$ for sure, so the call pays
+      $\max(Se^{rT} - K, 0)$ at expiry, worth $\max(S - Ke^{-rT}, 0)$ today, the model-free lower
+      bound.
+    - **c:** true. At expiry the call is worth its payoff.
+    - **d:** false. A higher strike means paying more on exercise, so the call is worth less.
+    - **e:** false. A higher rate lowers the present value of the strike you pay, so the call is
+      worth more (positive rho).
+
+    The usual slip is e, from "higher rates lower the value of future payoffs": true of the payoff
+    as a whole, but the call holder is the one paying the strike, and that effect dominates.
+  source: { name: "Standard properties of the Black-Scholes formula (e.g. Hull, Options, Futures, and Other Derivatives)" }
+
+- id: opt-black-scholes-009
+  topic: options
+  subtopic: Black-Scholes
+  type: short
+  difficulty: hard
+  tags: [black-scholes-pde, delta-hedging, replication, ito]
+  prompt: |
+    Sketch the argument that leads to the Black-Scholes equation for an option value $V(S, t)$ when the
+    stock follows $dS = \mu S\,dt + \sigma S\,dW$ and the interest rate is $r$. Which portfolio is
+    riskless, why must it earn the risk-free rate, and what does the equation say about theta, gamma
+    and delta?
+  reference: |
+    Hold the option and short $\Delta = \partial V/\partial S$ shares: $\Pi = V - \Delta S$. By Itô's lemma
+
+    $$dV = \Big(\frac{\partial V}{\partial t} + \mu S \frac{\partial V}{\partial S} + \tfrac12\sigma^2 S^2 \frac{\partial^2 V}{\partial S^2}\Big)dt + \sigma S \frac{\partial V}{\partial S}\,dW,$$
+
+    so over $dt$ the portfolio changes by
+
+    $$d\Pi = dV - \Delta\,dS = \Big(\frac{\partial V}{\partial t} + \tfrac12\sigma^2 S^2 \frac{\partial^2 V}{\partial S^2}\Big)dt.$$
+
+    The $dW$ terms cancel, and so do the $\mu$ terms: the hedged portfolio has no risk over the
+    instant. A riskless portfolio must earn the risk-free rate, $d\Pi = r\Pi\,dt$, or there is an
+    arbitrage against the bank account. That gives
+
+    $$\Theta + \tfrac12\sigma^2 S^2 \Gamma + rS\Delta - rV = 0.$$
+
+    Read for a delta-hedged position: the time decay $\Theta$ pays for the gamma gains
+    $\tfrac12\sigma^2 S^2\Gamma$ (up to financing). Since $\mu$ cancelled, the price does not depend on
+    the stock's expected return.
+  keyPoints:
+    - Forms the delta-hedged portfolio, the option minus ∂V/∂S shares
+    - Applies Itô's lemma, including the ½σ²S² ∂²V/∂S² term from quadratic variation
+    - The dW terms cancel (and with them μ), so the portfolio is instantaneously riskless
+    - No arbitrage forces a riskless portfolio to earn r, giving Θ + ½σ²S²Γ + rSΔ − rV = 0
+    - Interprets the equation as theta paying for gamma in a hedged position, and notes μ does not appear
+  hints:
+    - What combination of the option and the stock has no exposure to $dW$ over a short interval?
+    - Use Itô's lemma for $dV$; do not forget the second-order term.
+    - What return must a riskless portfolio earn?
+  followUps:
+    - Which assumptions of the argument fail in practice, and what happens to the hedge when they do?
+    - Show that $V = S$ and $V = e^{rt}$ satisfy the equation. Why must they?
+  explanation: |
+    The common gaps are forgetting the Itô term (which is where volatility enters) and not saying why
+    the riskless portfolio must earn $r$. Saying that $\mu$ cancels is what links this to "the real-world
+    drift does not matter". The trading reading, theta against gamma, is what a trading interviewer
+    wants to hear.
+  source: { name: "Black and Scholes (1973); Merton (1973)" }

@@ -1,0 +1,260 @@
+# Binomial trees and risk-neutral pricing: one- and two-step trees, replication, why real-world probabilities do not enter, incompleteness.
+- id: opt-binomial-001
+  topic: options
+  subtopic: Binomial trees and risk-neutral pricing
+  type: numeric
+  difficulty: easy
+  tags: [binomial-tree, replication, risk-neutral]
+  prompt: |
+    A stock trades at \$80. At the end of one period it will be worth either \$100 or \$70. Interest
+    rates are zero. What is the no-arbitrage price of a call struck at \$80 that expires at the end of
+    the period?
+  answer: 20/3
+  answerText: |-
+    $20/3 \approx 6.67$ dollars
+  unit: dollars
+  explanation: |
+    **Risk-neutral pricing.** With zero rates the stock's risk-neutral expected value must equal
+    today's price: $100q + 70(1 - q) = 80$, so $q = \tfrac13$. The call pays 20 or 0, so it is worth
+    $\tfrac13 \times 20 = \tfrac{20}{3} \approx 6.67$.
+
+    **Replication.** Hold $\Delta$ shares and $B$ in cash so that the portfolio matches the call in
+    both states: $100\Delta + B = 20$ and $70\Delta + B = 0$. Then $\Delta = \tfrac23$ and
+    $B = -46.67$, and the portfolio costs $80 \times \tfrac23 - 46.67 = 6.67$. The two methods always
+    agree; the first is a shortcut for the second.
+
+    The common wrong answer is \$10, from taking the two outcomes as equally likely.
+  source: { name: "Quant job interview problem collection (Kent State)", url: "https://www.math.kent.edu/~oana/math60070/InterviewProblems.pdf" }
+
+- id: opt-binomial-002
+  topic: options
+  subtopic: Binomial trees and risk-neutral pricing
+  type: numeric
+  difficulty: medium
+  tags: [binomial-tree, risk-neutral, real-world-probability]
+  prompt: |
+    A stock trades at \$30 and will be worth either \$45 or \$25 in a year. Your analyst is confident
+    that the probability of \$45 is 70%. Interest rates are zero. What is the no-arbitrage price of a
+    one-year call struck at \$35?
+  answer: 5/2
+  answerText: |-
+    2.50 dollars
+  unit: dollars
+  hints:
+    - Can you build the call's payoff out of shares and cash?
+    - Does the analyst's 70% appear anywhere in that portfolio?
+  followUps:
+    - Suppose the analyst is right. Why would you still not pay \$7 for the call?
+    - What is the expected return on the call under the analyst's probability?
+  explanation: |
+    Replicate the call. It pays 10 if the stock goes to 45 and 0 if it goes to 25. Holding $\Delta$
+    shares and $B$ in cash: $45\Delta + B = 10$, $25\Delta + B = 0$, so $\Delta = \tfrac12$ and
+    $B = -12.5$. The portfolio costs $30 \times \tfrac12 - 12.5 = 2.50$, so the call is worth \$2.50.
+
+    Equivalently, the risk-neutral probability solves $45q + 25(1 - q) = 30$, giving $q = \tfrac14$,
+    and the call is worth $\tfrac14 \times 10 = 2.50$.
+
+    The 70% is irrelevant: the replicating portfolio pays off identically in both states, so its cost
+    does not depend on how likely they are. The analyst's view is already reflected in the \$30 share
+    price. The common wrong answer is $0.7 \times 10 = 7$.
+  source: { name: "Quant job interview problem collection (Kent State)", url: "https://www.math.kent.edu/~oana/math60070/InterviewProblems.pdf" }
+
+- id: opt-binomial-003
+  topic: options
+  subtopic: Binomial trees and risk-neutral pricing
+  type: numeric
+  difficulty: medium
+  tags: [binomial-tree, two-step, discounting]
+  prompt: |
+    A stock trades at \$100. In each of two periods it either rises by 20% or falls by 10%. Over each
+    period \$1 grows to \$1.05 at the risk-free rate. What is the no-arbitrage price of a European call
+    struck at \$100 that expires at the end of the second period?
+  answer: 2000/147
+  answerText: |-
+    $15/1.05^2 = 2000/147 \approx 13.61$ dollars
+  unit: dollars
+  hints:
+    - Find the risk-neutral probability of an up move first.
+    - After two periods, where can the stock be, and with what risk-neutral probabilities?
+    - Discount for both periods.
+  followUps:
+    - What is the replicating portfolio at the start, and how is it adjusted after the first period?
+    - Price the put with the same strike and check put-call parity.
+  explanation: |
+    The risk-neutral up probability solves $1.05 = 1.2q + 0.9(1 - q)$, so $q = \tfrac12$.
+
+    After two periods the stock is at $144$, $108$ or $81$ with risk-neutral probabilities
+    $\tfrac14, \tfrac12, \tfrac14$. The call pays $44$, $8$ or $0$, so
+
+    $$C = \frac{\tfrac14 \times 44 + \tfrac12 \times 8}{1.05^2} = \frac{15}{1.1025} = \frac{2000}{147} \approx 13.61.$$
+
+    Working backwards node by node gives the same: after an up move the call is worth
+    $\tfrac12(44 + 8)/1.05 = 24.76$, after a down move $\tfrac12 (8 + 0)/1.05 = 3.81$, and at the start
+    $\tfrac12 (24.76 + 3.81)/1.05 = 13.61$.
+
+    The common wrong answers are \$15 (forgetting to discount) and \$14.29 (discounting for only one
+    period).
+  source: { name: "Standard two-step binomial pricing (e.g. Hull, Options, Futures, and Other Derivatives)" }
+
+- id: opt-binomial-004
+  topic: options
+  subtopic: Binomial trees and risk-neutral pricing
+  type: short
+  difficulty: medium
+  tags: [risk-neutral, replication, real-world-probability]
+  prompt: |
+    In a one-period binomial model, the price of an option does not depend on the real-world probability
+    that the stock goes up. Explain why. If the probability of the up move rises, why doesn't the call
+    become more valuable?
+  reference: |
+    With two possible outcomes, a position in the stock and the bond can be chosen to pay exactly what
+    the option pays in both states. Buying the option and selling that portfolio is riskless, so they
+    must cost the same, and the portfolio's cost depends only on today's stock price, the two possible
+    future prices and the interest rate. The probabilities never enter.
+
+    The real-world probability does matter, but only through the stock price. If investors thought the
+    up move more likely with today's price, $S_0$, unchanged, the stock's expected return would be
+    higher, which compensates them for its risk. "Everything else fixed" means the stock price already
+    reflects the probability; the option is priced relative to the stock, not relative to the
+    probabilities.
+
+    The risk-neutral probability $q = \frac{(1+r) - d}{u - d}$ is just a set of weights that reproduce
+    these replication prices; it is not a forecast.
+  keyPoints:
+    - The option can be replicated exactly by a position in the stock and the bond (two states, two instruments)
+    - By no arbitrage the option costs the same as the replicating portfolio, whose cost involves only prices, not probabilities
+    - The real-world probability is already reflected in the current stock price and the stock's expected return
+    - Risk-neutral probabilities are pricing weights implied by the stock and bond, not forecasts
+  hints:
+    - Can you build a portfolio of stock and cash that pays exactly what the option pays in both states?
+    - Which quantities did you need to compute that portfolio?
+    - If the up move became more likely, what should happen to the stock price today?
+  followUps:
+    - In a model with three possible outcomes and only the stock and bond to trade, does the argument still work?
+    - What is the expected return on a call under the real-world probability, compared with the stock's?
+  explanation: |
+    Candidates often state "we use risk-neutral probabilities" as if it were an assumption about
+    investors. The point is that replication makes the price independent of preferences and beliefs;
+    the risk-neutral measure is a consequence of no arbitrage. A good answer also handles the
+    "but surely" follow-up: beliefs move the stock price, and the option moves with the stock.
+  source: { name: "Cox, Ross and Rubinstein (1979); standard result (e.g. Hull, Options, Futures, and Other Derivatives)" }
+
+- id: opt-binomial-005
+  topic: options
+  subtopic: Binomial trees and risk-neutral pricing
+  type: single
+  difficulty: hard
+  tags: [incomplete-market, trinomial, no-arbitrage-bounds]
+  prompt: |
+    A stock trades at \$100. At the end of one period it will be worth \$120, \$100 or \$80, each with
+    positive probability. Interest rates are zero, and the only things you can trade are the stock, cash
+    and the option below. What can you say about the no-arbitrage price of a call struck at \$100 that
+    expires at the end of the period?
+  choices:
+    - { id: a, text: "It is exactly 20/3, giving each outcome probability 1/3" }
+    - { id: b, text: "It is exactly 10, as in the two-state model with outcomes 120 and 80" }
+    - { id: c, text: "It can be anything strictly between 0 and 10; the stock and cash do not pin it down" }
+    - { id: d, text: "It can be anything strictly between 0 and 20" }
+  answer: c
+  explanation: |
+    With three outcomes and two traded instruments the call cannot be replicated, so no-arbitrage gives
+    a range, not a price. Every arbitrage-free price is the expectation under some risk-neutral
+    probabilities $(q_u, q_m, q_d)$, all positive, with $120q_u + 100q_m + 80q_d = 100$ and summing to
+    1. Those conditions force $q_u = q_d$, with $0 < q_u < \tfrac12$, and the call is worth
+    $20q_u$, anywhere strictly between 0 and 10.
+
+    The bounds are sharp. The call is worth less than the portfolio of half a share minus \$40 cash,
+    which pays 20, 10, 0 (more than the call in the middle state) and costs 10; and more than 0,
+    since it pays 20 in a state of positive probability.
+
+    Choice a assumes the outcomes are equally likely, which says nothing about prices. Choice b is
+    the two-state answer, the upper end of the range. Choice d forgets the stock-price constraint.
+  source: { name: "Incomplete markets in a trinomial model (e.g. Shreve, Stochastic Calculus for Finance I)" }
+
+- id: opt-binomial-006
+  topic: options
+  subtopic: Binomial trees and risk-neutral pricing
+  type: short
+  difficulty: hard
+  tags: [crr, binomial-convergence, black-scholes, calibration]
+  prompt: |
+    In a Cox-Ross-Rubinstein tree with $N$ steps over time $T$ ($\Delta t = T/N$), each step multiplies
+    the stock by $u = e^{\sigma\sqrt{\Delta t}}$ or $d = 1/u$. Why that choice of $u$? What happens
+    to the price of a European option as $N \to \infty$, and why doesn't the stock's real-world drift
+    appear anywhere?
+  reference: |
+    The log return per step is $\pm\sigma\sqrt{\Delta t}$, so its variance is about $\sigma^2 \Delta t$
+    (exactly $\sigma^2\Delta t$ minus the square of a mean that is $O(\Delta t)$). Over $N$ independent
+    steps the log return has variance about $\sigma^2 T$, matching a stock with volatility $\sigma$.
+    The size of the moves sets the volatility.
+
+    The probabilities used are the risk-neutral ones, $q = \frac{e^{r\Delta t} - d}{u - d}$, which make
+    the discounted stock a martingale. Expanding, $q = \tfrac12 + \frac{r - \sigma^2/2}{2\sigma}\sqrt{\Delta t} + O(\Delta t)$,
+    so the log return has risk-neutral mean $(r - \tfrac12 \sigma^2) T$. By the central limit theorem
+    the terminal log price becomes normal with that mean and variance $\sigma^2 T$: the stock is
+    lognormal under the risk-neutral measure, and the tree's option price converges to the
+    Black-Scholes price (with an error that oscillates in $N$ for options with a kink at the strike).
+
+    The real-world drift never appears because the tree's probabilities come from no arbitrage, not
+    from forecasts: only the move sizes (volatility) and the rate matter. Choosing a tree with a drift
+    built into $u$ and $d$ changes $q$ but leaves the limit unchanged.
+  keyPoints:
+    - With u = e^{σ√Δt} the variance of the log return per step is about σ²Δt, so σ²T over the whole tree
+    - The tree is priced with risk-neutral probabilities q = (e^{rΔt} - d)/(u - d), not real-world ones
+    - The risk-neutral log return has mean (r - σ²/2)T, and by the central limit theorem the terminal price becomes lognormal
+    - The tree price converges to the Black-Scholes price as N grows
+    - Real-world drift does not enter; only the move sizes (volatility) and the interest rate do
+  hints:
+    - What is the variance of the log of the stock price after one step? After $N$ steps?
+    - Which probabilities are used to price on the tree, and what is their mean log return?
+    - What does the central limit theorem say about a sum of $N$ small independent steps?
+  followUps:
+    - Why does the binomial price of an at-the-money option oscillate as $N$ increases?
+    - How would you add a continuous dividend yield to the tree?
+  explanation: |
+    The question checks that the candidate knows what calibrates the tree (the move size sets the
+    variance), which probabilities price it, and how the limit produces the lognormal model. Weak
+    answers say "it converges to Black-Scholes" without the variance argument, or claim the
+    probability $q$ should match the stock's real-world chance of going up.
+  source: { name: "Cox, Ross and Rubinstein (1979)" }
+
+- id: opt-binomial-007
+  topic: options
+  subtopic: Binomial trees and risk-neutral pricing
+  type: numeric
+  difficulty: hard
+  tags: [barrier, martingale, optional-stopping, risk-neutral]
+  prompt: |
+    A stock trades at \$25 and follows geometric Brownian motion with volatility 30% (any positive
+    volatility gives the same answer). It pays no dividends and interest rates are zero. A contract pays
+    \$1 the first time the stock reaches \$100, whenever that happens, and never pays anything if the
+    stock never gets there. What is the contract worth today?
+  answer: 1/4
+  answerText: |-
+    $25/100 = 0.25$ dollars
+  unit: dollars
+  hints:
+    - With zero rates, what is the stock price process under the risk-neutral measure?
+    - Stop the stock the first time it hits \$100. What is the expected value of the stopped price?
+    - Under the risk-neutral measure, a driftless geometric Brownian motion tends to zero on paths that never reach \$100.
+  followUps:
+    - How would you replicate this contract with the stock alone?
+    - What if the contract paid \$1 on hitting \$100 and nothing on hitting \$10 first?
+  explanation: |
+    With zero rates the stock is a martingale under the risk-neutral measure, and the contract's value
+    is the risk-neutral probability $p$ of ever reaching \$100 (no discounting needed).
+
+    Stop the stock at the first time it hits 100. The stopped price is bounded between 0 and 100, so
+    optional stopping applies: its expected value stays 25. On the paths that reach 100 it ends at 100;
+    on the others, a driftless geometric Brownian motion tends to zero (its log has drift
+    $-\tfrac12\sigma^2$). So
+
+    $$100\,p + 0 \cdot (1 - p) = 25 \quad\Longrightarrow\quad p = \frac14.$$
+
+    A replication view gives the same: buy $\tfrac{1}{100}$ of a share for \$0.25 and sell it when the
+    stock reaches \$100, collecting \$1; if it never does, the share is worth nothing in the limit.
+
+    The common wrong answer is a real-world hitting probability, which depends on the stock's drift and
+    so on a forecast. Another is to expect the volatility to matter: it changes how long the wait
+    takes, but not the price, since the payment is not discounted.
+  source: { name: "Quant job interview problem collection (Kent State), barrier with infinite expiry", url: "https://www.math.kent.edu/~oana/math60070/InterviewProblems.pdf" }

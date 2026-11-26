@@ -1,0 +1,302 @@
+# Brownian motion and Itô calculus: properties of Brownian motion, quadratic variation, Itô's lemma, martingales, geometric Brownian motion and changing measure.
+- id: opt-stochastic-001
+  topic: options
+  subtopic: Brownian motion and Itô calculus
+  type: multiple
+  difficulty: medium
+  tags: [martingales, ito-lemma, brownian-motion]
+  prompt: |
+    $W_t$ is a standard Brownian motion. Which of these processes are martingales? Select all that
+    apply.
+  choices:
+    - { id: a, text: "$W_t^2 - t$" }
+    - { id: b, text: "$W_t^3$" }
+    - { id: c, text: "$W_t^3 - 3tW_t$" }
+    - { id: d, text: "$e^{W_t - t/2}$" }
+    - { id: e, text: "$e^{W_t}$" }
+    - { id: f, text: "$tW_t$" }
+  answer: [a, c, d]
+  explanation: |
+    For $X_t = f(t, W_t)$, Itô's lemma gives
+
+    $$dX_t = \Big(\frac{\partial f}{\partial t} + \tfrac12 \frac{\partial^2 f}{\partial w^2}\Big)dt + \frac{\partial f}{\partial w}\,dW_t,$$
+
+    and (with enough integrability, true for all of these) $X$ is a martingale exactly when the $dt$
+    term vanishes.
+
+    - $W^2 - t$: drift $-1 + \tfrac12 \cdot 2 = 0$. Martingale.
+    - $W^3$: drift $\tfrac12 \cdot 6W = 3W \ne 0$. Not a martingale.
+    - $W^3 - 3tW$: drift $-3W + 3W = 0$. Martingale.
+    - $e^{W - t/2}$: drift $-\tfrac12 e^{W - t/2} + \tfrac12 e^{W - t/2} = 0$. Martingale (the
+      exponential martingale).
+    - $e^{W}$: drift $\tfrac12 e^{W} > 0$. Not a martingale; $E[e^{W_t}] = e^{t/2}$ grows.
+    - $tW$: drift $W \ne 0$. Not a martingale, although its mean is 0 at every time.
+
+    The usual mistakes are b, because $E[W_t^3] = 0$ for every $t$, and f for the same reason: a
+    constant mean is necessary for a martingale but not sufficient.
+  source: { name: "Standard Itô calculus (e.g. Shreve, Stochastic Calculus for Finance II)" }
+
+- id: opt-stochastic-002
+  topic: options
+  subtopic: Brownian motion and Itô calculus
+  type: numeric
+  difficulty: medium
+  tags: [ito-integral, ito-isometry, brownian-motion]
+  prompt: |
+    $W_t$ is a standard Brownian motion. What is $E\Big[\Big(\displaystyle\int_0^2 W_t\,dW_t\Big)^2\Big]$, where the integral is an Itô integral?
+  answer: 2
+  hints:
+    - Itô's isometry turns the second moment of an Itô integral into an ordinary integral.
+    - Alternatively, apply Itô's lemma to $W_t^2$ to find the integral in closed form.
+  followUps:
+    - What is $\int_0^T W_t\,dW_t$ in closed form, and why is it not $\tfrac12 W_T^2$?
+    - What is the mean of the integral, and why?
+  explanation: |
+    By Itô's isometry,
+
+    $$E\Big[\Big(\int_0^2 W_t\,dW_t\Big)^2\Big] = \int_0^2 E[W_t^2]\,dt = \int_0^2 t\,dt = 2.$$
+
+    Or directly: Itô's lemma gives $d(W_t^2) = 2W_t\,dW_t + dt$, so
+    $\int_0^T W_t\,dW_t = \tfrac12(W_T^2 - T)$. Writing $W_2 = \sqrt2\,Z$ with $Z$ standard normal,
+    $\tfrac12(W_2^2 - 2) = Z^2 - 1$, and $E\big[(Z^2 - 1)^2\big] = E[Z^4] - 2E[Z^2] + 1 = 3 - 2 + 1 = 2$.
+
+    The common wrong answer is 3, from treating the integral as $\tfrac12 W_2^2$ (ordinary calculus)
+    and computing $E[W_2^4]/4 = 3 \times 4/4 = 3$.
+  source: { name: "Standard Itô calculus (e.g. Shreve, Stochastic Calculus for Finance II)" }
+
+- id: opt-stochastic-003
+  topic: options
+  subtopic: Brownian motion and Itô calculus
+  type: numeric
+  difficulty: medium
+  tags: [geometric-brownian-motion, median, lognormal]
+  prompt: |
+    A stock follows $dS_t = \mu S_t\,dt + \sigma S_t\,dW_t$ with $\mu = 10\%$ and $\sigma = 40\%$ a year,
+    starting from $S_0 = 100$ dollars. What is the **median** of $S_1$, the price in one year?
+  answer: 102.020134
+  answerText: |-
+    $100\,e^{0.10 - 0.08} = 100\,e^{0.02} \approx 102.02$ dollars
+  unit: dollars
+  hints:
+    - Apply Itô's lemma to $\ln S_t$.
+    - The log of the price is normal. Where is the median of a normal variable, and what does the exponential do to it?
+  followUps:
+    - What is the mean of $S_1$? Why is it higher than the median?
+    - For which $\sigma$ would the median price in one year be below today's price?
+  explanation: |
+    By Itô's lemma, $d\ln S_t = (\mu - \tfrac12\sigma^2)\,dt + \sigma\,dW_t$, so
+
+    $$\ln S_1 \sim N\big(\ln 100 + \mu - \tfrac12\sigma^2,\ \sigma^2\big) = N(\ln 100 + 0.02,\ 0.16).$$
+
+    The exponential is increasing, so the median of $S_1$ is the exponential of the median of
+    $\ln S_1$: $100\,e^{0.02} \approx 102.02$.
+
+    The mean is $100\,e^{\mu} \approx 110.52$, much higher: the lognormal has a long right tail. The
+    common wrong answer is 110.52, the mean; the volatility drag $\tfrac12\sigma^2 = 8\%$ is what
+    separates the typical outcome from the average one.
+  source: { name: "Standard geometric Brownian motion result (e.g. QuantVault stochastic calculus guide)", url: "https://quantvault.org/stochastic-calculus-interview-guide.html" }
+
+- id: opt-stochastic-004
+  topic: options
+  subtopic: Brownian motion and Itô calculus
+  type: numeric
+  difficulty: hard
+  tags: [geometric-brownian-motion, martingale, ito-lemma]
+  prompt: |
+    $X_t$ follows $dX_t = \mu X_t\,dt + \sigma X_t\,dW_t$ with $\mu = 0.06$ and $\sigma = 0.2$. Find the
+    non-zero number $\alpha$ for which $X_t^{\alpha}$ is a martingale.
+  answer: -2
+  hints:
+    - Apply Itô's lemma to $f(x) = x^\alpha$.
+    - Set the $dt$ term to zero and solve for $\alpha$.
+  followUps:
+    - Starting from $X_0$, what is the probability that $X$ ever falls to half its starting value? (Use the martingale with optional stopping.)
+    - What is $\alpha$ when $\mu = r$, and how does that martingale relate to the risk-neutral measure?
+  explanation: |
+    By Itô's lemma,
+
+    $$d(X^\alpha) = \alpha X^{\alpha-1}\,dX + \tfrac12 \alpha(\alpha - 1) X^{\alpha-2}\,(dX)^2 = X^\alpha\Big(\alpha\mu + \tfrac12\alpha(\alpha - 1)\sigma^2\Big)dt + \alpha\sigma X^\alpha\,dW.$$
+
+    The drift vanishes when $\mu + \tfrac12(\alpha - 1)\sigma^2 = 0$ (dividing by $\alpha \ne 0$), so
+
+    $$\alpha = 1 - \frac{2\mu}{\sigma^2} = 1 - \frac{0.12}{0.04} = -2.$$
+
+    The usual mistake is to drop the second-order term of Itô's lemma: the drift is then
+    $\alpha\mu X^\alpha$, which vanishes for no non-zero $\alpha$, and the candidate concludes that
+    no such power exists.
+  source: { name: "Quant job interview problem collection (Kent State)", url: "https://www.math.kent.edu/~oana/math60070/InterviewProblems.pdf" }
+
+- id: opt-stochastic-005
+  topic: options
+  subtopic: Brownian motion and Itô calculus
+  type: short
+  difficulty: medium
+  tags: [quadratic-variation, ito-lemma, brownian-motion]
+  prompt: |
+    What is the quadratic variation of a Brownian motion $W$ over $[0, t]$? Explain what it means, why
+    it is not zero as it would be for a smooth path, and how it produces the extra term in Itô's lemma.
+  reference: |
+    Split $[0, t]$ into $n$ steps of length $\Delta t = t/n$ and sum the squared increments:
+
+    $$\sum_{i=1}^{n} \big(W_{t_i} - W_{t_{i-1}}\big)^2 \to t \quad \text{as } n \to \infty.$$
+
+    Each increment is $N(0, \Delta t)$, so the sum has mean exactly $t$ and variance
+    $n \cdot 2\Delta t^2 = 2t^2/n \to 0$: the limit is the deterministic number $t$. This is written
+    $(dW)^2 = dt$.
+
+    For a differentiable path, each increment is $O(\Delta t)$, so the sum of squares is
+    $O(n \Delta t^2) = O(\Delta t) \to 0$. A Brownian increment is of order $\sqrt{\Delta t}$, much
+    larger, which is why Brownian paths are nowhere differentiable and their squared increments add
+    up to something finite.
+
+    In a Taylor expansion of $f(W_t)$, $df = f'(W)\,dW + \tfrac12 f''(W)\,(dW)^2 + \dots$, the
+    second-order term is not negligible: it is $\tfrac12 f''(W)\,dt$. That is Itô's correction; for
+    example $d(W^2) = 2W\,dW + dt$.
+  keyPoints:
+    - The quadratic variation of W over [0, t] is t
+    - Defined as the limit of the sum of squared increments over finer partitions
+    - The sum has mean t and a variance going to zero, so the limit is deterministic
+    - For a smooth path the quadratic variation is zero; Brownian increments are of order the square root of Δt
+    - "(dW)² = dt makes the second-order Taylor term ½f''(W) dt survive, which is the Itô correction"
+  hints:
+    - Write the sum of squared increments over a partition with $n$ steps. What is its mean? Its variance?
+    - How big is a typical increment of a smooth function over a step of length $\Delta t$? Of a Brownian path?
+    - Expand $f(W_{t+\Delta t}) - f(W_t)$ to second order.
+  followUps:
+    - What is the quadratic variation of $\int_0^t \sigma_s\,dW_s$?
+    - What is the covariation of $W$ with $t$, and why is $dW\,dt = 0$?
+  explanation: |
+    Most candidates can quote $(dW)^2 = dt$; the interviewer wants to see where it comes from (the
+    mean and the vanishing variance of the sum) and the contrast with smooth paths. Saying "it is
+    random but converges to a constant" and linking it to the second-order term of Itô's lemma is a
+    complete answer.
+  source: { name: "Standard Brownian-motion result (e.g. Shreve, Stochastic Calculus for Finance II)" }
+
+- id: opt-stochastic-006
+  topic: options
+  subtopic: Brownian motion and Itô calculus
+  type: numeric
+  difficulty: hard
+  tags: [reflection-principle, running-maximum, barrier]
+  prompt: |
+    $W_t$ is a standard Brownian motion started at 0. What is the probability that its maximum over
+    the time interval $[0, 1]$ is at least 1?
+  answer: 0.3173105
+  answerText: |-
+    $2\,(1 - N(1)) \approx 0.317$
+  hints:
+    - If the path reaches 1 before time 1, reflect the rest of the path in the level 1.
+    - Compare the event "the maximum is at least 1" with the event "$W_1 \ge 1$".
+  followUps:
+    - What is the density of the first time the Brownian motion hits 1?
+    - How would you use this to price a one-touch option that pays \$1 if the stock ever trades above a barrier before expiry?
+  explanation: |
+    Reflection principle: on the event that $W$ reaches 1 at some time $\tau \le 1$, the path after
+    $\tau$ is as likely to end above 1 as below it (reflect it in the level 1). So
+
+    $$P\big(\max_{s \le 1} W_s \ge 1\big) = 2\,P(W_1 \ge 1) = 2\,(1 - N(1)) \approx 2 \times 0.1587 = 0.317.$$
+
+    The common wrong answer is $1 - N(1) \approx 0.159$, which counts only the paths that are above 1
+    at the end and misses those that crossed and came back. Simulating on a grid of times also
+    underestimates it, since the path can cross between grid points.
+  source: { name: "Quant job interview problem collection (Kent State)", url: "https://www.math.kent.edu/~oana/math60070/InterviewProblems.pdf" }
+
+- id: opt-stochastic-007
+  topic: options
+  subtopic: Brownian motion and Itô calculus
+  type: numeric
+  difficulty: hard
+  tags: [integrated-brownian-motion, variance, covariance]
+  prompt: |
+    $W_t$ is a standard Brownian motion. What is the variance of $\displaystyle\int_0^1 W_t\,dt$ (an ordinary
+    integral of the path over time)?
+  answer: 1/3
+  answerText: |-
+    $1/3 \approx 0.333$
+  hints:
+    - The integral is a limit of sums of jointly normal variables, so it is normal with mean 0. You need its second moment.
+    - Write the square of the integral as a double integral and take the expectation inside.
+    - "$E[W_s W_t] = \\min(s, t)$."
+  followUps:
+    - What is the distribution of the average stock price $\frac{1}{T}\int_0^T S_t\,dt$ if $dS_t = \sigma\,dW_t$?
+    - Why does an Asian (average-price) option cost less than the corresponding European option?
+  explanation: |
+    $$\operatorname{Var}\Big(\int_0^1 W_t\,dt\Big) = E\Big[\int_0^1\!\!\int_0^1 W_s W_t\,ds\,dt\Big] = \int_0^1\!\!\int_0^1 \min(s, t)\,ds\,dt = \frac13.$$
+
+    The double integral is twice the integral over $s < t$: $2\int_0^1\!\int_0^t s\,ds\,dt = 2\int_0^1 \tfrac{t^2}{2}\,dt = \tfrac13$.
+
+    Another route: integrate by parts, $\int_0^1 W_t\,dt = \int_0^1 (1 - t)\,dW_t$, and by Itô's
+    isometry its variance is $\int_0^1 (1-t)^2\,dt = \tfrac13$.
+
+    The common wrong answers are $\tfrac12$ (using $E[W_t^2] = t$ and integrating once) and 1 (the
+    variance of $W_1$). The average of a path varies less than its endpoint, which is why options on
+    an average are cheaper.
+  source: { name: "Quant job interview problem collection (Kent State)", url: "https://www.math.kent.edu/~oana/math60070/InterviewProblems.pdf" }
+
+- id: opt-stochastic-008
+  topic: options
+  subtopic: Brownian motion and Itô calculus
+  type: numeric
+  difficulty: easy
+  tags: [lognormal, jensen, moment-generating-function]
+  prompt: |
+    $W_t$ is a standard Brownian motion. What is $E\big[e^{W_2}\big]$?
+  answer: 2.7182818
+  answerText: |-
+    $e^{2/2} = e \approx 2.718$
+  explanation: |
+    $W_2$ is normal with mean 0 and variance 2, and for a normal $X$ with mean $m$ and variance $v$,
+    $E[e^X] = e^{m + v/2}$. So $E[e^{W_2}] = e^{1} = e \approx 2.718$.
+
+    The common wrong answer is $e^{E[W_2]} = 1$, which ignores Jensen's inequality: the exponential is
+    convex, so averaging after exponentiating gives more. This is the same $\tfrac12\sigma^2$ that
+    appears in the drift of $\ln S$ for geometric Brownian motion. Another slip is $e^{2}$, using the
+    variance where half the variance belongs.
+  source: { name: "Standard lognormal moment (e.g. QuantVault stochastic calculus guide)", url: "https://quantvault.org/stochastic-calculus-interview-guide.html" }
+
+- id: opt-stochastic-009
+  topic: options
+  subtopic: Brownian motion and Itô calculus
+  type: short
+  difficulty: hard
+  tags: [risk-neutral-measure, girsanov, change-of-measure]
+  prompt: |
+    Under the real-world measure a stock follows $dS = \mu S\,dt + \sigma S\,dW$. Under the risk-neutral
+    measure it follows $dS = rS\,dt + \sigma S\,d\tilde W$, where $\tilde W$ is a Brownian motion under
+    that measure. Why must the drift become $r$? And why does the volatility stay $\sigma$: could a
+    change of measure alter it?
+  reference: |
+    **Drift.** The risk-neutral measure is defined so that the price of every traded asset, divided
+    by the bank account, is a martingale; that is what makes "price = discounted expected payoff"
+    consistent with no arbitrage. The stock is traded, so $e^{-rt}S_t$ must be a martingale, which
+    forces the drift of $S$ to be $r$. (If it were anything else, the stock would be mispriced relative
+    to the bank account under the measure used to price everything.)
+
+    **Volatility.** By Girsanov's theorem, changing to an equivalent measure turns $W$ into a Brownian
+    motion plus a drift: $\tilde W_t = W_t + \lambda t$ with $\lambda = (\mu - r)/\sigma$, the market
+    price of risk. Only the drift changes. Volatility cannot change because it is a property of the
+    paths themselves: the quadratic variation of $\ln S$ over $[0, t]$ is $\sigma^2 t$ path by path, and
+    equivalent measures agree on which events have probability one. A measure under which the
+    volatility were different would give probability one to paths that the real-world measure gives
+    probability zero.
+
+    So the drift $\mu$ disappears from pricing, but $\sigma$, observable from the paths, stays.
+  keyPoints:
+    - Under the risk-neutral measure discounted traded asset prices are martingales, so the stock's drift must be r
+    - Girsanov's theorem says an equivalent change of measure adds a drift to the Brownian motion
+    - The drift shift is the market price of risk (μ − r)/σ
+    - Volatility is a pathwise property (quadratic variation), so equivalent measures must agree on it
+    - Concludes that μ does not affect prices while σ does
+  hints:
+    - What property defines the risk-neutral measure, for every traded asset?
+    - What does Girsanov's theorem say a change of measure does to a Brownian motion?
+    - Could you estimate $\sigma$ from a single path, observed very finely? Could you estimate $\mu$?
+  followUps:
+    - What is the drift of the stock under the measure that uses the stock itself as numeraire?
+    - Why is the real-world drift so hard to estimate from data, compared with the volatility?
+  explanation: |
+    Weak answers say "because investors are risk-neutral", which is not the reason: the measure is a
+    pricing device implied by no arbitrage. The key points are the martingale property of discounted
+    prices and the pathwise nature of quadratic variation, which is why measure changes can move drifts
+    but not volatilities.
+  source: { name: "Girsanov's theorem (e.g. Shreve, Stochastic Calculus for Finance II)" }
