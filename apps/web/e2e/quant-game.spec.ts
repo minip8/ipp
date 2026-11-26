@@ -430,7 +430,8 @@ test('voice reads the interviewer’s trade once and never the candidate’s quo
     .poll(spoken)
     .toEqual([
       'I buy 1 at 11.5. Make me a new market.',
-      LINES.close,
+      // The closing line's formula is said in words (`speechOf`).
+      'Right, 5 over 36 is it. Let’s move on to the next one.',
       'Question 3 is on your screen.',
     ]);
 });
