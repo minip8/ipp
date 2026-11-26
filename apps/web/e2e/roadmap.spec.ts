@@ -1,6 +1,6 @@
 /**
- * The Roadmap view on the Quizzes page: a graph of study areas per topic with the user's
- * progress, a details panel (a sheet on phones) and practice narrowed to one area.
+ * The Roadmap tab's topic maps (`?view=maps`): a graph of study areas per topic of the track with
+ * the user's progress, a details panel (a sheet on phones) and practice narrowed to one area.
  */
 import { expect, type Page, test } from '@playwright/test';
 import { aiKeyStatus } from './fixtures';
@@ -17,19 +17,16 @@ async function noSideScroll(page: Page) {
 }
 
 test.describe('quiz roadmap', () => {
-  test('is a view of its own between Start a quiz and History', async ({ page }) => {
+  test('is the second view of the Roadmap tab, its topics the track’s, flat', async ({ page }) => {
     await setup(page);
-    await page.goto('/quiz');
-    const tabs = page.getByRole('tablist', { name: 'Quizzes' }).getByRole('tab');
-    await expect(tabs).toHaveText([/^Start a quiz/, /^Roadmap/, /^History/]);
-    await page.getByRole('tab', { name: 'Roadmap' }).click();
-    await expect(page).toHaveURL(/\/quiz\?view=roadmap$/);
-    // Topics by track and in study order within each, the first chosen; its graph and overview.
+    await page.goto('/software/roadmap');
+    const tabs = page.getByRole('tablist', { name: 'Roadmap' }).getByRole('tab');
+    await expect(tabs).toHaveText(['Study path', 'Topic maps']);
+    await page.getByRole('tab', { name: 'Topic maps' }).click();
+    await expect(page).toHaveURL(/\/software\/roadmap\?view=maps$/);
+    // The track's topics in study order, one row, the first chosen; its graph and overview.
     const switcher = page.getByRole('radiogroup', { name: 'Roadmap topic' });
-    await expect(switcher.getByRole('radio')).toHaveCount(7);
-    const tracks = switcher.getByTestId('roadmap-track');
-    await expect(tracks).toHaveCount(2);
-    await expect(tracks.nth(0).getByRole('radio')).toHaveText([
+    await expect(switcher.getByRole('radio')).toHaveText([
       /^C\+\+/,
       /^Python/,
       /^Computer architecture/,
@@ -37,7 +34,7 @@ test.describe('quiz roadmap', () => {
       /^Concurrency/,
       /^Networking/,
     ]);
-    await expect(tracks.nth(1).getByRole('radio')).toHaveText([/^Probability/]);
+    await expect(page.getByText('Fundamentals', { exact: true })).toHaveCount(0);
     await expect(switcher.getByRole('radio').first()).toHaveAccessibleName(
       /^C\+\+: 3 of 15 areas complete/,
     );
@@ -50,13 +47,49 @@ test.describe('quiz roadmap', () => {
       '3 of 15 areas complete · 3 in progress',
     );
     await expect(page.getByTestId('roadmap-overview')).toContainText('Next up');
+
+    // Quant: its own topics and the shared Python, the same progress in both.
+    await page.goto('/quant/roadmap?view=maps');
+    await expect(switcher.getByRole('radio')).toHaveText([/^Python/, /^Probability/]);
+    await switcher.getByRole('radio', { name: /^Probability/ }).click();
+    await expect(page).toHaveURL(/\/quant\/roadmap\?view=maps&roadmap=probability$/);
+    await switcher.getByRole('radio', { name: /^Python/ }).click();
+    await expect(page).toHaveURL(/\/quant\/roadmap\?view=maps&roadmap=python$/);
+    await expect(page.getByTestId('roadmap-summary')).toHaveText(
+      '1 of 14 areas complete · 3 in progress',
+    );
+    await page.goto('/software/roadmap?view=maps&roadmap=python');
+    await expect(page.getByTestId('roadmap-summary')).toHaveText(
+      '1 of 14 areas complete · 3 in progress',
+    );
+  });
+
+  test('a topic of the other track only opens in that track', async ({ page }) => {
+    await setup(page);
+    await page.goto('/software/roadmap?view=maps&roadmap=probability&node=prob-counting');
+    await expect(page).toHaveURL(
+      /\/quant\/roadmap\?view=maps&roadmap=probability&node=prob-counting$/,
+    );
+    await expect(page.getByRole('group', { name: 'Probability study areas' })).toBeVisible();
+    await expect(
+      page.getByRole('navigation', { name: 'Track' }).locator('[aria-current]'),
+    ).toHaveText('Quant');
+    // Each track remembers its own last topic.
+    await page.goto('/software/roadmap?view=maps');
+    await expect(
+      page.getByRole('radiogroup', { name: 'Roadmap topic' }).getByRole('radio', { checked: true }),
+    ).toHaveText(/^C\+\+/);
+    await page.goto('/quant/roadmap?view=maps');
+    await expect(
+      page.getByRole('radiogroup', { name: 'Roadmap topic' }).getByRole('radio', { checked: true }),
+    ).toHaveText(/^Probability/);
   });
 
   test('shows each area with its progress and state, in words as well as colour', async ({
     page,
   }) => {
     await setup(page);
-    await page.goto('/quiz?view=roadmap&roadmap=cpp');
+    await page.goto('/software/roadmap?view=maps&roadmap=cpp');
     await expect(page.getByTestId('roadmap-node')).toHaveCount(15);
     await expect(node(page, 'cpp-initialization')).toHaveAttribute('data-state', 'complete');
     await expect(node(page, 'cpp-initialization')).toHaveAccessibleName(
@@ -74,9 +107,9 @@ test.describe('quiz roadmap', () => {
 
   test('switching topics is kept in the URL and survives a reload', async ({ page }) => {
     await setup(page);
-    await page.goto('/quiz?view=roadmap');
+    await page.goto('/software/roadmap?view=maps');
     await page.getByRole('radio', { name: /^Python/ }).click();
-    await expect(page).toHaveURL(/view=roadmap&roadmap=python$/);
+    await expect(page).toHaveURL(/view=maps&roadmap=python$/);
     await expect(page.getByRole('group', { name: 'Python study areas' })).toBeVisible();
     await node(page, 'py-classes').click();
     await expect(page).toHaveURL(/roadmap=python&node=py-classes$/);
@@ -96,7 +129,7 @@ test.describe('quiz roadmap', () => {
     page,
   }) => {
     await setup(page);
-    await page.goto('/quiz?view=roadmap&roadmap=cpp');
+    await page.goto('/software/roadmap?view=maps&roadmap=cpp');
     const move = node(page, 'cpp-move-semantics');
     await move.click();
     await expect(move).toHaveAttribute('aria-pressed', 'true');
@@ -136,7 +169,7 @@ test.describe('quiz roadmap', () => {
     page,
   }) => {
     await setup(page);
-    await page.goto('/quiz?view=roadmap&roadmap=cpp&node=cpp-concurrency');
+    await page.goto('/software/roadmap?view=maps&roadmap=cpp&node=cpp-concurrency');
     const related = () =>
       details(page).getByRole('region', { name: 'Related in other topics' }).getByRole('button');
     // Written on this area in roadmap.yaml; each names its topic.
@@ -163,7 +196,7 @@ test.describe('quiz roadmap', () => {
 
   test('Practise starts a practice quiz on that area', async ({ page }) => {
     const backend = await setup(page);
-    await page.goto('/quiz?view=roadmap&roadmap=cpp&node=cpp-undefined-behaviour');
+    await page.goto('/software/roadmap?view=maps&roadmap=cpp&node=cpp-undefined-behaviour');
     await expect(details(page)).toContainText('Every question answered. Get to 70% accuracy');
     await details(page).getByRole('button', { name: 'Practise' }).click();
     await expect(page).toHaveURL(/\/quiz\/[0-9a-f-]{36}$/);
@@ -183,7 +216,7 @@ test.describe('quiz roadmap', () => {
     const backend = await setup(page, (b) => {
       b.aiKey = aiKeyStatus('missing');
     });
-    await page.goto('/quiz?view=roadmap&roadmap=cpp&node=cpp-move-semantics');
+    await page.goto('/software/roadmap?view=maps&roadmap=cpp&node=cpp-move-semantics');
     await details(page).getByRole('button', { name: 'Discuss' }).click();
     await expect(page.getByTestId('roadmap-key-prompt')).toContainText(
       'A discussion runs on your own AI API key',
@@ -199,17 +232,17 @@ test.describe('quiz roadmap', () => {
         error: { code: 'not_found', message: 'Questions for these topics not found' },
       });
     });
-    await page.goto('/quiz?view=roadmap&roadmap=cpp&node=cpp-move-semantics');
+    await page.goto('/software/roadmap?view=maps&roadmap=cpp&node=cpp-move-semantics');
     await details(page).getByRole('button', { name: 'Practise' }).click();
     await expect(details(page).getByRole('alert')).toContainText('not found');
-    await expect(page).toHaveURL(/view=roadmap/);
+    await expect(page).toHaveURL(/view=maps/);
   });
 
   test('a first visit: nothing started, the roots next up', async ({ page }) => {
     await setup(page, (b) => {
       b.quizRoadmap = QUIZ_ROADMAP_FRESH;
     });
-    await page.goto('/quiz?view=roadmap&roadmap=cpp');
+    await page.goto('/software/roadmap?view=maps&roadmap=cpp');
     await expect(page.getByTestId('roadmap-summary')).toHaveText('0 of 15 areas complete');
     await expect(page.locator('[data-next]')).toHaveCount(2);
     await expect(node(page, 'cpp-initialization')).toHaveAttribute('data-next', 'true');
@@ -227,7 +260,7 @@ test.describe('quiz roadmap', () => {
         3,
       );
     });
-    await page.goto('/quiz?view=roadmap');
+    await page.goto('/software/roadmap?view=maps');
     await expect(page.getByRole('alert').filter({ hasText: 'Something went wrong' })).toBeVisible({
       timeout: 15_000,
     });
@@ -239,7 +272,7 @@ test.describe('quiz roadmap', () => {
     page,
   }) => {
     await setup(page);
-    await page.goto('/quiz?view=roadmap&roadmap=cpp');
+    await page.goto('/software/roadmap?view=maps&roadmap=cpp');
     await expect(page.getByTestId('roadmap-node')).toHaveCount(15);
     const ids = await page
       .getByTestId('roadmap-node')
@@ -274,7 +307,7 @@ test.describe('quiz roadmap on a phone', () => {
 
   test('the graph fits, and an area opens in a sheet', async ({ page }) => {
     await setup(page);
-    await page.goto('/quiz?view=roadmap');
+    await page.goto('/software/roadmap?view=maps');
     for (const [topic, title] of [
       ['cpp', 'C\\+\\+'],
       ['python', 'Python'],
@@ -282,17 +315,15 @@ test.describe('quiz roadmap on a phone', () => {
       ['operating-systems', 'Operating systems'],
       ['concurrency', 'Concurrency'],
       ['networking', 'Networking'],
-      // In a row of its own, under its track.
-      ['probability', 'Probability'],
     ]) {
-      await page.goto(`/quiz?view=roadmap&roadmap=${topic}`);
+      await page.goto(`/software/roadmap?view=maps&roadmap=${topic}`);
       await expect(page.getByTestId('roadmap-node').first()).toBeVisible();
       await expect(page.getByTestId('roadmap-graph')).toHaveAttribute('data-fits', 'true');
       // The topics scroll in their own row, which shows the chosen one.
       await expect(page.getByRole('radio', { name: new RegExp(`^${title}:`) })).toBeInViewport();
       await noSideScroll(page);
     }
-    await page.goto('/quiz?view=roadmap&roadmap=cpp');
+    await page.goto('/software/roadmap?view=maps&roadmap=cpp');
     // No side column on a phone: nothing selected, no details.
     await expect(page.getByTestId('roadmap-overview')).toHaveCount(0);
     await node(page, 'cpp-move-semantics').click();

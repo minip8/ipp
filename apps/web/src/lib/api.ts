@@ -41,7 +41,10 @@ import {
   RecordDrillRunResponse,
   Report,
   Run,
+  type SetTrackRequest,
+  SetTrackResponse,
   SolutionReview,
+  type Track,
   UpdateHostNotesRequest,
   type UpdatePadRequest,
   WsTicketResponse,
@@ -155,6 +158,12 @@ const qs = (params: Record<string, string | undefined>) => {
 
 export const api = {
   me: () => request('/me', MeResponse),
+  /** Remember the site track the user is in (accounts only). */
+  setTrack: (track: Track) =>
+    request('/me/track', SetTrackResponse, {
+      method: 'PUT',
+      body: { track } satisfies SetTrackRequest,
+    }),
   /** The signed-in user's own AI provider API key: status only, never the key. */
   aiKey: () => request('/ai-key', AiKeyStatus),
   saveAiKey: (provider: AiProvider, apiKey: string) =>

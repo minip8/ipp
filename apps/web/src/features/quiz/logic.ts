@@ -1,15 +1,16 @@
-/** Pure helpers for the quiz flow: drafts, responses, answer formatting, outcome, tracks. */
+/** Pure helpers for the quiz flow: drafts, responses, answer formatting, outcome, the setup. */
 import {
   type AnswerFeedback,
   type Language,
   type OutputAnswer,
   type PublicQuizQuestion,
   parseNumeric,
-  QUIZ_TRACK_INFO,
-  QUIZ_TRACKS,
+  type QuizAttemptSummary,
   type QuizMode,
   type QuizResponse,
   type QuizTrack,
+  type Track,
+  topicInTrack,
 } from '@ipp/contracts';
 import { type Segment, splitMath } from '@/components/math-guard';
 
@@ -359,19 +360,33 @@ export const MODE_LABEL: Record<QuizMode, string> = {
   discussion: 'Discussion',
 };
 
-export const MODE_HINT: Record<QuizMode, string> = {
+const MODE_HINT: Record<QuizMode, string> = {
   practice:
-    'Multiple choice, numeric answers and "what does this print". You see the answer after each question. For speed at arithmetic, the Quant page has a mental math drill.',
+    'Multiple choice, numeric answers and "what does this print". You see the answer after each question.',
   exam: 'The same kind of questions, with the answers held back until you finish.',
   discussion:
-    'Open questions, talked through with an AI interviewer who asks follow-ups and then grades you. For a timed round of quant questions, start a live round from the Quant page.',
+    'Open questions, talked through with an AI interviewer who asks follow-ups and then grades you.',
 };
+
+/** What else the track offers beside a mode (Quant's drill and live rounds); nothing in Software. */
+const MODE_ASIDE: Partial<Record<Track, Partial<Record<QuizMode, string>>>> = {
+  quant: {
+    practice: 'For speed at arithmetic, try the mental math drill.',
+    discussion: 'For a timed round of questions, start a live round from Interviews.',
+  },
+};
+
+/** The line under the mode choice: what the mode is, and in Quant where its timed cousins are. */
+export function modeHint(mode: QuizMode, track: Track): string {
+  const aside = MODE_ASIDE[track]?.[mode];
+  return aside ? `${MODE_HINT[mode]} ${aside}` : MODE_HINT[mode];
+}
 
 export const QUIZ_COUNTS = ['5', '10', '20', '30'] as const;
 /** A discussion question takes a few minutes, so fewer of them. */
 export const DISCUSSION_COUNTS = ['3', '5', '10'] as const;
 
-/** Rounds started in one click (a roadmap area, a topic on the Quant page): how many questions. */
+/** Rounds started in one click (a roadmap area, a step of a study path): how many questions. */
 export const PRACTICE_ROUND = 10;
 export const DISCUSSION_ROUND = 5;
 
@@ -394,7 +409,10 @@ export const DEFAULT_SETUP: QuizSetup = {
   focusWeak: true,
 };
 
-export const SETUP_STORAGE_KEY = 'ipp.quiz.setup';
+/** One remembered setup per track, so one track's topics never carry into the other. */
+export const setupStorageKey = (track: Track) => `ipp.quiz.setup.${track}`;
+/** Before tracks: one setup for every topic, still read when a track has none of its own yet. */
+export const LEGACY_SETUP_STORAGE_KEY = 'ipp.quiz.setup';
 
 /** A stored setup, field by field: anything missing or no longer valid falls back to the default. */
 export function parseSetup(raw: unknown): QuizSetup {
@@ -423,21 +441,15 @@ export function questionsFor(
 
 // ---------------------------------------------------------------- tracks
 
-export interface TrackGroup<T> {
-  track: QuizTrack;
-  label: string;
-  description: string;
-  items: T[];
-}
-
 /**
- * Topics by track, in `QUIZ_TRACKS` order, each keeping the order it was given in (the server's
- * study order). A track with no topic is left out, so one group means there is nothing to head.
+ * The attempts a track's history lists: those with at least one topic of the track (an attempt
+ * on a topic in both tracks is in both). A topic the server no longer has counts for neither.
  */
-export function groupByTrack<T extends { track: QuizTrack }>(items: T[]): TrackGroup<T>[] {
-  return QUIZ_TRACKS.map((track) => ({
-    track,
-    ...QUIZ_TRACK_INFO[track],
-    items: items.filter((t) => t.track === track),
-  })).filter((g) => g.items.length > 0);
+export function attemptsInTrack<A extends Pick<QuizAttemptSummary, 'topics'>>(
+  attempts: readonly A[],
+  topics: readonly { slug: string; track: QuizTrack; also?: readonly Track[] }[],
+  track: Track,
+): A[] {
+  const here = new Set(topics.filter((t) => topicInTrack(t, track)).map((t) => t.slug));
+  return attempts.filter((a) => a.topics.some((slug) => here.has(slug)));
 }

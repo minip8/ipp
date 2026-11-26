@@ -36,7 +36,7 @@ for (const width of WIDTHS) {
       await setup(page);
       const deck = new DrillDeck(SEED, CONFIG.level, CONFIG.categories);
       if (want('drill-setup')) {
-        await page.goto('/quant/drill');
+        await page.goto('/quant/practice/drill');
         await page.getByTestId('drill-runs').waitFor();
         await page.waitForTimeout(300);
         await shoot(page, 'drill-setup', { fullPage: true });
@@ -47,13 +47,13 @@ for (const width of WIDTHS) {
         await setup(first, (b) => {
           b.drillRuns = [];
         });
-        await first.goto('/quant/drill');
+        await first.goto('/quant/practice/drill');
         await first.getByText('No runs yet').waitFor();
         await shoot(first, 'drill-setup-empty', { fullPage: true });
         await first.close();
       }
       if (!want('drill-run') && !want('drill-results')) return;
-      await page.goto(`/quant/drill?seed=${SEED}`);
+      await page.goto(`/quant/practice/drill?seed=${SEED}`);
       await page.getByRole('button', { name: 'Start' }).click();
       await expect(page.getByTestId('drill-question')).toHaveText('3');
       if (want('drill-run')) await shoot(page, 'drill-run-countdown');
@@ -98,10 +98,10 @@ for (const width of WIDTHS) {
       if (want('drill-results')) await shoot(page, 'drill-results', { fullPage: true });
     });
 
-    test('the Quant page card', async ({ page }) => {
+    test('the card on Quant practice', async ({ page }) => {
       test.skip(!want('drill-card'), 'not asked for');
       await setup(page);
-      await page.goto('/quant');
+      await page.goto('/quant/practice');
       await page.getByTestId('drill-card').waitFor();
       await page.waitForTimeout(300);
       await shoot(page, 'drill-card-quant', { fullPage: true });

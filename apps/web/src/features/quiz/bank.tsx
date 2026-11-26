@@ -32,9 +32,7 @@ import { Kbd } from '@/components/ui/kbd';
 import {
   Select,
   SelectContent,
-  SelectGroup,
   SelectItem,
-  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
@@ -44,6 +42,8 @@ import { AiKeyPrompt } from '@/features/ai-key/ai-key-prompt';
 import { ApiRequestError, api } from '@/lib/api';
 import { formatRelative, humanize, plural } from '@/lib/format';
 import { qk, useAiKey } from '@/lib/queries';
+import { practiceHref, topicsOf, trackForTopic } from '@/lib/track';
+import { useTrack } from '@/lib/track-hooks';
 import { cn } from '@/lib/utils';
 import { isTyping } from './attempt';
 import { BankToolbar, isPlainClick, ProgressBar, SubtopicGrid, SubtopicPanel } from './bank-browse';
@@ -72,7 +72,6 @@ import {
   draftForKey,
   draftFromResponse,
   emptyDraft,
-  groupByTrack,
   isUnsendable,
   toResponse,
 } from './logic';
@@ -152,8 +151,12 @@ export function QuestionBank({ topic }: { topic: string }) {
   const subtopicParam = params.get('subtopic');
   const bank = useQuery({ queryKey: qk.quizBank(topic), queryFn: () => api.quizBank(topic) });
   const topics = useQuery({ queryKey: qk.quizTopics, queryFn: api.quizTopics, staleTime: 60_000 });
-  // The topic picker is headed by track once there is more than one.
-  const topicGroups = useMemo(() => groupByTrack(topics.data ?? []), [topics.data]);
+  // The bank's track: the current one when the topic is in it, else the topic's home. The picker
+  // lists that track's topics, one flat list in study order, and the way back is its Practice.
+  const current = useTrack();
+  const here = topics.data?.find((t) => t.slug === topic);
+  const track = here ? trackForTopic(here, current) : current;
+  const pickable = useMemo(() => topicsOf(topics.data ?? [], track), [topics.data, track]);
   // Questions answered here stay in the filtered list until the filters change.
   const [keep, setKeep] = useState<Set<string>>(() => new Set(selected ? [selected] : []));
   const [session, setSession] = useState<Record<string, Local>>({});
@@ -336,8 +339,8 @@ export function QuestionBank({ topic }: { topic: string }) {
             </h1>
           </>
         ) : (
-          <Link href="/quiz" className={backLink}>
-            <ArrowLeftIcon className="size-3.5" /> Quizzes
+          <Link href={practiceHref(track)} className={backLink}>
+            <ArrowLeftIcon className="size-3.5" /> Practice
           </Link>
         )}
         <span
@@ -364,7 +367,7 @@ export function QuestionBank({ topic }: { topic: string }) {
               </p>
             </div>
             <div className="flex items-center gap-2 max-sm:w-full">
-              {topics.data && topics.data.length > 1 && (
+              {pickable.length > 1 && (
                 <Select
                   value={topic}
                   onValueChange={(t) =>
@@ -375,27 +378,16 @@ export function QuestionBank({ topic }: { topic: string }) {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {topicGroups.length > 1
-                      ? topicGroups.map((g) => (
-                          <SelectGroup key={g.track}>
-                            <SelectLabel>{g.label}</SelectLabel>
-                            {g.items.map((t) => (
-                              <SelectItem key={t.slug} value={t.slug}>
-                                {t.title}
-                              </SelectItem>
-                            ))}
-                          </SelectGroup>
-                        ))
-                      : topics.data.map((t) => (
-                          <SelectItem key={t.slug} value={t.slug}>
-                            {t.title}
-                          </SelectItem>
-                        ))}
+                    {pickable.map((t) => (
+                      <SelectItem key={t.slug} value={t.slug}>
+                        {t.title}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               )}
               <Button asChild size="md" className="max-sm:h-10">
-                <Link href={`/quiz?topic=${encodeURIComponent(topic)}`}>
+                <Link href={practiceHref(track, { topic })}>
                   <PlayIcon /> Take a quiz instead
                 </Link>
               </Button>

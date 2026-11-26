@@ -36,30 +36,20 @@ for (const width of WIDTHS) {
         await shoot(page, 'home-signed-in');
       }
       if (want('dashboard')) {
-        await page.goto('/dashboard');
+        await page.goto('/software/interviews');
         await page.getByRole('region', { name: 'In progress' }).waitFor();
         await page.waitForTimeout(300);
         await shoot(page, 'dashboard', { fullPage: true });
       }
       if (want('dashboard-history')) {
-        await page.goto('/dashboard?view=history');
+        await page.goto('/software/interviews?view=history');
         await page.getByRole('region', { name: 'Finished interviews' }).waitFor();
         await page.waitForTimeout(300);
         await shoot(page, 'dashboard-history', { fullPage: true });
       }
-      // The Quant page, on each path (`ONLY=quant-page`).
-      if (want('quant-page')) {
-        await page.goto('/quant');
-        await page.getByTestId('quant-step').first().waitFor();
-        await page.waitForTimeout(300);
-        await shoot(page, 'quant-page-trader', { fullPage: true });
-        await page.goto('/quant?path=researcher');
-        await page.getByTestId('quant-step').first().waitFor();
-        await page.waitForTimeout(300);
-        await shoot(page, 'quant-page-researcher', { fullPage: true });
-      }
+      // The tracks' tabs (the study paths among them) are in screens-tracks.spec.ts.
       if (want('new')) {
-        await page.goto('/dashboard');
+        await page.goto('/software/interviews');
         await page.getByRole('button', { name: /^Two Sum/ }).click();
         await page.waitForTimeout(600);
         await shoot(page, 'new', { fullPage: true });
@@ -74,7 +64,7 @@ for (const width of WIDTHS) {
       }
       // Past quizzes with their delete buttons, and the confirmation (`ONLY=quiz-history`).
       if (want('quiz-history')) {
-        await page.goto('/quiz?view=history');
+        await page.goto('/software/practice?view=history');
         await page.getByRole('region', { name: 'Past quizzes' }).waitFor();
         await page.waitForTimeout(300);
         await shoot(page, 'quiz-history', { fullPage: true });
@@ -89,7 +79,7 @@ for (const width of WIDTHS) {
         await shoot(page, 'quiz-history-clear');
       }
       if (want('drill-history')) {
-        await page.goto('/quant/drill');
+        await page.goto('/quant/practice/drill');
         await page.getByTestId('drill-runs').waitFor();
         await page
           .getByTestId('drill-runs')

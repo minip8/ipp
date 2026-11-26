@@ -97,7 +97,11 @@ export function attemptDeleteCopy(t: AttemptTarget): DeleteCopy {
   };
 }
 
-export function clearQuizHistoryCopy(attempts: number): DeleteCopy {
+/**
+ * `attempts` counts the whole history; `elsewhere`, those of them the page does not list (a track's
+ * Practice lists only its own), which go too.
+ */
+export function clearQuizHistoryCopy(attempts: number, elsewhere = 0): DeleteCopy {
   return {
     action: 'Clear quiz history',
     title: 'Clear your whole quiz history?',
@@ -105,7 +109,7 @@ export function clearQuizHistoryCopy(attempts: number): DeleteCopy {
       'This permanently deletes every quiz, exam and discussion you have taken, and every answer you gave in the question bank. It cannot be undone.',
     lostHeading: 'What is lost',
     lost: [
-      `${plural(attempts, 'quiz', 'quizzes')} in your history, with their answers.`,
+      `${plural(attempts, 'quiz', 'quizzes')} in your history, with their answers.${elsewhere > 0 ? ` That includes ${elsewhere} on the other track's topics, not listed here.` : ''}`,
       'Your answers in the question bank.',
       'Your stats, roadmap progress and question statuses start again from nothing, and “Prefer questions I missed” sees every question as new.',
       'Questions judged in your live quant rounds still count: they belong to those interviews, and go with them.',

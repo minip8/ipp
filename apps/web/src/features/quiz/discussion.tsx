@@ -36,6 +36,8 @@ import { DeleteAttemptButton } from '@/features/delete-history/delete-attempt-bu
 import { api } from '@/lib/api';
 import { plural } from '@/lib/format';
 import { qk, useAiKey } from '@/lib/queries';
+import { practiceHref } from '@/lib/track';
+import { useTrack } from '@/lib/track-hooks';
 import { cn } from '@/lib/utils';
 import { outcomeOf, resumeIndex } from './logic';
 import { ProgressSegments, type SegState } from './progress';
@@ -72,6 +74,7 @@ export function DiscussionFlow({
   attempt: QuizAttempt;
   topicLine: string;
 }) {
+  const back = practiceHref(useTrack());
   const qc = useQueryClient();
   const aiKey = useAiKey();
   const qs = attempt.questions;
@@ -191,10 +194,10 @@ export function DiscussionFlow({
     <div className={cn('mx-auto max-w-3xl px-4 py-6 sm:px-6 max-sm:pt-3', PHONE_FIT)}>
       <div className="flex items-center gap-3">
         <Link
-          href="/quiz"
+          href={back}
           className="inline-flex items-center gap-1 text-sm text-fg-muted hover:text-fg max-sm:min-h-10"
         >
-          <ArrowLeftIcon className="size-3.5" /> Quizzes
+          <ArrowLeftIcon className="size-3.5" /> Practice
         </Link>
         <span className="text-xs text-fg-subtle">Progress is saved</span>
         <DeleteAttemptButton

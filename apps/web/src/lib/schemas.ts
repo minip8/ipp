@@ -2,6 +2,7 @@
  * Response shapes for the few endpoints that have no schema in @ipp/contracts
  * (docs/ARCHITECTURE.md §4). Everything else is imported from the contracts.
  */
+import { Track } from '@ipp/contracts';
 import { z } from 'zod';
 
 export const MeResponse = z.object({
@@ -12,6 +13,8 @@ export const MeResponse = z.object({
     image: z.string().nullable().optional(),
     /** Joined an interview room by its link without an account: only that room is theirs. */
     guest: z.boolean().default(false),
+    /** The site track last used (`PUT /api/me/track`); null until one is chosen, and for a guest. */
+    track: Track.nullable().default(null),
   }),
 });
 export type Me = z.infer<typeof MeResponse>['user'];

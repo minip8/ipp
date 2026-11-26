@@ -1,6 +1,11 @@
-import { redirect } from 'next/navigation';
+import { Suspense } from 'react';
+import { QuizRedirect } from '@/features/track/quiz-redirect';
 
-/** Topics are picked on the hub; without this, /quiz/topics would be read as an attempt id. */
+/** Topics are picked on Practice; without this, /quiz/topics would be read as an attempt id. */
 export default function QuizTopicsPage() {
-  redirect('/quiz');
+  return (
+    <Suspense>
+      <QuizRedirect />
+    </Suspense>
+  );
 }

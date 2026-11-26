@@ -1,5 +1,5 @@
 'use client';
-/** The way into the mental math drill from the Quant page (both paths). */
+/** The way into the mental math drill, beside the Quant track's Practice and study path. */
 import { DRILL_LEVEL_LABEL, type DrillConfig } from '@ipp/contracts';
 import { useQuery } from '@tanstack/react-query';
 import { TimerIcon, TrophyIcon } from 'lucide-react';
@@ -9,10 +9,9 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { api } from '@/lib/api';
 import { qk } from '@/lib/queries';
+import { DRILL_HREF } from '@/lib/track';
 import { bestFor, DURATION_LABEL } from './logic';
 import { loadDrillSetup } from './storage';
-
-export const DRILL_HREF = '/quant/drill';
 
 export function DrillCard() {
   const history = useQuery({ queryKey: qk.drillRuns, queryFn: api.drillRuns });

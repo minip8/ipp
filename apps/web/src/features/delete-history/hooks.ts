@@ -2,7 +2,7 @@
 /**
  * The requests behind each deletion and the caches they change. Lists update in place from what
  * is known (and the API's answer for the drill); everything that reads the user's answers
- * (topic stats, the roadmap, the question bank, the Quant page) is refetched.
+ * (topic stats, the roadmap, the question bank, the study paths) is refetched.
  */
 import type { DrillHistory, QuizAttemptSummary } from '@ipp/contracts';
 import { type QueryClient, useQueryClient } from '@tanstack/react-query';

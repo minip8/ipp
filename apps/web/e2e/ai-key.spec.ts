@@ -47,7 +47,7 @@ test.describe('key management', () => {
     const backend = await setup(page, (b) => {
       b.aiKey = aiKeyStatus('missing');
     });
-    await page.goto('/dashboard');
+    await page.goto('/software/interviews');
     await page.getByRole('button', { name: 'Account menu' }).click();
     const item = page.getByRole('menuitem', { name: /AI key/ });
     await expect(item).toContainText('Not set');
@@ -186,7 +186,7 @@ test.describe('key management', () => {
     await page.getByRole('option', { name: 'Claude Haiku 5.5' }).click();
     await expect(picker).toContainText('Claude Haiku 5.5');
     // It is the start preference: the new-interview form starts with it.
-    await page.goto('/new');
+    await page.goto('/software/interviews');
     await expect(page.getByRole('combobox', { name: 'Model' })).toContainText('Claude Haiku 5.5');
   });
 });
@@ -194,7 +194,7 @@ test.describe('key management', () => {
 test.describe('choosing the interviewer model', () => {
   test('the model picked when starting is sent with the pad and remembered', async ({ page }) => {
     const backend = await setup(page);
-    await page.goto('/new');
+    await page.goto('/software/interviews');
     const picker = page.getByRole('combobox', { name: 'Model' });
     await expect(picker).toContainText('Default: Claude Opus 5.5');
     await picker.click();
@@ -206,7 +206,7 @@ test.describe('choosing the interviewer model', () => {
     expect(create?.body).toMatchObject({
       interviewer: { model: { provider: 'anthropic', id: 'claude-sonnet-5-5' } },
     });
-    await page.goto('/new');
+    await page.goto('/software/interviews');
     await expect(page.getByRole('combobox', { name: 'Model' })).toContainText('Claude Sonnet 5.5');
   });
 
@@ -214,7 +214,7 @@ test.describe('choosing the interviewer model', () => {
     const backend = await setup(page, (b) => {
       b.modelsFail = true;
     });
-    await page.goto('/new');
+    await page.goto('/software/interviews');
     await expect(page.getByTestId('model-picker')).toContainText('Could not get the model list');
     await page.getByRole('button', { name: /^Two Sum/ }).click();
     await page.getByRole('button', { name: 'Start interview' }).click();
@@ -229,7 +229,7 @@ test.describe('choosing the interviewer model', () => {
     const noKey = await setup(page, (b) => {
       b.aiKey = aiKeyStatus('missing');
     });
-    await page.goto('/new');
+    await page.goto('/software/interviews');
     await expect(page.getByRole('combobox', { name: 'Model' })).toBeDisabled();
     await expect(page.getByTestId('model-picker')).toContainText(
       'Add an API key to choose a model',
@@ -263,7 +263,7 @@ test.describe('starting an interview', () => {
     const backend = await setup(page, (b) => {
       b.aiKey = aiKeyStatus('missing');
     });
-    await page.goto('/new');
+    await page.goto('/software/interviews');
     await page.getByRole('button', { name: /^Two Sum/ }).click();
     await expect(page.getByTestId('ai-key-prompt')).toContainText('Runs on your own AI API key');
     // Turning the interviewer off removes the prompt.
@@ -286,7 +286,7 @@ test.describe('starting an interview', () => {
     const backend = await setup(page, (b) => {
       b.aiKey = aiKeyStatus('missing');
     });
-    await page.goto('/new');
+    await page.goto('/software/interviews');
     await page.getByRole('button', { name: /^Two Sum/ }).click();
     await page.getByRole('radio', { name: 'Tough' }).click();
     await page.getByRole('button', { name: 'Start interview' }).click();
@@ -299,7 +299,7 @@ test.describe('starting an interview', () => {
 
   test('with a key there is no prompt and Start goes straight in', async ({ page }) => {
     await setup(page);
-    await page.goto('/new');
+    await page.goto('/software/interviews');
     await expect(page.getByTestId('ai-key-prompt')).toHaveCount(0);
     // Nothing is selected by default, so Start waits for a problem.
     await expect(page.getByRole('button', { name: 'Start interview' })).toBeDisabled();
@@ -435,7 +435,7 @@ test.describe('changing or removing the key where it is used', () => {
     page,
   }) => {
     const backend = await setup(page);
-    await page.goto('/new');
+    await page.goto('/software/interviews');
     const line = page.getByTestId('saved-key-line');
     await expect(line).toContainText('Anthropic key');
     await line.getByRole('button', { name: 'Change or remove' }).click();
@@ -452,7 +452,7 @@ test.describe('changing or removing the key where it is used', () => {
 
   test('from the interview setup: replace with a key from another provider', async ({ page }) => {
     const backend = await setup(page);
-    await page.goto('/new');
+    await page.goto('/software/interviews');
     await page.getByTestId('saved-key-line').getByRole('button').click();
     const dialog = page.getByRole('dialog');
     await dialog.getByRole('button', { name: 'Replace' }).click();

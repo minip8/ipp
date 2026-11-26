@@ -5,7 +5,7 @@ test('choosing a theme with the mouse does not leave the "Theme" tooltip open', 
   page,
 }) => {
   await setup(page);
-  await page.goto('/dashboard');
+  await page.goto('/software/interviews');
   const button = page.getByRole('button', { name: 'Change theme' });
   await button.click();
   await page.getByRole('menuitemradio', { name: 'Dark' }).click();
@@ -20,7 +20,7 @@ test('choosing a theme with the keyboard does not leave the tooltip open either'
   page,
 }) => {
   await setup(page);
-  await page.goto('/dashboard');
+  await page.goto('/software/interviews');
   const button = page.getByRole('button', { name: 'Change theme' });
   await button.focus();
   await page.keyboard.press('Enter');
@@ -42,7 +42,7 @@ test('choosing a theme with the keyboard does not leave the tooltip open either'
 
 test('the theme tooltip still shows on hover and on keyboard focus', async ({ page }) => {
   await setup(page);
-  await page.goto('/dashboard');
+  await page.goto('/software/interviews');
   const button = page.getByRole('button', { name: 'Change theme' });
   await button.hover();
   await expect(page.getByRole('tooltip')).toHaveText('Theme');

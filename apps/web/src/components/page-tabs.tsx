@@ -13,7 +13,7 @@ export const VIEW_PARAM = 'view';
  * A hub page's view, kept in `?view=` so it can be linked and Back returns to the previous one.
  * The first view is the default and leaves the param out. Other params on the page are kept:
  * the URL is rebuilt from `window.location`, as the pages' own `replaceState` calls do.
- * `views` should be a module-level constant. Another choice kept the same way (the Quant page's
+ * `views` should be a module-level constant. Another choice kept the same way (a Quant
  * path) passes its own `param`.
  */
 export function usePageView<V extends string>(views: readonly [V, ...V[]], param = VIEW_PARAM) {
@@ -48,7 +48,7 @@ export type PageTab<V extends string> = {
 };
 
 /**
- * The page-level view switch under a hub page's title (Interviews, Quizzes). Tabs fill the width
+ * The page-level view switch under a track tab's title (Interviews, Practice, Roadmap). Tabs fill the width
  * on phones and sit at the start of the row from `sm` up. Panels go in `children`.
  */
 export function PageTabs<V extends string>({

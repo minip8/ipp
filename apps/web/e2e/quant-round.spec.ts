@@ -1,5 +1,5 @@
 /**
- * The live quant round: starting one from the Quant page, the quant pad (question, chat and
+ * The live quant round: starting one from the Quant track's Interviews tab, the quant pad (question, chat and
  * voice, scratchpad), the round played through to its report, and what keeps the two pad formats
  * apart (Monaco never loads in a quant pad, KaTeX never in a coding pad). The round is played by
  * the mock (mock-quant-round.ts) through the contract's own `advanceRound`.
@@ -53,13 +53,15 @@ test.describe('starting a round', () => {
   for (const path of ['trader', 'researcher'] as const) {
     test(`from the ${path} path, with its refusals`, async ({ page }) => {
       const b = await setup(page);
-      await page.goto(path === 'trader' ? '/quant' : '/quant?path=researcher');
+      await page.goto(
+        path === 'trader' ? '/quant/interviews' : '/quant/interviews?path=researcher',
+      );
       const card = page.getByTestId('round-setup');
       await expect(card.getByRole('heading', { name: 'Live interview round' })).toBeVisible();
-      // First on the path, above its topics.
-      const cardBox = await card.boundingBox();
-      const stepBox = await page.getByTestId('quant-step').first().boundingBox();
-      expect(cardBox && stepBox && cardBox.y < stepBox.y).toBe(true);
+      // On the path the URL names, chosen above it.
+      await expect(
+        page.getByRole('radiogroup', { name: 'Path' }).getByRole('radio', { checked: true }),
+      ).toHaveText(path === 'trader' ? 'Trader' : 'Researcher');
       await expect(card).toContainText(`questions from the ${path} path`);
 
       // Each length, with the questions it asks.
@@ -118,7 +120,7 @@ test.describe('starting a round', () => {
     const b = await setup(page, (x) => {
       x.quant.autoStart = false;
     });
-    await page.goto('/quant?path=researcher');
+    await page.goto('/quant/interviews?path=researcher');
     await page.getByRole('button', { name: 'Start the round' }).click();
     await expect(page).toHaveURL(/\/pads\/[0-9a-f-]{36}$/);
     await expect(page.getByTestId('round-pending')).toContainText(
@@ -130,7 +132,7 @@ test.describe('starting a round', () => {
     await expect(page.getByTestId('question-message')).toContainText(PROMPT_1.slice(0, 20));
     await expect(page.getByTestId('question-topic')).toHaveText('Probability');
     // The setup is kept for next time.
-    await page.goto('/quant');
+    await page.goto('/quant/interviews');
     await expect(page.getByRole('radio', { name: '30 min' })).toHaveAttribute(
       'aria-checked',
       'true',
@@ -142,7 +144,7 @@ test.describe('starting a round', () => {
     const b = await setup(page, (x) => {
       x.aiKey = aiKeyStatus('missing');
     });
-    await page.goto('/quant');
+    await page.goto('/quant/interviews');
     const card = page.getByTestId('round-setup');
     await expect(card.getByTestId('round-key-prompt')).toContainText(
       'The round runs on your own AI API key',
@@ -242,7 +244,7 @@ test.describe('the quant pad', () => {
     page,
   }) => {
     const b = await setup(page);
-    await page.goto('/quant');
+    await page.goto('/quant/interviews');
     // Bank questions only (quant-game.spec.ts plays the game).
     await page.getByRole('switch', { name: 'Include a market-making game' }).click();
     await page.getByRole('button', { name: 'Start the round' }).click();
@@ -669,12 +671,12 @@ test.describe('formats kept apart', () => {
     page,
   }) => {
     await setup(page, (b) => b.quant.listOnDashboard());
-    await page.goto('/dashboard');
+    await page.goto('/software/interviews');
     const active = page.getByRole('region', { name: 'In progress' });
     const row = active.getByRole('listitem').filter({ hasText: 'Trader quant round' });
     await expect(row.getByTestId('quant-badge')).toHaveText('Quant · Trader');
     await expect(row).not.toContainText('Python');
-    await page.goto('/dashboard?view=history');
+    await page.goto('/software/interviews?view=history');
     const table = page.getByRole('table');
     const ended = table.getByRole('row').filter({ hasText: 'Trader quant round' });
     await expect(ended.getByTestId('quant-badge')).toHaveText('Quant · Trader');

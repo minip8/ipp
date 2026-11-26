@@ -13,6 +13,8 @@ import { cleanGuestName } from '@/features/room/logic';
 import { ApiRequestError, api } from '@/lib/api';
 import { qk, useMe } from '@/lib/queries';
 import type { Me } from '@/lib/schemas';
+import { tabHref } from '@/lib/track';
+import { useTrack } from '@/lib/track-hooks';
 import { AuthGate } from './auth-gate';
 import { Logo } from './logo';
 import { ErrorState, InlineError, useRetryCountdown } from './states';
@@ -23,6 +25,7 @@ import { Spinner } from './ui/spinner';
 /** Practice pads: join as the signed-in account, straight away. */
 function Joining({ token }: { token: string }) {
   const router = useRouter();
+  const interviews = tabHref(useTrack(), 'interviews');
   const join = useMutation({
     mutationFn: () => api.joinPad(token),
     onSuccess: ({ padId }) => router.replace(`/pads/${padId}`),
@@ -40,7 +43,7 @@ function Joining({ token }: { token: string }) {
           onRetry={() => join.mutate()}
         />
         <Button asChild variant="ghost">
-          <Link href="/dashboard">Go to your interviews</Link>
+          <Link href={interviews}>Go to your interviews</Link>
         </Button>
       </div>
     );
