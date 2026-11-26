@@ -132,11 +132,11 @@
     - How does the fair price grow with the cap, and what does that say about the original paradox?
   explanation: |
     Each uncapped outcome contributes $2^k \cdot 2^{-k} = 1$ dollar, so tosses $1$ to $20$ give
-    $\$20$. Everything from toss 21 on pays the cap:
+    \$20. Everything from toss 21 on pays the cap:
 
     $$\sum_{k \ge 21} 2^{20} \cdot 2^{-k} = 2^{20} \cdot 2^{-20} = 1.$$
 
-    The expected payout is $\$21$. Without the cap it is $\sum 1 = \infty$ (the St Petersburg
+    The expected payout is \$21. Without the cap it is $\sum 1 = \infty$ (the St Petersburg
     paradox), yet nobody would pay much to play. Any real counterparty has finite wealth, and the
     fair price grows only like the logarithm of the cap: doubling the casino's bank adds one dollar.
 

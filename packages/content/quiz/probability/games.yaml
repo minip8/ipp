@@ -33,7 +33,7 @@
   prompt: |
     You roll a fair die and are paid the number shown, in dollars. After seeing the first roll you may
     choose to roll once more, in which case you are paid the second roll instead (you cannot go back to
-    the first). Playing optimally, what is the game worth?
+    the first). Playing to maximise it, what is your expected payout?
   answer: 17/4
   answerText: |-
     $17/4 = 4.25$ dollars
@@ -59,7 +59,7 @@
   difficulty: medium
   tags: [dice, optionality, information]
   prompt: |
-    Which game is worth more?
+    Which game has the higher expected payout (with game B played to maximise it)?
 
     - **Game A:** roll two fair dice and be paid the larger number, in dollars.
     - **Game B:** roll one fair die; you may reroll it once (seeing the first result) and are paid the
@@ -67,11 +67,11 @@
   choices:
     - { id: a, text: "Game A" }
     - { id: b, text: "Game B" }
-    - { id: c, text: "They are worth the same" }
+    - { id: c, text: "They have the same expected payout" }
   answer: a
   explanation: |
-    Game A is worth $E[\max] = \frac{161}{36} \approx \$4.47$; game B, played optimally (reroll 1, 2
-    or 3), is worth $\$4.25$.
+    Game A is worth $E[\max] = \frac{161}{36} \approx 4.47$ dollars; game B, played optimally (reroll 1, 2
+    or 3), is worth \$4.25.
 
     In both games you get "the better of two rolls" in some sense, but in B you must decide to give up
     the first roll *before* seeing the second, so you sometimes swap a 3 for a 1, or keep a 4 when a 6
@@ -112,7 +112,7 @@
     At $t = 20$ the two are equal, so stopping is optimal from 20 on. Looking one step ahead is enough
     here because the problem is monotone: once the total is at least 20, any roll leaves it at least 20
     (or ends the game), so you would stop at the next decision anyway. Under this policy the game is
-    worth about $\$8.14$ from a total of 0.
+    worth about \$8.14 from a total of 0.
 
     The common wrong answers come from comparing the wrong things, such as stopping when the expected
     *next* roll ($3.33$) is less than some fraction of the total, or using the plain die average 3.5
@@ -157,7 +157,7 @@
     A deck of 2 red and 2 black cards is shuffled and turned over one card at a time. Each red card
     pays you \$1 and each black card costs you \$1. You may stop at any moment (including before the
     first card), keeping your running total; if you never stop, you see all four cards and end with
-    \$0. Playing optimally, what is the game worth?
+    \$0. Playing to maximise it, what is your expected total?
   answer: 2/3
   answerText: |-
     $2/3 \approx 0.67$ dollars
