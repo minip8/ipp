@@ -10,6 +10,7 @@ import {
   ApiError,
   type CreateAttemptRequest,
   type CreatePadRequest,
+  type CreateQuantPadRequest,
   type CreateRunRequest,
   DeletePadResponse,
   type DiscussionReplyRequest,
@@ -162,6 +163,9 @@ export const api = {
   problem: (slug: string) => request(`/problems/${encodeURIComponent(slug)}`, ProblemDetail),
   createPad: (body: z.input<typeof CreatePadRequest>) =>
     request('/pads', Pad, { method: 'POST', body }),
+  /** A live quant round: a pad of format `quant` on one path, run by the AI interviewer. */
+  createQuantPad: (body: z.input<typeof CreateQuantPadRequest>) =>
+    request('/pads/quant', Pad, { method: 'POST', body }),
   pads: () => request('/pads', z.array(PadSummary)),
   pad: (id: string) => request(`/pads/${id}`, PadDetail),
   updatePad: (id: string, body: UpdatePadRequest) =>

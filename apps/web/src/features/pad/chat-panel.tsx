@@ -7,6 +7,7 @@ import {
   BotOffIcon,
   ClockIcon,
   CpuIcon,
+  HelpCircleIcon,
   KeyRoundIcon,
   MicIcon,
   MicOffIcon,
@@ -17,8 +18,11 @@ import {
   Volume2Icon,
 } from 'lucide-react';
 import {
+  type ComponentType,
+  createContext,
   forwardRef,
   useCallback,
+  useContext,
   useEffect,
   useImperativeHandle,
   useLayoutEffect,
@@ -55,11 +59,24 @@ import { ManageKeyDialog } from '@/features/ai-key/saved-key-line';
 import { formatTimeOfDay, humanize } from '@/lib/format';
 import { useAiKey } from '@/lib/queries';
 import { cn } from '@/lib/utils';
+import { questionNumbers } from './questions';
 import { usePad } from './session';
 import { type ChatItem, chatItems, type PendingMessage } from './state';
 import { useVoice, type VoiceMode } from './voice/use-voice';
 
 export type ChatHandle = { focus(): void; toggleMic(): void };
+
+/** How interviewer messages are rendered: plain Markdown, or with math in a quant pad. */
+export type MessageText = ComponentType<{ children: string; className?: string }>;
+
+/**
+ * What the messages of this chat are rendered with, and each posed question's number (a quant
+ * round's `question` messages, in order).
+ */
+const ChatCtx = createContext<{ Text: MessageText; questionNumber: Map<string, number> }>({
+  Text: Markdown,
+  questionNumber: new Map(),
+});
 
 const INTENT_LABEL: Partial<Record<NonNullable<Message['intent']>, string>> = {
   greeting: 'intro',
@@ -81,7 +98,30 @@ function InterviewerMark({ className }: { className?: string }) {
   );
 }
 
+/** A question the round posed: the bank's prompt, set apart from the conversation around it. */
+function QuestionMessage({ m }: { m: Message }) {
+  const { Text, questionNumber } = useContext(ChatCtx);
+  const n = questionNumber.get(m.id);
+  return (
+    <div className="animate-fade-in" data-testid="question-message">
+      <div className="rounded-lg border border-accent/40 bg-accent-soft/30 px-3.5 py-3">
+        <p className="mb-1.5 flex items-center gap-1.5 text-2xs text-fg-subtle">
+          <HelpCircleIcon className="size-3.5 text-accent-text" aria-hidden />
+          <span className="font-semibold tracking-wider text-accent-text uppercase">
+            {n ? `Question ${n}` : 'Question'}
+          </span>
+          <span aria-hidden>·</span>
+          <time dateTime={m.createdAt}>{formatTimeOfDay(m.createdAt)}</time>
+        </p>
+        <Text className="text-[14px] leading-relaxed">{m.text}</Text>
+      </div>
+    </div>
+  );
+}
+
 function InterviewerMessage({ m }: { m: Message }) {
+  const { Text } = useContext(ChatCtx);
+  if (m.intent === 'question') return <QuestionMessage m={m} />;
   const proactive = m.kind === 'proactive';
   return (
     <div
@@ -107,7 +147,7 @@ function InterviewerMessage({ m }: { m: Message }) {
           <span aria-hidden>·</span>
           <time dateTime={m.createdAt}>{formatTimeOfDay(m.createdAt)}</time>
         </p>
-        <Markdown className="text-[13.5px] leading-relaxed">{m.text}</Markdown>
+        <Text className="text-[13.5px] leading-relaxed">{m.text}</Text>
       </div>
     </div>
   );
@@ -196,6 +236,7 @@ function Thinking() {
 
 function Item({ item }: { item: ChatItem }) {
   const { me, retryPending } = usePad();
+  const { Text } = useContext(ChatCtx);
   if (item.kind === 'streaming')
     return (
       <div className="flex gap-2.5" data-testid="streaming-message">
@@ -203,7 +244,7 @@ function Item({ item }: { item: ChatItem }) {
         <div className="min-w-0 flex-1">
           <p className="mb-0.5 text-2xs font-medium text-fg-muted">Interviewer</p>
           <div className="relative">
-            <Markdown className="text-[13.5px] leading-relaxed">{item.text}</Markdown>
+            <Text className="text-[13.5px] leading-relaxed">{item.text}</Text>
             <span
               aria-hidden
               className="ml-0.5 inline-block h-3.5 w-1.5 translate-y-0.5 animate-pulse rounded-[1px] bg-accent align-baseline"
@@ -359,6 +400,7 @@ function ModelDialog({
 function KeyNeeded() {
   const { state, setInterviewerKey } = usePad();
   const rejected = state.interviewerKey === 'rejected';
+  const quant = state.pad.format === 'quant';
   const own = useAiKey(state.role === 'owner');
   if (state.role !== 'owner')
     return (
@@ -373,7 +415,9 @@ function KeyNeeded() {
           {rejected
             ? 'The interviewer is paused: the AI provider rejected the pad owner’s API key.'
             : 'The interviewer joins once the pad owner adds their AI API key.'}{' '}
-          You can still code, run tests and chat.
+          {quant
+            ? 'The round waits for it. You can still use the scratchpad and chat.'
+            : 'You can still code, run tests and chat.'}
         </span>
       </p>
     );
@@ -390,13 +434,36 @@ function KeyNeeded() {
     >
       {rejected
         ? 'The interviewer is paused. Save a working key and it picks up from here.'
-        : 'Add one and it joins right away. Your code and chat stay as they are.'}
+        : quant
+          ? 'Add one and the round picks up from here. Your scratchpad and chat stay as they are.'
+          : 'Add one and it joins right away. Your code and chat stay as they are.'}
     </AiKeyPrompt>
   );
 }
 
-export const ChatPanel = forwardRef<ChatHandle, { className?: string }>(function ChatPanel(
-  { className },
+export type ChatPanelProps = {
+  className?: string;
+  /** Renders interviewer messages; the plain `Markdown` unless given (a quant pad typesets math). */
+  Text?: MessageText;
+  /** The interviewer cannot be turned off here (a quant pad's round needs it). */
+  lockInterviewer?: boolean;
+  /** The composer's placeholder while the interviewer is available. */
+  placeholder?: string;
+  /** What an empty chat says while the interviewer is available. */
+  emptyState?: { title: string; body: string };
+};
+
+export const ChatPanel = forwardRef<ChatHandle, ChatPanelProps>(function ChatPanel(
+  {
+    className,
+    Text = Markdown,
+    lockInterviewer = false,
+    placeholder = 'Ask a question or explain your approach…',
+    emptyState = {
+      title: 'Your interviewer will join shortly',
+      body: 'Ask clarifying questions here, and think out loud as you work. The interviewer reads your code as you type.',
+    },
+  },
   ref,
 ) {
   const { state, sendChat, readOnly, updateInterviewer, socketStatus } = usePad();
@@ -408,6 +475,8 @@ export const ChatPanel = forwardRef<ChatHandle, { className?: string }>(function
   const [stuck, setStuck] = useState(true);
   const [unseen, setUnseen] = useState(0);
   const items = useMemo(() => chatItems(state), [state]);
+  const questionNumber = useMemo(() => questionNumbers(state.messages), [state.messages]);
+  const ctx = useMemo(() => ({ Text, questionNumber }), [Text, questionNumber]);
   const enabled = state.pad.interviewer.enabled;
   const available = state.interviewerAvailable && enabled;
   const voiceOn = available && state.pad.interviewer.voice && !readOnly;
@@ -575,10 +644,14 @@ export const ChatPanel = forwardRef<ChatHandle, { className?: string }>(function
                     <span className="text-xs text-fg-subtle">Change or remove…</span>
                   </MenuItem>
                 )}
-                <MenuSeparator />
-                <MenuItem onSelect={() => updateInterviewer({ enabled: false })}>
-                  <BotOffIcon /> Turn the interviewer off
-                </MenuItem>
+                {!lockInterviewer && (
+                  <>
+                    <MenuSeparator />
+                    <MenuItem onSelect={() => updateInterviewer({ enabled: false })}>
+                      <BotOffIcon /> Turn the interviewer off
+                    </MenuItem>
+                  </>
+                )}
               </MenuContent>
             </Menu>
           )}
@@ -617,30 +690,32 @@ export const ChatPanel = forwardRef<ChatHandle, { className?: string }>(function
             <div className="flex h-full flex-col items-center justify-center px-4 text-center text-sm text-fg-muted">
               <SparklesIcon className="mb-2 size-5 text-fg-subtle" aria-hidden />
               <p className="font-medium text-fg">
-                {available ? 'Your interviewer will join shortly' : 'No messages yet'}
+                {available ? emptyState.title : 'No messages yet'}
               </p>
               <p className="mt-1 max-w-60 text-xs">
                 {available
-                  ? 'Ask clarifying questions here, and think out loud as you work. The interviewer reads your code as you type.'
+                  ? emptyState.body
                   : 'Messages you send appear here for everyone in the pad.'}
               </p>
             </div>
           ) : (
-            <div className="space-y-4">
-              {items.map((it) => (
-                <Item
-                  key={
-                    it.kind === 'message'
-                      ? it.message.id
-                      : it.kind === 'streaming'
-                        ? it.id
-                        : it.pending.localId
-                  }
-                  item={it}
-                />
-              ))}
-              {state.thinking && Object.keys(state.streaming).length === 0 && <Thinking />}
-            </div>
+            <ChatCtx.Provider value={ctx}>
+              <div className="space-y-4">
+                {items.map((it) => (
+                  <Item
+                    key={
+                      it.kind === 'message'
+                        ? it.message.id
+                        : it.kind === 'streaming'
+                          ? it.id
+                          : it.pending.localId
+                    }
+                    item={it}
+                  />
+                ))}
+                {state.thinking && Object.keys(state.streaming).length === 0 && <Thinking />}
+              </div>
+            </ChatCtx.Provider>
           )}
         </div>
         {!stuck && unseen > 0 && (
@@ -684,9 +759,7 @@ export const ChatPanel = forwardRef<ChatHandle, { className?: string }>(function
                 }
                 if (e.key === 'Escape') input.current?.blur();
               }}
-              placeholder={
-                available ? 'Ask a question or explain your approach…' : 'Message collaborators…'
-              }
+              placeholder={available ? placeholder : 'Message collaborators…'}
               className="max-h-44 min-h-[22px] flex-1 resize-none bg-transparent py-0.5 text-[13.5px] leading-[22px] outline-none placeholder:text-fg-subtle max-lg:py-1.5 max-lg:text-base max-lg:leading-6"
             />
             <Button

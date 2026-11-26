@@ -1,5 +1,6 @@
 'use client';
 import { useQuery } from '@tanstack/react-query';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { AuthGate } from '@/components/auth-gate';
 import { Logo } from '@/components/logo';
@@ -10,6 +11,16 @@ import { ApiRequestError, api } from '@/lib/api';
 import { qk, useMe } from '@/lib/queries';
 import { PadSessionProvider } from './session';
 import { Workspace } from './workspace';
+
+/**
+ * A quant pad's workspace, in a chunk of its own: it typesets math, so KaTeX (script, stylesheet
+ * and fonts) loads with it and never with a coding pad. It mounts no editor, so Monaco never
+ * loads in a quant pad.
+ */
+const QuantWorkspace = dynamic(
+  () => import('@/features/quant-pad/quant-workspace').then((m) => m.QuantWorkspace),
+  { ssr: false, loading: () => <PadSkeleton /> },
+);
 
 /**
  * Server-rendered too (the auth gate's fallback), so the two layouts are chosen with CSS: three
@@ -103,7 +114,7 @@ function PadLoader({ id }: { id: string }) {
   }
   return (
     <PadSessionProvider key={id} detail={q.data} me={me.data}>
-      <Workspace />
+      {q.data.pad.format === 'quant' ? <QuantWorkspace /> : <Workspace />}
     </PadSessionProvider>
   );
 }

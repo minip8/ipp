@@ -26,6 +26,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Segmented } from '@/components/ui/segmented';
 import { Spinner } from '@/components/ui/spinner';
 import { Switch } from '@/components/ui/switch';
+import { roundProgress } from '@/features/quant-pad/logic';
 import { formatDuration } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import {
@@ -413,6 +414,19 @@ export function EndDialog({
   const submissions = state.runs.filter((r) => r.mode === 'submit' && r.status === 'finished');
   const lastSubmit = submissions.at(-1);
   const accepted = submissions.some((r) => r.verdict === 'accepted');
+  const round = state.round;
+  const progress = round && roundProgress(round);
+  const tiles: [string, string][] = progress
+    ? [
+        ['Time', formatDuration(elapsed)],
+        ['Questions done', `${progress.closed} of ${progress.total}`],
+        ['Hints', String(progress.hints)],
+      ]
+    : [
+        ['Time', formatDuration(elapsed)],
+        ['Runs', String(state.runs.length)],
+        ['Submissions', String(submissions.length)],
+      ];
   return (
     <Dialog open={open} onOpenChange={(o) => !busy && onOpenChange(o)}>
       <DialogContent className="max-w-md">
@@ -426,34 +440,40 @@ export function EndDialog({
         </DialogHeader>
         <DialogBody>
           <dl className="grid grid-cols-3 gap-px overflow-hidden rounded-md border border-border bg-border text-center">
-            {[
-              ['Time', formatDuration(elapsed)],
-              ['Runs', String(state.runs.length)],
-              ['Submissions', String(submissions.length)],
-            ].map(([k, v]) => (
+            {tiles.map(([k, v]) => (
               <div key={k} className="bg-surface px-3 py-2.5">
                 <dt className="text-2xs text-fg-muted">{k}</dt>
                 <dd className="mt-0.5 text-md font-semibold tabular">{v}</dd>
               </div>
             ))}
           </dl>
-          <div className="mt-3 text-sm">
-            {lastSubmit?.verdict ? (
-              <p className="flex items-center gap-2">
-                Last submission <RunVerdictBadge verdict={lastSubmit.verdict} />
-              </p>
-            ) : isRoom ? (
-              <p className="text-fg-muted">Nothing has been submitted on this problem.</p>
-            ) : (
-              <p className="text-fg-muted">
-                You have not submitted yet. Submitting runs the hidden tests, and the result is part
-                of your report.
-              </p>
-            )}
-            {!accepted && submissions.length > 0 && (
-              <p className="mt-1 text-fg-muted">No submission has passed every test yet.</p>
-            )}
-          </div>
+          {progress && round ? (
+            <p className="mt-3 text-sm text-fg-muted" data-testid="end-round-note">
+              {round.phase === 'finished'
+                ? 'The round is over. The report scores each answer and shows the solutions.'
+                : progress.closed < progress.posed
+                  ? `Question ${progress.posed} is still open: ending now leaves it unfinished${progress.posed < progress.total ? ' and the rest unasked' : ''}. The report scores what you answered.`
+                  : 'The round has not started yet. Ending now leaves every question unasked.'}
+            </p>
+          ) : (
+            <div className="mt-3 text-sm">
+              {lastSubmit?.verdict ? (
+                <p className="flex items-center gap-2">
+                  Last submission <RunVerdictBadge verdict={lastSubmit.verdict} />
+                </p>
+              ) : isRoom ? (
+                <p className="text-fg-muted">Nothing has been submitted on this problem.</p>
+              ) : (
+                <p className="text-fg-muted">
+                  You have not submitted yet. Submitting runs the hidden tests, and the result is
+                  part of your report.
+                </p>
+              )}
+              {!accepted && submissions.length > 0 && (
+                <p className="mt-1 text-fg-muted">No submission has passed every test yet.</p>
+              )}
+            </div>
+          )}
         </DialogBody>
         <DialogFooter>
           <Button variant="ghost" disabled={busy} onClick={() => onOpenChange(false)}>

@@ -12,7 +12,6 @@ import {
   BotIcon,
   BotOffIcon,
   CheckIcon,
-  MicIcon,
   SearchIcon,
   ShuffleIcon,
   UsersIcon,
@@ -48,13 +47,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AiKeyDialog } from '@/features/ai-key/ai-key-dialog';
 import { AiKeyPrompt } from '@/features/ai-key/ai-key-prompt';
 import { rejectedTitle } from '@/features/ai-key/logic';
-import { ModelPicker } from '@/features/ai-key/model-picker';
-import { SavedKeyLine } from '@/features/ai-key/saved-key-line';
 import { api } from '@/lib/api';
 import { humanize } from '@/lib/format';
 import { loadStartPrefs, type StartPrefs, saveStartPrefs } from '@/lib/prefs';
 import { qk, useAiKey } from '@/lib/queries';
 import { cn } from '@/lib/utils';
+import { InterviewerOptions, useSpeechSupported } from './interviewer-options';
 import {
   ALL,
   type CategoryFilter,
@@ -86,12 +84,6 @@ const CATEGORY_TABS: { value: CategoryFilter; label: string; description: string
     description: CATEGORY_INFO[c].description,
   })),
 ];
-
-function speechSupported() {
-  if (typeof window === 'undefined') return true;
-  const w = window as unknown as Record<string, unknown>;
-  return Boolean(w.SpeechRecognition || w.webkitSpeechRecognition) && 'speechSynthesis' in window;
-}
 
 function ProblemRow({
   p,
@@ -205,7 +197,6 @@ const NO_LIMIT = 'none';
 
 /** Phones: segmented controls at a size a finger can hit (desktop keeps the compact size). */
 const TOUCH_SEGMENTS = 'max-sm:[&>*]:h-9';
-const TOUCH_SEGMENTS_SM = 'max-sm:[&>*]:h-8';
 
 /** Whether any of the element is on screen. */
 function useOnScreen(ref: RefObject<HTMLElement | null>) {
@@ -297,9 +288,8 @@ export function NewInterview() {
     window.history.replaceState(null, '', search ? `?${search}` : window.location.pathname);
   };
   const [prefs, setPrefs] = useState<StartPrefs>(() => loadStartPrefs());
-  const [voiceOk, setVoiceOk] = useState(true);
-  useEffect(() => setVoiceOk(speechSupported()), []);
-  const ids = { lang: useId(), dur: useId(), style: useId(), pro: useId() };
+  const voiceOk = useSpeechSupported();
+  const ids = { lang: useId(), dur: useId() };
 
   // Load the whole library once and filter locally: it is small and filtering feels instant.
   const problems = useQuery({ queryKey: qk.problems({}), queryFn: () => api.problems() });
@@ -808,70 +798,12 @@ export function NewInterview() {
                   </AiKeyPrompt>
                 )}
                 {interviewerOn && (
-                  <div className="space-y-4 border-t border-border px-3 pt-3 pb-3.5">
-                    <div className="space-y-1.5">
-                      <Label id={ids.style} className="text-xs text-fg-muted">
-                        Style
-                      </Label>
-                      <Segmented
-                        aria-label="Interviewer style"
-                        size="sm"
-                        className={cn('flex w-full', TOUCH_SEGMENTS_SM)}
-                        value={prefs.interviewer.style}
-                        onValueChange={(style) => updateInterviewer({ style })}
-                        options={[
-                          {
-                            value: 'supportive',
-                            label: 'Supportive',
-                            hint: 'Encouraging, more hints',
-                          },
-                          { value: 'neutral', label: 'Neutral', hint: 'Like most real interviews' },
-                          { value: 'tough', label: 'Tough', hint: 'Probing, few hints' },
-                        ]}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label id={ids.pro} className="text-xs text-fg-muted">
-                        Speaks up unprompted
-                      </Label>
-                      <Segmented
-                        aria-label="Proactivity"
-                        size="sm"
-                        className={cn('flex w-full', TOUCH_SEGMENTS_SM)}
-                        value={prefs.interviewer.proactivity}
-                        onValueChange={(proactivity) => updateInterviewer({ proactivity })}
-                        options={[
-                          { value: 'low', label: 'Rarely' },
-                          { value: 'normal', label: 'Sometimes' },
-                          { value: 'high', label: 'Often' },
-                        ]}
-                      />
-                    </div>
-                    <ModelPicker
-                      value={prefs.interviewer.model}
-                      onChange={(model) => updateInterviewer({ model })}
-                    />
-                    <SavedKeyLine />
-                    <div className="flex items-start gap-3">
-                      <MicIcon className="mt-0.5 size-4 text-fg-subtle" aria-hidden />
-                      <div className="min-w-0 flex-1">
-                        <label htmlFor="voice" className="block text-sm font-medium">
-                          Voice
-                        </label>
-                        <p className="text-xs text-fg-muted">
-                          {voiceOk
-                            ? 'Talk to the interviewer and hear replies. You can turn this on or off later.'
-                            : 'This browser does not support speech. Chrome and Edge do.'}
-                        </p>
-                      </div>
-                      <Switch
-                        id="voice"
-                        checked={prefs.interviewer.voice && voiceOk}
-                        disabled={!voiceOk}
-                        onCheckedChange={(voice) => updateInterviewer({ voice })}
-                      />
-                    </div>
-                  </div>
+                  <InterviewerOptions
+                    className="border-t border-border px-3 pt-3 pb-3.5"
+                    value={prefs.interviewer}
+                    onChange={updateInterviewer}
+                    voiceOk={voiceOk}
+                  />
                 )}
               </div>
             )}

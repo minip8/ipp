@@ -43,6 +43,7 @@ import {
   speaker,
   type TranscriptItem,
   TranscriptRow,
+  type TranscriptText,
 } from './transcript';
 
 type View = Language | 'notes';
@@ -66,6 +67,22 @@ function Marker({
   whoSaid?: (m: Message) => string;
 }) {
   const time = formatClock((item.t - span.start) / 1000);
+  if (item.kind === 'event' && item.event.type === 'question') {
+    const text = `Question ${item.event.index + 1} of ${item.event.total} at ${time}`;
+    return (
+      <Tooltip label={text} side="top">
+        <button
+          type="button"
+          aria-label={text}
+          onClick={() => onSeek(item.t)}
+          style={{ left: pct(item.t, span) }}
+          className="absolute top-0 flex h-4 min-w-4 -translate-x-1/2 items-center justify-center rounded-[4px] border border-accent/60 bg-surface px-0.5 text-[9px] leading-none font-bold text-accent-text tabular shadow-[0_1px_2px_oklch(0_0_0/0.1)] transition-transform pointer-coarse:before:absolute pointer-coarse:before:-inset-x-2 pointer-coarse:before:-top-2 pointer-coarse:before:-bottom-1 hover:z-10 hover:scale-125 focus-visible:z-10"
+        >
+          {item.event.index + 1}
+        </button>
+      </Tooltip>
+    );
+  }
   if (item.kind === 'event') {
     if (item.event.type !== 'run') return null;
     const { verdict, mode, label, counts } = runEventLabel(item.event);
@@ -247,16 +264,28 @@ function Timeline({
   );
 }
 
-/** `room`: the transcript is between the candidate and the host, who is the reader. */
-function Legend({ room }: { room: boolean }) {
+/**
+ * `room`: the transcript is between the candidate and the host, who is the reader. `quant`: a
+ * quant round, whose markers are its questions, not runs.
+ */
+function Legend({ room, quant }: { room: boolean; quant: boolean }) {
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-2xs text-fg-subtle">
-      <span className="flex items-center gap-1.5">
-        <span className="flex size-3 items-center justify-center rounded-[3px] border border-ok/60 bg-surface text-[8px] font-bold text-ok">
-          ✓
-        </span>{' '}
-        Run
-      </span>
+      {quant ? (
+        <span className="flex items-center gap-1.5">
+          <span className="flex size-3 items-center justify-center rounded-[3px] border border-accent/60 bg-surface text-[8px] font-bold text-accent-text">
+            1
+          </span>{' '}
+          Question
+        </span>
+      ) : (
+        <span className="flex items-center gap-1.5">
+          <span className="flex size-3 items-center justify-center rounded-[3px] border border-ok/60 bg-surface text-[8px] font-bold text-ok">
+            ✓
+          </span>{' '}
+          Run
+        </span>
+      )}
       <span className="flex items-center gap-1.5">
         <span className="size-2 rounded-full border-2 border-accent bg-accent" />{' '}
         {room ? 'Candidate' : 'You'}
@@ -281,11 +310,16 @@ export function Player({
   detail,
   playback,
   selfId,
+  Text,
 }: {
   detail: PadDetail;
   playback: Playback;
   selfId?: string;
+  /** Renders interviewer messages in the transcript (a quant report typesets their math). */
+  Text?: TranscriptText;
 }) {
+  // A quant pad has no code: the playback is its scratchpad, with no language to follow.
+  const quant = detail.pad.format === 'quant';
   const updates = useMemo(() => decodeUpdates(playback.updates), [playback.updates]);
   // An interview room: the transcript is between people, shown by name.
   const names = useMemo(
@@ -317,10 +351,10 @@ export function Player({
   const [t, setT] = useState(span.end);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState<Speed>('16');
-  const [follow, setFollow] = useState(true);
-  const [manualView, setManualView] = useState<View>(detail.pad.language);
+  const [follow, setFollow] = useState(!quant);
+  const [manualView, setManualView] = useState<View>(quant ? 'notes' : detail.pad.language);
   const autoLanguage = languageAt(playback.events, t, detail.pad.language);
-  const view: View = follow ? autoLanguage : manualView;
+  const view: View = quant ? 'notes' : follow ? autoLanguage : manualView;
 
   const count = countAtTime(updates, t);
   const code = useMemo(() => {
@@ -411,49 +445,55 @@ export function Player({
         <h2 id="playback-heading" className="text-sm font-semibold">
           Playback
         </h2>
-        <Legend room={detail.pad.kind === 'room'} />
+        <Legend room={detail.pad.kind === 'room'} quant={quant} />
       </div>
 
       {/* Desktop: code | transcript, controls underneath. Phone: code, controls, transcript. */}
       <div className="grid lg:grid-cols-[minmax(0,1fr)_380px]">
         {/* code */}
         <div className="min-w-0 border-border lg:col-start-1 lg:row-start-1 lg:border-r">
-          <div className="flex min-h-11 flex-wrap items-center gap-x-4 gap-y-2 border-b border-border px-3 py-2 sm:px-4">
-            <div role="tablist" aria-label="Buffer" className="flex items-center gap-1">
-              {[...LANGUAGES, 'notes' as const].map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  role="tab"
-                  aria-selected={view === v}
-                  onClick={() => {
-                    setFollow(false);
-                    setManualView(v);
-                  }}
-                  className={cn(
-                    'touch-hit h-7 rounded-md px-2.5 text-sm font-medium transition-colors',
-                    view === v ? 'bg-surface-3 text-fg' : 'text-fg-muted hover:text-fg',
-                  )}
-                >
-                  {v === 'notes' ? 'Notes' : LANG_LABEL[v]}
-                </button>
-              ))}
+          {quant ? (
+            <div className="flex min-h-11 items-center border-b border-border px-3 py-2 sm:px-4">
+              <h3 className="text-sm font-medium">Scratchpad</h3>
             </div>
-            <label
-              className="ml-auto flex items-center gap-2 text-xs text-fg-muted"
-              htmlFor="follow-language"
-            >
-              Follow active language
-              <Switch
-                id="follow-language"
-                checked={follow}
-                onCheckedChange={(c) => {
-                  setFollow(c);
-                  if (!c) setManualView(view);
-                }}
-              />
-            </label>
-          </div>
+          ) : (
+            <div className="flex min-h-11 flex-wrap items-center gap-x-4 gap-y-2 border-b border-border px-3 py-2 sm:px-4">
+              <div role="tablist" aria-label="Buffer" className="flex items-center gap-1">
+                {[...LANGUAGES, 'notes' as const].map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    role="tab"
+                    aria-selected={view === v}
+                    onClick={() => {
+                      setFollow(false);
+                      setManualView(v);
+                    }}
+                    className={cn(
+                      'touch-hit h-7 rounded-md px-2.5 text-sm font-medium transition-colors',
+                      view === v ? 'bg-surface-3 text-fg' : 'text-fg-muted hover:text-fg',
+                    )}
+                  >
+                    {v === 'notes' ? 'Notes' : LANG_LABEL[v]}
+                  </button>
+                ))}
+              </div>
+              <label
+                className="ml-auto flex items-center gap-2 text-xs text-fg-muted"
+                htmlFor="follow-language"
+              >
+                Follow active language
+                <Switch
+                  id="follow-language"
+                  checked={follow}
+                  onCheckedChange={(c) => {
+                    setFollow(c);
+                    if (!c) setManualView(view);
+                  }}
+                />
+              </label>
+            </div>
+          )}
           <div
             className="h-[360px] overflow-auto bg-editor sm:h-[460px]"
             data-testid="playback-code"
@@ -473,7 +513,9 @@ export function Player({
                 {updates.length === 0
                   ? 'No editor history was recorded for this interview.'
                   : view === 'notes'
-                    ? 'No notes at this point.'
+                    ? quant
+                      ? 'The scratchpad is empty at this point.'
+                      : 'No notes at this point.'
                     : 'This buffer is empty at this point.'}
               </p>
             )}
@@ -516,6 +558,7 @@ export function Player({
                   }}
                   selfId={selfId}
                   names={names}
+                  Text={Text}
                 />
               ))}
             </ol>

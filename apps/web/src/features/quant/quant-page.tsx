@@ -2,8 +2,9 @@
 /**
  * The Quant page: the guided way into the quant track. Two paths (trader, researcher), each a
  * short sequence of topics to work through in order, with the same progress the Quizzes page shows
- * and one-click ways into practice, the topic's bank and its roadmap, plus a discussion of the
- * path's open questions, and the mental math drill. The Quizzes page stays the full bank of every
+ * and one-click ways into practice, the topic's bank and its roadmap; above them a live interview
+ * round on the path with the AI interviewer, and beside them a discussion of the path's open
+ * questions and the mental math drill. The Quizzes page stays the full bank of every
  * topic.
  */
 import { QUANT_PATH_INFO, type QuantPath, type QuizTopicStats } from '@ipp/contracts';
@@ -44,6 +45,7 @@ import {
   topicBankHref,
   topicRoadmapHref,
 } from './logic';
+import { RoundSetup } from './round-setup';
 
 type Start = ReturnType<typeof useStartAttempt>;
 
@@ -229,28 +231,31 @@ function PathView({ path, topics }: { path: QuantPath; topics: QuizTopicStats[] 
       </Card>
     );
   return (
-    <div className="grid items-start gap-x-6 gap-y-4 lg:grid-cols-[minmax(0,1fr)_340px]">
-      <section aria-labelledby={`quant-${path}-heading`} className="min-w-0">
-        <h2 id={`quant-${path}-heading`} className="sr-only">
-          {info.label} path
-        </h2>
-        <p className="mb-4 text-sm text-fg-muted">{info.description}</p>
-        <InlineError error={failed(start, 'practice')} className="mb-3" />
-        <ol className="list-none" data-testid="quant-steps">
-          {steps.map((s, i) => (
-            <TopicStep
-              key={s.topic.slug}
-              step={s}
-              last={i === steps.length - 1}
-              start={start}
-              blocked={blocked}
-            />
-          ))}
-        </ol>
-      </section>
-      <div className="min-w-0 space-y-4 lg:sticky lg:top-20 lg:mt-9">
-        <DiscussionCard steps={steps} start={start} blocked={blocked} />
-        <DrillCard />
+    <div className="space-y-6">
+      <RoundSetup path={path} />
+      <div className="grid items-start gap-x-6 gap-y-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <section aria-labelledby={`quant-${path}-heading`} className="min-w-0">
+          <h2 id={`quant-${path}-heading`} className="sr-only">
+            {info.label} path
+          </h2>
+          <p className="mb-4 text-sm text-fg-muted">{info.description}</p>
+          <InlineError error={failed(start, 'practice')} className="mb-3" />
+          <ol className="list-none" data-testid="quant-steps">
+            {steps.map((s, i) => (
+              <TopicStep
+                key={s.topic.slug}
+                step={s}
+                last={i === steps.length - 1}
+                start={start}
+                blocked={blocked}
+              />
+            ))}
+          </ol>
+        </section>
+        <div className="min-w-0 space-y-4 lg:sticky lg:top-20 lg:mt-9">
+          <DiscussionCard steps={steps} start={start} blocked={blocked} />
+          <DrillCard />
+        </div>
       </div>
     </div>
   );

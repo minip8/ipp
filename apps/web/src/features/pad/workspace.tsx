@@ -14,17 +14,10 @@ import {
   SendIcon,
   SquareTerminalIcon,
 } from 'lucide-react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import {
-  Group,
-  Panel,
-  type PanelImperativeHandle,
-  Separator,
-  useDefaultLayout,
-} from 'react-resizable-panels';
+import { Group, Panel, type PanelImperativeHandle, useDefaultLayout } from 'react-resizable-panels';
 import { toast } from 'sonner';
 import { LANG_FILE, LANG_LABEL } from '@/components/domain';
 import { Button } from '@/components/ui/button';
@@ -59,6 +52,7 @@ import {
   touchEditorSettings,
   type Unread,
 } from './layout';
+import { EndedBanner, ResizeHandle } from './pad-chrome';
 import { ProblemPanel } from './problem-panel';
 import { usePad } from './session';
 import { SHORTCUTS, type ShortcutId, useShortcuts } from './shortcuts';
@@ -67,22 +61,6 @@ import { PortalSlot, useIsDesktop, useKeyboardBox, usePortalNode } from './use-l
 import { Whiteboard } from './whiteboard';
 
 const storage = typeof window === 'undefined' ? undefined : window.localStorage;
-
-function ResizeHandle({ vertical }: { vertical?: boolean }) {
-  return (
-    <Separator
-      className={cn(
-        'group relative shrink-0 bg-border outline-none transition-colors data-[separator=active]:bg-accent data-[separator=focus]:bg-accent data-[separator=hover]:bg-accent/60',
-        vertical ? 'h-px' : 'w-px',
-      )}
-    >
-      <span
-        className={cn('absolute', vertical ? '-inset-y-1 inset-x-0' : '-inset-x-1 inset-y-0')}
-        aria-hidden
-      />
-    </Separator>
-  );
-}
 
 /** Under the editor on a phone: one row of big buttons where the thumb is. */
 function CompactRunButtons({
@@ -667,24 +645,7 @@ export function Workspace() {
         compact={compact}
       />
 
-      {readOnly && (
-        <div
-          className="flex shrink-0 items-center gap-3 border-b border-border bg-accent-soft/50 px-4 py-1.5 text-sm max-lg:flex-wrap max-lg:gap-x-2 max-lg:gap-y-0.5 max-lg:px-3"
-          role="status"
-        >
-          <LockIcon className="size-4 text-accent-text" aria-hidden />
-          <span>This interview has ended. The pad is read-only.</span>
-          {/* A room's report belongs to its host. */}
-          {(!pad.isRoom || pad.isHost) && (
-            <Link
-              href={`/pads/${state.pad.id}/report`}
-              className="font-medium text-accent-text hover:underline"
-            >
-              See the report
-            </Link>
-          )}
-        </div>
-      )}
+      <EndedBanner />
       <InviteBanner />
 
       {desktop ? (

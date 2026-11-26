@@ -1,4 +1,5 @@
 'use client';
+import { QUANT_REPORT_DIMENSIONS } from '@ipp/contracts';
 import { useQuery } from '@tanstack/react-query';
 import {
   ArrowLeftIcon,
@@ -8,10 +9,12 @@ import {
   PlayIcon,
   Trash2Icon,
 } from 'lucide-react';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { DifficultyBadge, LanguageTag } from '@/components/domain';
+import { DifficultyBadge, LanguageTag, QuantPathBadge } from '@/components/domain';
+import { LazyMathMarkdown } from '@/components/lazy-math-markdown';
 import { EmptyState, ErrorState } from '@/components/states';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
@@ -22,7 +25,12 @@ import { PrivateNotes } from '@/features/room/host-tools';
 import { ApiRequestError, api } from '@/lib/api';
 import { qk, useMe } from '@/lib/queries';
 import { Player } from './player';
-import { Assessment, StatsStrip } from './scorecard';
+import { Assessment, QuantStatsStrip, StatsStrip } from './scorecard';
+
+/** A quant round's questions with their solutions: typeset, so loaded only for a quant report. */
+const QuantReview = dynamic(() => import('./quant-review').then((m) => m.QuantReview), {
+  loading: () => <Skeleton className="h-96 w-full" />,
+});
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleString(undefined, {
@@ -78,6 +86,7 @@ export function ReportPage({ id }: { id: string }) {
   // A room's report belongs to its host: a candidate who took part does not get to read it.
   const hostOnly = pad.data?.pad.kind === 'room' && pad.data.role !== 'owner';
   const isRoomHost = pad.data?.pad.kind === 'room' && pad.data.role === 'owner';
+  const quant = pad.data?.pad.format === 'quant';
   const ended = pad.data?.pad.status === 'ended' && !deleted && !hostOnly;
   const target: DeleteTarget | null = pad.data
     ? {
@@ -140,13 +149,18 @@ export function ReportPage({ id }: { id: string }) {
                   {pad.data.problem?.title ?? pad.data.pad.title}
                 </h1>
                 {pad.data.problem && <DifficultyBadge difficulty={pad.data.problem.difficulty} />}
+                {pad.data.round && <QuantPathBadge path={pad.data.round.path} />}
               </div>
               <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-fg-muted">
-                <span>Interview report</span>
-                <span aria-hidden className="text-fg-subtle">
-                  ·
-                </span>
-                <LanguageTag language={pad.data.pad.language} />
+                <span>{quant ? 'Quant round report' : 'Interview report'}</span>
+                {!quant && (
+                  <>
+                    <span aria-hidden className="text-fg-subtle">
+                      ·
+                    </span>
+                    <LanguageTag language={pad.data.pad.language} />
+                  </>
+                )}
                 <span aria-hidden className="text-fg-subtle">
                   ·
                 </span>
@@ -209,12 +223,27 @@ export function ReportPage({ id }: { id: string }) {
                 </Card>
               ) : (
                 <>
-                  <StatsStrip stats={report.data.stats} room={isRoomHost} />
-                  <Assessment
-                    report={report.data}
-                    pad={pad.data}
-                    onRetry={() => report.refetch()}
-                  />
+                  {report.data.quant ? (
+                    <QuantStatsStrip stats={report.data.stats} quant={report.data.quant} />
+                  ) : (
+                    <StatsStrip stats={report.data.stats} room={isRoomHost} />
+                  )}
+                  {quant ? (
+                    <Assessment
+                      report={report.data}
+                      pad={pad.data}
+                      onRetry={() => report.refetch()}
+                      dimensions={QUANT_REPORT_DIMENSIONS}
+                      Text={LazyMathMarkdown}
+                    />
+                  ) : (
+                    <Assessment
+                      report={report.data}
+                      pad={pad.data}
+                      onRetry={() => report.refetch()}
+                    />
+                  )}
+                  {report.data.quant && <QuantReview quant={report.data.quant} />}
                 </>
               )}
               {isRoomHost && (
@@ -240,7 +269,12 @@ export function ReportPage({ id }: { id: string }) {
                   />
                 </Card>
               ) : (
-                <Player detail={pad.data} playback={playback.data} selfId={me.data?.id} />
+                <Player
+                  detail={pad.data}
+                  playback={playback.data}
+                  selfId={me.data?.id}
+                  Text={quant ? LazyMathMarkdown : undefined}
+                />
               )}
             </div>
           )}

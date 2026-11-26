@@ -1,11 +1,16 @@
 import { QUANT_PATH_INFO, type QuizTopicStats } from '@ipp/contracts';
 import { describe, expect, it } from 'vitest';
+import { ApiRequestError } from '@/lib/api';
 import {
   discussionPool,
   listTitles,
+  loadRoundPrefs,
   PATHS,
   pathSteps,
   practiceCount,
+  ROUND_OPTIONS,
+  roundShape,
+  roundStartError,
   topicBankHref,
   topicRoadmapHref,
 } from './logic';
@@ -120,5 +125,35 @@ describe('the rest', () => {
   it('starts on the trader path', () => {
     expect(PATHS[0]).toBe('trader');
     expect(PATHS).toEqual(['trader', 'researcher']);
+  });
+});
+
+describe('the live round', () => {
+  it('offers three lengths with the questions each asks', () => {
+    expect(ROUND_OPTIONS).toEqual([
+      { durationMin: 20, questions: 3 },
+      { durationMin: 30, questions: 4 },
+      { durationMin: 45, questions: 6 },
+    ]);
+    expect(roundShape(30)).toBe('4 questions, about 8 minutes each');
+  });
+
+  it('keeps the last setup, starting from the coding setup’s interviewer', () => {
+    const style = { style: 'tough', proactivity: 'high', voice: false } as const;
+    expect(loadRoundPrefs(style)).toEqual({ durationMin: 30, interviewer: style });
+  });
+
+  it('says why a round could not start', () => {
+    const err = (status: number, code: string, retryAfter?: number) =>
+      new ApiRequestError(status, code, 'server says', retryAfter);
+    expect(roundStartError(err(409, 'ai_key_missing'), 30)).toContain('own AI API key');
+    expect(roundStartError(err(409, 'quant_unavailable'), 45)).toBe(
+      'This path does not have enough questions for a 6-question round yet. Try a shorter round.',
+    );
+    expect(roundStartError(err(429, 'rate_limited', 30), 30)).toBe(
+      'You have started a lot of interviews in a short time. You can start another in 30s.',
+    );
+    expect(roundStartError(err(429, 'rate_limited'), 30)).toContain('Try again in a few minutes');
+    expect(roundStartError(err(500, 'boom'), 30)).toBe('server says');
   });
 });
