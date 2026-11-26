@@ -313,6 +313,8 @@ describe('the bank browser', () => {
     expect(filtersActive(NO_BANK_FILTERS)).toBe(false);
     expect(filtersActive({ offset: 0, q: '  ' })).toBe(false);
     expect(filtersActive({ offset: 0, type: 'output' })).toBe(true);
+    // The track is a scope, not a filter to clear.
+    expect(filtersActive({ offset: 0, track: 'quant' })).toBe(false);
   });
 
   it('builds the host’s search query', () => {

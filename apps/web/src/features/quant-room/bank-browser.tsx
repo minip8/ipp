@@ -300,7 +300,8 @@ export function BankBrowser({
               className="max-sm:h-9"
               onClick={() => {
                 setText('');
-                onQuery(NO_BANK_FILTERS);
+                // Everything but the track, which stays as chosen.
+                onQuery(query.track ? { ...NO_BANK_FILTERS, track: query.track } : NO_BANK_FILTERS);
               }}
             >
               <XIcon /> Clear

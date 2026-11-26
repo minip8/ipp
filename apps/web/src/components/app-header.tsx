@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { TAB_LABEL, TABS, tabFromPath, tabHref } from '@/lib/track';
-import { useChosenTrack, useTrack } from '@/lib/track-hooks';
+import { useTrack, useUndecided } from '@/lib/track-hooks';
 import { cn } from '@/lib/utils';
 import { Logo } from './logo';
 import { ThemeToggle } from './theme-toggle';
@@ -19,7 +19,7 @@ export function AppHeader() {
   const pathname = usePathname();
   const track = useTrack();
   // Before the user has chosen a track (the first-visit question), no tab is theirs yet.
-  const here = useChosenTrack() === null ? null : tabFromPath(pathname);
+  const here = useUndecided() ? null : tabFromPath(pathname);
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-bg/90 pt-[env(safe-area-inset-top)] backdrop-blur-sm">
       {/* Phones (below sm): the logo is its mark (the word stays for screen readers), the switch

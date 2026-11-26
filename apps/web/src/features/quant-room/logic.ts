@@ -321,8 +321,12 @@ export function withFilter(query: BankQuery, patch: Partial<Omit<BankQuery, 'off
   return next;
 }
 
+/**
+ * Whether anything narrows the bank beyond its track. The track is a scope that is always shown
+ * as chosen (a room made from the Quant tab starts on Quant), so it is not something to clear.
+ */
 export const filtersActive = (q: BankQuery) =>
-  Boolean(q.track || q.topic || q.subtopic || q.difficulty || q.type || q.q?.trim());
+  Boolean(q.topic || q.subtopic || q.difficulty || q.type || q.q?.trim());
 
 /**
  * The host's bank search's query string (`HostBankQuery`) for these filters. Its `track` is a

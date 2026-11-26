@@ -22,16 +22,27 @@ export function useTrack(): Track {
 }
 
 /**
- * The track the header shows as chosen: the current one, except null for an account that has
- * never chosen one and is not on a track page (the first-visit question at the home), where the
- * header shows no track and no tab as current.
+ * The track the header switch shows as chosen. On a track page it is that page's. On a page of no
+ * track it is the remembered one, and none until the session has loaded (the server cannot know
+ * it, and showing Software for a moment to someone in Quant would be wrong) or while an account
+ * has never chosen (the first-visit question at the home).
  */
 export function useChosenTrack(): Track | null {
   const pathname = usePathname();
   const me = useMe();
-  const track = useTrack();
-  const undecided = me.data && !me.data.guest && me.data.track === null;
-  return undecided && trackFromPath(pathname) === null ? null : track;
+  const here = trackFromPath(pathname);
+  if (here) return here;
+  if (!me.data) return null;
+  return me.data.guest ? 'software' : me.data.track;
+}
+
+/** Whether an account has yet to choose a track and this page does not name one. */
+export function useUndecided(): boolean {
+  const pathname = usePathname();
+  const me = useMe();
+  return Boolean(
+    me.data && !me.data.guest && me.data.track === null && trackFromPath(pathname) === null,
+  );
 }
 
 /** Save `track` as the user's remembered one (cache first, then the request). */
