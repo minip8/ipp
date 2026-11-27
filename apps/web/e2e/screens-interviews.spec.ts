@@ -1,6 +1,8 @@
 /**
  * Visual review of staged interviews: the builder in each track (its default preset, and a
- * custom plan with a stage open for editing, and the problem dialog), a stage's pad (its top bar
+ * custom plan with a stage open for editing, and the problem dialog; saved plans listed and one
+ * selected, the replace-draft confirm, the Save dialog and its update choice, a saved plan's
+ * menu: `ONLY=builder-saved`), a stage's pad (its top bar
  * under way, and once ended with the way on), and the interview's page (between stages, and
  * finished with its results). Run with SCREENS=1 playwright test screens-interviews
  * (`ONLY=builder` and `SCREEN_WIDTHS=1440` narrow it).
@@ -88,6 +90,61 @@ for (const width of WIDTHS) {
       await page.getByRole('dialog').getByRole('region', { name: 'Problem library' }).waitFor();
       await settle(page);
       await shoot(page, 'builder-problem-dialog');
+    });
+
+    test('builder saved plans', async ({ page }) => {
+      test.skip(!want('builder-saved'));
+      await setup(page, (b) => {
+        seed(b);
+        b.interviews.addTemplate({
+          name: 'Trader, long games',
+          track: 'quant',
+          stages: [
+            { kind: 'questions', topics: ['probability', 'brainteasers'], durationMin: 20 },
+            { kind: 'game', durationMin: 15 },
+            { kind: 'game', durationMin: 15 },
+          ],
+        });
+        b.interviews.addTemplate({
+          name: 'Probability warm-up before the onsite with a long name',
+          track: 'quant',
+          stages: [{ kind: 'questions', topics: ['probability', 'statistics'], durationMin: 30 }],
+        });
+      });
+      await page.goto('/quant/interviews');
+      const presets = page.getByRole('radiogroup', { name: 'Presets' });
+      // A custom draft with work in it, then a saved plan selected over it.
+      await page.getByRole('button', { name: 'Add coding problem' }).click();
+      await presets.getByRole('radio', { name: /^Trader, long games/ }).click();
+      await settle(page);
+      await shoot(page, 'builder-saved', { fullPage: true });
+      // Editing the saved plan would replace the draft: the confirm.
+      await page.getByRole('button', { name: 'Remove stage 3' }).click();
+      await page.getByRole('dialog', { name: 'Replace your custom plan?' }).waitFor();
+      await settle(page);
+      await shoot(page, 'builder-replace-draft');
+      await page.getByRole('button', { name: 'Keep my custom plan' }).click();
+      // The draft, with the Save dialog open.
+      await presets.getByRole('radio', { name: /^Custom/ }).click();
+      await page.getByTestId('save-plan').click();
+      await page.getByRole('dialog', { name: 'Save this interview' }).waitFor();
+      await settle(page);
+      await shoot(page, 'builder-save-dialog');
+      await page.keyboard.press('Escape');
+      // A draft started from a saved plan: Save offers to update it.
+      await presets.getByRole('radio', { name: /^Probability warm-up/ }).click();
+      await page.getByRole('button', { name: 'Discard custom plan' }).waitFor({ state: 'hidden' });
+      await page.getByRole('button', { name: 'Add market-making game' }).click();
+      await page.getByRole('button', { name: 'Replace it' }).click();
+      await page.getByTestId('save-plan').click();
+      await page.getByRole('dialog', { name: 'Save this interview' }).waitFor();
+      await settle(page);
+      await shoot(page, 'builder-save-update');
+      await page.keyboard.press('Escape');
+      await page.getByRole('button', { name: 'Actions for Trader, long games' }).click();
+      await page.getByRole('menu').waitFor();
+      await settle(page);
+      await shoot(page, 'builder-saved-menu');
     });
 
     test('stage pad', async ({ page }) => {
