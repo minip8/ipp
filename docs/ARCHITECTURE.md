@@ -82,9 +82,15 @@ the pure `apps/web/src/lib/track.ts`.
 - **Practice** (`features/quiz/hub.tsx`): the track's quiz topics and the quiz setup (Quant adds
   the drill), Software's problem library (`?view=problems`: a problem's card starts it on your
   own, a pad with no interviewer and no clock that needs no AI key, or leads to the builder with
-  the problem chosen), and the history of attempts with a topic of the track.
+  the problem chosen), and the history of attempts with a topic of the track. The setup offers
+  practice and exam only, which need no AI key; talking open questions through with the AI is an
+  interview's, so a line under Start leads to the builder on a plan of one questions stage on
+  the selected topics (`interviewsHref(track, { topics })`, `?topics=`). The web starts no
+  discussion attempt (§8).
 - **Roadmap** (`features/roadmap`): the study path (Quant's two, `?path=`) and the topic maps
-  (`?view=maps&roadmap=<topic>&node=<id>`, §8).
+  (`?view=maps&roadmap=<topic>&node=<id>`, §8). Where they offered a discussion they link to the
+  builder the same way: the study path on its topics with open questions, a study area's panel on
+  its whole topic (a questions stage is chosen by topic, never by area).
 
 A topic is in a track by `topicInTrack` (its home's track and `also`, §8); every list of a track's
 topics (`topicsOf`) has the track's own topics first, then those shared into it, each in study
@@ -887,6 +893,17 @@ closes the question; closing records an ordinary AI-graded short answer whose te
 the candidate said, so results, stats and the question bank treat it like any other answer. The
 turns are kept on the attempt (`transcript`), and nothing is stored when the model call fails.
 Selection favours questions the user has missed or not seen. Stats per topic.
+
+The web no longer starts a discussion: quizzes on the Practice tab are practice and exam, and
+open questions are asked and talked through live in a staged interview's questions stage (§4.2),
+the fuller form of the same thing. Every place that started one (the quiz setup, the study path,
+a study area's panel, "again" on a discussion's results) now links to the Interviews tab's
+builder on a plan of one questions stage on those topics (`interviewsHref(track, { topics })`,
+§1.1); a study area's link is its whole topic's. The API is unchanged and still accepts and
+serves the mode, so a discussion that exists keeps working: an unfinished one opens and can be
+finished (`features/quiz/discussion.tsx`), a finished one shows its answers and grades on its
+results page, and both keep their row and label in the history. A setup remembered on
+`discussion` in the browser falls back to practice.
 The question bank (`/quiz/topics/:slug`) holds a topic's whole bank, searchable and filterable by
 difficulty, type and status, and answers any question in place with no attempt. It opens on an
 overview of the subtopics (a card each, with progress); a subtopic (`?subtopic=`) lists its

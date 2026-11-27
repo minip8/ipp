@@ -4,8 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 interview++ is a prep site for quant and software interviews: collaborative coding pads (C++,
 Python, Java) with an AI interviewer that speaks up on its own, quant question banks (numeric
-answers, multiple choice, and open questions discussed with the interviewer) and fundamentals
-quizzes for developers. A header switch splits the site into a Software track and a Quant track,
+answers, multiple choice, and open questions the interviewer asks and talks through in an
+interview) and fundamentals quizzes for developers. A header switch splits the site into a Software track and a Quant track,
 each with the same three tabs: Interviews, Practice and Roadmap.
 `docs/ARCHITECTURE.md` is the design and security reference; `docs/DEPLOY.md` covers production.
 
@@ -215,7 +215,8 @@ browser ── /api/* (Next rewrite, same origin, cookie session) ──▶ apps
   significant figures) counts for a non-integer answer and everything else must be exact (`numericMatches` in
   `packages/contracts/src/numeric.ts`), with a `tolerance` (`abs`/`rel`) anything within it counts.
   `short` and `numeric` questions may add `hints` (gentlest first) and `followUps` for the
-  discussion interviewer; both are server-only.
+  interviewer that asks them (a quant round or an interview's questions stage, and the old quiz
+  discussions the API still serves); both are server-only.
 - Quiz Markdown renders `$...$` as KaTeX math. In a fundamentals topic write a dollar as `\$`
   (the content test rejects any math and any bare `$` there); in a quant topic every formula must
   typeset. `quiz/roadmap.yaml` groups each topic's subtopics into the
