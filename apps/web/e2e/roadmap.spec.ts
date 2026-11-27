@@ -212,18 +212,33 @@ test.describe('quiz roadmap', () => {
     });
   });
 
-  test('a discussion needs a key: the prompt instead of a request', async ({ page }) => {
+  test('an area leads to an interview on its whole topic, in the same track', async ({ page }) => {
     const backend = await setup(page, (b) => {
       b.aiKey = aiKeyStatus('missing');
     });
     await page.goto('/software/roadmap?view=maps&roadmap=cpp&node=cpp-move-semantics');
-    await details(page).getByRole('button', { name: 'Discuss' }).click();
-    await expect(page.getByTestId('roadmap-key-prompt')).toContainText(
-      'A discussion runs on your own AI API key',
-    );
+    const panel = details(page);
+    await expect(panel.getByRole('button', { name: 'Discuss' })).toHaveCount(0);
+    const talk = panel.getByRole('region', { name: 'Talk it through' });
+    const link = talk.getByRole('link', { name: 'Interview on this topic' });
+    // A questions stage is chosen by topic, so the link is the topic's and says so.
+    await expect(link).toHaveAttribute('href', '/software/interviews?topics=cpp');
+    await expect(talk).toContainText('open questions from all of C++, not only this area');
+    await expect(talk).toContainText('It runs on your AI key.');
+    // Practice needs no key: nothing in the panel asks for one, even with none saved.
+    await expect(panel.getByRole('button', { name: 'Add API key' })).toHaveCount(0);
+    await expect(panel.getByRole('button', { name: 'Practise' })).toBeEnabled();
+    await link.click();
+    await expect(page).toHaveURL(/\/software\/interviews\?topics=cpp$/);
     expect(
       backend.requests.some((r) => r.path === '/api/quiz/attempts' && r.method === 'POST'),
     ).toBe(false);
+
+    // Python, shared into Quant: from Quant's maps the interview is Quant's.
+    await page.goto('/quant/roadmap?view=maps&roadmap=python&node=py-functions');
+    await expect(
+      details(page).getByRole('link', { name: 'Interview on this topic' }),
+    ).toHaveAttribute('href', '/quant/interviews?topics=python');
   });
 
   test('an error starting is shown in the panel', async ({ page }) => {

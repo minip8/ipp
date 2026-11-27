@@ -1,5 +1,12 @@
 import { expect, test } from '@playwright/test';
-import { aiKeyStatus, DISCUSSION_FOLLOW_UP, QUIZ_ATTEMPT_ID } from './fixtures';
+import {
+  aiKeyStatus,
+  DISCUSSION_ATTEMPT_ID,
+  DISCUSSION_FOLLOW_UP,
+  oldDiscussion,
+  oldDiscussionSummary,
+  QUIZ_ATTEMPT_ID,
+} from './fixtures';
 import { QUIZ_BANK_LONG, QUIZ_BANK_TOPIC } from './fixtures-quiz-bank';
 import { setup } from './helpers';
 
@@ -18,7 +25,7 @@ test.describe('quizzes', () => {
     await page.getByRole('radio', { name: '5', exact: true }).click();
     await start.click();
     await expect(page).toHaveURL(/\/quiz\/[0-9a-f-]{36}$/);
-    // Open questions are left to discussions: three of the four fixtures are auto-graded.
+    // A quiz asks no open questions: three of the four fixtures are auto-graded.
     await expect(page.getByTestId('quiz-counter')).toHaveText('Question 1 of 3');
     const create = backend.requests.find(
       (r) => r.method === 'POST' && r.path === '/api/quiz/attempts',
@@ -182,7 +189,7 @@ test.describe('quizzes', () => {
   });
 });
 
-test.describe('quiz setup and discussions', () => {
+test.describe('quiz setup', () => {
   test('remembers the choices after leaving the page and coming back', async ({ page }) => {
     await setup(page);
     await page.goto('/software/practice');
@@ -209,18 +216,82 @@ test.describe('quiz setup and discussions', () => {
     await expect(page.getByRole('button', { name: 'Start quiz' })).toBeEnabled();
   });
 
-  test('a discussion talks an open question through and then grades it', async ({ page }) => {
-    const backend = await setup(page);
+  test('offers practice and exam only, and remembers no discussion', async ({ page }) => {
+    // A setup stored while discussions could still be chosen here.
+    await page.addInitScript(() => {
+      if (!localStorage.getItem('ipp.quiz.setup.software'))
+        localStorage.setItem(
+          'ipp.quiz.setup.software',
+          JSON.stringify({ topics: ['networking'], mode: 'discussion', discussionCount: '3' }),
+        );
+    });
+    const backend = await setup(page, (b) => {
+      b.aiKey = aiKeyStatus('missing');
+    });
     await page.goto('/software/practice');
-    await page.getByRole('button', { name: /^Networking/ }).click();
-    await page.getByRole('radio', { name: 'Discussion' }).click();
-    await expect(page.getByTestId('setup-summary')).toContainText('open questions to draw from');
-    await page.getByRole('radio', { name: '3', exact: true }).click();
-    await page.getByRole('button', { name: 'Start discussion' }).click();
+    const modes = page.getByRole('radiogroup', { name: 'Mode' }).getByRole('radio');
+    await expect(modes).toHaveText(['Practice', 'Exam']);
+    await expect(page.getByRole('radio', { name: 'Practice' })).toBeChecked();
+    await expect(page.getByRole('button', { name: /^Networking/ })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    // A quiz needs no key, and nothing in the setup asks for one.
+    await expect(page.getByRole('button', { name: 'Add API key' })).toHaveCount(0);
+    // Networking's 48 questions less its 12 open ones.
+    await expect(page.getByTestId('setup-summary')).toHaveText(
+      'Networking · 36 questions to draw from',
+    );
+    await page.getByRole('button', { name: 'Start quiz' }).click();
     await expect(page).toHaveURL(/\/quiz\/[0-9a-f-]{36}$/);
     expect(
       backend.requests.find((r) => r.method === 'POST' && r.path === '/api/quiz/attempts')?.body,
-    ).toMatchObject({ topics: ['networking'], mode: 'discussion', count: 3 });
+    ).toMatchObject({ topics: ['networking'], mode: 'practice', count: 10 });
+  });
+
+  test('open questions lead to an interview on the selected topics', async ({ page }) => {
+    await setup(page);
+    await page.goto('/software/practice');
+    const line = page.getByTestId('setup-interview');
+    const link = line.getByRole('link', {
+      name: 'Talk open questions through in an interview',
+    });
+    await expect(link).toHaveAttribute('href', '/software/interviews');
+    await expect(line).toContainText('It runs on your AI key; quizzes do not.');
+    await page.getByRole('button', { name: /^Networking/ }).click();
+    await page.getByRole('button', { name: /^Concurrency/ }).click();
+    // In the order chosen, as the quiz takes them.
+    await expect(link).toHaveAttribute(
+      'href',
+      '/software/interviews?topics=networking%2Cconcurrency',
+    );
+    await expect(line).toContainText('On the topics you selected.');
+
+    await page.goto('/quant/practice');
+    await page.getByRole('button', { name: /^Probability/ }).click();
+    await expect(link).toHaveAttribute('href', '/quant/interviews?topics=probability');
+    await link.click();
+    await expect(page).toHaveURL(/\/quant\/interviews\?topics=probability$/);
+  });
+});
+
+test.describe('old discussions', () => {
+  test('an unfinished one still opens, talks its question through and grades it', async ({
+    page,
+  }) => {
+    await setup(page, (b) => {
+      b.attempts.set(DISCUSSION_ATTEMPT_ID, oldDiscussion());
+      b.quizHistory = [oldDiscussionSummary(), ...b.quizHistory];
+    });
+    await page.goto('/software/practice?view=history');
+    const row = page
+      .getByRole('region', { name: 'Past quizzes' })
+      .getByRole('listitem')
+      .filter({ hasText: 'Discussion' });
+    await expect(row).toContainText('Networking');
+    await expect(row).toContainText('Resume');
+    await row.getByRole('link').click();
+    await expect(page).toHaveURL(new RegExp(`/quiz/${DISCUSSION_ATTEMPT_ID}$`));
 
     const thread = page.getByRole('list', { name: 'Conversation' });
     await expect(page.getByTestId('quiz-counter')).toHaveText('Question 1 of 1');
@@ -243,16 +314,48 @@ test.describe('quiz setup and discussions', () => {
     await expect(page.getByText('Discussion', { exact: true })).toBeVisible();
   });
 
-  test('a discussion cannot start without an API key', async ({ page }) => {
-    await setup(page, (b) => {
-      b.aiKey = aiKeyStatus('missing');
+  test('a finished one shows its grade, and again is an interview on its topics', async ({
+    page,
+  }) => {
+    const backend = await setup(page, (b) => {
+      b.attempts.set(DISCUSSION_ATTEMPT_ID, oldDiscussion('finished'));
+      b.quizHistory = [oldDiscussionSummary('finished'), ...b.quizHistory];
     });
-    await page.goto('/software/practice');
-    await page.getByRole('button', { name: /^Networking/ }).click();
-    await expect(page.getByRole('button', { name: 'Start quiz' })).toBeEnabled();
-    await page.getByRole('radio', { name: 'Discussion' }).click();
-    await expect(page.getByTestId('discussion-key-prompt')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Start discussion' })).toBeDisabled();
+    await page.goto('/software/practice?view=history');
+    const row = page
+      .getByRole('region', { name: 'Past quizzes' })
+      .getByRole('listitem')
+      .filter({ hasText: 'Discussion' });
+    await expect(row).toContainText('67%');
+    await row.getByRole('link').click();
+
+    await expect(page.getByTestId('quiz-score')).toHaveText('67%');
+    await expect(page.getByText('Discussion', { exact: true })).toBeVisible();
+    const review = page.getByRole('region', { name: 'Review' });
+    // Graded correct (with a point missed), so folded until opened.
+    await review.getByRole('button', { name: /TIME_WAIT/ }).click();
+    // What was said, as the answer, and the grade against the key points.
+    await expect(review).toContainText('So late segments from the old connection die out');
+    await expect(review).toContainText('And so the final ACK can be resent');
+    await expect(review).toContainText('Missed: letting old duplicate segments expire');
+    await expect(review).toContainText('Graded by the AI');
+
+    // No new discussion: the way to go again is an interview on its topic.
+    await expect(page.getByRole('button', { name: /Discuss/ })).toHaveCount(0);
+    const again = page.getByRole('link', { name: 'Interview on this topic' });
+    await expect(again).toHaveAttribute('href', '/software/interviews?topics=networking');
+    await expect(page.getByTestId('results-interview-note')).toHaveText(
+      'Open questions are now talked through in an interview, which runs on your AI key.',
+    );
+    await expect(page.getByRole('link', { name: 'New quiz' })).toHaveAttribute(
+      'href',
+      '/software/practice',
+    );
+    await again.click();
+    await expect(page).toHaveURL(/\/software\/interviews\?topics=networking$/);
+    expect(
+      backend.requests.some((r) => r.method === 'POST' && r.path === '/api/quiz/attempts'),
+    ).toBe(false);
   });
 });
 

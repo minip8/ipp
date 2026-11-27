@@ -1353,6 +1353,67 @@ export const QUIZ_HISTORY = QuizAttemptSummary.array().parse([
   },
 ]);
 
+/**
+ * A discussion attempt from before the web stopped starting them (the API still serves them): on
+ * networking's open question, unfinished, or finished with its transcript and grade. A spec puts
+ * it in `b.attempts` (and `oldDiscussionSummary` in `b.quizHistory` for the history's row).
+ */
+export const DISCUSSION_ATTEMPT_ID = uuid(9010);
+const OLD_DISCUSSION_SAID = [
+  'So late segments from the old connection die out before the 4-tuple is reused.',
+  'And so the final ACK can be resent if the peer repeats its FIN.',
+];
+
+export function oldDiscussion(status: 'active' | 'finished' = 'active'): QuizAttempt {
+  const questions = QUIZ_QUESTIONS.filter((q) => q.type === 'short');
+  if (status === 'active')
+    return makeAttempt({
+      id: DISCUSSION_ATTEMPT_ID,
+      mode: 'discussion',
+      topics: ['networking'],
+      questions: questions as unknown as QuizAttempt['questions'],
+      startedAt: iso(-86400 * 2),
+    });
+  const response = { type: 'short' as const, text: OLD_DISCUSSION_SAID.join('\n\n') };
+  const feedback = QUIZ_FEEDBACK['networking-tcp-007']?.(response);
+  if (!feedback) throw new Error('no feedback');
+  return makeAttempt({
+    id: DISCUSSION_ATTEMPT_ID,
+    mode: 'discussion',
+    topics: ['networking'],
+    status: 'finished',
+    questions: questions as unknown as QuizAttempt['questions'],
+    responses: { 'networking-tcp-007': response },
+    feedback: [feedback],
+    discussion: {
+      'networking-tcp-007': [
+        { role: 'candidate', text: OLD_DISCUSSION_SAID[0] ?? '' },
+        { role: 'interviewer', text: DISCUSSION_FOLLOW_UP },
+        { role: 'candidate', text: OLD_DISCUSSION_SAID[1] ?? '' },
+      ],
+    },
+    score: feedback.score,
+    startedAt: iso(-86400 * 2),
+    finishedAt: iso(-86400 * 2 + 600),
+  });
+}
+
+/** The history's row for `oldDiscussion`. */
+export function oldDiscussionSummary(status: 'active' | 'finished' = 'active') {
+  const a = oldDiscussion(status);
+  return QuizAttemptSummary.parse({
+    id: a.id,
+    mode: a.mode,
+    topics: a.topics,
+    status: a.status,
+    score: a.score,
+    startedAt: a.startedAt,
+    finishedAt: a.finishedAt,
+    questionCount: a.questions.length,
+    answeredCount: Object.keys(a.responses).length,
+  });
+}
+
 /** A saved key as the API reports it (only the last four characters). */
 export function aiKeyStatus(
   state: 'active' | 'missing' | 'rejected',

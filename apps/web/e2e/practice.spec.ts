@@ -75,18 +75,21 @@ test('each track lists its own topics first, one flat grid in study order, Pytho
   );
 });
 
-test('the mode hint names the drill and live rounds only in Quant', async ({ page }) => {
+test('the mode hint names the drill only in Quant', async ({ page }) => {
   await setup(page);
   await page.goto('/software/practice');
   const setup_ = page.getByRole('region', { name: 'Mode' });
   await expect(setup_).toContainText('You see the answer after each question.');
   await expect(setup_).not.toContainText('drill');
-  await page.getByRole('radio', { name: 'Discussion' }).click();
-  await expect(setup_).not.toContainText('live round');
   await page.goto('/quant/practice');
   await expect(setup_).toContainText('try the mental math drill');
-  await page.getByRole('radio', { name: 'Discussion' }).click();
-  await expect(setup_).toContainText('start a live round from Interviews');
+  await page.getByRole('radio', { name: 'Exam' }).click();
+  await expect(setup_).not.toContainText('drill');
+  // No discussion among the modes: open questions are an interview's, linked from the setup.
+  await expect(page.getByRole('radio', { name: 'Discussion' })).toHaveCount(0);
+  await expect(
+    setup_.getByRole('link', { name: 'Talk open questions through in an interview' }),
+  ).toHaveAttribute('href', '/quant/interviews');
 });
 
 test('history lists the attempts with a topic of the track', async ({ page }) => {

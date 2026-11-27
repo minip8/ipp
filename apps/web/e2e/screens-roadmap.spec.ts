@@ -75,6 +75,19 @@ for (const width of WIDTHS) {
       await shoot(page, 'roadmap-related');
     });
 
+    // The study path (the Roadmap tab's default view), with its way into an interview.
+    for (const track of ['software', 'quant'] as const) {
+      const name = `roadmap-path-${track}`;
+      test(name, async ({ page }) => {
+        test.skip(!want(name));
+        await setup(page);
+        await page.goto(`/${track}/roadmap`);
+        await expect(page.getByTestId('path-step').first()).toBeVisible();
+        await page.waitForTimeout(300);
+        await shoot(page, name);
+      });
+    }
+
     test('roadmap-loading', async ({ page }) => {
       test.skip(!want('roadmap-loading'));
       await setup(page);

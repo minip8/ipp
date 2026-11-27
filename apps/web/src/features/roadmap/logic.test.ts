@@ -1,12 +1,11 @@
 import { QUANT_PATH_INFO, type QuizTopicStats } from '@ipp/contracts';
 import { describe, expect, it } from 'vitest';
 import {
-  discussionPool,
+  interviewPool,
   listTitles,
   pathSteps,
   pathTopicSlugs,
   pickPath,
-  practiceCount,
   topicBankHref,
   topicRoadmapHref,
   trackPaths,
@@ -94,18 +93,17 @@ describe('pathSteps', () => {
 });
 
 describe('the rest', () => {
-  it('pools the open questions of the topics that have any', () => {
+  it('pools the topics with open questions, for one interview', () => {
     const steps = pathSteps(TRADER, [
       topic('probability', { shortCount: 4 }),
       topic('brainteasers', { shortCount: 0 }),
       topic('options', { shortCount: 7 }),
     ]);
-    expect(discussionPool(steps)).toEqual({ topics: ['probability', 'options'], questions: 11 });
-    expect(discussionPool([])).toEqual({ topics: [], questions: 0 });
-  });
-
-  it('counts what a practice round can draw on', () => {
-    expect(practiceCount({ questionCount: 80, shortCount: 15 })).toBe(65);
+    expect(interviewPool(steps)).toEqual({
+      topics: ['probability', 'options'],
+      titles: ['probability', 'options'],
+    });
+    expect(interviewPool([])).toEqual({ topics: [], titles: [] });
   });
 
   it('joins titles for a sentence', () => {

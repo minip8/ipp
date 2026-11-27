@@ -5,6 +5,11 @@
  * Quant, the mental math drill), and the history of attempts that include a topic of the track.
  * Software also has the problem library (`?view=problems`, problems-view.tsx), where a session on
  * one problem starts. The setup is remembered per track in this browser.
+ *
+ * A quiz (practice or exam) draws only questions graded automatically. Open questions are talked
+ * through with the AI interviewer in an interview instead: the line under Start leads to the
+ * Interviews tab's builder with the selected topics (an old discussion attempt still opens from
+ * the history).
  */
 import type { QuizAttemptSummary, QuizTopicStats, Track } from '@ipp/contracts';
 import { useQuery } from '@tanstack/react-query';
@@ -49,29 +54,36 @@ import { formatPercent, formatRelative, plural } from '@/lib/format';
 import { useOnScreen } from '@/lib/layout-hooks';
 import { qk } from '@/lib/queries';
 import { storage } from '@/lib/storage';
-import { misplacedTopic, PRACTICE_VIEWS, type PracticeView, tabHref, topicsOf } from '@/lib/track';
+import {
+  interviewsHref,
+  misplacedTopic,
+  PRACTICE_VIEWS,
+  type PracticeView,
+  tabHref,
+  topicsOf,
+} from '@/lib/track';
 import { cn } from '@/lib/utils';
 import { bankHref } from './bank-logic';
 import {
   attemptsInTrack,
-  DISCUSSION_COUNTS,
+  interviewTopics,
   LEGACY_SETUP_STORAGE_KEY,
   MODE_LABEL,
   modeHint,
   parseSetup,
   QUIZ_COUNTS,
   type QuizSetup,
-  questionsFor,
+  quizQuestionCount,
+  SETUP_MODES,
   setupStorageKey,
 } from './logic';
 import { ProblemsView } from './problems-view';
-import { DiscussionKeyPrompt, useDiscussionKey, useStartAttempt } from './start';
+import { useStartAttempt } from './start';
 import { TopicProgress } from './topic-progress';
 
 const BLURB: Record<Track, string> = {
   software: 'Short quizzes on the fundamentals developer interviewers like to probe.',
-  quant:
-    'Probability, markets and statistics, with numeric answers marked as you go and open questions to talk through.',
+  quant: 'Probability, markets and statistics, with numeric answers marked as you go.',
 };
 
 /** Phones: segmented controls at a size a finger can hit (desktop keeps the compact size). */
@@ -165,17 +177,14 @@ function SetupPanel({
   setup: QuizSetup;
   update: (patch: Partial<QuizSetup>) => void;
 }) {
-  const { mode, difficulty, focusWeak } = setup;
+  const { mode, difficulty, focusWeak, count } = setup;
   const selected = setup.topics;
-  const discussion = mode === 'discussion';
-  const count = discussion ? setup.discussionCount : setup.count;
-  // A discussion is a conversation with the model, so it cannot start without a working key.
-  const { missing } = useDiscussionKey();
-  const needsKey = discussion && missing !== null;
   const start = useStartAttempt();
   const wait = useRetryCountdown(start.error);
   const chosen = topics.filter((t) => selected.includes(t.slug));
-  const available = chosen.reduce((n, t) => n + questionsFor(t, mode), 0);
+  const available = chosen.reduce((n, t) => n + quizQuestionCount(t), 0);
+  // Open questions are not quizzed: they are talked through in an interview on these topics.
+  const interview = interviewTopics(chosen);
 
   return (
     <section aria-labelledby="setup-heading" className="rounded-lg border border-border bg-surface">
@@ -189,10 +198,7 @@ function SetupPanel({
             className={cn('flex w-full', TOUCH_SEGMENTS)}
             value={mode}
             onValueChange={(m) => update({ mode: m })}
-            options={(['practice', 'exam', 'discussion'] as const).map((m) => ({
-              value: m,
-              label: MODE_LABEL[m],
-            }))}
+            options={SETUP_MODES.map((m) => ({ value: m, label: MODE_LABEL[m] }))}
           />
           <p className="text-xs text-fg-muted">{modeHint(mode, track)}</p>
         </div>
@@ -213,23 +219,13 @@ function SetupPanel({
         </div>
         <div className="space-y-1.5">
           <Label>Questions</Label>
-          {discussion ? (
-            <Segmented
-              aria-label="Number of questions"
-              className={cn('flex w-full', TOUCH_SEGMENTS)}
-              value={setup.discussionCount}
-              onValueChange={(c) => update({ discussionCount: c })}
-              options={DISCUSSION_COUNTS.map((c) => ({ value: c, label: c }))}
-            />
-          ) : (
-            <Segmented
-              aria-label="Number of questions"
-              className={cn('flex w-full', TOUCH_SEGMENTS)}
-              value={setup.count}
-              onValueChange={(c) => update({ count: c })}
-              options={QUIZ_COUNTS.map((c) => ({ value: c, label: c }))}
-            />
-          )}
+          <Segmented
+            aria-label="Number of questions"
+            className={cn('flex w-full', TOUCH_SEGMENTS)}
+            value={count}
+            onValueChange={(c) => update({ count: c })}
+            options={QUIZ_COUNTS.map((c) => ({ value: c, label: c }))}
+          />
         </div>
         <div className="flex items-center gap-3">
           <label htmlFor="focus-weak" className="min-w-0 flex-1 text-sm font-medium">
@@ -241,16 +237,13 @@ function SetupPanel({
             onCheckedChange={(v) => update({ focusWeak: v })}
           />
         </div>
-        {discussion && missing && (
-          <DiscussionKeyPrompt state={missing} testId="discussion-key-prompt" />
-        )}
         <InlineError error={start.error} />
         <div>
           <Button
             variant="primary"
             size="lg"
             className="w-full"
-            disabled={selected.length === 0 || needsKey || start.isPending || wait > 0}
+            disabled={selected.length === 0 || start.isPending || wait > 0}
             onClick={() =>
               start.mutate({
                 topics: selected,
@@ -261,15 +254,29 @@ function SetupPanel({
               })
             }
           >
-            {start.isPending ? <Spinner /> : discussion ? <MessagesSquareIcon /> : <PlayIcon />}
-            {wait > 0 ? `Try again in ${wait}s` : discussion ? 'Start discussion' : 'Start quiz'}
+            {start.isPending ? <Spinner /> : <PlayIcon />}
+            {wait > 0 ? `Try again in ${wait}s` : 'Start quiz'}
           </Button>
           <p className="mt-2 text-center text-xs text-fg-muted" data-testid="setup-summary">
             {selected.length === 0
               ? 'Select one or more topics first.'
-              : `${chosen.map((t) => t.title).join(', ')} · ${plural(available, discussion ? 'open question' : 'question')} to draw from`}
+              : `${chosen.map((t) => t.title).join(', ')} · ${plural(available, 'question')} to draw from`}
           </p>
         </div>
+      </div>
+      <div className="border-t border-border px-4 py-3" data-testid="setup-interview">
+        <Link
+          href={interviewsHref(track, { topics: interview })}
+          className="inline-flex items-start gap-1.5 text-sm font-medium text-accent-text hover:underline max-sm:min-h-10 max-sm:items-center"
+        >
+          <MessagesSquareIcon className="mt-[3px] size-3.5 shrink-0 max-sm:mt-0" />
+          Talk open questions through in an interview
+        </Link>
+        <p className="mt-0.5 text-xs text-fg-muted">
+          {interview.length > 0
+            ? 'On the topics you selected. It runs on your AI key; quizzes do not.'
+            : 'On the topics you choose. It runs on your AI key; quizzes do not.'}
+        </p>
       </div>
     </section>
   );
@@ -328,7 +335,7 @@ function HistoryList({
         <ErrorState error={attempts.error} onRetry={() => attempts.refetch()} compact />
       ) : items.length === 0 ? (
         <EmptyState icon={HistoryIcon} title="No quizzes yet">
-          Quizzes and discussions you start on these topics show up here with their scores.
+          Quizzes you take on these topics show up here with their scores.
         </EmptyState>
       ) : (
         <ul className="divide-y divide-border">

@@ -5,6 +5,7 @@
  */
 import { QUANT_PATH_INFO, QUANT_PATHS, type QuizTopicStats, type Track } from '@ipp/contracts';
 import { bankHref } from '@/features/quiz/bank-logic';
+import { interviewTopics } from '@/features/quiz/logic';
 import { type NodeState, nodeState } from '@/features/quiz/roadmap-logic';
 import { roadmapHref, topicsOf } from '@/lib/track';
 
@@ -77,20 +78,16 @@ export function pathSteps(slugs: readonly string[], topics: readonly QuizTopicSt
   }));
 }
 
-/** How many questions a practice round on the topic can draw on (open ones are discussed). */
-export const practiceCount = (t: Pick<QuizTopicStats, 'questionCount' | 'shortCount'>) =>
-  t.questionCount - t.shortCount;
-
-/** The open questions along a path, for one discussion: the topics that have any, and how many. */
-export function discussionPool(steps: readonly PathStep[]): {
-  topics: string[];
-  questions: number;
-} {
-  const open = steps.filter((s) => s.topic.shortCount > 0);
-  return {
-    topics: open.map((s) => s.topic.slug),
-    questions: open.reduce((n, s) => n + s.topic.shortCount, 0),
-  };
+/**
+ * The open questions along a path, for one interview on them (a Questions stage): the topics that
+ * have any, in path order and as many as one stage takes (`interviewTopics`), with their titles.
+ */
+export function interviewPool(steps: readonly PathStep[]): { topics: string[]; titles: string[] } {
+  const topics = interviewTopics(steps.map((s) => s.topic));
+  const titles = topics.map(
+    (slug) => steps.find((s) => s.topic.slug === slug)?.topic.title ?? slug,
+  );
+  return { topics, titles };
 }
 
 /** "Probability, Statistics and Options" */

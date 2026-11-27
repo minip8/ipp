@@ -3,8 +3,8 @@
  * attempt), and LaTeX on quiz surfaces and nowhere else. Topics by track: practice.spec.ts.
  */
 import { expect, type Page, test } from '@playwright/test';
-import { ACTIVE_PAD_ID } from './fixtures';
-import { QUANT_FOLLOW_UP, QUANT_TOPIC } from './fixtures-quiz-quant';
+import { ACTIVE_PAD_ID, makeAttempt, QUIZ_ATTEMPT_ID } from './fixtures';
+import { QUANT_FOLLOW_UP, QUANT_QUESTIONS, QUANT_TOPIC } from './fixtures-quiz-quant';
 import { setup } from './helpers';
 
 const BANK = `/quiz/topics/${QUANT_TOPIC}`;
@@ -201,12 +201,21 @@ test.describe('math', () => {
       .toBe(true);
   });
 
-  test('is typeset in a discussion: the prompt, the follow-up and the grade', async ({ page }) => {
-    await setup(page);
-    await page.goto('/quant/practice');
-    await page.getByRole('button', { name: /^Probability/ }).click();
-    await page.getByRole('radio', { name: 'Discussion' }).click();
-    await page.getByRole('button', { name: 'Start discussion' }).click();
+  test('is typeset in an old discussion: the prompt, the follow-up and the grade', async ({
+    page,
+  }) => {
+    // The web starts no new discussion; one begun before still opens and goes on.
+    await setup(page, (b) => {
+      b.attempts.set(
+        QUIZ_ATTEMPT_ID,
+        makeAttempt({
+          mode: 'discussion',
+          topics: [QUANT_TOPIC],
+          questions: QUANT_QUESTIONS.filter((q) => q.type === 'short'),
+        }),
+      );
+    });
+    await page.goto(`/quiz/${QUIZ_ATTEMPT_ID}`);
     const thread = page.getByRole('list', { name: 'Conversation' });
     await expect(thread.locator('.katex').first()).toBeVisible();
     // The candidate's own words stay as typed, dollars and all.

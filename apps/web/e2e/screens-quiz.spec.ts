@@ -5,13 +5,16 @@ import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import {
   aiKeyStatus,
+  DISCUSSION_ATTEMPT_ID,
   makeAttempt,
+  oldDiscussion,
+  oldDiscussionSummary,
   QUIZ_ATTEMPT_ID,
   QUIZ_QUESTIONS,
   QUIZ_TOPICS_FUNDAMENTALS,
 } from './fixtures';
 import { QUIZ_BANK_LONG, QUIZ_BANK_TOPIC } from './fixtures-quiz-bank';
-import { QUANT_TOPIC } from './fixtures-quiz-quant';
+import { QUANT_QUESTIONS, QUANT_TOPIC } from './fixtures-quiz-quant';
 import { shoot as rawShoot, setup } from './helpers';
 
 async function shoot(page: Page, name: string, opts?: { fullPage?: boolean }) {
@@ -22,6 +25,8 @@ async function shoot(page: Page, name: string, opts?: { fullPage?: boolean }) {
 test.skip(!process.env.SCREENS, 'set SCREENS=1 to capture screenshots');
 
 const WIDTHS = (process.env.SCREEN_WIDTHS ?? '1440,390').split(',').map(Number);
+
+const QUANT_DISCUSSION_ID = 'b0000000-0000-4000-8000-0000000000d2';
 
 for (const width of WIDTHS) {
   test.describe(`quiz at ${width}px`, () => {
@@ -49,7 +54,18 @@ for (const width of WIDTHS) {
     });
 
     test('numeric and math', async ({ page }) => {
-      await setup(page);
+      await setup(page, (b) => {
+        // An old discussion (the web starts no new one), for math in the interviewer's turns.
+        b.attempts.set(
+          QUANT_DISCUSSION_ID,
+          makeAttempt({
+            id: QUANT_DISCUSSION_ID,
+            mode: 'discussion',
+            topics: [QUANT_TOPIC],
+            questions: QUANT_QUESTIONS.filter((q) => q.type === 'short'),
+          }),
+        );
+      });
       const bank = `/quiz/topics/${QUANT_TOPIC}`;
       await page.goto(bank);
       await expect(page.getByTestId('bank-subtopics')).toBeVisible();
@@ -88,8 +104,8 @@ for (const width of WIDTHS) {
         .waitFor();
       await shoot(page, 'quant-single-math', { fullPage: true });
 
-      // A practice attempt to its results.
-      await page.goto('/software/practice');
+      // A practice attempt to its results (Probability is a Quant topic).
+      await page.goto('/quant/practice');
       await page.getByRole('button', { name: /^Probability/ }).click();
       await page.getByRole('button', { name: 'Start quiz' }).click();
       const primary = page.getByTestId('quiz-primary');
@@ -120,10 +136,8 @@ for (const width of WIDTHS) {
         .click();
       await shoot(page, 'quant-results', { fullPage: true });
 
-      // A discussion: math in the interviewer's turns.
-      await page.goto('/software/practice');
-      await page.getByRole('radio', { name: 'Discussion' }).click();
-      await page.getByRole('button', { name: 'Start discussion' }).click();
+      // An old discussion: math in the interviewer's turns.
+      await page.goto(`/quiz/${QUANT_DISCUSSION_ID}`);
       await page
         .getByLabel('Your reply')
         .fill('Three families have a boy, and one of them has two.');
@@ -133,21 +147,30 @@ for (const width of WIDTHS) {
     });
 
     test('hub history', async ({ page }) => {
-      await setup(page);
+      // With an old discussion among the rows, under its own label.
+      await setup(page, (b) => {
+        b.quizHistory = [oldDiscussionSummary('finished'), ...b.quizHistory];
+      });
       await page.goto('/software/practice?view=history');
       await page.getByRole('region', { name: 'Past quizzes' }).getByRole('link').first().waitFor();
       await page.waitForTimeout(300);
       await shoot(page, 'quiz-history', { fullPage: true });
     });
 
-    test('discussion', async ({ page }) => {
+    test('hub exam, nothing selected', async ({ page }) => {
       await setup(page);
-      await page.goto('/software/practice');
-      await page.getByRole('button', { name: /^Networking/ }).click();
-      await page.getByRole('radio', { name: 'Discussion' }).click();
+      await page.goto('/quant/practice');
+      await page.getByRole('radio', { name: 'Exam' }).click();
       await page.waitForTimeout(300);
-      await shoot(page, 'quiz-hub-discussion', { fullPage: true });
-      await page.getByRole('button', { name: 'Start discussion' }).click();
+      await shoot(page, 'quiz-hub-quant-exam', { fullPage: true });
+    });
+
+    // An old discussion attempt (the web starts no new one) to its results.
+    test('discussion', async ({ page }) => {
+      await setup(page, (b) => {
+        b.attempts.set(DISCUSSION_ATTEMPT_ID, oldDiscussion());
+      });
+      await page.goto(`/quiz/${DISCUSSION_ATTEMPT_ID}`);
       await page.getByLabel('Your reply').fill('So late segments from the old connection die out.');
       await page.getByRole('button', { name: 'Send' }).click();
       await page.getByLabel('Your reply').fill('And so the final ACK can be resent if it is lost.');
@@ -155,6 +178,9 @@ for (const width of WIDTHS) {
       await page.getByRole('button', { name: 'Send' }).click();
       await page.getByRole('region', { name: 'Feedback' }).waitFor();
       await shoot(page, 'quiz-discussion-feedback', { fullPage: true });
+      await page.getByRole('button', { name: 'See results' }).click();
+      await expect(page.getByTestId('quiz-score')).toBeVisible();
+      await shoot(page, 'quiz-discussion-results', { fullPage: true });
     });
 
     test('practice flow', async ({ page }) => {
