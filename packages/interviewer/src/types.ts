@@ -24,6 +24,7 @@ import type {
   QuantSecondOpinion,
   QuantStep,
   QuantStepResult,
+  QuantSubject,
   QuantVerdict,
   QuizDifficulty,
   QuizQuestion,
@@ -32,6 +33,7 @@ import type {
   Run,
   ServerEvent,
   SolutionReview,
+  StageKind,
 } from '@ipp/contracts';
 
 /** Things the API tells the interviewer about. `handle` returns immediately; work is serialized per pad. */
@@ -53,8 +55,22 @@ export type Trigger =
   | { type: 'tick' }
   | { type: 'session_ended' };
 
+/**
+ * Where a pad sits in a staged interview (@ipp/contracts `interview.ts`): the interviewer opens
+ * and closes a stage as one part of a longer interview, not as the whole of it.
+ */
+export interface StagePosition {
+  /** 0-based, of `total`. */
+  index: number;
+  total: number;
+  /** What the stage after this one is; null when this is the last. */
+  next: StageKind | null;
+}
+
 export interface InterviewContext {
   pad: Pad;
+  /** Optional: set when the pad is a stage of a staged interview of more than one stage. */
+  stage?: StagePosition | null;
   /** Includes interviewerNotes and reference solutions (server-only fields). Tests are omitted. */
   problem: Omit<ProblemContent, 'tests'>;
   language: Language;
@@ -163,7 +179,14 @@ export type QuantContextEntry = QuantBankEntry | QuantGameSlotEntry;
  */
 export interface QuantContext {
   pad: Pad;
+  /** Optional: set when the pad is a stage of a staged interview of more than one stage. */
+  stage?: StagePosition | null;
   round: {
+    /**
+     * Optional: what the round's questions are about (`roundSubject`); absent means `quant`. It
+     * chooses the interviewer's frame: a trading firm's round or a software team's fundamentals.
+     */
+    subject?: QuantSubject;
     /** `quant_rounds.version`: every `QuantStep` names the version it was decided on. */
     version: number;
     total: number;
