@@ -438,6 +438,7 @@ export function padRoutes(ctx: Ctx) {
         status: pad.status,
         startedAt: pad.startedAt.toISOString(),
         endedAt: pad.endedAt?.toISOString() ?? null,
+        interviewId: pad.interviewId,
         problemTitle,
         difficulty,
         accepted: Boolean(accepted),

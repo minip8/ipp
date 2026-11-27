@@ -279,6 +279,7 @@ export function quantHarness(opts: QuantHarnessOptions = {}) {
     shareToken: null,
     startedAt: new Date(START).toISOString(),
     endedAt: null,
+    interviewId: null,
   };
   const roundEndsAt = quantRoundEndsAt(pad.startedAt, durationMin);
   const gameSlot = opts.game ? (opts.game.slot ?? 1) : -1;

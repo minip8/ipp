@@ -28,6 +28,7 @@ const pad: Pad = {
   shareToken: null,
   startedAt: new Date(START).toISOString(),
   endedAt: null,
+  interviewId: null,
 };
 
 const msg = (role: Message['role'], text: string, min: number): Message => ({

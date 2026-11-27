@@ -173,6 +173,7 @@ export function harness(opts: HarnessOptions = {}) {
     shareToken: null,
     startedAt: new Date(START).toISOString(),
     endedAt: null,
+    interviewId: null,
   };
   const model = opts.model ?? new FakeModel();
   const transcript: Message[] = [];

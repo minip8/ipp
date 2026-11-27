@@ -102,6 +102,7 @@ const pad: Pad = {
   shareToken: null,
   startedAt: iso(START),
   endedAt: null,
+  interviewId: null,
 };
 let code = `class Solution:\n    def twoSum(self, nums: list[int], target: int) -> list[int]:\n        pass\n`;
 const transcript: Message[] = [];

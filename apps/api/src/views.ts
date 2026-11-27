@@ -33,6 +33,7 @@ export function padView(row: PadRow, viewerId: string | null): Pad {
     shareToken: viewerId !== null && viewerId === row.ownerId ? row.shareToken : null,
     startedAt: row.startedAt.toISOString(),
     endedAt: row.endedAt?.toISOString() ?? null,
+    interviewId: row.interviewId,
   };
 }
 

@@ -110,6 +110,7 @@ export async function simulateQuant(o: {
     shareToken: null,
     startedAt: iso(START),
     endedAt: null,
+    interviewId: null,
   };
   const roundEndsAt = quantRoundEndsAt(pad.startedAt, durationMin);
   const picks: QuantPick[] = questions.map((q) => ({
