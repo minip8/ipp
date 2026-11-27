@@ -34,6 +34,7 @@ import {
   timelineEvents,
 } from '@ipp/db';
 import { and, asc, count, desc, eq, gte, inArray, sql } from '@ipp/db/orm';
+import { addCall, overDailyLimit, utcDay } from '../ai/limits';
 import type { Limits } from '../config';
 import type { Ctx } from '../context';
 import { stagePosition } from '../interviews/logic';
@@ -75,7 +76,7 @@ function cut(text: string, max: number): string {
   return `${text.slice(0, head)}\n… [${text.length - max} characters omitted] …\n${text.slice(text.length - (max - head))}`;
 }
 
-export const utcDay = (d = new Date()) => d.toISOString().slice(0, 10);
+export { utcDay };
 
 interface PadGate {
   active: boolean;
@@ -658,51 +659,32 @@ export class InterviewerHost {
     return message;
   }
 
-  /** Token counts per user per day. Pad calls are charged to the pad owner, grading to the quiz taker. */
+  /**
+   * Tokens and estimated cost per user per day (`ai/limits.ts`). Pad calls are charged to the
+   * pad owner, grading to the quiz taker. Runs detached from the model call (`deps().recordUsage`),
+   * so a slow or failed price lookup never delays or fails the call; it only leaves it unpriced.
+   */
   async recordUsage(scope: AiScope, usage: ModelUsage): Promise<void> {
-    const userId = await this.userOf(scope);
+    const [userId, cost] = await Promise.all([
+      this.userOf(scope),
+      this.ctx.prices.costOf(usage).catch(() => null),
+    ]);
     if (!userId) return;
     const input = usage.inputTokens + usage.cacheReadInputTokens + usage.cacheCreationInputTokens;
-    await this.ctx.db
-      .insert(aiUsage)
-      .values({ userId, day: utcDay(), inputTokens: input, outputTokens: usage.outputTokens })
-      .onConflictDoUpdate({
-        target: [aiUsage.userId, aiUsage.day],
-        set: {
-          inputTokens: sql`${aiUsage.inputTokens} + ${input}`,
-          outputTokens: sql`${aiUsage.outputTokens} + ${usage.outputTokens}`,
-        },
-      });
-  }
-
-  private async usageToday(
-    userId: string,
-  ): Promise<{ messages: number; inputTokens: number; outputTokens: number }> {
-    const [usage] = await this.ctx.db
-      .select({
-        messages: aiUsage.messages,
-        inputTokens: aiUsage.inputTokens,
-        outputTokens: aiUsage.outputTokens,
-      })
-      .from(aiUsage)
-      .where(and(eq(aiUsage.userId, userId), eq(aiUsage.day, utcDay())));
-    return usage ?? { messages: 0, inputTokens: 0, outputTokens: 0 };
+    await addCall(this.ctx, userId, {
+      inputTokens: input,
+      outputTokens: usage.outputTokens,
+      costMicros: cost,
+    });
   }
 
   /**
-   * The user's daily allowance: messages, and tokens (silent decisions and assessments are
-   * model calls that produce no message). Null when there is allowance left.
+   * The user's daily allowance: their own caps, or the server defaults (silent decisions and
+   * assessments are model calls that produce no message, so tokens and cost count too). Null
+   * when there is allowance left; else the reason, which names the cap and never an amount.
    */
-  private async overDailyLimit(userId: string): Promise<string | null> {
-    const { config } = this.ctx;
-    const u = await this.usageToday(userId);
-    if (u.messages >= config.aiDailyMessageLimit)
-      return 'The daily interviewer message limit for this account has been reached.';
-    const inCap = config.aiDailyInputTokenLimit;
-    const outCap = config.aiDailyOutputTokenLimit;
-    if ((inCap > 0 && u.inputTokens >= inCap) || (outCap > 0 && u.outputTokens >= outCap))
-      return 'The daily interviewer usage limit for this account has been reached.';
-    return null;
+  private overDailyLimit(userId: string): Promise<string | null> {
+    return overDailyLimit(this.ctx, userId);
   }
 
   /**

@@ -120,7 +120,8 @@ Better Auth owns `user`, `session`, `account`, `verification` (text ids). App ta
 | `quiz_standalone_answers` | user_id, question_id (pk together), same grading columns — question-bank answers outside attempts, latest per question |
 | `quant_round_answers` | id, user_id (the pad's owner), pad_id (set null when the pad is deleted; unique with question_id), question_id, same grading columns (always `ai`), answered_at (when the question closed) — the judged questions of an ended quant round (§8.2) |
 | `drill_runs` | id, user_id, duration_sec, level, categories text[], full_mix, by_category jsonb, correct, wrong, skipped, score, elapsed_ms, finished_at — one finished mental math drill run (§8.1) |
-| `ai_usage` | user_id, day, messages, input_tokens, output_tokens — spend guard |
+| `ai_usage` | user_id, day, messages, input_tokens, output_tokens, cost_micros (estimated from list prices, §7), unpriced_tokens (tokens of calls whose model had no known price) — spend guard |
+| `ai_limits` | user_id pk (cascade), daily_cost_micros, daily_tokens, daily_messages (each null or a cap; at least one set), updated_at — a user's own daily caps, replacing the server defaults (§7) |
 
 `user.is_anonymous` marks a guest (Better Auth's anonymous plugin): someone who joined a room by
 its link with just a name (§4.1). `user.track` is the site track the user chose in the header
@@ -146,6 +147,9 @@ Every body is validated with the contracts schema named below.
 | `PUT /api/ai-key` | `SaveAiKeyRequest` (`{ provider?, apiKey }`, ≤ 2 KB body; provider inferred from the key shape when absent; a key that does not fit the provider is a 400 before any call) | `AiKeyStatus`; 422 `ai_key_rejected` when the provider refuses the key, 503 `ai_key_unverifiable` when it cannot be reached, 429 |
 | `DELETE /api/ai-key` | | `AiKeyStatus` (`missing`) |
 | `GET /api/ai-key/models` | | `AiModelList` (`provider`, `defaultModel`, `models[] {id, label, default}`, `source` live / fallback); 409 `ai_key_missing` without a usable key; 429 |
+| `GET /api/ai-usage` | | `AiUsageStatus` (today's `usage`: messages, input / output / total tokens, estimated `costMicros`, `unpricedTokens`; the user's `limits` or null; the server `defaults`; `costTracking` for the key's provider and default model, with its list price when known, null without a key; `resetsAt`); account only (403 `account_required` for a guest) |
+| `PUT /api/ai-limits` | `SetAiLimitsRequest` (`AiDailyLimits`: `costMicros`, `tokens`, `messages`, each null or within `AI_LIMIT_BOUNDS`, at least one set) | `AiUsageStatus`; account only; 429 (`limits.aiLimitsSave`: 10 / 10 min, 50 / day, shared with the DELETE) |
+| `DELETE /api/ai-limits` | | `AiUsageStatus` (`limits: null`: back to the defaults); account only; 429 |
 | `GET /api/problems?difficulty=&tag=&q=` | | `ProblemSummary[]` |
 | `GET /api/problems/:slug` | | `ProblemDetail` |
 | `GET /api/progress/problems` | | `ProblemProgress` (the caller's problems that are not new, latest activity first: `solved` with an accepted submission of theirs in any pad, else `attempted` with any run of theirs or a practice interview of their own on it) |
@@ -473,8 +477,8 @@ prompt tokens are reported as cache reads. Candidate code and chat are untrusted
 and are delimited as data; platform events use the operator channel rather than being mixed into
 candidate text.
 
-Spend guard: `ai_usage` per user per day (`AI_DAILY_MESSAGE_LIMIT`, `AI_DAILY_INPUT_TOKEN_LIMIT`,
-`AI_DAILY_OUTPUT_TOKEN_LIMIT`), the per-user chat rate limits, a per-pad cap on interviewer
+Spend guard: `ai_usage` per user per UTC day against daily caps (`apps/api/src/ai/limits.ts`),
+the per-user chat rate limits, a per-pad cap on interviewer
 messages (`limits.interviewerMessagesPerPad`, 200, posted questions aside; a quant round's follows
 its length instead when that allows more, `quantInterviewerMessagesPerMinute` 8 a minute, so 200,
 240 and 360 for 20, 30 and 45 minutes: `interviewerMessageCap` in `apps/api/src/interviewer/host.ts`)
@@ -485,6 +489,27 @@ these limits protect the user's spend and keep the server from being used as a r
 message limit defaults to 1500: it must cover a day of staged interviews (several pads in one sitting,
 each with a spoken interviewer that answers often), so on any one pad the per-pad cap,
 and over the day the daily token limits, are what bind first; the message limit is the backstop.
+
+The daily caps are the server defaults (`AI_DAILY_MESSAGE_LIMIT`, `AI_DAILY_INPUT_TOKEN_LIMIT`,
+`AI_DAILY_OUTPUT_TOKEN_LIMIT`; input and output tokens capped separately, a token default of 0
+being off) unless the user saved their own on the settings page (`ai_limits`, `PUT
+/api/ai-limits`), which replace them: any of an estimated **cost** in dollars (stored as
+micro-dollars), total **tokens** (input and output, cache reads and writes included) and
+**messages**, at least one, and the interviewer stops at whichever is reached first. Resetting to
+the defaults deletes the setting. Every call's cost is estimated in `recordUsage` (detached from
+the call, so a price lookup can never delay or fail it) by the price book in
+`packages/interviewer/src/pricing.ts`: OpenRouter's reported `usage.cost` (plus the upstream cost
+of a BYOK call) when present, else list price times tokens, cache reads and writes priced
+separately, from a static table for Anthropic, OpenAI and Gemini (the curated and default models,
+copied from each provider's pricing page with the date checked) or OpenRouter's public catalogue
+(`GET /api/v1/models`, no key, cached in memory for 6 h, 5 min after a failure). A call with no
+known price adds its tokens to `unpriced_tokens` instead; when cost is a user's only cap and today
+has unpriced tokens, the default message limit applies as well, since the cost cap cannot see
+those calls. Cost is always an estimate from list prices, and the settings page says so; the
+provider's bill is the truth. When a daily cap stops the interviewer, the reason posted in the pad
+(which collaborators see too) names the kind of cap and says it can be changed in Settings, and
+never carries an amount (`aiLimitReason` in contracts). Quiz grading and discussion check the same
+caps and count one message each.
 
 At the end of a pad the interviewer produces a `ReportAssessment` on the owner's key; the report
 page also offers playback of the editor history with run and chat markers.

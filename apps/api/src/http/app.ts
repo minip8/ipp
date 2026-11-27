@@ -9,6 +9,7 @@ import type { SessionUser } from '../auth';
 import { normalizeIp } from '../config';
 import type { Ctx } from '../context';
 import { aiKeyRoutes } from '../routes/ai-key';
+import { aiUsageRoutes } from '../routes/ai-usage';
 import { drillRoutes } from '../routes/drill';
 import { interviewRoutes } from '../routes/interviews';
 import { miscRoutes } from '../routes/misc';
@@ -238,6 +239,7 @@ export function createHttpApp(ctx: Ctx): Hono<Env> {
 
   app.route('/api', miscRoutes(ctx));
   app.route('/api', aiKeyRoutes(ctx));
+  app.route('/api', aiUsageRoutes(ctx));
   app.route('/api', padRoutes(ctx));
   app.route('/api', runRoutes(ctx));
   app.route('/api', quizRoutes(ctx));

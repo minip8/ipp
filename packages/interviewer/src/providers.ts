@@ -415,6 +415,7 @@ export const PROVIDERS: Record<AiProvider, ProviderSpec> = {
       baseURL: OPENROUTER_BASE,
       classify: classifyOpenRouter,
       effortParam: 'reasoning',
+      reportsCost: true,
     }),
     async listModels(_apiKey, opts = {}) {
       // The catalogue is public: the key is not sent anywhere for this.

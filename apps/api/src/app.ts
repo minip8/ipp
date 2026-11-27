@@ -7,6 +7,7 @@ import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { serve } from '@hono/node-server';
 import { createDb } from '@ipp/db';
+import { createPriceBook, type PriceBook } from '@ipp/interviewer';
 import { Redis } from 'ioredis';
 import type { Logger } from 'pino';
 import { AiKeyStore } from './ai/keys';
@@ -33,6 +34,8 @@ export interface ApiOptions {
   verifyAiKey: KeyVerifier;
   /** Lists the models a key can use (tests pass a fake; default: the provider's list). */
   listAiModels?: ModelLister;
+  /** Model prices for the spend guard (tests pass one on a fake fetch; default: the real one). */
+  prices?: PriceBook;
 }
 
 export interface Api {
@@ -70,6 +73,7 @@ export async function createApi(opts: ApiOptions): Promise<Api> {
     ),
     verifyAiKey: opts.verifyAiKey,
     listAiModels: opts.listAiModels ?? defaultModelLister(config),
+    prices: opts.prices ?? createPriceBook(),
     dbNow: readDbClock,
   } as Ctx;
   ctx.collab = new Collab(ctx);

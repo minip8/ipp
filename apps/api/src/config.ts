@@ -91,6 +91,8 @@ export interface Limits {
   aiKeySave: { userBurst: RateLimit; userDaily: RateLimit; ipBurst: RateLimit; ipDaily: RateLimit };
   /** Listing the models a key can use (one provider call per cache miss). */
   aiModels: { userBurst: RateLimit };
+  /** Saving or resetting the user's own daily AI limits (`PUT`/`DELETE /api/ai-limits`). */
+  aiLimitsSave: { userBurst: RateLimit; userDaily: RateLimit };
   /** Asking for a report assessment again (after adding a key). */
   assessmentRetry: { userBurst: RateLimit };
   /** A room host asking the AI for a second opinion on the code (one model call each). */
@@ -145,6 +147,10 @@ export const DEFAULT_LIMITS: Limits = {
     ipDaily: { limit: 30, windowSec: 86_400 },
   },
   aiModels: { userBurst: { limit: 30, windowSec: 600 } },
+  aiLimitsSave: {
+    userBurst: { limit: 10, windowSec: 600 },
+    userDaily: { limit: 50, windowSec: 86_400 },
+  },
   assessmentRetry: { userBurst: { limit: 5, windowSec: 3600 } },
   review: { userBurst: { limit: 6, windowSec: 60 }, userDaily: { limit: 150, windowSec: 86_400 } },
   invites: { ipBurst: { limit: 30, windowSec: 60 }, ipDaily: { limit: 600, windowSec: 86_400 } },

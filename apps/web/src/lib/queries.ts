@@ -7,6 +7,7 @@ export const qk = {
   config: ['config'] as const,
   aiKey: ['ai-key'] as const,
   aiModels: ['ai-models'] as const,
+  aiUsage: ['ai-usage'] as const,
   problems: (f: object) => ['problems', f] as const,
   problem: (slug: string) => ['problem', slug] as const,
   problemProgress: ['progress', 'problems'] as const,

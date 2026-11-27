@@ -6,6 +6,7 @@ import {
   AiKeyStatus,
   AiModelList,
   type AiProvider,
+  AiUsageStatus,
   AnswerFeedback,
   ApiError,
   ClearQuizHistoryResponse,
@@ -47,6 +48,7 @@ import {
   RecordDrillRunResponse,
   Report,
   Run,
+  type SetAiLimitsRequest,
   type SetTrackRequest,
   SetTrackResponse,
   SolutionReview,
@@ -177,6 +179,12 @@ export const api = {
   /** Models the saved key can use (live from its provider). */
   aiModels: () => request('/ai-key/models', AiModelList),
   deleteAiKey: () => request('/ai-key', AiKeyStatus, { method: 'DELETE' }),
+  /** Today's AI usage and the daily limits that apply (the user's own, or the defaults). */
+  aiUsage: () => request('/ai-usage', AiUsageStatus),
+  saveAiLimits: (limits: SetAiLimitsRequest) =>
+    request('/ai-limits', AiUsageStatus, { method: 'PUT', body: limits }),
+  /** Back to the server's default limits. */
+  resetAiLimits: () => request('/ai-limits', AiUsageStatus, { method: 'DELETE' }),
   config: () => request('/config', ConfigResponse),
   problems: (f: { difficulty?: string; tag?: string; q?: string } = {}) =>
     request(`/problems${qs(f)}`, z.array(ProblemSummary)),
