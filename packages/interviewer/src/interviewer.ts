@@ -357,7 +357,12 @@ export function createInterviewer(
     try {
       const res = await clients.get(key, model).call(req);
       breakers.delete(key.keyId);
-      const usage: ModelUsage = { purpose: req.purpose, model: res.model, ...res.usage };
+      const usage: ModelUsage = {
+        purpose: req.purpose,
+        model: res.model,
+        provider: key.provider,
+        ...res.usage,
+      };
       deps.recordUsage?.(scope, usage);
       deps.log.info(
         {
