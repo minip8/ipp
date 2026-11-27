@@ -7,7 +7,10 @@ import {
   type PadFormat,
   type ProblemCategory,
   QUANT_PATH_INFO,
+  QUANT_SUBJECT_LABEL,
   type QuantPath,
+  type QuantRoundView,
+  type QuantSubject,
   type RunVerdict,
   type TestVerdict,
 } from '@ipp/contracts';
@@ -22,6 +25,7 @@ import {
   ClockIcon,
   FileWarningIcon,
   MemoryStickIcon,
+  MessagesSquareIcon,
   ScrollTextIcon,
   SigmaIcon,
   XIcon,
@@ -216,6 +220,43 @@ export function QuantPathBadge({ path, className }: { path: QuantPath; className
     >
       <SigmaIcon aria-hidden className="size-3 text-accent-text" />
       Quant
+    </span>
+  );
+}
+
+/** What a round assembled from chosen topics is marked with (its subject's label is the tooltip). */
+const SUBJECT_BADGE: Record<QuantSubject, string> = {
+  quant: 'Quant',
+  technical: 'Technical',
+  mixed: 'Questions',
+};
+
+/**
+ * Marks an AI round beside its title: its path when it has one (a quant round), else its
+ * subject (a staged interview's questions stage: quant, technical or both). A quant room's
+ * round has neither and is not marked.
+ */
+export function RoundBadge({
+  round,
+  className,
+}: {
+  round: Pick<QuantRoundView, 'mode' | 'path' | 'subject'>;
+  className?: string;
+}) {
+  if (round.path) return <QuantPathBadge path={round.path} className={className} />;
+  if (round.mode !== 'ai') return null;
+  const Icon = round.subject === 'quant' ? SigmaIcon : MessagesSquareIcon;
+  return (
+    <span
+      data-testid="quant-badge"
+      title={QUANT_SUBJECT_LABEL[round.subject]}
+      className={cn(
+        'inline-flex h-5 items-center gap-1 rounded-[4px] border border-border px-1.5 text-2xs font-medium whitespace-nowrap text-fg-muted',
+        className,
+      )}
+    >
+      <Icon aria-hidden className="size-3 text-accent-text" />
+      {SUBJECT_BADGE[round.subject]}
     </span>
   );
 }

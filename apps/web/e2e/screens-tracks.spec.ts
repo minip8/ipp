@@ -43,10 +43,7 @@ for (const width of WIDTHS) {
         if (want(`${track}-interviews`)) {
           await page.goto(`/${track}/interviews`);
           await page.getByRole('heading', { level: 1, name: 'Interviews' }).waitFor();
-          await (track === 'quant'
-            ? page.getByTestId('round-setup')
-            : page.getByRole('region', { name: 'Problem library' })
-          ).waitFor();
+          await page.getByTestId('builder').waitFor();
           await settle(page);
           await shoot(page, `${track}-interviews`, { fullPage: !phone });
           await page.goto(`/${track}/interviews?mode=host`);

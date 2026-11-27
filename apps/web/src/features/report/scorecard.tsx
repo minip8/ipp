@@ -66,6 +66,82 @@ const toneSelected = {
   ok: 'border-ok/60 bg-ok-soft text-ok-text',
 } as const;
 
+/** A recommendation in a line of text (a list's outcome, an interview's stages): its word, toned. */
+export function RecommendationBadge({
+  value,
+  className,
+  prefix,
+}: {
+  value: Recommendation;
+  className?: string;
+  /** Read before the word, e.g. "Overall". */
+  prefix?: string;
+}) {
+  const r = RECOMMENDATIONS.find((x) => x.value === value) ?? RECOMMENDATIONS[2];
+  return (
+    <span
+      data-testid="recommendation"
+      className={cn(
+        'inline-flex h-5 items-center gap-1 rounded-[4px] border px-1.5 text-2xs font-medium whitespace-nowrap',
+        r && toneSelected[r.tone],
+        className,
+      )}
+    >
+      {prefix && <span className="font-normal opacity-80">{prefix} </span>}
+      {r?.label}
+    </span>
+  );
+}
+
+/**
+ * A short scorecard: each dimension's score as the full report's meter draws it, without the
+ * evidence (an interview's page shows each stage's so).
+ */
+export function ScoreBars({
+  scores,
+  dimensions,
+}: {
+  scores: ReportAssessment['scores'];
+  dimensions: readonly Dimension[];
+}) {
+  const rows = dimensions.flatMap((d) => {
+    const s = scores.find((x) => x.dimension === d);
+    return s ? [s] : [];
+  });
+  return (
+    <ul className="grid gap-x-6 gap-y-2.5 sm:grid-cols-2" data-testid="score-bars">
+      {rows.map((s) => {
+        const tone = s.score >= 3 ? 'ok' : s.score === 2 ? 'warn' : 'bad';
+        return (
+          <li key={s.dimension}>
+            <div className="flex items-baseline justify-between gap-2 text-xs">
+              <span className="font-medium">{DIMENSION_LABEL[s.dimension]}</span>
+              <span className="text-fg-muted tabular">
+                <span className="font-semibold text-fg">{s.score}</span>/4
+              </span>
+            </div>
+            <meter
+              className="sr-only"
+              min={1}
+              max={4}
+              value={s.score}
+              aria-label={`${DIMENSION_LABEL[s.dimension]}: ${s.score} of 4, ${SCORE_WORD[s.score] ?? ''}`}
+            />
+            <div className="mt-1 grid grid-cols-4 gap-1" aria-hidden>
+              {[1, 2, 3, 4].map((i) => (
+                <span
+                  key={i}
+                  className={cn('h-1 rounded-full', i <= s.score ? toneFill[tone] : 'bg-surface-3')}
+                />
+              ))}
+            </div>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 export function RecommendationScale({ value }: { value: Recommendation }) {
   const current = RECOMMENDATIONS.find((r) => r.value === value) ?? RECOMMENDATIONS[2];
   return (

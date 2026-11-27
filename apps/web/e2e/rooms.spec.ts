@@ -94,14 +94,14 @@ test.describe('hosting', () => {
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Interview room');
   });
 
-  test('switching back to practice restores the AI interviewer setup', async ({ page }) => {
+  test('switching back to practice restores the interview builder', async ({ page }) => {
     await setup(page);
     await page.goto('/software/interviews?mode=host');
     await page.getByRole('radio', { name: 'Practise with the AI' }).click();
     await expect(page).toHaveURL(/\/software\/interviews$/);
-    await expect(page.getByRole('heading', { name: 'New interview' })).toBeVisible();
-    await expect(page.getByLabel('AI interviewer')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Start interview' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'New interview' })).toBeAttached();
+    await expect(page.getByRole('radiogroup', { name: 'Presets' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Start the interview' })).toBeVisible();
   });
 });
 

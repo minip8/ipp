@@ -413,6 +413,7 @@ export class MockQuantRooms {
       accepted: false,
       role: d.role,
       quantPath: null,
+      interviewId: d.pad.interviewId,
     };
   }
 

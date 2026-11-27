@@ -3,24 +3,33 @@
  * Software's Practice tab, Problems view (`?view=problems`): the problem library on the left (the
  * same component as the interview setup's, `features/new/problem-library.tsx`) and, on the right,
  * a card for the chosen problem (`?problem=`) with the start of its statement, its difficulty,
- * the user's standing on it and one action: set up an interview on it, on the Interviews tab with
- * the problem chosen. The same list-left, card-right skeleton as the Quizzes view.
+ * the user's standing on it and two actions: solve it on your own (a pad with no interviewer and
+ * no clock, which needs no AI key: the way to practise a problem rather than be interviewed on
+ * it), or set up an interview on it, on the Interviews tab with the problem chosen. The same
+ * list-left, card-right skeleton as the Quizzes view.
  */
 import type { ProblemStatus } from '@ipp/contracts';
-import { ArrowRightIcon, MousePointerClickIcon } from 'lucide-react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { ArrowRightIcon, MousePointerClickIcon, PencilLineIcon } from 'lucide-react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
-import { useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useEffect, useRef, useState } from 'react';
 import { CategoryBadge, DifficultyBadge } from '@/components/domain';
+import { InlineError } from '@/components/states';
 import { PROBLEM_STATUS_LABEL, ProblemStatusIcon } from '@/components/status-icon';
 import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
+import { effectiveLanguage } from '@/features/new/logic';
 import {
   ProblemLibrary,
   ProblemPreview,
   RestrictionBadge,
   useProblemLibrary,
 } from '@/features/new/problem-library';
+import { api } from '@/lib/api';
 import { useOnScreen } from '@/lib/layout-hooks';
+import { loadStartPrefs } from '@/lib/prefs';
+import { qk } from '@/lib/queries';
 import { interviewsHref } from '@/lib/track';
 import { cn } from '@/lib/utils';
 
@@ -59,6 +68,32 @@ export function ProblemsView() {
   };
   const current = lib.library.find((p) => p.slug === selected);
   const status = current ? lib.statusFor(current.slug) : null;
+  const router = useRouter();
+  const qc = useQueryClient();
+  // On your own: no interviewer (so no key is needed) and no clock, in the language used last
+  // (the pad can switch it). The interviewer's other settings are stored but never used.
+  const solve = useMutation({
+    mutationFn: (slug: string) => {
+      const prefs = loadStartPrefs();
+      return api.createPad({
+        problemSlug: slug,
+        language: effectiveLanguage(
+          prefs.language,
+          lib.library.find((p) => p.slug === slug),
+        ),
+        durationMin: null,
+        interviewer: { ...prefs.interviewer, enabled: false, voice: false },
+      });
+    },
+    onSuccess: (pad) => {
+      void qc.invalidateQueries({ queryKey: qk.pads });
+      router.push(`/pads/${pad.id}`);
+    },
+  });
+  // An error was about the problem it was started on.
+  const { reset } = solve;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset when the problem changes
+  useEffect(() => reset(), [selected, reset]);
   // Phones: the card is under a long list, so a bar keeps it in reach until it is on screen.
   const card = useRef<HTMLElement>(null);
   const cardOnScreen = useOnScreen(card);
@@ -97,7 +132,21 @@ export function ProblemsView() {
               />
             </div>
             <div className="space-y-2 border-t border-border p-4">
-              <Button asChild variant="primary" size="lg" className="w-full">
+              <Button
+                variant="primary"
+                size="lg"
+                className="w-full"
+                disabled={solve.isPending || solve.isSuccess}
+                onClick={() => solve.mutate(current.slug)}
+              >
+                {solve.isPending || solve.isSuccess ? <Spinner /> : <PencilLineIcon />}
+                Solve on your own
+              </Button>
+              <p className="text-center text-xs text-fg-muted">
+                No interviewer and no clock: the editor, the tests and the problem.
+              </p>
+              {solve.error && <InlineError error={solve.error} />}
+              <Button asChild size="lg" className="w-full">
                 <Link href={interviewsHref('software', { problem: current.slug })}>
                   Set up an interview <ArrowRightIcon />
                 </Link>

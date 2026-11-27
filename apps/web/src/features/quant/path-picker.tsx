@@ -5,9 +5,7 @@ import { cn } from '@/lib/utils';
 import { PATHS } from './logic';
 
 /**
- * The Trader | Researcher choice, kept in `?path=`: the same control on the Quant track's
- * Interviews tab (filling its setup panel, as the panel's other choices do) and on its Roadmap's
- * study path.
+ * The Trader | Researcher choice of the Quant track's Roadmap study path, kept in `?path=`.
  */
 export function QuantPathPicker({
   value,

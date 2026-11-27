@@ -31,16 +31,14 @@ test('run, run tests and submit against the real judge', async ({ page, context 
   await page.getByRole('button', { name: 'Create account' }).click();
   await expect(page).toHaveURL(/\/dashboard/);
 
-  await page.goto('/dashboard');
+  // No AI here (it would need an API key): a room on the problem, just the judge.
+  await page.goto('/software/interviews?mode=host');
   await page.getByRole('searchbox', { name: 'Search problems' }).fill('two sum');
   await page
     .getByRole('button', { name: /Two Sum/ })
     .first()
     .click();
-  // No AI here (it would need an API key): just the judge.
-  const ai = page.getByRole('switch', { name: 'AI interviewer' });
-  if ((await ai.getAttribute('aria-checked')) === 'true') await ai.click();
-  await page.getByRole('button', { name: 'Start interview' }).click();
+  await page.getByRole('button', { name: 'Create room' }).click();
   await expect(page).toHaveURL(/\/pads\/[0-9a-f-]{36}$/);
   await expect(page.getByRole('status', { name: 'Connected' })).toBeVisible({ timeout: 30_000 });
 

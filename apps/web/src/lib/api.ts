@@ -3,6 +3,7 @@
  * origin; Next rewrites /api/* to the API. Every response is parsed with its contracts schema.
  */
 import {
+  type AdvanceInterviewRequest,
   AiKeyStatus,
   AiModelList,
   type AiProvider,
@@ -11,10 +12,12 @@ import {
   ApiError,
   ClearQuizHistoryResponse,
   type CreateAttemptRequest,
+  type CreateInterviewRequest,
   type CreatePadRequest,
   type CreateQuantPadRequest,
   type CreateRunRequest,
   DeleteAttemptResponse,
+  DeleteInterviewResponse,
   DeletePadResponse,
   type DiscussionReplyRequest,
   DiscussionReplyResponse,
@@ -24,6 +27,8 @@ import {
   HostRoundView,
   type HostVerdictInput,
   HostView,
+  Interview,
+  InterviewStart,
   InviteInfo,
   Pad,
   PadDetail,
@@ -273,6 +278,20 @@ export const api = {
   /** A market on the current question's game (§8.3): the round as it now is, or a 409 refusal. */
   postQuote: (id: string, body: PostQuantQuoteRequest) =>
     request(`/pads/${id}/round/quote`, QuantRoundView, { method: 'POST', body }),
+  /**
+   * Staged interviews (`interview.ts`): creating one starts its first stage, and `next` ends the
+   * stage under way and starts the one after it; both answer with the pad to open.
+   */
+  interviews: () => request('/interviews', z.array(Interview)),
+  interview: (id: string) => request(`/interviews/${id}`, Interview),
+  createInterview: (body: z.input<typeof CreateInterviewRequest>) =>
+    request('/interviews', InterviewStart, { method: 'POST', body }),
+  advanceInterview: (id: string, body: AdvanceInterviewRequest) =>
+    request(`/interviews/${id}/next`, InterviewStart, { method: 'POST', body }),
+  endInterview: (id: string) => request(`/interviews/${id}/end`, Interview, { method: 'POST' }),
+  /** The interview and every stage's pad. */
+  deleteInterview: (id: string) =>
+    request(`/interviews/${id}`, DeleteInterviewResponse, { method: 'DELETE' }),
   report: (id: string) => request(`/pads/${id}/report`, Report),
   requestAssessment: (id: string) =>
     request(`/pads/${id}/report/assessment`, Report, { method: 'POST' }),

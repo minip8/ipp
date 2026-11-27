@@ -45,7 +45,8 @@ test.describe('with classic scrollbars', () => {
 
   test('nothing shifts sideways between tabs, tracks, views and overlays', async ({ page }) => {
     await setup(page);
-    await page.goto('/software/interviews');
+    // Hosting: the problem library, taller than the window.
+    await page.goto('/software/interviews?mode=host');
     await expect(page.getByRole('region', { name: 'Problem library' })).toBeVisible();
     // The start view is taller than the window, so it has a scrollbar that takes width.
     expect(
@@ -119,7 +120,7 @@ test.describe('with classic scrollbars', () => {
     await same('quant practice history');
 
     await tabs.getByRole('link', { name: 'Interviews' }).click();
-    await expect(page.getByTestId('round-setup')).toBeVisible();
+    await expect(page.getByTestId('builder')).toBeVisible();
     await same('quant interviews');
     await page.getByRole('radio', { name: 'Interview someone' }).click();
     await expect(page.getByTestId('quant-room-setup')).toBeVisible();
