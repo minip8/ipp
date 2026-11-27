@@ -40,7 +40,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Tooltip } from '@/components/ui/tooltip';
-import { type Names, stageSummary } from '@/features/interview/logic';
+import { type Names, stageDetail } from '@/features/interview/logic';
 import { STAGE_ICON } from '@/features/interview/stage-icon';
 import { effectiveLanguage, languageNote } from '@/features/new/logic';
 import { RestrictionBadge } from '@/features/new/problem-library';
@@ -342,7 +342,7 @@ export function StageCard({
   const number = index + 1;
   const Icon = STAGE_ICON[stage.kind];
   const editorId = useId();
-  const summary = stageSummary(stage, names);
+  const summary = stageDetail(stage, names);
   const kind = STAGE_KIND_INFO[stage.kind].label;
   return (
     <li

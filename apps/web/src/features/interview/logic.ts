@@ -80,6 +80,20 @@ export function stageSummary(
   return `${STAGE_KIND_INFO.game.label} · ${min}`;
 }
 
+/**
+ * The summary under a stage's own title (the kind's label), which a game's summary would only
+ * repeat: "One game against the interviewer · 15 min".
+ */
+export function stageDetail(
+  stage: InterviewStage,
+  names: Names,
+  problemTitle?: string | null,
+): string {
+  return stage.kind === 'game'
+    ? `One game against the interviewer · ${stage.durationMin} min`
+    : stageSummary(stage, names, problemTitle);
+}
+
 /** "3 stages · 55 min" */
 export const planTotal = (stages: readonly Pick<InterviewStage, 'durationMin'>[]) =>
   `${plural(stages.length, 'stage')} · ${interviewMinutes(stages)} min`;

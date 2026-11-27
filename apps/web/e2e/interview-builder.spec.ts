@@ -56,7 +56,7 @@ test.describe('presets', () => {
     await expect(presets(page).getByRole('radio', { name: /^Trader/ })).toBeChecked();
     await expect(page.getByTestId('stage-summary')).toHaveText([
       'Probability, Brainteasers · 3 questions · 20 min',
-      'Market-making game · 15 min',
+      'One game against the interviewer · 15 min',
       'Betting & market making, Options & finance · 3 questions · 20 min',
     ]);
     await expect(total(page)).toHaveText('3 stages · 55 min');
@@ -97,13 +97,15 @@ test.describe('editing the plan', () => {
     const game = stages(page).nth(1);
     await expect(game.getByTestId('stage-editor')).toBeVisible();
     await game.getByRole('radio', { name: '10 min' }).click();
-    await expect(game.getByTestId('stage-summary')).toHaveText('Market-making game · 10 min');
+    await expect(game.getByTestId('stage-summary')).toHaveText(
+      'One game against the interviewer · 10 min',
+    );
 
     // Move it up, by keyboard.
     await page.getByRole('button', { name: 'Move stage 2 up' }).focus();
     await page.keyboard.press('Enter');
     await expect(page.getByTestId('stage-summary')).toHaveText([
-      'Market-making game · 10 min',
+      'One game against the interviewer · 10 min',
       'Random medium problem · C++ · 45 min',
     ]);
     await expect(page.getByRole('button', { name: 'Move stage 1 up' })).toBeDisabled();

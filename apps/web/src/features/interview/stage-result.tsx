@@ -35,7 +35,7 @@ import { api } from '@/lib/api';
 import { formatTimeOfDay } from '@/lib/format';
 import { qk } from '@/lib/queries';
 import { cn } from '@/lib/utils';
-import { type Names, STAGE_STATUS_LABEL, stageSummary } from './logic';
+import { type Names, STAGE_STATUS_LABEL, stageDetail } from './logic';
 import { STAGE_ICON } from './stage-icon';
 
 const STATUS_TONE: Record<StageStatus, 'accent' | 'ok' | 'neutral' | 'outline'> = {
@@ -157,7 +157,7 @@ export function StageResult({
 }) {
   const Icon = STAGE_ICON[view.stage.kind];
   const number = view.index + 1;
-  const summary = stageSummary(view.stage, names, view.pad?.problemTitle);
+  const summary = stageDetail(view.stage, names, view.pad?.problemTitle);
   return (
     <li
       className={cn(

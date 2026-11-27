@@ -1,9 +1,10 @@
 /**
  * Software's Practice tab, Problems view: the problem library (the interview setup's own list,
- * with its filters and status marks) beside a card for the chosen problem, whose one action
- * opens the Interviews tab's setup with that problem chosen.
+ * with its filters and status marks) beside a card for the chosen problem, which starts it on
+ * your own (no interviewer) or opens the Interviews tab's setup with that problem chosen.
  */
 import { expect, type Page, test } from '@playwright/test';
+import { aiKeyStatus } from './fixtures';
 import { setup } from './helpers';
 
 const library = (page: Page) => page.getByRole('region', { name: 'Problem library' });
@@ -47,6 +48,26 @@ test('lists the library with its filters and marks, the chosen problem in a card
   await expect(page).toHaveURL(/\/software\/practice\?view=problems&problem=trapping-rain-water$/);
   await page.reload();
   await expect(card(page).getByTestId('selected-problem')).toHaveText('Trapping Rain Water');
+});
+
+test('solving on your own opens a pad with no interviewer and no clock, without a key', async ({
+  page,
+}) => {
+  const b = await setup(page, (m) => {
+    m.aiKey = aiKeyStatus('missing');
+  });
+  await page.goto('/software/practice?view=problems');
+  await row(page, /^Word Ladder/).click();
+  await card(page).getByRole('button', { name: 'Solve on your own' }).click();
+  await expect(page).toHaveURL(/\/pads\/[0-9a-f-]{36}$/);
+  const create = b.requests.find((r) => r.method === 'POST' && r.path === '/api/pads');
+  expect(create?.body).toMatchObject({
+    problemSlug: 'word-ladder',
+    durationMin: null,
+    interviewer: { enabled: false },
+  });
+  // A pad of its own, not a staged interview.
+  expect(b.requests.some((r) => r.method === 'POST' && r.path === '/api/interviews')).toBe(false);
 });
 
 test('the card’s action opens the builder with a plan on the problem', async ({ page }) => {
