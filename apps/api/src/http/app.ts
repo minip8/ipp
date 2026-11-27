@@ -11,6 +11,7 @@ import type { Ctx } from '../context';
 import { aiKeyRoutes } from '../routes/ai-key';
 import { aiUsageRoutes } from '../routes/ai-usage';
 import { drillRoutes } from '../routes/drill';
+import { interviewTemplateRoutes } from '../routes/interview-templates';
 import { interviewRoutes } from '../routes/interviews';
 import { miscRoutes } from '../routes/misc';
 import { padRoutes } from '../routes/pads';
@@ -245,6 +246,7 @@ export function createHttpApp(ctx: Ctx): Hono<Env> {
   app.route('/api', quizRoutes(ctx));
   app.route('/api', drillRoutes(ctx));
   app.route('/api', interviewRoutes(ctx));
+  app.route('/api', interviewTemplateRoutes(ctx));
 
   app.notFound((c) => c.json(new HttpError(404, 'not_found', 'Not found').toBody(), 404));
   app.onError((err, c) => {
