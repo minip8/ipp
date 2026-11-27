@@ -28,10 +28,11 @@
  * The API is a single instance (pad rooms are in memory), so one sweeper sees every live pad.
  */
 import { quantClock, quantMode, quantRoundEndsAt } from '@ipp/contracts';
-import { pads, quantRounds } from '@ipp/db';
+import { interviews, pads, quantRounds } from '@ipp/db';
 import { and, eq, sql } from '@ipp/db/orm';
 import { cannedCloseLine, quantDue } from '@ipp/interviewer';
 import type { Ctx } from '../context';
+import { stagePosition } from '../interviews/logic';
 import { applyStep } from './round';
 
 /**
@@ -49,9 +50,13 @@ export async function sweepQuantRounds(
       startedAt: pads.startedAt,
       state: quantRounds.state,
       version: quantRounds.version,
+      stageIndex: pads.stageIndex,
+      // A stage's pad: the plan it is part of, so its close says what comes next.
+      stages: interviews.stages,
     })
     .from(pads)
     .innerJoin(quantRounds, eq(quantRounds.padId, pads.id))
+    .leftJoin(interviews, eq(interviews.id, pads.interviewId))
     .where(
       and(
         eq(pads.format, 'quant'),
@@ -78,7 +83,14 @@ export async function sweepQuantRounds(
         version: row.version,
         index: clock.index,
         kind: 'proactive',
-        say: cannedCloseLine(due, clock, row.state.questions.length, now),
+        say: cannedCloseLine(due, clock, row.state.questions.length, now, {
+          stage:
+            row.stages && row.stageIndex !== null
+              ? stagePosition(row.stages, row.stageIndex)
+              : null,
+          // A round of one game (a game stage) closes as a game, not as a round of questions.
+          game: row.state.questions.length === 1 && Boolean(row.state.questions[0]?.game),
+        }),
         by: due,
         verdict: null,
       });

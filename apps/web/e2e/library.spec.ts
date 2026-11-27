@@ -7,6 +7,9 @@ const rows = (page: Page) =>
 const titles = async (page: Page) =>
   (await rows(page).locator('span.block.font-medium').allTextContents()).sort();
 
+/** The library beside the coding room setup ("Interview someone"). */
+const LIBRARY = '/software/interviews?mode=host';
+
 async function chooseOption(page: Page, combobox: string, option: string) {
   await page.getByRole('combobox', { name: combobox, exact: true }).click();
   await page.getByRole('option', { name: option, exact: true }).click();
@@ -15,18 +18,18 @@ async function chooseOption(page: Page, combobox: string, option: string) {
 test.describe('problem library', () => {
   test('nothing is selected by default and Start waits for a problem', async ({ page }) => {
     await setup(page);
-    await page.goto('/software/interviews');
+    await page.goto(LIBRARY);
     await expect(page.locator('#interview-setup')).toContainText('No problem selected');
-    await expect(page.getByRole('button', { name: 'Start interview' })).toBeDisabled();
-    await expect(page.getByText('Choose a problem to start.')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Create room' })).toBeDisabled();
+    await expect(page.getByText('Choose a problem or a blank editor to start.')).toBeVisible();
     await page.getByRole('button', { name: /^Merge Intervals/ }).click();
     await expect(page.getByTestId('selected-problem')).toHaveText('Merge Intervals');
-    await expect(page.getByRole('button', { name: 'Start interview' })).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Create room' })).toBeEnabled();
   });
 
   test('categories organise the library', async ({ page }) => {
     await setup(page);
-    await page.goto('/software/interviews');
+    await page.goto(LIBRARY);
     await expect(rows(page)).toHaveCount(15);
     await page.getByRole('tab', { name: /^Implementation/ }).click();
     await expect(page.getByText('Practical code with no trick to spot')).toBeVisible();
@@ -43,7 +46,7 @@ test.describe('problem library', () => {
     page,
   }) => {
     await setup(page);
-    await page.goto('/software/interviews');
+    await page.goto(LIBRARY);
     const lru = page.getByRole('button', { name: /^LRU Cache/ });
     await expect(lru).not.toContainText('Linked list');
     const search = page.getByRole('searchbox', { name: 'Search problems' });
@@ -64,7 +67,7 @@ test.describe('problem library', () => {
 
   test('a topic group shows all its problems; a subtopic narrows it', async ({ page }) => {
     await setup(page);
-    await page.goto('/software/interviews');
+    await page.goto(LIBRARY);
     await expect(page.getByRole('combobox', { name: 'Subtopic' })).toHaveCount(0);
     await chooseOption(page, 'Topic', 'Graphs');
     expect(await titles(page)).toEqual(['Course Schedule', 'Number of Islands', 'Word Ladder']);
@@ -88,7 +91,7 @@ test.describe('problem library', () => {
     page,
   }) => {
     const backend = await setup(page);
-    await page.goto('/software/interviews');
+    await page.goto(LIBRARY);
     // In Python the C++-only Unique Pointer is never picked, which leaves two candidates.
     await page.getByRole('radio', { name: 'Python' }).click();
     await page.getByRole('tab', { name: /^Data structures/ }).click();
@@ -101,7 +104,7 @@ test.describe('problem library', () => {
     await page.getByRole('button', { name: 'Pick another random problem' }).click();
     await expect(title).toHaveText(first === 'LRU Cache' ? 'Min Stack' : 'LRU Cache');
     expect(backend.requests.some((r) => r.method === 'POST' && r.path === '/api/pads')).toBe(false);
-    await page.getByRole('button', { name: 'Start interview' }).click();
+    await page.getByRole('button', { name: 'Create room' }).click();
     await expect(page).toHaveURL(/\/pads\/[0-9a-f-]{36}$/);
     const create = backend.requests.find((r) => r.method === 'POST' && r.path === '/api/pads');
     expect(create?.body).toMatchObject({
@@ -113,7 +116,7 @@ test.describe('problem library', () => {
     page,
   }) => {
     const backend = await setup(page);
-    await page.goto('/software/interviews');
+    await page.goto(LIBRARY);
     await page.getByRole('radio', { name: 'Python' }).click();
     const row = page.getByRole('button', { name: /^Unique Pointer/ });
     await expect(row.getByTestId('language-restriction')).toHaveText('C++ only');
@@ -137,7 +140,7 @@ test.describe('problem library', () => {
       'true',
     );
     await page.getByRole('button', { name: /^Unique Pointer/ }).click();
-    await page.getByRole('button', { name: 'Start interview' }).click();
+    await page.getByRole('button', { name: 'Create room' }).click();
     await expect(page).toHaveURL(/\/pads\/[0-9a-f-]{36}$/);
     const create = backend.requests.find((r) => r.method === 'POST' && r.path === '/api/pads');
     expect(create?.body).toMatchObject({ problemSlug: 'unique-pointer', language: 'cpp' });
@@ -153,7 +156,7 @@ test.describe('problem library', () => {
     page,
   }) => {
     await setup(page);
-    await page.goto('/software/interviews');
+    await page.goto(LIBRARY);
     const row = (name: RegExp) =>
       page.getByRole('region', { name: 'Problem library' }).getByRole('button', { name });
     const mark = (name: RegExp) => row(name).getByTestId('problem-status');
@@ -212,7 +215,7 @@ test.describe('problem library', () => {
     await setup(page, (b) => {
       b.problemProgress = [];
     });
-    await page.goto('/software/interviews');
+    await page.goto(LIBRARY);
     await expect(page.getByTestId('problem-status').first()).toBeVisible();
     await expect(
       page.locator('[data-testid="problem-status"]:not([data-status="new"])'),
@@ -234,7 +237,7 @@ test.describe('problem library', () => {
     await expect(page.getByTestId('problem-status')).toHaveCount(0);
     await expect(page.getByRole('radiogroup', { name: 'Status' })).toHaveCount(0);
     await page.getByRole('button', { name: /^Two Sum/ }).click();
-    await expect(page.getByRole('button', { name: 'Start interview' })).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Create room' })).toBeEnabled();
   });
 
   test('the interview problem panel hides topics until revealed', async ({ page }) => {
@@ -258,10 +261,9 @@ test.describe('interview setup panel', () => {
     page,
   }) => {
     await setup(page);
-    // Chosen by the URL: at this height the library rows start near the fold, and clicking one
-    // would make Playwright scroll the page, which is what this test rules out.
-    await page.goto('/software/interviews?problem=two-sum');
-    const start = page.getByRole('button', { name: 'Start interview' });
+    // The builder's panel: the plan's total, the interviewer's options and Start.
+    await page.goto('/software/interviews?preset=onsite-loop');
+    const start = page.getByRole('button', { name: 'Start the interview' });
     await expect(start).toBeEnabled();
     await expect(start).toBeInViewport({ ratio: 1 });
     expect(await page.evaluate(() => window.scrollY)).toBe(0);
@@ -274,7 +276,7 @@ test.describe('interview setup panel', () => {
     await page.getByLabel('Voice').scrollIntoViewIfNeeded();
     await expect(page.getByLabel('Voice')).toBeInViewport();
     await expect(start).toBeInViewport({ ratio: 1 });
-    // ...and it still follows the page when the library is scrolled.
+    // ...and it still follows the page when the plan is scrolled.
     await page.mouse.move(300, 400);
     await page.mouse.wheel(0, 600);
     await expect(start).toBeInViewport({ ratio: 1 });

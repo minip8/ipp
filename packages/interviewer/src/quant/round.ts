@@ -35,12 +35,14 @@ import type {
   QuantPhase,
   QuantStep,
   QuantStepResult,
+  QuantSubject,
   QuantVerdict,
   ReportAssessment,
 } from '@ipp/contracts';
 import { ModelError, type ModelRequest, type ModelResponse } from '../model';
 import * as policy from '../policy';
-import type { AiScope, InterviewerDeps, QuantContext, ResolvedKey } from '../types';
+import { inStages, STAGE_KIND_WORDS, stagePart, stageWithNext } from '../prompts';
+import type { AiScope, InterviewerDeps, QuantContext, ResolvedKey, StagePosition } from '../types';
 import {
   QuantAssessmentSchema,
   quantAssessmentRequest,
@@ -54,6 +56,7 @@ import { parseModelJson } from './latex';
 import {
   afterRoundTask,
   forcedCloseTask,
+  isGameRound,
   nudgeTask,
   openingTask,
   quantMessages,
@@ -61,6 +64,7 @@ import {
   quantSystem,
   replyTask,
   stallTask,
+  subjectOf,
 } from './prompts';
 import { MessageStream, type StreamGate } from './stream';
 import {
@@ -110,22 +114,72 @@ export const QUANT_MESSAGES = {
   /** A failed call on a game: nothing was traded or shown, and their market (if any) stands. */
   gameReplyFailed:
     'Sorry, I lost my train of thought there for a second (connection hiccup). Could you say that again, or post your market again?',
+  /** The opening of a round of fundamentals questions (`technical`), or of both kinds (`mixed`). */
+  technicalOpening:
+    "Welcome. I'll ask you a few technical questions, one at a time, and each one will appear on your screen. Think out loud as you go, and use the scratchpad if it helps. Here's the first.",
+  mixedOpening:
+    "Welcome. I'll ask you a few questions, one at a time, and each one will appear on your screen. Think out loud as you go and use the scratchpad for working. Here's the first.",
+  /** A round that is one market-making game (a game stage). */
+  gameOpening:
+    "Welcome. This round is one market-making game: it will appear on your screen, you post your markets through the quote box, and I'll trade against them. Think out loud as you go. Here it is.",
+  gameWrapUp:
+    "That's the game. Thanks for trading with me; the written report has the full analysis.",
+  gameTimeoutLast:
+    "That's time on the game. Thanks for trading with me; the written report has the full analysis.",
+  gameRoundTime:
+    "We're out of time, so let's stop the game there. Thanks for trading with me; the written report has the full analysis.",
 } as const;
+
+/** What comes after a stage that is not the last, said when it ends. */
+const nextPartLine = (next: NonNullable<StagePosition['next']>) =>
+  `Thanks. Next up is ${STAGE_KIND_WORDS[next]}; the written report covers this part.`;
 
 /**
  * What a close says when the model did not word it: the round's end, the last question, or
  * moving on. Also what the API says when it closes an unattended question for time (its sweeper).
+ * `stage`: the pad's place in its interview (`QuantContext.stage`): a stage with another after it
+ * ends with what comes next, not a goodbye. `game`: the round is one market-making game
+ * (`isGameRound`). Without either, the lines are exactly the quant round's.
  */
 export function cannedCloseLine(
   by: 'interviewer' | 'timeout' | 'round_time',
   clock: QuantClock | null,
   total: number,
   now: number,
+  o: { stage?: StagePosition | null; game?: boolean } = {},
 ): string {
-  if (by === 'round_time') return QUANT_MESSAGES.roundTime;
+  const goesOn = stageWithNext(o.stage) ? o.stage : null;
+  if (by === 'round_time') {
+    if (goesOn?.next)
+      return `We're out of time for this part, so let's stop there. ${nextPartLine(goesOn.next)}`;
+    return o.game ? QUANT_MESSAGES.gameRoundTime : QUANT_MESSAGES.roundTime;
+  }
   const last = closingEndsRound(clock, total, now);
-  if (by === 'timeout') return last ? QUANT_MESSAGES.timeoutLast : QUANT_MESSAGES.timeout;
-  return last ? QUANT_MESSAGES.wrapUp : QUANT_MESSAGES.moveOn;
+  if (!last) return by === 'timeout' ? QUANT_MESSAGES.timeout : QUANT_MESSAGES.moveOn;
+  if (goesOn?.next)
+    return `${by === 'timeout' ? "That's time on this one, and that's" : "That's"} the end of this part. ${nextPartLine(goesOn.next)}`;
+  if (o.game) return by === 'timeout' ? QUANT_MESSAGES.gameTimeoutLast : QUANT_MESSAGES.gameWrapUp;
+  return by === 'timeout' ? QUANT_MESSAGES.timeoutLast : QUANT_MESSAGES.wrapUp;
+}
+
+/** What the opening says when the model cannot say it. Without a stage or subject, the quant one. */
+export function cannedOpening(o: {
+  subject?: QuantSubject;
+  game?: boolean;
+  stage?: StagePosition | null;
+}): string {
+  const base = o.game
+    ? QUANT_MESSAGES.gameOpening
+    : o.subject === 'technical'
+      ? QUANT_MESSAGES.technicalOpening
+      : o.subject === 'mixed'
+        ? QUANT_MESSAGES.mixedOpening
+        : QUANT_MESSAGES.opening;
+  if (!inStages(o.stage)) return base;
+  const rest = base.replace(/^Welcome\. /, '');
+  return o.stage.index === 0
+    ? `Welcome. This interview comes in ${o.stage.total} parts, and this is the first. ${rest}`
+    : `This is ${stagePart(o.stage)} of the interview. ${rest}`;
 }
 
 /** The round as this pad's runtime last saw it (refreshed by every context load and step). */
@@ -556,7 +610,10 @@ export function createQuantRuntime<R extends QuantPad>(core: QuantCore<R>) {
   }
 
   const cannedClose = (ctx: QuantContext, by: 'interviewer' | 'timeout' | 'round_time') =>
-    cannedCloseLine(by, ctx.round.clock, ctx.round.total, core.now());
+    cannedCloseLine(by, ctx.round.clock, ctx.round.total, core.now(), {
+      stage: ctx.stage,
+      game: isGameRound(ctx),
+    });
 
   /**
    * Posts a plain message (no step): a canned reply, or a reply after the round. It takes the id
@@ -669,7 +726,15 @@ export function createQuantRuntime<R extends QuantPad>(core: QuantCore<R>) {
       const voice = via === 'voice' || ctx.pad.interviewer.voice;
       const game = isGameEntry(entry);
       const r = await call(rt, ctx, key, {
-        task: replyTask({ via, voice, nudge, forced, game }),
+        task: replyTask({
+          via,
+          voice,
+          nudge,
+          forced,
+          game,
+          subject: subjectOf(ctx),
+          stage: ctx.stage,
+        }),
         inflight: 'reply',
         extra: queued,
         stream: true,
@@ -771,13 +836,19 @@ export function createQuantRuntime<R extends QuantPad>(core: QuantCore<R>) {
     queued: QuantPad['replyQueue'],
   ): Promise<void> {
     const voice = queued.at(-1)?.via === 'voice' || ctx.pad.interviewer.voice;
-    let say: string = QUANT_MESSAGES.opening;
+    const shape = { subject: subjectOf(ctx), game: isGameRound(ctx), stage: ctx.stage };
+    let say: string = cannedOpening(shape);
     let note: string | undefined;
     let r: CallResult | null = null;
     if (key && (queued.length > 0 || (await core.budgetOk(rt, 'proactive')))) {
       const epoch = rt.epoch;
       r = await call(rt, ctx, key, {
-        task: openingTask({ voice, candidateSpoke: queued.length > 0 }),
+        task: openingTask({
+          voice,
+          candidateSpoke: queued.length > 0,
+          total: ctx.round.total,
+          ...shape,
+        }),
         // The greeting moment gives way to a candidate message, whose reply opens instead.
         inflight: queued.length > 0 ? 'reply' : 'decision',
         extra: queued,
@@ -813,7 +884,7 @@ export function createQuantRuntime<R extends QuantPad>(core: QuantCore<R>) {
   ): Promise<void> {
     const voice = via === 'voice' || ctx.pad.interviewer.voice;
     const r = await call(rt, ctx, key, {
-      task: afterRoundTask({ via, voice }),
+      task: afterRoundTask({ via, voice, subject: subjectOf(ctx), stage: ctx.stage }),
       inflight: 'reply',
       extra: queued,
       stream: true,
@@ -876,7 +947,9 @@ export function createQuantRuntime<R extends QuantPad>(core: QuantCore<R>) {
       thinking(rt, true);
       try {
         r = await call(rt, ctx, key, {
-          task: forced ? forcedCloseTask(forced, voice, game) : nudgeTask(voice, game),
+          task: forced
+            ? forcedCloseTask(forced, voice, game, { subject: subjectOf(ctx), stage: ctx.stage })
+            : nudgeTask(voice, game, subjectOf(ctx)),
           inflight: 'decision',
         });
       } finally {
@@ -974,7 +1047,7 @@ export function createQuantRuntime<R extends QuantPad>(core: QuantCore<R>) {
     const epoch = rt.epoch;
     const decidedFrom = core.now();
     const r = await call(rt, ctx, key, {
-      task: stallTask(m.detail, ctx.pad.interviewer.voice, isGameEntry(entry)),
+      task: stallTask(m.detail, ctx.pad.interviewer.voice, isGameEntry(entry), subjectOf(ctx)),
       inflight: 'decision',
     });
     const base = { trigger: 'stall', ...perf(r) };

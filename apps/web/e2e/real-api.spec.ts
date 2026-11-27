@@ -70,16 +70,14 @@ test('sign up, no-key states, add a key, interview, edit, run, end, report; quiz
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page).toHaveURL(/\/dashboard/);
 
-  // New interview from the library. A new account has no key: the setup says so, and Start
-  // offers to add one or to go without.
-  await page.getByRole('searchbox', { name: 'Search problems' }).fill('two sum');
-  await page
-    .getByRole('button', { name: /Two Sum/ })
-    .first()
-    .click();
-  await expect(page.getByTestId('ai-key-prompt')).toContainText('Runs on your own AI API key');
+  // A new interview from the builder. A new account has no key: the setup says so, and Start
+  // asks for one first.
+  await page.goto('/software/interviews?problem=two-sum');
+  await expect(page.getByTestId('interview-key-prompt')).toContainText(
+    'The interview runs on your own AI API key',
+  );
   await shot(page, 'new');
-  await page.getByRole('button', { name: 'Start interview' }).click();
+  await page.getByRole('button', { name: 'Start the interview' }).click();
   await expect(page.getByRole('dialog', { name: 'Add your API key to start' })).toBeVisible();
   await page.keyboard.press('Escape');
 

@@ -264,6 +264,10 @@ describe('normaliseTurn', () => {
     expect(stripJsonDebris('did not answer the time nudge.<br>')).toBe(
       'did not answer the time nudge.',
     );
+    // The start of a field that never came (seen live on a technical round's note).
+    expect(stripJsonDebris('the follow-up on the fix went unanswered.",""')).toBe(
+      'the follow-up on the fix went unanswered.',
+    );
     for (const s of [
       'Is "maybe 2%" final?',
       'You called it "fair"',

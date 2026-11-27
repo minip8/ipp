@@ -721,6 +721,7 @@ describe('publicRound', () => {
     expect(publicRound(r.state, 0)).toEqual({
       mode: 'ai',
       path: 'trader',
+      subject: 'quant',
       total: 4,
       phase: 'pending',
       questions: [],

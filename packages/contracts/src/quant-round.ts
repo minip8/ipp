@@ -63,7 +63,7 @@ import {
   settleGame,
   tradeQuote,
 } from './quant-game';
-import { QuantPath, QuizDifficulty } from './quiz';
+import { QuantPath, QuizDifficulty, type QuizTrack } from './quiz';
 
 // ---------------------------------------------------------------- how the round is driven
 
@@ -77,6 +77,35 @@ export type QuantRoundMode = z.infer<typeof QuantRoundMode>;
 /** How a round is driven. Rounds stored before quant rooms have no `mode`: they are AI-run. */
 export const quantMode = (state: { mode?: QuantRoundMode | undefined }): QuantRoundMode =>
   state.mode ?? 'ai';
+
+/**
+ * What an AI round's questions are about, by the homes of the topics it draws from. It chooses
+ * the interviewer's frame (a trading firm's round, or a software team's fundamentals round) and
+ * what the round is called; the machinery is the same.
+ *
+ *  quant      quant topics only (every round before staged interviews, and every hosted round)
+ *  technical  fundamentals topics only: languages, operating systems, networking and the like
+ *  mixed      both
+ */
+export const QuantSubject = z.enum(['quant', 'technical', 'mixed']);
+export type QuantSubject = z.infer<typeof QuantSubject>;
+
+/** The subject of a round over topics with these homes (`quant` with none). */
+export function quantSubject(homes: readonly QuizTrack[]): QuantSubject {
+  const quant = homes.some((h) => h === 'quant');
+  const fundamentals = homes.some((h) => h === 'fundamentals');
+  return fundamentals ? (quant ? 'mixed' : 'technical') : 'quant';
+}
+
+/** A round's subject. Rounds stored before staged interviews have none: they are quant. */
+export const roundSubject = (state: { subject?: QuantSubject | undefined }): QuantSubject =>
+  state.subject ?? 'quant';
+
+export const QUANT_SUBJECT_LABEL: Record<QuantSubject, string> = {
+  quant: 'Quant round',
+  technical: 'Technical questions',
+  mixed: 'Questions round',
+};
 
 /** A bank question's type, as a hosted round records it when the host poses it. */
 export const QuantQuestionType = z.enum(['single', 'multiple', 'output', 'short', 'numeric']);
@@ -205,8 +234,13 @@ export type QuantQuestionView = z.infer<typeof QuantQuestionView>;
 export const QuantRoundView = z.object({
   /** Absent from servers before quant rooms, hence the default. */
   mode: QuantRoundMode.default('ai'),
-  /** An AI round's path; null in a hosted round (the host picks from the whole bank). */
+  /**
+   * An AI round's path; null in a hosted round (the host picks from the whole bank) and in a
+   * round assembled from topics chosen one by one (a staged interview's questions or game stage).
+   */
   path: QuantPath.nullable(),
+  /** Absent from servers before staged interviews, hence the default. */
+  subject: QuantSubject.default('quant'),
   /**
    * Questions in an AI round, posed or not. null in a hosted round: its questions are only those
    * posed so far and nobody (the candidate least of all) knows how many more will come, so a
@@ -307,8 +341,10 @@ export const QUANT_HOSTED_HINTS_MAX = 20;
 export const QuantRoundState = z.object({
   /** Absent in every AI round (rounds stored before quant rooms included); read with `quantMode`. */
   mode: QuantRoundMode.optional(),
-  /** An AI round's path; null in a hosted round. */
+  /** An AI round's path; null in a hosted round and in a round assembled from chosen topics. */
   path: QuantPath.nullable(),
+  /** Absent in a quant round (every round stored before staged interviews); read with `roundSubject`. */
+  subject: QuantSubject.optional(),
   /** An AI round's length; 0 in a hosted round, which has no clock. */
   durationMin: z.int().min(0),
   questions: z.array(QuantRoundQuestion),
@@ -359,13 +395,19 @@ export function quantGamePick(game: QuantGame, topicTitle: string, rand: () => n
   };
 }
 
-/** A pending round over the assembled questions, in the order they will be asked. */
+/**
+ * A pending round over the assembled questions, in the order they will be asked. `path` is null
+ * for a round assembled from chosen topics; a `subject` other than `quant` is stored (a quant
+ * round's state stays exactly as it was before subjects existed).
+ */
 export const createQuantRound = (
-  path: QuantPath,
+  path: QuantPath | null,
   durationMin: number,
   picks: readonly QuantPick[],
+  subject: QuantSubject = 'quant',
 ): QuantRoundState => ({
   path,
+  ...(subject === 'quant' ? {} : { subject }),
   durationMin,
   current: -1,
   questions: picks.map((p) => ({
@@ -436,6 +478,7 @@ export function publicRound(state: QuantRoundState, version: number): QuantRound
   return {
     mode: hosted ? 'hosted' : 'ai',
     path: state.path,
+    subject: roundSubject(state),
     total: hosted ? null : state.questions.length,
     phase: quantPhase(state),
     questions,
@@ -529,8 +572,10 @@ export const quantGameReview = (
 export const QuantReport = z.object({
   /** Absent from reports built before quant rooms, hence the default. */
   mode: QuantRoundMode.default('ai'),
-  /** null for a hosted round. */
+  /** null for a hosted round and a round assembled from chosen topics. */
   path: QuantPath.nullable(),
+  /** Absent from reports built before staged interviews, hence the default. */
+  subject: QuantSubject.default('quant'),
   /**
    * An AI round: every question assembled, posed or not. A hosted round: the questions the host
    * posed, in the order posed (the queue is not part of the report).

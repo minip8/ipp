@@ -23,6 +23,7 @@ export type {
   ReviewResult,
   RoomContext,
   ShortAnswerGrade,
+  StagePosition,
   Trigger,
 } from '@ipp/interviewer';
 

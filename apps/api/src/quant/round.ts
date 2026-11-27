@@ -54,6 +54,7 @@ import {
   quantRoundEndsAt,
   quantTimeSec,
   quizSolution,
+  roundSubject,
 } from '@ipp/contracts';
 import {
   aiUsage,
@@ -588,7 +589,12 @@ export function buildQuantReport(
       game: null,
     };
   });
-  return { mode: hosted ? 'hosted' : 'ai', path: state.path, questions };
+  return {
+    mode: hosted ? 'hosted' : 'ai',
+    path: state.path,
+    subject: roundSubject(state),
+    questions,
+  };
 }
 
 export { bankQuestions, gameContent };

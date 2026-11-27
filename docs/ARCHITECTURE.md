@@ -56,19 +56,33 @@ page remembers its track (`PUT /api/me/track`, `user.track`, §3); a page of no 
 report, a quiz, a question bank, settings) shows the remembered one. URLs are built and read by
 the pure `apps/web/src/lib/track.ts`.
 
-- **Interviews** (`features/interviews`): the track's pads under way, then "New interview" and
-  "History" (`?view=history`). A pad is in a track by its format (`padTrack`: coding pads and
-  coding rooms Software, quant rounds and quant rooms Quant), and so are the figures (Software:
-  finished and solved; Quant: rounds finished) and the history's columns. The setup opens with
-  "Practise with the AI | Interview someone" (`?mode=host`). Software: the problem library and a
-  coding pad, or a coding room (§4.1); `?problem=` preselects a problem. Quant: a live round on a
-  path (`?path=`, §8.2), or a quant room (§8.4), offered only there. Its bank browser filters by
-  site track (`topicInTrack`, starting on Quant) and still offers every question; the host's desk
-  in the room, which searches on the server by a topic's home (`HostBankQuery.track`), has no
-  track filter.
+- **Interviews** (`features/interviews`): what is under way, then "New interview" and "History"
+  (`?view=history`). "New interview" opens with "Practise with the AI | Interview someone"
+  (`?mode=host`). Practising is the **interview builder** (`features/interview-builder`, §4.2),
+  the same component in both tracks: the track's presets, the plan as an ordered list of stages
+  edited in place (any kind of stage and any topic in either track; an edited plan reads
+  "Custom"), the interviewer's options, and Start, which creates the interview and opens stage
+  0's pad. `?preset=` chooses a preset, `?problem=` makes a plan of one coding stage on that
+  problem, the old `?path=` maps to the Trader and Researcher presets; the last plan per track
+  is remembered in the browser. Interviewing someone is unchanged: a coding room (§4.1) in
+  Software, a quant room (§8.4) in Quant, whose bank browser filters by site track
+  (`topicInTrack`, starting on Quant) and still offers every question; the host's desk in the
+  room, which searches on the server by a topic's home (`HostBankQuery.track`), has no track
+  filter. The lists hold staged interviews of the track they were built in (`interviews.track`)
+  and pads started on their own, which are in a track by their format (`padTrack`: coding pads
+  and coding rooms Software, quant rounds and quant rooms Quant). A stage's pad is never a row
+  of its own; an interview of one stage is shown as its pad.
+- **A stage's pad and the interview page.** A pad that is a stage of several
+  (`PadDetail.interview`) shows which ("Stage 2 of 3"); its End is "End stage", after which, or
+  once its round has run out of questions, it offers the next stage (`next`) or ending the
+  interview there. `/interviews/[id]` (`features/interview`, a page of no track, like a pad) is
+  the hub between stages and the combined report: the stage to continue or start, each stage
+  with its status and, once done, its report in brief with a link to the full one, and after the
+  end the overall recommendation, labelled as arithmetic.
 - **Practice** (`features/quiz/hub.tsx`): the track's quiz topics and the quiz setup (Quant adds
-  the drill), Software's problem library (`?view=problems`: a problem's card leads to its
-  Interviews setup with the problem chosen), and the history of attempts with a topic of the track.
+  the drill), Software's problem library (`?view=problems`: a problem's card starts it on your
+  own, a pad with no interviewer and no clock that needs no AI key, or leads to the builder with
+  the problem chosen), and the history of attempts with a topic of the track.
 - **Roadmap** (`features/roadmap`): the study path (Quant's two, `?path=`) and the topic maps
   (`?view=maps&roadmap=<topic>&node=<id>`, §8).
 
@@ -101,7 +115,8 @@ Better Auth owns `user`, `session`, `account`, `verification` (text ids). App ta
 |---|---|
 | `problems` | `slug` pk, title, difficulty, category, tags text[], statement, signature jsonb, limits jsonb, interviewer_notes, reference_solutions jsonb, languages text[], starter_code jsonb, harness jsonb (server-only), source jsonb |
 | `problem_tests` | problem_slug, idx, hidden, data jsonb (`TestCase`) |
-| `pads` | id uuid, owner_id, title, kind (`practice` / `room`), format (`coding` / `quant`, §8.2), problem_slug (null: a blank room, and every quant pad), language (stored as `python` and unused for a quant pad), status, duration_min (null: no time limit), interviewer jsonb, share_token, host_notes (rooms, host-only), started_at, ended_at |
+| `pads` | id uuid, owner_id, title, kind (`practice` / `room`), format (`coding` / `quant`, §8.2), problem_slug (null: a blank room, and every quant pad), language (stored as `python` and unused for a quant pad), status, duration_min (null: no time limit), interviewer jsonb, share_token, host_notes (rooms, host-only), started_at, ended_at, interview_id and stage_index (the staged interview it is a stage of, §4.2; both null otherwise; unique together) |
+| `interviews` | id uuid, owner_id, title, track (the site track it was built in), preset (null: built from nothing), stages jsonb (`InterviewStage[]`, the plan), interviewer jsonb (`InterviewSettings`), status, current (the latest stage started), started_at, ended_at — a staged interview (§4.2) |
 | `quant_rounds` | pad_id pk (a quant pad, cascade), state jsonb (`QuantRoundState`, server-only: question ids, verdicts, hint rungs; a quant room's also `mode: 'hosted'` and the host's queue, §8.4), version (compare-and-swap guard), updated_at |
 | `pad_members` | pad_id, user_id, role (`owner`; `collaborator` = a room's candidate) |
 | `pad_docs` | pad_id pk, state bytea (merged Yjs state), updated_at |
@@ -155,7 +170,13 @@ Every body is validated with the contracts schema named below.
 | `GET /api/pads/:id` | | `PadDetail` (`round`: a quant pad's `QuantRoundView`, else null) |
 | `PATCH /api/pads/:id` | `UpdatePadRequest` | `Pad` (a quant pad: 409 `wrong_format` with `language`; `interviewer.enabled` stays true) |
 | `POST /api/pads/:id/end` | | `Pad` (starts report generation) |
-| `DELETE /api/pads/:id` | | `DeletePadResponse` (owner: deletes the pad and everything attached, closing its live sockets; collaborator: removes only their own membership) |
+| `DELETE /api/pads/:id` | | `DeletePadResponse` (owner: deletes the pad and everything attached, closing its live sockets; collaborator: removes only their own membership); 409 `in_interview` for the owner of a stage's pad (§4.2) |
+| `POST /api/interviews` | `CreateInterviewRequest` (`track`, `preset?`, `title?`, `stages` 1 to 6, `interviewer` without `enabled`) | `InterviewStart` (`{ interview, padId }`: the interview, and stage 0's pad, started); 409 `ai_key_missing`; a plan that cannot run is refused before anything is created (404 for a problem or topic that is not there, 400 `language_unavailable`, 409 `quant_unavailable` naming the stage); 429 (the `POST /api/pads` allowance, once) |
+| `GET /api/interviews` | | `Interview[]` (mine, newest first, at most 100) |
+| `GET /api/interviews/:id` | | `Interview` (each stage's status, its pad once started and its report's headline once ended) |
+| `POST /api/interviews/:id/next` | `AdvanceInterviewRequest` (`{ from }`) | `InterviewStart`: stage `from`'s pad ended and the next started, or after the last the interview ended (`padId` null); unchanged when it is no longer at `from` |
+| `POST /api/interviews/:id/end` | | `Interview` (the stage under way ends; stages never started read `skipped`) |
+| `DELETE /api/interviews/:id` | | `DeleteInterviewResponse` (the interview and every stage's pad) |
 | `GET /api/pads/invite/:token` | no session needed | `InviteInfo` (`kind`, `title`, `hostName`, `status`) |
 | `POST /api/pads/join` | `{ shareToken }` | `{ padId }` (the session's user becomes a member; a guest may only join rooms) |
 | `POST /api/pads/join-guest` | `JoinGuestRequest` (`shareToken`, `name`), no session needed | `{ padId }`, and a guest session cookie when there was no session (rooms only) |
@@ -252,6 +273,67 @@ quant room on the Quant track's.
   only what was posed, and while the room is active the quiz will not show them answers.
 Quiz responses never contain answers or explanations for questions the user has not answered
 (practice) or before the attempt is finished (exam).
+
+### 4.2 Staged interviews
+
+A staged interview (`packages/contracts/src/interview.ts`) is a mock interview in several parts,
+taken in one sitting with the AI interviewer: an ordered plan of up to six **stages**, each of
+which becomes an ordinary practice pad when it starts. The interview is only the parent record
+(`interviews`): the plan, which stage is under way, and through `pads.interview_id` and
+`pads.stage_index` the stages' pads. The pad, round and report code know nothing of it.
+
+| Stage | Is | Lengths (min) |
+|---|---|---|
+| `coding` | a coding pad on a named problem, or one drawn at random (by difficulty and category, in the stage's language, one the owner has not had before while there is one) | 30, 45, 60 |
+| `questions` | a pad of format `quant` whose round is assembled from the stage's quiz topics, of either home (`assembleForTopics`): the rules of §8.2 without a path or a game | 15, 20, 30, 45 (2, 3, 4, 6 questions) |
+| `game` | a pad of format `quant` whose round is one market-making game (§8.3) | 10, 15 |
+
+- **Presets and custom plans.** `INTERVIEW_PRESETS` are starting points per site track (Software:
+  a coding round, a technical screen, an onsite loop; Quant: trader, researcher, quant developer,
+  a single round); `presetStages` gives a preset's coding stages the user's language and adds the
+  language's own topic to the question stages that ask for it. The builder may change anything,
+  and a custom plan may mix stages of both tracks. `interviews.track` records where it was built:
+  that track's Interviews tab lists it, whatever its stages are.
+- **A stage is drawn when it starts** (`drawStage` in `apps/api/src/interviews/service.ts`), never
+  before: its pad's clock starts then, and nothing of a later stage (the problem, the questions,
+  a game's hidden values) exists to leak. The plan is checked as a whole when the interview is
+  created (`assertPlanStartable`), so one that cannot run fails before anything exists. A later
+  stage does not repeat an earlier one's questions (`recentlyPosed`).
+- **Each stage has its own clock**, the pad's. The interview has none.
+- **Moving on** (`next`) ends the stage being left through `endPad`, so its report and assessment
+  are written as for any pad, then starts the next in one transaction with a compare-and-swap on
+  `interviews.current`; the unique index on (interview_id, stage_index) backs it, so two calls at
+  once start one pad. When the next stage cannot start, the interview stays where it was with
+  that pad ended, and `next` can be asked for again. `next` does not check the AI key: a stage
+  started after the key lapsed shows the key as missing, as any pad would.
+- **Ending.** The last stage's pad ending, by whatever route, ends the interview (`endPad`). A
+  round running out of questions does not end its pad (§8.2), so a questions or game stage ends
+  when the candidate moves on or ends it. `end` ends the interview where it is; stages never
+  started read `skipped` (`stageStatuses`). A stage's pad is deleted only with its interview.
+- **A round's subject.** A round assembled from chosen topics has no path and carries a
+  `QuantSubject` from its topics' homes: `quant`, `technical` (fundamentals topics only) or
+  `mixed`. It chooses the interviewer's frame (§7.3) and what the round is called; a technical
+  or mixed round never holds a game.
+- **The interviewer knows its place.** For a pad of an interview of more than one stage the
+  context carries `StagePosition` (which part this is, how many there are, what kind comes
+  next), in the last system message so a stage's cached prefix is a standalone pad's. It opens
+  and closes the stage as one part of a longer interview; so does the sweeper's canned close.
+- **The report** is each stage's own (`GET /api/pads/:id/report`). `Interview` carries only each
+  stage's headline (its report's status and recommendation), and the overall recommendation is
+  arithmetic (`overallRecommendation`: the stages' recommendations averaged by planned length),
+  not a model's judgement.
+- **Who.** Accounts only, and only the owner (404 for anyone else). `PadDetail.interview` says
+  where a stage's pad sits to its owner alone; a collaborator who joined by the pad's link sees an
+  ordinary pad.
+
+**Proven by tests**: `packages/contracts/test/interview.test.ts` (stages, statuses, the overall
+recommendation, every preset a valid plan); `packages/content/test/interview-presets.test.ts`
+(every preset can be filled from the bank); `apps/api/test/interviews.test.ts` (each stage kind,
+plans refused before anything is created, the lazy start, `next` once under a race and retryable
+after a failure, the last pad ending the interview, `end`, `delete`, the owner-only views, short
+rounds and the sweeper's wording); `packages/interviewer/test/quant-subject.test.ts` (the quant
+core unchanged byte for byte, the technical and mixed cores, the stage wording, the cached prefix
+unchanged by a stage).
 
 ## 5. Realtime
 
@@ -413,7 +495,10 @@ its length instead when that allows more, `quantInterviewerMessagesPerMinute` 8 
 and hard caps on context size. The cap is checked (`checkBudget`) before every model call for a
 pad; once it is reached the interviewer says so once and stops calling the model, and a quant
 round's clock still nudges and closes with its canned lines. All model calls run on the user's own key (§7.1), so
-these limits protect the user's spend and keep the server from being used as a relay.
+these limits protect the user's spend and keep the server from being used as a relay. The daily
+message limit defaults to 1500: it must cover a day of staged interviews (several pads in one sitting,
+each with a spoken interviewer that answers often), so on any one pad the per-pad cap,
+and over the day the daily token limits, are what bind first; the message limit is the backstop.
 
 At the end of a pad the interviewer produces a `ReportAssessment` on the owner's key; the report
 page also offers playback of the editor history with run and chat markers.

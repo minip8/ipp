@@ -13,6 +13,16 @@
  * (`packages/content/games/<id>.yaml`) in the round's second slot and plays it with a scripted
  * candidate who posts quotes through the quote step (`--values 6,2,5` fixes its hidden values).
  *
+ *   pnpm --filter @ipp/interviewer exec tsx scripts/simulate.ts --technical [--voice] [--stage 2/3:coding]
+ *
+ * `--technical` plays a 20-minute round of three software fundamentals questions (operating
+ * systems, concurrency, C++) with a candidate who is partly right and probed, stuck and asks for a
+ * hint, asks for the answer outright, makes a confidently wrong claim, and commits and answers the
+ * follow-up. `--mixed` plays a quant question and then two of those in one round. `--stage i/n[:next]`
+ * (in any mode) makes the pad stage i of n of a staged interview, followed by a stage of kind
+ * `next` (coding, questions or game; none on the last stage): the opening and the wrap-up should
+ * then speak of this part of the interview.
+ *
  * Reads ANTHROPIC_API_KEY or ANTHROPIC_KEY from the environment or the repo-root .env.
  * The key is never printed. Uses a virtual clock: time jumps between scripted steps, so a
  * 30-minute interview runs in a few minutes of real time (dominated by model latency).
@@ -35,6 +45,7 @@ import {
   createInterviewer,
   type InterviewContext,
   interviewerConfigFromEnv,
+  type StagePosition,
   type TraceEvent,
 } from '../src/index';
 import { simulateQuant } from './simulate-quant';
@@ -66,6 +77,21 @@ const settings: InterviewerSettings = {
   voice: args.includes('--voice'),
 };
 const skipAssessment = args.includes('--no-assessment');
+
+/** `--stage 2/3:coding`: stage 2 of 3, a coding stage after it; `--stage 3/3`: the last. */
+function parseStage(raw: string): StagePosition | null {
+  if (!raw) return null;
+  const m = /^(\d+)\/(\d+)(?::(coding|questions|game))?$/.exec(raw);
+  if (!m) throw new Error(`--stage ${raw}: expected i/n or i/n:coding|questions|game`);
+  const index = Number(m[1]) - 1;
+  const total = Number(m[2]);
+  if (index < 0 || index >= total) throw new Error(`--stage ${raw}: no such stage`);
+  const next = (m[3] as StagePosition['next'] | undefined) ?? null;
+  if ((next === null) !== (index === total - 1))
+    throw new Error(`--stage ${raw}: only the last stage has nothing after it`);
+  return { index, total, next };
+}
+const stage = parseStage(flag('stage', ''));
 const env = { ...readDotEnv(), ...process.env };
 const config = interviewerConfigFromEnv(env);
 // A developer tool: it runs on the developer's own key from the environment. The API never does.
@@ -102,6 +128,7 @@ const pad: Pad = {
   shareToken: null,
   startedAt: iso(START),
   endedAt: null,
+  interviewId: null,
 };
 let code = `class Solution:\n    def twoSum(self, nums: list[int], target: int) -> list[int]:\n        pass\n`;
 const transcript: Message[] = [];
@@ -194,6 +221,7 @@ const interviewer = createInterviewer(
       if (id !== padId) throw new Error('unknown pad');
       return {
         pad,
+        stage,
         problem: problemNoTests,
         language: pad.language,
         code,
@@ -462,8 +490,14 @@ async function main() {
   );
 }
 
-(args.includes('--quant')
+(args.includes('--quant') || args.includes('--technical') || args.includes('--mixed')
   ? simulateQuant({
+      subject: args.includes('--technical')
+        ? 'technical'
+        : args.includes('--mixed')
+          ? 'mixed'
+          : 'quant',
+      stage,
       config,
       devKey,
       settings,

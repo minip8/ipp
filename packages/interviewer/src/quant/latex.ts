@@ -52,7 +52,10 @@ const N_COMMAND = new RegExp(
 
 /**
  * For each character, whether it is inside `$...$` or `$$...$$`. A `\$` (a literal dollar) neither
- * opens nor closes math.
+ * opens nor closes math. Outside math, an inline code span (a run of backticks up to the next run
+ * of the same length, as in Markdown and the pad's `splitMath`) is code, not math: a `$HOME` or a
+ * `\t` in it is left alone and does not open a formula. A run of backticks that never closes is
+ * plain text.
  */
 export function mathMask(s: string): boolean[] {
   const mask: boolean[] = new Array(s.length).fill(false);
@@ -60,6 +63,26 @@ export function mathMask(s: string): boolean[] {
   let display = false;
   for (let i = 0; i < s.length; i++) {
     const c = s[i];
+    if (c === '`' && !inline && !display) {
+      let n = 0;
+      while (s[i + n] === '`') n++;
+      let close = -1;
+      for (let j = i + n; j < s.length; ) {
+        if (s[j] !== '`') {
+          j++;
+          continue;
+        }
+        let m = 0;
+        while (s[j + m] === '`') m++;
+        if (m === n) {
+          close = j;
+          break;
+        }
+        j += m;
+      }
+      i = (close >= 0 ? close + n : i + n) - 1;
+      continue;
+    }
     if (c === '\\' && s[i + 1] === '$') {
       mask[i] = mask[i + 1] = inline || display;
       i++;

@@ -54,7 +54,7 @@ test.describe('Interviews page views', () => {
     const history = page.getByRole('tab', { name: /^History/ });
     await expect(history).toHaveAttribute('aria-selected', 'true');
     await expect(page.getByRole('tabpanel', { name: /^History/ })).toContainText('Merge Intervals');
-    await expect(page.getByRole('region', { name: 'Problem library' })).toBeHidden();
+    await expect(page.getByTestId('builder')).toBeHidden();
 
     await history.focus();
     await page.keyboard.press('ArrowLeft');
@@ -63,7 +63,7 @@ test.describe('Interviews page views', () => {
       'aria-selected',
       'true',
     );
-    await expect(page.getByRole('region', { name: 'Problem library' })).toBeVisible();
+    await expect(page.getByTestId('builder')).toBeVisible();
     await expect(page.getByRole('table')).toHaveCount(0);
   });
 });
@@ -112,13 +112,13 @@ test.describe('on a small phone', () => {
     await setup(page);
     // Chosen by the link, so nothing has scrolled the setup into view yet.
     await page.goto('/software/interviews?problem=lru-cache');
-    await expect(page.getByTestId('selected-problem')).toHaveText('LRU Cache');
+    await expect(page.getByTestId('stage-summary')).toHaveText(['LRU Cache · C++ · 45 min']);
     await noSideScroll(page);
     const toSetup = page.getByRole('button', { name: 'Set up interview' });
     await expect(toSetup).toBeVisible();
     await toSetup.click();
     // Once the setup is on screen, Start is in reach and the bar gives way.
-    await expect(page.getByRole('button', { name: 'Start interview' })).toBeInViewport();
+    await expect(page.getByRole('button', { name: 'Start the interview' })).toBeInViewport();
     await expect(toSetup).toBeHidden();
 
     await page.getByRole('tab', { name: /^History/ }).click();

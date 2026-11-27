@@ -10,6 +10,8 @@ import type {
   DrillCategoryResult,
   DrillLevel,
   InterviewerSettings,
+  InterviewSettings,
+  InterviewStage,
   JudgeResult,
   Language,
   PadFormat,
@@ -180,6 +182,33 @@ export type PadStatus = 'active' | 'ended';
 export type PadRole = 'owner' | 'collaborator';
 export type PadKind = 'practice' | 'room';
 
+/**
+ * A staged interview (@ipp/contracts `interview.ts`): the plan and which stage is under way. Each
+ * stage that has started is a pad (`pads.interview_id`, `pads.stage_index`).
+ */
+export const interviews = pgTable(
+  'interviews',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ownerId: text('owner_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    /** The site track whose Interviews tab it was built in. */
+    track: text('track').$type<Track>().notNull(),
+    /** The preset it started from; null when built from nothing. */
+    preset: text('preset'),
+    stages: jsonb('stages').$type<InterviewStage[]>().notNull(),
+    interviewer: jsonb('interviewer').$type<InterviewSettings>().notNull(),
+    status: text('status').$type<PadStatus>().notNull().default('active'),
+    /** The index of the latest stage started. */
+    current: integer('current').notNull().default(0),
+    startedAt: tsz('started_at').notNull().defaultNow(),
+    endedAt: tsz('ended_at'),
+  },
+  (t) => [index('interviews_owner_idx').on(t.ownerId, t.startedAt)],
+);
+
 export const pads = pgTable(
   'pads',
   {
@@ -206,8 +235,17 @@ export const pads = pgTable(
     endedAt: tsz('ended_at'),
     /** Set when session_started was sent to the interviewer (first time the pad is opened). */
     sessionStartedAt: tsz('session_started_at'),
+    /** The staged interview this pad is a stage of, and which stage; both null otherwise. */
+    interviewId: uuid('interview_id').references(() => interviews.id, { onDelete: 'cascade' }),
+    stageIndex: integer('stage_index'),
   },
-  (t) => [index('pads_owner_idx').on(t.ownerId, t.startedAt)],
+  (t) => [
+    index('pads_owner_idx').on(t.ownerId, t.startedAt),
+    // One pad per stage: a stage started twice at once loses the race instead of forking.
+    uniqueIndex('pads_interview_stage_idx')
+      .on(t.interviewId, t.stageIndex)
+      .where(sql`${t.interviewId} is not null`),
+  ],
 );
 
 /**

@@ -29,19 +29,27 @@
  * difficulties, from the path's other topics (the game is the round's question on its own
  * topic; that topic's bank questions come back only when the others cannot fill the slots).
  * Without a game the round is exactly what it was before games existed.
+ *
+ * A staged interview's stages assemble by the same rules: a questions stage over the topics it
+ * names, of either home and never with a game (`assembleForTopics`; a fundamentals topic's
+ * eligible questions are its `short` ones), and a game stage as a one-slot round that is its game
+ * alone (`assembleGameRound`: `assembleWithGame` with `n` 1 leaves the bank no slot).
  */
 import {
   QUANT_PATH_INFO,
   type QuantGame,
   type QuantPath,
   type QuantPick,
+  type QuantSubject,
   type QuizDifficulty,
   type QuizQuestion,
+  type QuizTrack,
   quantGamePick,
   quantQuestionCount,
+  quantSubject,
 } from '@ipp/contracts';
 import { pads, quantGames, quantRounds, quizQuestions, quizTopics } from '@ipp/db';
-import { and, desc, eq, inArray, sql } from '@ipp/db/orm';
+import { and, count, desc, eq, inArray, sql } from '@ipp/db/orm';
 import type { Ctx } from '../context';
 import { conflict } from '../http/errors';
 import { latestAnswerMap, type RecordedAnswer, weakFirst } from '../quiz/answers';
@@ -293,9 +301,30 @@ export function roundPicks<Q extends PoolQuestion>(
 
 type EligibleRow = PoolQuestion & { data: QuizQuestion };
 
-/** The path's eligible questions (see the module comment). */
-export async function eligibleQuestions(ctx: Ctx, path: QuantPath): Promise<EligibleRow[]> {
-  const topics = [...QUANT_PATH_INFO[path].topics];
+/** The eligible questions of `topics` (non-empty), as a filter on `quiz_questions`. */
+const eligibleIn = (topics: readonly string[]) =>
+  and(
+    eq(quizQuestions.active, true),
+    inArray(quizQuestions.topic, [...topics]),
+    // Rows stored before `hints` and `followUps` existed lack them.
+    sql`(${quizQuestions.type} = 'short' or (${quizQuestions.type} = 'numeric' and
+      coalesce(jsonb_array_length(${quizQuestions.data}->'hints'), 0) +
+      coalesce(jsonb_array_length(${quizQuestions.data}->'followUps'), 0) > 0))`,
+  );
+
+/** How many eligible questions `topics` hold: a round of `n` can be assembled from `n` or more. */
+export async function eligibleCount(ctx: Ctx, topics: readonly string[]): Promise<number> {
+  if (topics.length === 0) return 0;
+  const [row] = await ctx.db.select({ n: count() }).from(quizQuestions).where(eligibleIn(topics));
+  return row?.n ?? 0;
+}
+
+/** The eligible questions of these topics (see the module comment); a path passes its own. */
+export async function eligibleQuestions(
+  ctx: Ctx,
+  topics: readonly string[],
+): Promise<EligibleRow[]> {
+  if (topics.length === 0) return [];
   const rows = await ctx.db
     .select({
       id: quizQuestions.id,
@@ -306,20 +335,15 @@ export async function eligibleQuestions(ctx: Ctx, path: QuantPath): Promise<Elig
       data: quizQuestions.data,
     })
     .from(quizQuestions)
-    .where(
-      and(
-        eq(quizQuestions.active, true),
-        inArray(quizQuestions.topic, topics),
-        // Rows stored before `hints` and `followUps` existed lack them.
-        sql`(${quizQuestions.type} = 'short' or (${quizQuestions.type} = 'numeric' and
-          coalesce(jsonb_array_length(${quizQuestions.data}->'hints'), 0) +
-          coalesce(jsonb_array_length(${quizQuestions.data}->'followUps'), 0) > 0))`,
-      ),
-    );
+    .where(eligibleIn(topics));
   return rows.filter(
     (r): r is EligibleRow => r.type === 'short' || r.type === 'numeric',
   ) as EligibleRow[];
 }
+
+/** The eligible questions of a path's topics. */
+export const eligiblePathQuestions = (ctx: Ctx, path: QuantPath) =>
+  eligibleQuestions(ctx, QUANT_PATH_INFO[path].topics);
 
 /**
  * Ids of the questions posed in the owner's last `RECENT_ROUNDS` practice rounds. A quant room
@@ -380,44 +404,127 @@ export async function assembleForUser(
   durationMin: number,
   opts: { includeGame?: boolean; rand?: Rand } = {},
 ): Promise<QuantPick[]> {
-  const rand = opts.rand ?? secureRand;
-  const n = quantQuestionCount(durationMin);
-  const wantGame = opts.includeGame ?? path === 'trader';
+  const loaded = await assembleFrom(ctx, userId, {
+    topics: QUANT_PATH_INFO[path].topics,
+    n: quantQuestionCount(durationMin),
+    wantGame: opts.includeGame ?? path === 'trader',
+    rand: opts.rand ?? secureRand,
+  });
+  if (!loaded.round)
+    throw conflict(
+      'quant_unavailable',
+      `There are not enough questions for a ${durationMin}-minute ${QUANT_PATH_INFO[path].label.toLowerCase()} round yet`,
+    );
+  return picksOf(loaded.round, loaded.title);
+}
+
+/**
+ * The questions of a round over topics chosen one by one (a staged interview's questions stage),
+ * of either home: `quantQuestionCount(durationMin)` bank questions by the same rules as a path's
+ * round, and never a game. The round's subject follows the topics' homes (`quantSubject`). 409
+ * `quant_unavailable` (with `unavailable` as its message) when the topics hold too few.
+ */
+export async function assembleForTopics(
+  ctx: Ctx,
+  userId: string,
+  topics: readonly string[],
+  durationMin: number,
+  opts: { rand?: Rand; unavailable?: string } = {},
+): Promise<{ picks: QuantPick[]; subject: QuantSubject }> {
+  const loaded = await assembleFrom(ctx, userId, {
+    topics,
+    n: quantQuestionCount(durationMin),
+    wantGame: false,
+    rand: opts.rand ?? secureRand,
+  });
+  if (!loaded.round)
+    throw conflict(
+      'quant_unavailable',
+      opts.unavailable ??
+        `There are not enough questions in these topics for a ${durationMin}-minute round yet`,
+    );
+  return { picks: picksOf(loaded.round, loaded.title), subject: quantSubject(loaded.homes) };
+}
+
+/**
+ * A round that is one market-making game and nothing else (a staged interview's game stage),
+ * chosen as a round's game is (`chooseGame`: none posed in the owner's recent rounds while
+ * another is left), its hidden values drawn by the same generator. 409 `quant_unavailable` (with
+ * `unavailable` as its message) when no game is active.
+ */
+export async function assembleGameRound(
+  ctx: Ctx,
+  userId: string,
+  opts: { rand?: Rand; unavailable?: string } = {},
+): Promise<QuantPick[]> {
+  const loaded = await assembleFrom(ctx, userId, {
+    topics: [],
+    n: 1,
+    wantGame: true,
+    rand: opts.rand ?? secureRand,
+  });
+  if (!loaded.round?.game)
+    throw conflict(
+      'quant_unavailable',
+      opts.unavailable ?? 'There is no market-making game to play yet',
+    );
+  return picksOf(loaded.round, loaded.title);
+}
+
+interface Loaded {
+  /** null when the bank cannot fill the round. */
+  round: AssembledRound<EligibleRow> | null;
+  /** Topic slug -> title, for the topics drawn from and the games' topics. */
+  title: Map<string, string>;
+  /** The homes (`quiz_topics.track`) of the topics drawn from, of those that exist. */
+  homes: QuizTrack[];
+}
+
+/**
+ * Loads what `assembleWithGame` needs for a round of `n` slots over `topics` and assembles it:
+ * the topics' eligible questions, the owner's latest answers and recent rounds, and the active
+ * games when `wantGame`.
+ */
+async function assembleFrom(
+  ctx: Ctx,
+  userId: string,
+  a: { topics: readonly string[]; n: number; wantGame: boolean; rand: Rand },
+): Promise<Loaded> {
+  const { topics, n, wantGame, rand } = a;
   const [pool, recent, games] = await Promise.all([
-    eligibleQuestions(ctx, path),
+    eligibleQuestions(ctx, topics),
     recentlyPosed(ctx, userId),
     wantGame ? activeGames(ctx) : Promise.resolve([] as QuantGame[]),
   ]);
-  const titles = await ctx.db
-    .select({ slug: quizTopics.slug, title: quizTopics.title })
-    .from(quizTopics)
-    .where(
-      inArray(quizTopics.slug, [
-        ...new Set([...QUANT_PATH_INFO[path].topics, ...games.map((g) => g.topic)]),
-      ]),
-    );
+  const slugs = [...new Set([...topics, ...games.map((g) => g.topic)])];
+  const rows =
+    slugs.length === 0
+      ? []
+      : await ctx.db
+          .select({ slug: quizTopics.slug, title: quizTopics.title, track: quizTopics.track })
+          .from(quizTopics)
+          .where(inArray(quizTopics.slug, slugs));
   // With a game the bank fills one slot fewer.
   const needed = wantGame && games.length > 0 ? n - 1 : n;
   const seen =
     pool.length >= needed && pool.length > 0
       ? await latestAnswerMap(ctx.db, userId, { questionIds: pool.map((q) => q.id) })
       : new Map();
-  const title = new Map(titles.map((t) => [t.slug, t.title]));
+  const title = new Map(rows.map((t) => [t.slug, t.title]));
   const round = assembleWithGame({
     pool,
     seen,
     recent,
     n,
-    topics: QUANT_PATH_INFO[path].topics,
+    topics,
     rand,
     games,
     wantGame,
     topicTitle: (slug) => title.get(slug) ?? slug,
   });
-  if (!round)
-    throw conflict(
-      'quant_unavailable',
-      `There are not enough questions for a ${durationMin}-minute ${QUANT_PATH_INFO[path].label.toLowerCase()} round yet`,
-    );
-  return roundPicks(round, (q) => pickOf(q.data, title.get(q.data.topic)));
+  const homes = rows.filter((r) => topics.includes(r.slug)).map((r) => r.track);
+  return { round, title, homes };
 }
+
+const picksOf = (round: AssembledRound<EligibleRow>, title: ReadonlyMap<string, string>) =>
+  roundPicks(round, (q) => pickOf(q.data, title.get(q.data.topic)));

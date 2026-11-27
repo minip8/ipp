@@ -2,6 +2,7 @@
 import { z } from 'zod';
 import { AiKeyState, AiModelChoice, InterviewerModel } from './ai';
 import { Id, IsoDate, Language, Slug } from './common';
+import { InterviewStage } from './interview-stage';
 import { Difficulty, ProblemDetail } from './problem';
 import { QuantGameEntry } from './quant-game';
 import { HostRoundView } from './quant-room';
@@ -72,8 +73,30 @@ export const Pad = z.object({
   shareToken: z.string().nullable(),
   startedAt: IsoDate,
   endedAt: IsoDate.nullable(),
+  /**
+   * The staged interview this pad is a stage of (`interview.ts`); null for a pad started on its
+   * own (and absent from servers before staged interviews, hence the default).
+   */
+  interviewId: Id.nullable().default(null),
 });
 export type Pad = z.infer<typeof Pad>;
+
+/**
+ * Where a stage's pad sits in its interview, for the pad's own page: which stage it is, and
+ * what comes after it (`POST /api/interviews/:id/next` with `from: index`).
+ */
+export const PadInterview = z.object({
+  id: Id,
+  title: z.string(),
+  /** This pad's stage, 0-based, of `total`. */
+  index: z.int().min(0),
+  total: z.int().min(1),
+  /** The stage after this one, as planned; null when this is the last. */
+  next: InterviewStage.nullable(),
+  /** False once the interview has ended: nothing follows, whatever `next` planned. */
+  active: z.boolean(),
+});
+export type PadInterview = z.infer<typeof PadInterview>;
 
 export const CreatePadRequest = z
   .object({
@@ -404,6 +427,8 @@ export const PadDetail = z.object({
    * `mode` tells a quant room's (`hosted`) from a practice round's (`ai`).
    */
   round: QuantRoundView.nullable().default(null),
+  /** Set when the pad is a stage of a staged interview; the owner's alone (null for anyone else). */
+  interview: PadInterview.nullable().default(null),
 });
 export type PadDetail = z.infer<typeof PadDetail>;
 
@@ -417,6 +442,7 @@ export const PadSummary = Pad.pick({
   status: true,
   startedAt: true,
   endedAt: true,
+  interviewId: true,
 }).extend({
   /** null for a blank room. */
   problemTitle: z.string().nullable(),

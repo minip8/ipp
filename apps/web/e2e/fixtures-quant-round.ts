@@ -206,6 +206,174 @@ export const ROUND_BANK: Record<string, BankQuestion> = Object.fromEntries(
           '$P(\\max \\le t) = (t/\\theta)^n$, so the maximum has density $n t^{n-1}/\\theta^n$ and mean $\\frac{n}{n+1}\\theta$.',
       },
     ),
+    // More quant questions, so a staged interview's questions stages have enough of each topic.
+    q(
+      'mm-two-dice-market',
+      'betting-market-making',
+      'Making markets',
+      'easy',
+      'numeric',
+      'Make me a market on the sum of two fair dice. Where is the middle of your market?',
+      {
+        hints: 2,
+        solution: '$7$',
+        explanation:
+          'Each die averages $3.5$, so the sum averages $E = 7$: centre the market there.',
+      },
+    ),
+    q(
+      'opt-straddle-move',
+      'options',
+      'Payoffs',
+      'medium',
+      'short',
+      'You buy a straddle at strike \\$100 for \\$8. Where at expiry do you break even?',
+      {
+        hints: 2,
+        solution: 'At \\$92 and \\$108: the move must cover the premium either way.',
+        keyPoints: ['A straddle is a call plus a put', 'The premium is paid either way'],
+        explanation:
+          'The payoff is $|S - 100|$, so the position breaks even where $|S - 100| = 8$.',
+      },
+    ),
+    q(
+      'la-det-product',
+      'algebra-calculus',
+      'Determinants',
+      'easy',
+      'numeric',
+      'If $\\det A = 2$ and $\\det B = 5$ for $3 \\times 3$ matrices, what is $\\det(AB)$?',
+      {
+        hints: 1,
+        solution: '$10$',
+        explanation:
+          'The determinant is multiplicative: $\\det(AB) = \\det A \\cdot \\det B = 10$.',
+      },
+    ),
+    // Fundamentals questions, for a staged interview's technical questions stages.
+    q(
+      'os-tlb-miss',
+      'operating-systems',
+      'Virtual memory',
+      'medium',
+      'short',
+      'What does the TLB do, and what happens on a TLB miss?',
+      {
+        hints: 2,
+        solution:
+          'It caches recent virtual-to-physical translations. On a miss the page table is walked (by hardware or the kernel) and the entry is loaded.',
+        keyPoints: [
+          'Caches page table entries',
+          'A miss walks the page table',
+          'A page fault is different',
+        ],
+        explanation:
+          'Every memory access needs a translation; the TLB keeps the recent ones so most accesses skip the page table walk.',
+      },
+    ),
+    q(
+      'os-fork-exec',
+      'operating-systems',
+      'Processes',
+      'easy',
+      'short',
+      'Why does a shell call fork and then exec to run a command, rather than one call?',
+      {
+        hints: 2,
+        solution:
+          'fork copies the shell so the child can set up redirections and the environment; exec then replaces the child with the program.',
+        keyPoints: [
+          'fork duplicates the process',
+          'The child adjusts its file descriptors',
+          'exec replaces the image',
+        ],
+        explanation: 'Splitting the two lets the child change its own state between them.',
+      },
+    ),
+    q(
+      'conc-deadlock',
+      'concurrency',
+      'Deadlock',
+      'medium',
+      'short',
+      'Two threads each take two locks and sometimes hang forever. What is happening, and how would you fix it?',
+      {
+        hints: 2,
+        solution:
+          'A deadlock: they take the locks in opposite orders. Take them in one global order.',
+        keyPoints: ['Circular wait', 'A lock order breaks it', 'try-lock with back-off also works'],
+        explanation:
+          'Each thread holds one lock and waits for the other; a fixed order makes the cycle impossible.',
+      },
+    ),
+    q(
+      'net-tcp-handshake',
+      'networking',
+      'TCP',
+      'easy',
+      'short',
+      'Walk me through the TCP handshake. Why three messages and not two?',
+      {
+        hints: 2,
+        solution: 'SYN, SYN-ACK, ACK: each side must have its own sequence number acknowledged.',
+        keyPoints: ['Both directions are set up', 'Each initial sequence number is acknowledged'],
+        explanation: 'Two messages would confirm only one direction of the connection.',
+      },
+    ),
+    q(
+      'arch-false-sharing',
+      'computer-architecture',
+      'Caches',
+      'hard',
+      'short',
+      'Two threads update two different counters and the program is slower than with one thread. Why?',
+      {
+        hints: 2,
+        solution:
+          'False sharing: the counters sit on one cache line, which bounces between the cores.',
+        keyPoints: ['Coherence works per cache line', 'Pad or align the counters apart'],
+        explanation:
+          'Each write invalidates the line in the other core, so the two never stay cached.',
+      },
+    ),
+    q(
+      'cpp-raii',
+      'cpp',
+      'Resource management',
+      'easy',
+      'short',
+      'What is RAII, and why does it make exception-safe code easier in C++?',
+      {
+        hints: 2,
+        solution:
+          'A resource is owned by an object whose destructor releases it, so it is released on every path out of the scope, exceptions included.',
+        keyPoints: [
+          'Acquire in the constructor',
+          'Release in the destructor',
+          'Stack unwinding runs destructors',
+        ],
+        explanation: 'Destructors run during unwinding, so cleanup needs no try/finally.',
+      },
+    ),
+    q(
+      'py-gil',
+      'python',
+      'Concurrency',
+      'medium',
+      'short',
+      'Why do Python threads rarely speed up CPU-bound work, and what would you use instead?',
+      {
+        hints: 2,
+        solution:
+          'The GIL lets one thread run Python bytecode at a time. Use processes (multiprocessing) or native code that releases the GIL.',
+        keyPoints: [
+          'The GIL serialises bytecode',
+          'Threads still help with I/O',
+          'Processes run in parallel',
+        ],
+        explanation: 'Only one thread holds the interpreter lock, so CPU-bound threads take turns.',
+      },
+    ),
   ].map((x) => [x.questionId, x]),
 );
 

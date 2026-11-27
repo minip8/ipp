@@ -1,4 +1,3 @@
-import { randomBytes } from 'node:crypto';
 import {
   ChangeProblemRequest,
   CloseQuantQuestionRequest,
@@ -56,6 +55,8 @@ import type { SessionUser } from '../auth';
 import type { Ctx } from '../context';
 import { type C, type Env, parseBody, requireAccount, requireUser } from '../http/app';
 import { badRequest, conflict, forbidden, HttpError, notFound, rateLimited } from '../http/errors';
+import { padInterviewOf } from '../interviews/service';
+import { insertPad, insertQuantPad, padCreateLimit } from '../pads/create';
 import type { PadRow } from '../pads/service';
 import {
   assertLanguageOffered,
@@ -220,16 +221,6 @@ export function padRoutes(ctx: Ctx) {
     if (member) ctx.rooms.broadcast(pad.id, { type: 'member.joined', member });
   }
 
-  /** Every way of creating a pad shares one allowance per user. */
-  async function padCreateLimit(userId: string): Promise<void> {
-    const l = ctx.config.limits.padCreate;
-    const wait = await ctx.limiter.hit([
-      { key: `pads:u:${userId}:burst`, ...l.userBurst },
-      { key: `pads:u:${userId}:day`, ...l.userDaily },
-    ]);
-    if (wait > 0) throw rateLimited(wait);
-  }
-
   r.post('/pads', async (c) => {
     const user = requireAccount(c);
     const body = await parseBody(c, CreatePadRequest);
@@ -241,7 +232,7 @@ export function padRoutes(ctx: Ctx) {
       throw badRequest('Only an interview room can start without a problem', 'validation_error');
     if (body.blank && (body.problemSlug || body.random))
       throw badRequest('A blank room takes no problem', 'validation_error');
-    await padCreateLimit(user.id);
+    await padCreateLimit(ctx, user.id);
 
     let problem: typeof problems.$inferSelect | undefined;
     if (body.blank) {
@@ -267,29 +258,22 @@ export function padRoutes(ctx: Ctx) {
     if (!problem && !body.blank) throw notFound('Problem');
     if (problem) assertLanguageOffered(problem, language);
 
-    const row = await db.transaction(async (tx) => {
-      const [pad] = await tx
-        .insert(pads)
-        .values({
-          ownerId: user.id,
-          title:
-            body.title?.trim() || problem?.title || (body.kind === 'room' ? 'Interview room' : ''),
-          kind: body.kind,
-          problemSlug: problem?.slug ?? null,
-          language,
-          durationMin: body.durationMin,
-          // A room has no AI in the conversation: the host is the interviewer.
-          interviewer:
-            body.kind === 'room'
-              ? { ...body.interviewer, enabled: false, voice: false }
-              : body.interviewer,
-          shareToken: randomBytes(18).toString('base64url'),
-        })
-        .returning();
-      if (!pad) throw new Error('pad insert failed');
-      await tx.insert(padMembers).values({ padId: pad.id, userId: user.id, role: 'owner' });
-      return pad;
-    });
+    const row = await db.transaction((tx) =>
+      insertPad(tx, {
+        ownerId: user.id,
+        title:
+          body.title?.trim() || problem?.title || (body.kind === 'room' ? 'Interview room' : ''),
+        kind: body.kind,
+        problemSlug: problem?.slug ?? null,
+        language,
+        durationMin: body.durationMin,
+        // A room has no AI in the conversation: the host is the interviewer.
+        interviewer:
+          body.kind === 'room'
+            ? { ...body.interviewer, enabled: false, voice: false }
+            : body.interviewer,
+      }),
+    );
     return c.json(padView(row, user.id));
   });
 
@@ -308,31 +292,21 @@ export function padRoutes(ctx: Ctx) {
       throw badRequest('A quant room takes no problem', 'validation_error');
     const queue = body.queue ?? [];
     await assertQueueable(ctx, queue);
-    await padCreateLimit(user.id);
-    const row = await db.transaction(async (tx) => {
-      const [pad] = await tx
-        .insert(pads)
-        .values({
+    await padCreateLimit(ctx, user.id);
+    const row = await db.transaction((tx) =>
+      insertQuantPad(
+        tx,
+        {
           ownerId: user.id,
           title: body.title?.trim() || 'Quant interview',
           kind: 'room',
-          format: 'quant',
-          problemSlug: null,
-          // Stored because the column is required; a quant pad has no language.
-          language: 'python',
           durationMin: body.durationMin,
           // A room has no AI in the conversation: the host is the interviewer.
           interviewer: { ...body.interviewer, enabled: false, voice: false },
-          shareToken: randomBytes(18).toString('base64url'),
-        })
-        .returning();
-      if (!pad) throw new Error('pad insert failed');
-      await tx.insert(padMembers).values({ padId: pad.id, userId: user.id, role: 'owner' });
-      await tx
-        .insert(quantRounds)
-        .values({ padId: pad.id, state: createHostedRound(queue), version: 0 });
-      return pad;
-    });
+        },
+        createHostedRound(queue),
+      ),
+    );
     return padView(row, user.id);
   }
 
@@ -341,38 +315,26 @@ export function padRoutes(ctx: Ctx) {
   r.post('/pads/quant', async (c) => {
     const user = requireAccount(c);
     const body = await parseBody(c, CreateQuantPadRequest);
-    await padCreateLimit(user.id);
+    await padCreateLimit(ctx, user.id);
     if ((await ctx.ai.keyState(user.id)) !== 'active')
       throw conflict('ai_key_missing', 'Add your AI API key first: the interviewer runs the round');
     const picks = await assembleForUser(ctx, user.id, body.path, body.durationMin, {
       includeGame: body.includeGame,
     });
-    const row = await db.transaction(async (tx) => {
-      const [pad] = await tx
-        .insert(pads)
-        .values({
+    const row = await db.transaction((tx) =>
+      insertQuantPad(
+        tx,
+        {
           ownerId: user.id,
           title: body.title?.trim() || `${QUANT_PATH_INFO[body.path].label} quant round`,
           kind: 'practice',
-          format: 'quant',
-          problemSlug: null,
-          // Stored because the column is required; a quant pad has no language.
-          language: 'python',
           durationMin: body.durationMin,
           // The interviewer runs the round, so it is always on.
           interviewer: { ...body.interviewer, enabled: true },
-          shareToken: randomBytes(18).toString('base64url'),
-        })
-        .returning();
-      if (!pad) throw new Error('pad insert failed');
-      await tx.insert(padMembers).values({ padId: pad.id, userId: user.id, role: 'owner' });
-      await tx.insert(quantRounds).values({
-        padId: pad.id,
-        state: createQuantRound(body.path, body.durationMin, picks),
-        version: 0,
-      });
-      return pad;
-    });
+        },
+        createQuantRound(body.path, body.durationMin, picks),
+      ),
+    );
     return c.json(padView(row, user.id));
   });
 
@@ -438,6 +400,7 @@ export function padRoutes(ctx: Ctx) {
         status: pad.status,
         startedAt: pad.startedAt.toISOString(),
         endedAt: pad.endedAt?.toISOString() ?? null,
+        interviewId: pad.interviewId,
         problemTitle,
         difficulty,
         accepted: Boolean(accepted),
@@ -539,7 +502,7 @@ export function padRoutes(ctx: Ctx) {
     if (pad.problemSlug && !row) throw notFound('Problem');
     // A room's candidates learn nothing about the host's key: the AI there is the host's alone.
     const hideKey = pad.kind === 'room' && role !== 'owner';
-    const [problem, members, msgs, runRows, key, round] = await Promise.all([
+    const [problem, members, msgs, runRows, key, round, interview] = await Promise.all([
       publicProblem(ctx, row ?? null),
       padMembersOf(ctx, pad.id),
       db.select().from(messages).where(eq(messages.padId, pad.id)).orderBy(asc(messages.createdAt)),
@@ -549,6 +512,8 @@ export function padRoutes(ctx: Ctx) {
         : ctx.ai.padModel(pad.ownerId, pad.interviewer),
       // The view only (`publicRound`): the state holds question ids and verdicts.
       pad.format === 'quant' ? roundView(ctx, pad.id) : null,
+      // The owner's alone: a collaborator gets null.
+      padInterviewOf(ctx, pad, user.id),
     ]);
     const detail: PadDetail = {
       pad: padView(pad, user.id),
@@ -561,6 +526,7 @@ export function padRoutes(ctx: Ctx) {
       interviewerKey: key.key,
       interviewerModel: key.model,
       round,
+      interview,
     };
     return c.json(detail);
   });
@@ -823,9 +789,15 @@ export function padRoutes(ctx: Ctx) {
 
   // Owner: deletes the pad for everyone. Collaborator: removes it from their own history only.
   // Active pads may be deleted too (that ends the session). A repeat after success is a 404.
+  // A staged interview's stage goes only with its interview (`DELETE /api/interviews/:id`).
   r.delete('/pads/:id', async (c) => {
     const user = requireUser(c);
     const { pad, role } = await padForMember(ctx, c.req.param('id'), user.id);
+    if (role === 'owner' && pad.interviewId !== null)
+      throw conflict(
+        'in_interview',
+        'This pad is a stage of an interview: delete the interview instead',
+      );
     if (role === 'owner') await deletePad(ctx, pad.id);
     else await leavePad(ctx, pad.id, user.id);
     const res: DeletePadResponse = {

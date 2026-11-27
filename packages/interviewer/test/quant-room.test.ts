@@ -35,6 +35,7 @@ const pad: Pad = {
   shareToken: null,
   startedAt: new Date(START).toISOString(),
   endedAt: null,
+  interviewId: null,
 };
 
 const DICE = QuizQuestion.parse({

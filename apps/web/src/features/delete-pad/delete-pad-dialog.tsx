@@ -1,5 +1,5 @@
 'use client';
-import type { PadSummary } from '@ipp/contracts';
+import type { Interview, PadSummary } from '@ipp/contracts';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangleIcon, Trash2Icon } from 'lucide-react';
 import { useEffect } from 'react';
@@ -19,13 +19,14 @@ import { Tooltip } from '@/components/ui/tooltip';
 import { api, errorMessage } from '@/lib/api';
 import { qk } from '@/lib/queries';
 import { cn } from '@/lib/utils';
-import { alreadyGone, type DeleteTarget, deleteCopy, withoutPad } from './logic';
+import { alreadyGone, type DeleteTarget, deleteCopy, withoutInterview, withoutPad } from './logic';
 
 /**
  * Confirms, then deletes the interview (owner) or removes it from the user's history
  * (collaborator). On success the row leaves the interview list, the pad's cached detail, report
  * and playback are dropped, a toast confirms, and `onDeleted` runs (after the dialog closes).
- * On failure the dialog stays open with the error, so nothing is removed.
+ * On failure the dialog stays open with the error, so nothing is removed. A staged interview is
+ * deleted as a whole: it leaves the interviews list, and its stages' pads go with it.
  */
 export function DeletePadDialog({
   target,
@@ -40,13 +41,17 @@ export function DeletePadDialog({
   const del = useMutation({
     mutationFn: async (t: DeleteTarget) => {
       try {
-        await api.deletePad(t.id);
+        await (t.interview ? api.deleteInterview(t.id) : api.deletePad(t.id));
       } catch (e) {
         if (!alreadyGone(e)) throw e;
       }
     },
     onSuccess: (_, t) => {
-      qc.setQueryData<PadSummary[]>(qk.pads, (old) => withoutPad(old, t.id));
+      if (t.interview) {
+        qc.setQueryData<Interview[]>(qk.interviews, (old) => withoutInterview(old, t.id));
+        void qc.invalidateQueries({ queryKey: qk.interviews });
+        qc.removeQueries({ queryKey: qk.interview(t.id) });
+      } else qc.setQueryData<PadSummary[]>(qk.pads, (old) => withoutPad(old, t.id));
       void qc.invalidateQueries({ queryKey: qk.pads });
       toast.success(deleteCopy(t).done, { description: t.problemTitle });
       onClose();

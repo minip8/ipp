@@ -87,6 +87,7 @@ import { DRILL_RUNS, drillBests } from './fixtures-drill';
 import { publicOf, ROOM_BANK } from './fixtures-quant-room';
 import { QUANT_FOLLOW_UP, QUANT_QUESTIONS, QUANT_TOPIC } from './fixtures-quiz-quant';
 import { QUIZ_ROADMAP } from './fixtures-quiz-roadmap';
+import { MockInterviews } from './mock-interviews';
 import { MockQuantRooms } from './mock-quant-room';
 import { MockQuantRounds } from './mock-quant-round';
 import { MockQuizBank } from './mock-quiz-bank';
@@ -157,6 +158,8 @@ export class MockBackend {
   quant: MockQuantRounds;
   /** Quant rooms (§8.4): their hosted rounds, the host's routes and their reports. */
   quantRooms: MockQuantRooms;
+  /** Staged interviews: their stages' pads (coding pads, and quant rounds of `quant`). */
+  interviews: MockInterviews;
   /**
    * The signed-in user is a candidate in a quant room that is still going: the quiz routes that
    * reveal answers refuse them (`in_quant_interview`), as the API's guard does.
@@ -191,6 +194,16 @@ export class MockBackend {
     );
     this.quant = new MockQuantRounds(this);
     this.quantRooms = new MockQuantRooms(this);
+    this.interviews = new MockInterviews(this);
+  }
+
+  /** Ends a pad as POST /api/pads/:id/end does: pad.updated, then a quant round's end. */
+  endPadNow(id: string, at: Date) {
+    const pad = this.pads.get(id);
+    if (!pad) return;
+    pad.pad = { ...pad.pad, status: 'ended', endedAt: at.toISOString() };
+    this.push({ type: 'pad.updated', pad: pad.pad });
+    if (pad.pad.format === 'quant') this.quant.end(id, at);
   }
 
   /** The quant room specs: the public question bank is the room's bank (prompts only). */
@@ -334,11 +347,13 @@ export class MockBackend {
 
   /** Pad detail as GET returns it: an owned pad follows the user's own key. */
   detail(d: PadDetail): PadDetail {
-    if (d.role !== 'owner') return d;
+    if (d.role !== 'owner') return { ...d, interview: null };
     // A room has no AI in the conversation; the host's own key is read from /api/ai-key.
     const provider = this.aiKey.state === 'active' ? this.aiKey.provider : null;
     return {
       ...d,
+      // A stage's pad: where it sits in its interview (the owner's alone).
+      interview: this.interviews.padInterview(d.pad.id),
       interviewerKey: this.aiKey.state,
       interviewerAvailable: this.aiKey.state === 'active',
       interviewerModel: provider
@@ -495,6 +510,9 @@ export class MockBackend {
     )
       return this.status(403, 'account_required', 'Sign in with an account to do this');
 
+    const interviews = this.interviews.handle(method, path, body);
+    if (interviews !== undefined) return interviews;
+
     if (path === '/api/ai-key') {
       if (method === 'GET') return this.aiKey;
       if (method === 'DELETE') {
@@ -609,7 +627,12 @@ export class MockBackend {
       return detail.pad;
     }
     if (path === '/api/pads/quant' && method === 'POST') return this.quant.create(body);
-    if (path === '/api/pads' && method === 'GET') return this.summaries;
+    if (path === '/api/pads' && method === 'GET')
+      // A stage's pad is listed as it now is (the others are fixtures, as they were).
+      return this.summaries.map((s) => {
+        const d = s.interviewId ? this.pads.get(s.id) : undefined;
+        return d ? { ...s, status: d.pad.status, endedAt: d.pad.endedAt } : s;
+      });
     if (path === '/api/pads/join' && method === 'POST') {
       const token = (body as { shareToken?: string })?.shareToken ?? '';
       const room = this.padByToken(token);
@@ -626,6 +649,13 @@ export class MockBackend {
       const rest = r[2] ?? '';
       const pad = this.pads.get(id);
       if (rest === '' && method === 'DELETE') {
+        // A stage's pad goes with its interview, never alone.
+        if (pad?.role === 'owner' && this.interviews.isStagePad(id))
+          return this.status(
+            409,
+            'in_interview',
+            'This pad is a stage of an interview: delete the interview instead.',
+          );
         // Like the API: owner deletes, collaborator leaves; either way it is gone for this user,
         // and a repeat is a 404. Open pad sockets are closed as deleted.
         const role = this.removePad(id);
@@ -670,12 +700,15 @@ export class MockBackend {
       }
       if (rest === '/end' && method === 'POST') {
         const at = new Date();
-        pad.pad = { ...pad.pad, status: 'ended', endedAt: at.toISOString() };
-        this.push({ type: 'pad.updated', pad: pad.pad });
-        if (quant) this.quant.end(id, at);
+        this.endPadNow(id, at);
+        // Ending the last stage's pad ends its interview.
+        this.interviews.padEnded(id, at);
         return pad.pad;
       }
-      if (quant && rest === '/report') return this.quant.report(id);
+      if (quant && rest === '/report') {
+        const report = this.quant.report(id);
+        return report instanceof Response ? report : this.interviews.adjustReport(id, report);
+      }
       if (quant && rest === '/playback') return this.quant.playback(id) ?? undefined;
       if (quant && rest === '/runs' && method === 'POST')
         return this.status(409, 'wrong_format', 'A quant pad has no code to run');
@@ -727,11 +760,11 @@ export class MockBackend {
             padId: id,
             hostNotes: this.hostNotes.get(id) ?? REPORT_ROOM.hostNotes,
           };
-        return {
+        return this.interviews.adjustReport(id, {
           ...this.report,
           padId: id,
           ...(room ? { hostNotes: this.hostNotes.get(id) ?? '' } : {}),
-        };
+        });
       }
       if (rest === '/report/assessment' && method === 'POST') {
         if (this.aiKey.state !== 'active')

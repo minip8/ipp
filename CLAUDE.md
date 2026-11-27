@@ -138,6 +138,18 @@ browser ── /api/* (Next rewrite, same origin, cookie session) ──▶ apps
   `…/host/round/*` behind `roomForHost`; a candidate gets `publicRound` (no total, no budgets),
   and while the room is active the quiz routes that reveal answers refuse them
   (`refuseDuringQuantInterview`, 409 `in_quant_interview`: a deterrent, not a control).
+- **Staged interviews** (ARCHITECTURE §4.2, `packages/contracts/src/interview.ts`): a mock
+  interview in several stages (`coding`, `questions` on chosen quiz topics of either home, `game`),
+  built from a preset or from nothing on the Interviews tab. The interview (`interviews`) is only
+  a parent record: each stage is an ordinary practice pad (`pads.interview_id`, `stage_index`)
+  created when the stage starts and never before, so nothing of a later stage exists to leak, and
+  each has its own clock. `POST /api/interviews/:id/next` ends the stage being left and starts the
+  next behind a compare-and-swap on `current`; the last stage's pad ending ends the interview; a
+  stage's pad is deleted only with its interview (409 `in_interview`). A round assembled from
+  topics has no `path` and carries a `QuantSubject` (`quant`, `technical`, `mixed`) that chooses
+  the interviewer's frame; never assume an AI round has a path. An interview is listed on the
+  track it was built in (`interviews.track`), and its pads are never listed on their own. All
+  routes take `requireAccount` and are the owner's alone.
 - **The mental math drill** (ARCHITECTURE §8.1) is generated and marked in the browser; the API
   only stores finished runs (`drill_runs`, `POST`/`GET /api/drill/runs`) after the contract's
   consistency checks, computing totals, score and `finishedAt` itself. Bests count full-mix runs only.

@@ -152,7 +152,7 @@ test.describe('the switch', () => {
     await expect(current(page)).toHaveText('Software');
     await trackSwitch(page).getByRole('link', { name: 'Quant' }).click();
     await expect(page).toHaveURL(/\/quant\/interviews$/);
-    await expect(page.getByTestId('round-setup')).toBeVisible();
+    await expect(page.getByTestId('builder')).toBeVisible();
   });
 
   test('keeps the Roadmap view but not the other track’s topic', async ({ page }) => {

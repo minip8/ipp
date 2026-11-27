@@ -10,6 +10,13 @@
  * mid-thought and runs out of time (Q2); quotes one side only, then a two-sided market, updates on
  * a revealed die and sizes up (Q3).
  *
+ * `subject: 'technical'` (`--technical`) plays three software fundamentals questions instead (a
+ * round with no path, as a staged interview's questions stage has): partly right and probed, then
+ * stuck and asking for a hint, then committing and answering the follow-up (Q1); a confidently
+ * wrong claim, then asking for the answer outright, then a partial answer (Q2); a sound answer and
+ * the follow-up (Q3). `mixed` (`--mixed`) puts the quant Bayes question first, then the technical
+ * Q2 and Q3. `stage` makes the pad one stage of a staged interview (`--stage 2/3:coding`).
+ *
  * Not part of the checks: it needs a real key and spends real tokens.
  */
 import { randomUUID } from 'node:crypto';
@@ -29,11 +36,13 @@ import {
   type QuantPick,
   type QuantRoundStep,
   type QuantStepResult,
+  type QuantSubject,
   quantClock,
   quantGamePick,
   quantPhase,
   quantRoundEndsAt,
   quantTimeSec,
+  roundSubject,
 } from '@ipp/contracts';
 import {
   createInterviewer,
@@ -42,6 +51,7 @@ import {
   type ModelClient,
   type QuantContext,
   type QuantQuestion,
+  type StagePosition,
   type TraceEvent,
 } from '../src/index';
 import { repairLatexEscapes } from '../src/quant/latex';
@@ -51,6 +61,10 @@ const QUESTION_IDS = ['prob-conditional-003', 'bt-weighing-006', 'bmm-quoting-00
 /** With `--game`: the Bayes calculation, then the game (in the puzzle's slot), then the puzzle. */
 const GAME_ROUND_IDS = ['prob-conditional-003', 'bt-weighing-006', 'bt-weighing-006'];
 const GAME_SLOT = 1;
+/** Fundamentals: lazy allocation behind malloc, race condition vs data race, move vs forward. */
+const TECHNICAL_IDS = ['os-walk-008', 'conc-basics-003', 'cpp-move-017'];
+/** Both kinds: the Bayes calculation, then the two technical questions after the first. */
+const MIXED_IDS = ['prob-conditional-003', 'conc-basics-003', 'cpp-move-017'];
 
 const C = {
   dim: '\x1b[2m',
@@ -77,9 +91,21 @@ export async function simulateQuant(o: {
   gameId?: string;
   /** The game's hidden values (`--values 6,2,5`); drawn at random when absent. */
   gameValues?: number[];
+  /** The round's subject (`--technical`, `--mixed`); a technical or mixed round has no path. */
+  subject?: QuantSubject;
+  /** The pad's place in a staged interview (`--stage 2/3:coding`). */
+  stage?: StagePosition | null;
 }): Promise<void> {
   const bank = loadQuizQuestions();
-  const ids = o.gameId ? GAME_ROUND_IDS : QUESTION_IDS;
+  const subject = o.subject ?? 'quant';
+  const ids =
+    subject === 'technical'
+      ? TECHNICAL_IDS
+      : subject === 'mixed'
+        ? MIXED_IDS
+        : o.gameId
+          ? GAME_ROUND_IDS
+          : QUESTION_IDS;
   const questions = ids.map((id) => {
     const q = bank.find((x) => x.id === id);
     if (!q || (q.type !== 'short' && q.type !== 'numeric')) throw new Error(`no question ${id}`);
@@ -110,6 +136,7 @@ export async function simulateQuant(o: {
     shareToken: null,
     startedAt: iso(START),
     endedAt: null,
+    interviewId: null,
   };
   const roundEndsAt = quantRoundEndsAt(pad.startedAt, durationMin);
   const picks: QuantPick[] = questions.map((q) => ({
@@ -133,7 +160,10 @@ export async function simulateQuant(o: {
       return (at + 0.5) / c.faces.length;
     });
   }
-  let round = createQuantRound('trader', durationMin, picks);
+  let round =
+    subject === 'quant'
+      ? createQuantRound('trader', durationMin, picks)
+      : createQuantRound(null, durationMin, picks, subject);
   let version = 0;
   const transcript: Message[] = [];
   const notes: string[] = [];
@@ -348,7 +378,9 @@ export async function simulateQuant(o: {
     }
     return {
       pad,
+      stage: o.stage ?? null,
       round: {
+        subject: roundSubject(round),
         version,
         total: round.questions.length,
         phase,
@@ -642,7 +674,7 @@ export async function simulateQuant(o: {
 
   const t0 = performance.now();
   console.log(
-    `${C.bold}Simulating a ${durationMin}-minute quant round (${game ? `${ids[0]}, the game ${game.id}${o.gameValues ? ` [${o.gameValues.join(', ')}]` : ''}, ${ids[2]}` : QUESTION_IDS.join(', ')}), style=${o.settings.style}, voice=${o.settings.voice}, model=${o.config.model}${C.reset}\n`,
+    `${C.bold}Simulating a ${durationMin}-minute ${subject} round${o.stage ? ` as stage ${o.stage.index + 1} of ${o.stage.total} (next: ${o.stage.next ?? 'none'})` : ''} (${subject !== 'quant' ? ids.join(', ') : game ? `${ids[0]}, the game ${game.id}${o.gameValues ? ` [${o.gameValues.join(', ')}]` : ''}, ${ids[2]}` : QUESTION_IDS.join(', ')}), style=${o.settings.style}, voice=${o.settings.voice}, model=${o.config.model}${C.reset}\n`,
   );
 
   await send({ type: 'session_started' });
@@ -665,6 +697,15 @@ export async function simulateQuant(o: {
     await wait(10);
     if (round.current === GAME_SLOT) await playGame();
     else console.log(`${C.red}The game was not posed (current=${round.current}).${C.reset}`);
+    apply({ type: 'end' });
+    pad.status = 'ended';
+    pad.endedAt = iso();
+    await send({ type: 'session_ended' });
+    return finish();
+  }
+
+  if (subject !== 'quant') {
+    await technicalRound();
     apply({ type: 'end' });
     pad.status = 'ended';
     pad.endedAt = iso();
@@ -736,6 +777,114 @@ export async function simulateQuant(o: {
   pad.endedAt = iso();
   await send({ type: 'session_ended' });
   await finish();
+
+  /** Waits out the current question (budget and grace) if it is still `index`. */
+  async function runOut(index: number): Promise<void> {
+    if (round.current !== index) return;
+    const c = quantClock(round, roundEndsAt);
+    if (c)
+      await wait(
+        Math.ceil(
+          (Math.min(c.posedAt + c.budgetMs + c.graceMs, roundEndsAt.getTime()) - clock) / 1000,
+        ) + 5,
+      );
+  }
+
+  /** The candidate's side of a technical (or mixed) round; see the header. */
+  async function technicalRound(): Promise<void> {
+    if (subject === 'mixed') {
+      // Q1, Bayes, briefly: a committed answer and the follow-up.
+      await say(
+        "The test is 99% accurate but the disease is rare, so I'll use Bayes: P(D|+) = P(+|D)P(D) / P(+).",
+      );
+      await work(30, 'P(D)=0.001, P(+|D)=0.99, P(+|~D)=0.05');
+      await say(
+        'That gives 0.00099 over 0.00099 plus 0.04995, about 1.9%. That is my final answer.',
+      );
+      await wait(20);
+      if (round.current === 0)
+        await say(
+          'If a second test is also positive, the prior becomes 1.9%, so it rises to about 28%.',
+        );
+      await wait(20);
+      if (round.current === 0) await say("I'm happy with that; shall we move on?");
+      await wait(10);
+    } else {
+      // Q1, malloc: partly right (no word on when physical memory comes), probed; stuck, asks for
+      // a hint; then the full explanation, and the follow-up.
+      await wait(20);
+      await say(
+        "So malloc(100) is small, so glibc serves it from its heap arena. If the heap isn't big enough, it calls brk to grow it, gets the memory, carves a 100-byte chunk out and returns the pointer. Then p[0] = 1 just writes the byte. I think that's basically it.",
+      );
+      await wait(20);
+      await say(
+        "I'm honestly not sure when the physical memory comes in. I'd have guessed brk hands it over. Can I get a hint?",
+      );
+      await wait(25);
+      await say(
+        'Oh, so brk only changes the mapping: the kernel just extends the heap region and nothing physical is allocated yet. The first write to a page, the header write or p[0] = 1, page-faults, and then the kernel allocates a zeroed page, maps it and restarts the instruction. That is my full answer.',
+      );
+      await wait(20);
+      if (round.current === 0)
+        await say(
+          'If I only read p[0] first, I think the kernel can map the shared zero page, and then the first write copy-on-writes a real page. And later small mallocs come from the same region with no system call, so RSS only grows with the pages you touch.',
+        );
+      await wait(20);
+      if (round.current === 0) await say("That's all I have on that one.");
+      await wait(10);
+    }
+    // Q2, race condition vs data race: a confidently wrong claim, then asking for the answer
+    // outright, then a partial answer, then giving up what they have.
+    const q2 = 1;
+    if (round.current === q2) {
+      await wait(20);
+      await say(
+        "They're the same thing, really: a data race is just the C++ name for a race condition. And if you make every shared variable a std::atomic, you can't have any race at all, so that's the fix.",
+      );
+      await wait(20);
+      if (round.current === q2)
+        await say(
+          "Honestly, I don't know where to go with this. Can you just tell me the difference?",
+        );
+      await wait(20);
+      if (round.current === q2)
+        await say(
+          'Hmm, okay, so maybe the data race is the unsynchronised access itself, which is undefined behaviour in C++, and a race condition is about the order of operations mattering? Like two threads both checking a balance and then both withdrawing.',
+        );
+      await wait(20);
+      if (round.current === q2)
+        await say(
+          'And that balance example could use atomics for the load and the subtraction and still overdraw, so atomics do not fix it. That is what I have.',
+        );
+      await wait(20);
+      if (round.current === q2) await say("I think that's my answer.");
+      await runOut(q2);
+    }
+    // Q3, move vs forward: a sound answer, then the follow-up.
+    const q3 = 2;
+    if (round.current === q3) {
+      await wait(15);
+      await say(
+        "std::move is just an unconditional cast to an rvalue, it doesn't move anything by itself; you use it on something you own and are done with. std::forward<T> is a conditional cast for forwarding references: it gives back an lvalue if the caller passed an lvalue and an rvalue if they passed an rvalue, because inside the function the named parameter is always an lvalue.",
+      );
+      await wait(15);
+      if (round.current === q3)
+        await say(
+          "If you std::move a forwarding reference you might move out of the caller's lvalue behind their back, so they're left with a moved-from object. That's my answer.",
+        );
+      await wait(20);
+      if (round.current === q3)
+        await say(
+          'You should forward or move each object only once, at its last use; forwarding the same argument twice could move from it twice and the second use sees a moved-from object.',
+        );
+      await wait(20);
+      if (round.current === q3) await say("Yes, I'm done with that one.");
+      await runOut(q3);
+    }
+    await wait(10);
+    if (round.questions.every((q) => q.closedAt !== null))
+      await say('Thanks, that was useful. How did I do overall?');
+  }
 
   async function finish(): Promise<void> {
     console.log(
