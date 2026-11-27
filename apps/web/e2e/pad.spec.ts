@@ -11,46 +11,57 @@ async function openPad(page: Page, configure?: (b: MockBackend) => void) {
   return backend;
 }
 
-test('create a pad from the library with the chosen settings', async ({ page }) => {
+test('start an interview from the builder with the chosen settings', async ({ page }) => {
   const backend = await setup(page);
   await page.goto('/software/interviews');
-  await page.getByRole('searchbox', { name: 'Search problems' }).fill('lru');
-  await expect(page.getByRole('button', { name: /^Two Sum/ })).toHaveCount(0);
-  await page.getByRole('button', { name: /^LRU Cache/ }).click();
-  await page.getByRole('radio', { name: 'Python' }).click();
-  await page.getByRole('radio', { name: '60 min' }).click();
+  await page.getByRole('button', { name: 'Edit stage 1' }).click();
+  await page.getByRole('radio', { name: 'Choose a problem' }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('searchbox', { name: 'Search problems' }).fill('lru');
+  await expect(dialog.getByRole('button', { name: /^Two Sum/ })).toHaveCount(0);
+  await dialog.getByRole('button', { name: /^LRU Cache/ }).click();
+  await page
+    .getByRole('radiogroup', { name: 'Stage 1 language' })
+    .getByRole('radio', { name: 'Python' })
+    .click();
+  await page
+    .getByRole('radiogroup', { name: 'Stage 1 length' })
+    .getByRole('radio', { name: '60 min' })
+    .click();
   await page.getByRole('radio', { name: 'Tough' }).click();
   await page.getByRole('radio', { name: 'Often' }).click();
-  await page.getByRole('button', { name: 'Start interview' }).click();
+  await page.getByRole('button', { name: 'Start the interview' }).click();
   await expect(page).toHaveURL(/\/pads\/[0-9a-f-]{36}$/);
-  const create = backend.requests.find((r) => r.method === 'POST' && r.path === '/api/pads');
+  const create = backend.requests.find((r) => r.method === 'POST' && r.path === '/api/interviews');
   expect(create?.body).toMatchObject({
-    problemSlug: 'lru-cache',
-    language: 'python',
-    durationMin: 60,
-    interviewer: { style: 'tough', proactivity: 'high', enabled: true },
+    title: 'LRU Cache',
+    stages: [{ kind: 'coding', problemSlug: 'lru-cache', language: 'python', durationMin: 60 }],
+    interviewer: { style: 'tough', proactivity: 'high' },
   });
+  // A one-stage interview's pad is an ordinary pad.
+  await expect(page.locator('.view-lines')).toContainText('class Solution', { timeout: 20_000 });
+  await expect(page.getByTestId('stage-chip')).toHaveCount(0);
 });
 
-test('a pad without a time limit shows the time elapsed instead of a countdown', async ({
+test('a room without a time limit shows the time elapsed instead of a countdown', async ({
   page,
 }) => {
   const backend = await setup(page);
-  await page.goto('/software/interviews');
+  await page.goto('/software/interviews?mode=host');
   await page.getByRole('button', { name: /^LRU Cache/ }).click();
   await expect(page.getByTestId('duration-note')).toHaveCount(0);
   await page.getByRole('radio', { name: 'No limit' }).click();
-  await expect(page.getByTestId('duration-note')).toContainText('never brings up the time');
-  await page.getByRole('button', { name: 'Start interview' }).click();
+  await expect(page.getByTestId('duration-note')).toContainText('never counts down');
+  await page.getByRole('button', { name: 'Create room' }).click();
   await expect(page).toHaveURL(/\/pads\/[0-9a-f-]{36}$/);
   const create = backend.requests.find((r) => r.method === 'POST' && r.path === '/api/pads');
-  expect(create?.body).toMatchObject({ problemSlug: 'lru-cache', durationMin: null });
+  expect(create?.body).toMatchObject({ kind: 'room', problemSlug: 'lru-cache', durationMin: null });
   const timer = page.getByTestId('timer');
   await expect(timer).toHaveAccessibleName(/^Time elapsed: 0:0\d$/);
   await timer.hover();
   await expect(page.getByRole('tooltip')).toContainText('No time limit, started');
-  // The choice is remembered for the next interview.
-  await page.goto('/software/interviews');
+  // The choice is remembered for the next room.
+  await page.goto('/software/interviews?mode=host');
   await expect(page.getByRole('radio', { name: 'No limit' })).toHaveAttribute(
     'aria-checked',
     'true',
@@ -60,10 +71,11 @@ test('a pad without a time limit shows the time elapsed instead of a countdown',
 test('a link with a difficulty picks a random problem and waits for Start', async ({ page }) => {
   const backend = await setup(page);
   const medium = PROBLEMS.filter((p) => p.difficulty === 'medium');
-  // The old address of the setup page still works and is sent on to the Interviews page.
-  await page.goto('/software/interviews?difficulty=medium&random=1');
+  await page.goto('/software/interviews?mode=host&difficulty=medium&random=1');
   // The pick lands in the setup panel (and the URL) without creating a pad.
-  await expect(page).toHaveURL(/\/software\/interviews\?difficulty=medium&problem=[a-z0-9-]+$/);
+  await expect(page).toHaveURL(
+    /\/software\/interviews\?mode=host&difficulty=medium&problem=[a-z0-9-]+$/,
+  );
   const first = new URL(page.url()).searchParams.get('problem');
   const title = page.getByTestId('selected-problem');
   await expect(title).toHaveText(medium.find((p) => p.slug === first)?.title ?? '?');
@@ -76,7 +88,7 @@ test('a link with a difficulty picks a random problem and waits for Start', asyn
   const rerolled = medium.find((p) => p.title === rerolledTitle);
   expect(rerolled).toBeDefined();
 
-  await page.getByRole('button', { name: 'Start interview' }).click();
+  await page.getByRole('button', { name: 'Create room' }).click();
   await expect(page).toHaveURL(/\/pads\/[0-9a-f-]{36}$/);
   const create = backend.requests.find((r) => r.method === 'POST' && r.path === '/api/pads');
   expect(create?.body).toMatchObject({ problemSlug: rerolled?.slug });

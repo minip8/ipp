@@ -50,10 +50,12 @@ import {
   QUANT_PATH_INFO,
   type QuantGameMove,
   type QuantPath,
+  type QuantPick,
   QuantQuestionReview,
   type QuantRoundState,
   type QuantRoundStep,
   type QuantRoundView,
+  type QuantSubject,
   type QuantVerdict,
   quantGameReview,
   quantQuestionCount,
@@ -61,6 +63,7 @@ import {
   quantRoundEndsAt,
   quantTimeSec,
   Report,
+  roundSubject,
   type ServerEvent,
   type TimelineEvent,
   YDOC,
@@ -500,6 +503,39 @@ export class MockQuantRounds {
     const summary = this.summaryOf(id);
     if (summary) this.host.summaries.unshift(summary);
     return detail.pad;
+  }
+
+  /**
+   * A staged interview's questions or game stage (mock-interviews.ts): a quant pad whose round is
+   * assembled from `picks` (chosen topics, or the game alone), with no path and the topics'
+   * subject, as the API's assembler makes it.
+   */
+  createStage(o: {
+    id: string;
+    title: string;
+    durationMin: number;
+    startedAt: string;
+    interviewer: Partial<PadDetail['pad']['interviewer']>;
+    picks: QuantPick[];
+    subject: QuantSubject;
+    interviewId: string;
+  }): PadDetail {
+    const detail = this.makeDetail({ ...o, path: 'trader' });
+    detail.pad = { ...detail.pad, interviewId: o.interviewId };
+    this.host.pads.set(o.id, detail);
+    const state = createQuantRound(null, o.durationMin, o.picks, o.subject);
+    this.rounds.set(o.id, {
+      padId: o.id,
+      state,
+      version: 0,
+      timeline: [],
+      notes: [],
+      greeted: false,
+    });
+    detail.round = publicRound(state, 0);
+    const summary = this.summaryOf(o.id);
+    if (summary) this.host.summaries.unshift(summary);
+    return detail;
   }
 
   // ---------------------------------------------------------------- the transition
@@ -1013,7 +1049,7 @@ export class MockQuantRounds {
       },
       assessment: QUANT_ASSESSMENT,
       assessmentUnavailable: null,
-      quant: { path: r.state.path, questions },
+      quant: { path: r.state.path, subject: roundSubject(r.state), questions },
     });
   }
 

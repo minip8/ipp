@@ -255,9 +255,7 @@ test.describe('creating a quant room', () => {
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Quant interview');
   });
 
-  test('switching to practise is the round setup, with the switch where it was', async ({
-    page,
-  }) => {
+  test('switching to practise is the builder, with the switch where it was', async ({ page }) => {
     await setup(page, (b) => b.useRoomBank());
     await page.goto('/quant/interviews?mode=host');
     await expect(page.getByTestId('quant-room-setup')).toBeVisible();
@@ -265,7 +263,7 @@ test.describe('creating a quant room', () => {
     const before = await kind.boundingBox();
     await kind.getByRole('radio', { name: 'Practise with the AI' }).click();
     await expect(page).toHaveURL(/\/quant\/interviews$/);
-    await expect(page.getByRole('button', { name: 'Start the round' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Start the interview' })).toBeVisible();
     await expect(page.getByTestId('quant-room-setup')).toHaveCount(0);
     expect(await kind.boundingBox()).toEqual(before);
     await kind.getByRole('radio', { name: 'Interview someone' }).click();

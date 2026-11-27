@@ -49,7 +49,7 @@ for (const width of WIDTHS) {
       }
       // The tracks' tabs (the study paths among them) are in screens-tracks.spec.ts.
       if (want('new')) {
-        await page.goto('/software/interviews');
+        await page.goto('/software/interviews?mode=host');
         await page.getByRole('button', { name: /^Two Sum/ }).click();
         await page.waitForTimeout(600);
         await shoot(page, 'new', { fullPage: true });

@@ -49,7 +49,7 @@ test('lists the library with its filters and marks, the chosen problem in a card
   await expect(card(page).getByTestId('selected-problem')).toHaveText('Trapping Rain Water');
 });
 
-test('the card’s action opens the interview setup with the problem chosen', async ({ page }) => {
+test('the card’s action opens the builder with a plan on the problem', async ({ page }) => {
   const b = await setup(page);
   await page.goto('/software/practice?view=problems');
   await row(page, /^Word Ladder/).click();
@@ -58,13 +58,19 @@ test('the card’s action opens the interview setup with the problem chosen', as
   await expect(action).toHaveAttribute('href', '/software/interviews?problem=word-ladder');
   await action.click();
   await expect(page).toHaveURL(/\/software\/interviews\?problem=word-ladder$/);
-  const setupPanel = page.locator('#interview-setup');
-  await expect(setupPanel.getByTestId('selected-problem')).toHaveText('Word Ladder');
-  await expect(row(page, /^Word Ladder/)).toHaveAttribute('aria-pressed', 'true');
-  await page.getByRole('button', { name: 'Start interview' }).click();
+  // One coding stage on it.
+  await expect(page.getByTestId('stage-summary')).toHaveText(['Word Ladder · C++ · 45 min']);
+  await page.getByRole('button', { name: 'Start the interview' }).click();
   await expect(page).toHaveURL(/\/pads\/[0-9a-f-]{36}$/);
-  const create = b.requests.find((r) => r.method === 'POST' && r.path === '/api/pads');
-  expect(create?.body).toMatchObject({ problemSlug: 'word-ladder' });
+  const create = b.requests.find((r) => r.method === 'POST' && r.path === '/api/interviews');
+  expect(create?.body).toMatchObject({
+    stages: [{ kind: 'coding', problemSlug: 'word-ladder' }],
+  });
+  // Hosting someone on it instead: the room setup has it chosen.
+  await page.goto('/software/interviews?problem=word-ladder&mode=host');
+  await expect(page.locator('#interview-setup').getByTestId('selected-problem')).toHaveText(
+    'Word Ladder',
+  );
 });
 
 test('the library loads only when the view is opened, and keeps its filters after', async ({
