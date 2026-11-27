@@ -97,6 +97,8 @@ export interface OpenAICompatOptions {
    * deprecated and refused by reasoning models); others document `max_tokens`.
    */
   tokenParam?: 'max_completion_tokens' | 'max_tokens';
+  /** The provider reports each call's cost in its usage (OpenRouter's `usage.cost`). */
+  reportsCost?: boolean;
 }
 
 type ChatMessage = { role: 'system' | 'developer' | 'user' | 'assistant'; content: string };
@@ -175,9 +177,34 @@ interface Chunk {
   usage?: {
     prompt_tokens?: number;
     completion_tokens?: number;
-    prompt_tokens_details?: { cached_tokens?: number } | null;
+    prompt_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number } | null;
+    /** OpenRouter: what the call was charged, in credits (US dollars). */
+    cost?: number | null;
+    /** OpenRouter: true when the call ran on the user's own provider key stored there. */
+    is_byok?: boolean;
+    cost_details?: { upstream_inference_cost?: number | null } | null;
   } | null;
   error?: unknown;
+}
+
+/** A token count from a provider: a finite non-negative integer, else 0. */
+const count = (n: unknown) =>
+  typeof n === 'number' && Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+
+/**
+ * OpenRouter's reported cost of a call in micro-dollars (openrouter.ai/docs, "Usage accounting",
+ * checked 2026-11-27: `usage.cost` is always sent, in credits, one credit being one US dollar).
+ * On a BYOK call `cost` is only OpenRouter's fee and the provider bills the inference itself,
+ * reported as `cost_details.upstream_inference_cost`: both are added. Null when absent or not a
+ * sensible number (the call is then priced from the catalogue, or counts as unpriced).
+ */
+export function reportedCostMicros(u: Chunk['usage']): number | null {
+  const cost = u?.cost;
+  if (typeof cost !== 'number' || !Number.isFinite(cost) || cost < 0) return null;
+  const upstream = u?.is_byok ? u.cost_details?.upstream_inference_cost : 0;
+  const extra =
+    typeof upstream === 'number' && Number.isFinite(upstream) && upstream > 0 ? upstream : 0;
+  return Math.round((cost + extra) * 1_000_000);
 }
 
 const sleep = (ms: number, signal: AbortSignal) =>
@@ -385,18 +412,21 @@ export class OpenAICompatModelClient implements ModelClient {
     }
     if (buffer.startsWith('data:')) handle(buffer.slice(5).trim());
     const u = usage as Chunk['usage'];
-    const cached = u?.prompt_tokens_details?.cached_tokens ?? 0;
+    const cached = count(u?.prompt_tokens_details?.cached_tokens);
+    const written = count(u?.prompt_tokens_details?.cache_write_tokens);
     const refused = refusal.length > 0 || stopReason === 'content_filter';
+    const reported = this.opts.reportsCost ? reportedCostMicros(u) : null;
     return {
       text,
       stopReason: refused ? 'refusal' : stopReason,
       refused,
       model,
       usage: {
-        inputTokens: Math.max(0, (u?.prompt_tokens ?? 0) - cached),
-        outputTokens: u?.completion_tokens ?? 0,
+        inputTokens: Math.max(0, count(u?.prompt_tokens) - cached - written),
+        outputTokens: count(u?.completion_tokens),
         cacheReadInputTokens: cached,
-        cacheCreationInputTokens: 0,
+        cacheCreationInputTokens: written,
+        ...(reported !== null ? { reportedCostMicros: reported } : {}),
       },
       latencyMs: performance.now() - started,
       ttftMs: ttft,

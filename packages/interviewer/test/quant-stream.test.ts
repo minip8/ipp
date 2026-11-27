@@ -3,6 +3,12 @@ import { parseModelJson, repairLatexEscapes } from '../src/quant/latex';
 import { MessageStream, settledLength, TurnJsonReader } from '../src/quant/stream';
 import { parseTurn, sayOf } from '../src/quant/turn';
 
+/**
+ * The tests that try every way of cutting a turn into pieces are a second or so of pure CPU;
+ * a loaded CI runner has taken more than the default five.
+ */
+const SPLITS_TIMEOUT = 30_000;
+
 /** Every way of cutting `raw` into two pieces, and into three. */
 function* splits(raw: string): Generator<string[]> {
   for (let i = 0; i <= raw.length; i++) yield [raw.slice(0, i), raw.slice(i)];
@@ -26,20 +32,24 @@ const TRICKY = [
 ].join('');
 
 describe('reading a turn as it streams', () => {
-  it('decodes action and message exactly as JSON.parse does, wherever the pieces are cut', () => {
-    const want = JSON.parse(TRICKY) as { action: string; message: string };
-    expect(want.message).toContain('\\frac{5}{36}');
-    expect(want.message).toContain('😀');
-    for (const pieces of splits(TRICKY)) {
-      const r = new TurnJsonReader();
-      for (const p of pieces) r.push(p);
-      if (r.action !== want.action || r.message !== want.message || !r.messageDone || !r.done)
-        throw new Error(`cut as ${JSON.stringify(pieces)}: ${JSON.stringify(r.message)}`);
-    }
-    const one = new TurnJsonReader();
-    for (const c of TRICKY) one.push(c);
-    expect(one.message).toBe(want.message);
-  });
+  it(
+    'decodes action and message exactly as JSON.parse does, wherever the pieces are cut',
+    () => {
+      const want = JSON.parse(TRICKY) as { action: string; message: string };
+      expect(want.message).toContain('\\frac{5}{36}');
+      expect(want.message).toContain('😀');
+      for (const pieces of splits(TRICKY)) {
+        const r = new TurnJsonReader();
+        for (const p of pieces) r.push(p);
+        if (r.action !== want.action || r.message !== want.message || !r.messageDone || !r.done)
+          throw new Error(`cut as ${JSON.stringify(pieces)}: ${JSON.stringify(r.message)}`);
+      }
+      const one = new TurnJsonReader();
+      for (const c of TRICKY) one.push(c);
+      expect(one.message).toBe(want.message);
+    },
+    SPLITS_TIMEOUT,
+  );
 
   it('reads invalid escapes as the repair before parsing does (the backslash stands for itself)', () => {
     const raw =
@@ -90,32 +100,40 @@ describe('what of a streaming message is shown', () => {
     return { out, seen };
   };
 
-  it('shows the posted message in the end, only ever appending, wherever the pieces are cut', () => {
-    const final = sayOf((parseTurn(TRICKY) as { message: string }).message);
-    for (const pieces of splits(TRICKY)) {
-      const { out, seen } = streamed(pieces);
-      if (out !== final)
-        throw new Error(`cut as ${JSON.stringify(pieces)}: ${JSON.stringify(out)}`);
-      for (const s of seen)
-        if (!final.startsWith(s)) throw new Error(`showed ${JSON.stringify(s)}`);
-    }
-  });
-
-  it('repairs LaTeX written with one backslash, without ever showing the control character', () => {
-    // `\frac` and `\times` with one backslash decode to a form feed and a tab; `\nu` to a newline.
-    const raw =
-      '{"reason":"","action":"stay","hint_rung":0,"message":"So $\\frac{1}{6} \\times 6 = 1$ and $\\nu$ is fine.\\nNext line.","score":0,"summary":"","note":""}';
-    const final = sayOf((parseTurn(raw) as { message: string }).message);
-    expect(final).toBe('So $\\frac{1}{6} \\times 6 = 1$ and $\\nu$ is fine.\nNext line.');
-    for (const pieces of splits(raw)) {
-      const { out, seen } = streamed(pieces);
-      expect(out).toBe(final);
-      for (const s of seen) {
-        expect(final.startsWith(s)).toBe(true);
-        expect(s).not.toMatch(/[\f\b]/);
+  it(
+    'shows the posted message in the end, only ever appending, wherever the pieces are cut',
+    () => {
+      const final = sayOf((parseTurn(TRICKY) as { message: string }).message);
+      for (const pieces of splits(TRICKY)) {
+        const { out, seen } = streamed(pieces);
+        if (out !== final)
+          throw new Error(`cut as ${JSON.stringify(pieces)}: ${JSON.stringify(out)}`);
+        for (const s of seen)
+          if (!final.startsWith(s)) throw new Error(`showed ${JSON.stringify(s)}`);
       }
-    }
-  });
+    },
+    SPLITS_TIMEOUT,
+  );
+
+  it(
+    'repairs LaTeX written with one backslash, without ever showing the control character',
+    () => {
+      // `\frac` and `\times` with one backslash decode to a form feed and a tab; `\nu` to a newline.
+      const raw =
+        '{"reason":"","action":"stay","hint_rung":0,"message":"So $\\frac{1}{6} \\times 6 = 1$ and $\\nu$ is fine.\\nNext line.","score":0,"summary":"","note":""}';
+      const final = sayOf((parseTurn(raw) as { message: string }).message);
+      expect(final).toBe('So $\\frac{1}{6} \\times 6 = 1$ and $\\nu$ is fine.\nNext line.');
+      for (const pieces of splits(raw)) {
+        const { out, seen } = streamed(pieces);
+        expect(out).toBe(final);
+        for (const s of seen) {
+          expect(final.startsWith(s)).toBe(true);
+          expect(s).not.toMatch(/[\f\b]/);
+        }
+      }
+    },
+    SPLITS_TIMEOUT,
+  );
 
   it('shows nothing until the action is known, and nothing at all for silent', () => {
     const late = new MessageStream();

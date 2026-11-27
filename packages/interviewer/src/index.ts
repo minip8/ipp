@@ -8,6 +8,16 @@ export {
 export type { KeyFailure, ModelClient, ModelRequest, ModelResponse, VerifyResult } from './model';
 export { ModelError, scrubSecrets, verifyApiKey } from './model';
 export {
+  costMicros,
+  createPriceBook,
+  type ModelPrice,
+  type PriceBook,
+  type PriceBookOptions,
+  type PriceLookup,
+  STATIC_PRICES,
+  staticPrice,
+} from './pricing';
+export {
   createModelClient,
   defaultModelFor,
   fallbackModels,

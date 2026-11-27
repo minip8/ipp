@@ -364,10 +364,17 @@ export interface ModelUsage {
   /** `turn`: a quant round's reply or proactive moment (one structured call each). */
   purpose: 'reply' | 'decision' | 'assessment' | 'grade' | 'review' | 'turn';
   model: string;
+  /** Whose API served the call (what prices it); absent in fakes, which are then unpriced. */
+  provider?: AiProvider;
   inputTokens: number;
   outputTokens: number;
   cacheReadInputTokens: number;
   cacheCreationInputTokens: number;
+  /**
+   * The call's cost in micro-dollars as the provider reported it (OpenRouter's `usage.cost`);
+   * preferred over a price-table estimate (pricing.ts) when present.
+   */
+  reportedCostMicros?: number;
 }
 
 /** Keys are not configuration: they are resolved per call through `InterviewerDeps.resolveKey`. */

@@ -260,3 +260,121 @@ export const AI_KEY_ERROR_CODES = {
   /** GET /api/ai-key/models without a usable key. */
   missing: 'ai_key_missing',
 } as const;
+
+// ---------------------------------------------------------------- daily limits (spend guard)
+
+/**
+ * Bounds of a user's own daily caps (ARCHITECTURE §7, "Spend guard"). A cap this low can stop an
+ * interview in its first minute; the settings page warns about that rather than refusing it.
+ */
+export const AI_LIMIT_BOUNDS = {
+  /** Micro-dollars (1,000,000 = one US dollar): one cent to one thousand dollars. */
+  costMicros: { min: 10_000, max: 1_000_000_000 },
+  /** Input and output tokens together, cache reads and writes included. */
+  tokens: { min: 1_000, max: 1_000_000_000 },
+  messages: { min: 1, max: 100_000 },
+} as const;
+
+const capOf = (b: { min: number; max: number }, what: string) =>
+  z
+    .int()
+    .min(b.min, `The daily ${what} limit is too small`)
+    .max(b.max, `The daily ${what} limit is too large`)
+    .nullable();
+
+/**
+ * A user's own daily caps, each null (not capped) or a positive amount; the interviewer stops at
+ * whichever is reached first. At least one must be set: "no limit at all" is not offered. They
+ * replace the server defaults for that user; with none saved the defaults apply.
+ */
+export const AiDailyLimits = z
+  .strictObject({
+    /** Estimated cost from list prices, in micro-dollars. */
+    costMicros: capOf(AI_LIMIT_BOUNDS.costMicros, 'cost'),
+    /** Input + output tokens, cache reads and writes included. */
+    tokens: capOf(AI_LIMIT_BOUNDS.tokens, 'token'),
+    /** Interviewer messages and AI gradings, as the server defaults count them. */
+    messages: capOf(AI_LIMIT_BOUNDS.messages, 'message'),
+  })
+  .refine((l) => l.costMicros !== null || l.tokens !== null || l.messages !== null, {
+    message: 'Set at least one limit',
+  });
+export type AiDailyLimits = z.infer<typeof AiDailyLimits>;
+
+/** `PUT /api/ai-limits`. */
+export const SetAiLimitsRequest = AiDailyLimits;
+export type SetAiLimitsRequest = AiDailyLimits;
+
+/** The server's daily limits, which apply to a user who has saved none (0 tokens: that cap is off). */
+export const AiDefaultLimits = z.object({
+  messages: z.int().min(0),
+  inputTokens: z.int().min(0),
+  outputTokens: z.int().min(0),
+});
+export type AiDefaultLimits = z.infer<typeof AiDefaultLimits>;
+
+/** Today's (UTC) usage of one user, as the spend guard counts it. */
+export const AiUsageToday = z.object({
+  /** `YYYY-MM-DD`, UTC. */
+  day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  messages: z.int().min(0),
+  /** Input tokens, cache reads and writes included. */
+  inputTokens: z.int().min(0),
+  outputTokens: z.int().min(0),
+  totalTokens: z.int().min(0),
+  /** Estimated from list prices (or as the provider reported it); never the bill. */
+  costMicros: z.int().min(0),
+  /** Tokens of calls whose model had no known price: the estimate leaves them out. */
+  unpricedTokens: z.int().min(0),
+});
+export type AiUsageToday = z.infer<typeof AiUsageToday>;
+
+/** List prices of a model in US dollars per million tokens. */
+export const AiModelPrice = z.object({
+  input: z.number().min(0),
+  output: z.number().min(0),
+  cacheRead: z.number().min(0),
+  cacheWrite: z.number().min(0),
+});
+export type AiModelPrice = z.infer<typeof AiModelPrice>;
+
+/**
+ * Whether the cost of the user's calls can be estimated, for their key's provider and its
+ * default model. `list`: a price table (static for Anthropic, OpenAI and Gemini, OpenRouter's
+ * catalogue); `reported`: the provider reports each call's cost (OpenRouter), `price` then being
+ * its catalogue price when known. Calls on a model with neither count as unpriced.
+ */
+export const AiCostTracking = z.object({
+  provider: AiProvider,
+  model: AiModelId,
+  tracked: z.boolean(),
+  source: z.enum(['list', 'reported']).nullable(),
+  price: AiModelPrice.nullable(),
+});
+export type AiCostTracking = z.infer<typeof AiCostTracking>;
+
+/** `GET /api/ai-usage`, and the answer of `PUT` and `DELETE /api/ai-limits`. */
+export const AiUsageStatus = z.object({
+  usage: AiUsageToday,
+  /** The user's own caps; null when the server defaults apply. */
+  limits: AiDailyLimits.nullable(),
+  defaults: AiDefaultLimits,
+  /** Null without a saved key (no provider to price). */
+  costTracking: AiCostTracking.nullable(),
+  /** When today's usage starts again from zero (the next UTC midnight). */
+  resetsAt: IsoDate,
+});
+export type AiUsageStatus = z.infer<typeof AiUsageStatus>;
+
+/** Which daily cap stopped the interviewer (the reason names it, never the amounts). */
+export const AiLimitKind = z.enum(['cost', 'tokens', 'messages']);
+export type AiLimitKind = z.infer<typeof AiLimitKind>;
+
+/**
+ * What the pad shows (to collaborators too) when a daily cap stops the interviewer: which cap, in
+ * plain words, and where to change it; never an amount spent or a cap's value.
+ */
+export function aiLimitReason(kind: AiLimitKind): string {
+  const what = { cost: 'spending', tokens: 'token', messages: 'message' }[kind];
+  return `The daily AI ${what} limit for this account has been reached. It can be changed in Settings, under AI key.`;
+}
