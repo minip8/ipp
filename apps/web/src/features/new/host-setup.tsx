@@ -1,33 +1,27 @@
 'use client';
 /**
- * The Software track's interview setup (the Interviews tab's "New interview"): the problem
+ * The Software track's "Interview someone" (the Interviews tab's `?mode=host`): the problem
  * library on the left (shared with Practice's Problems view, `problem-library.tsx`) and the setup
- * on the right, under "Practise with the AI | Interview someone". Practising is with the AI
- * interviewer on a problem; interviewing someone opens a coding room on a problem or a blank
- * editor. `?problem=` preselects a problem (Practice's Problems view links here so).
+ * of a coding room on the right, under the page's `header` (the kind-of-interview switch). The
+ * room opens on a problem or a blank editor. `?problem=` preselects a problem (Practice's
+ * Problems view links here so).
  */
-import { type InterviewerSettings, LANGUAGES, type Language } from '@ipp/contracts';
-import { useMutation } from '@tanstack/react-query';
-import { BotIcon, BotOffIcon, CheckIcon, ShuffleIcon, UsersIcon } from 'lucide-react';
+import { LANGUAGES, type Language } from '@ipp/contracts';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { ShuffleIcon, UsersIcon } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { CategoryBadge, DifficultyBadge, LANG_LABEL } from '@/components/domain';
 import { InlineError } from '@/components/states';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/input';
 import { Segmented } from '@/components/ui/segmented';
 import { Spinner } from '@/components/ui/spinner';
-import { Switch } from '@/components/ui/switch';
-import { AiKeyDialog } from '@/features/ai-key/ai-key-dialog';
-import { AiKeyPrompt } from '@/features/ai-key/ai-key-prompt';
-import { rejectedTitle } from '@/features/ai-key/logic';
-import { KindSwitch, useInterviewMode } from '@/features/interviews/kind-switch';
 import { api } from '@/lib/api';
 import { useFitBelow, useOnScreen } from '@/lib/layout-hooks';
 import { loadStartPrefs, type StartPrefs, saveStartPrefs } from '@/lib/prefs';
-import { useAiKey } from '@/lib/queries';
+import { qk } from '@/lib/queries';
 import { cn } from '@/lib/utils';
-import { InterviewerOptions, useSpeechSupported } from './interviewer-options';
 import {
   effectiveLanguage,
   filterProblems,
@@ -72,11 +66,10 @@ const NO_LIMIT = 'none';
 /** Phones: segmented controls at a size a finger can hit (desktop keeps the compact size). */
 const TOUCH_SEGMENTS = 'max-sm:[&>*]:h-9';
 
-export function NewInterview() {
+export function HostSetup({ header }: { header?: ReactNode }) {
   const router = useRouter();
   const params = useSearchParams();
-  const aiKey = useAiKey();
-  const [keyDialog, setKeyDialog] = useState(false);
+  const qc = useQueryClient();
   const setupPanel = useRef<HTMLElement>(null);
   useFitBelow(setupPanel);
   // Phones: the bar that leads to the setup gives way once the setup itself is in view.
@@ -86,13 +79,8 @@ export function NewInterview() {
   // Nothing is selected until the user picks a problem (or asks for a random one).
   const [selected, setSelected] = useState<string | null>(params.get('problem'));
   const [rolled, setRolled] = useState(false);
-  // "Interview someone": a coding room where the user interviews someone they invite, instead
-  // of being interviewed by the AI.
-  const [mode, setMode] = useInterviewMode();
-  const host = mode === 'host';
   const [blankChosen, setBlankChosen] = useState(false);
   const [prefs, setPrefs] = useState<StartPrefs>(() => loadStartPrefs());
-  const voiceOk = useSpeechSupported();
   const ids = { lang: useId(), dur: useId() };
 
   const current = library.find((p) => p.slug === selected);
@@ -101,7 +89,7 @@ export function NewInterview() {
   const language = effectiveLanguage(prefs.language, current);
   const offered = current?.languages ?? LANGUAGES;
   // Picking a problem afterwards wins over "blank".
-  const blank = host && blankChosen && !current;
+  const blank = blankChosen && !current;
   const ready = Boolean(current) || blank;
 
   const pickAtRandom = () => {
@@ -133,46 +121,29 @@ export function NewInterview() {
     window.history.replaceState(null, '', `?${next.toString()}`);
   }, [problems.data, category, difficulty, prefs.language]);
 
-  // Unknown (loading or failed) counts as fine: never block starting on this.
-  const keyState = aiKey.data?.state ?? 'active';
-  const interviewerOn = prefs.interviewer.enabled;
-  const needsKey = !host && interviewerOn && keyState !== 'active';
-
   const update = (patch: Partial<StartPrefs>) => setPrefs((p) => ({ ...p, ...patch }));
-  const updateInterviewer = (patch: Partial<InterviewerSettings>) =>
-    setPrefs((p) => ({ ...p, interviewer: { ...p.interviewer, ...patch } }));
 
   const start = useMutation({
-    mutationFn: (opts: { withInterviewer?: boolean } = {}) => {
+    mutationFn: () => {
       saveStartPrefs(prefs);
-      const interviewer = {
-        ...prefs.interviewer,
-        enabled: prefs.interviewer.enabled && (opts.withInterviewer ?? true),
-      };
-      if (host) {
-        if (!current && !blank) throw new Error('Choose a problem, or start with a blank editor.');
-        return api.createPad({
-          kind: 'room',
-          ...(current ? { problemSlug: current.slug } : { blank: true }),
-          language,
-          durationMin: prefs.durationMin,
-        });
-      }
-      if (!current) throw new Error('Choose a problem first.');
+      if (!current && !blank) throw new Error('Choose a problem, or start with a blank editor.');
       return api.createPad({
-        problemSlug: current.slug,
+        kind: 'room',
+        ...(current ? { problemSlug: current.slug } : { blank: true }),
         language,
         durationMin: prefs.durationMin,
-        interviewer,
       });
     },
-    onSuccess: (pad) => router.push(`/pads/${pad.id}`),
+    onSuccess: (pad) => {
+      void qc.invalidateQueries({ queryKey: qk.pads });
+      router.push(`/pads/${pad.id}`);
+    },
   });
 
   return (
     <section aria-labelledby="new-interview-heading">
       <h2 id="new-interview-heading" className="sr-only">
-        {host ? 'Host an interview' : 'New interview'}
+        Host an interview
       </h2>
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
         <ProblemLibrary
@@ -217,9 +188,7 @@ export function NewInterview() {
           // inside the panel and Start stays in view.
           className="min-w-0 scroll-mt-20 rounded-lg border border-border bg-surface lg:sticky lg:top-20 lg:max-h-[calc(100dvh-6rem)] lg:overflow-y-auto"
         >
-          <div className="border-b border-border p-4">
-            <KindSwitch value={mode} onValueChange={setMode} />
-          </div>
+          {header && <div className="border-b border-border p-4">{header}</div>}
           <div className="border-b border-border p-4">
             <h2
               id="setup-heading"
@@ -248,9 +217,7 @@ export function NewInterview() {
               <div className="mt-2">
                 <p className="font-medium">No problem selected</p>
                 <p className="mt-0.5 text-sm text-fg-muted">
-                  {host
-                    ? 'Choose one from the library, pick one at random, or start with a blank editor.'
-                    : 'Choose one from the library, or let us pick one for you.'}
+                  Choose one from the library, pick one at random, or start with a blank editor.
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <Button
@@ -261,11 +228,9 @@ export function NewInterview() {
                   >
                     <ShuffleIcon /> Pick one at random
                   </Button>
-                  {host && (
-                    <Button size="sm" className="max-sm:h-10" onClick={() => setBlankChosen(true)}>
-                      Start with a blank editor
-                    </Button>
-                  )}
+                  <Button size="sm" className="max-sm:h-10" onClick={() => setBlankChosen(true)}>
+                    Start with a blank editor
+                  </Button>
                 </div>
               </div>
             ) : (
@@ -316,9 +281,7 @@ export function NewInterview() {
               />
               <p className="text-xs text-fg-muted" data-testid="language-note">
                 {languageNote(prefs.language, current) ??
-                  (host
-                    ? 'You or your candidate can switch languages during the interview.'
-                    : 'You can switch languages during the interview.')}
+                  'You or your candidate can switch languages during the interview.'}
               </p>
             </div>
 
@@ -337,82 +300,28 @@ export function NewInterview() {
               />
               {prefs.durationMin === null && (
                 <p className="text-xs text-fg-muted" data-testid="duration-note">
-                  {host
-                    ? 'The clock shows the time elapsed and never counts down.'
-                    : 'The clock shows the time elapsed, and the interviewer never brings up the time.'}
+                  The clock shows the time elapsed and never counts down.
                 </p>
               )}
             </div>
 
-            {host && (
-              <div className="rounded-md border border-border bg-surface-2 px-3 py-2.5">
-                <p className="flex items-center gap-2 text-sm font-medium">
-                  <UsersIcon className="size-4 text-accent-text" aria-hidden /> You are the
-                  interviewer
-                </p>
-                <ul className="mt-1.5 list-disc space-y-1 pl-5 text-xs text-fg-muted">
-                  <li>A shared editor, chat and whiteboard with whoever you invite.</li>
-                  <li>
-                    Only you see the interviewer notes, the reference solution and your own notes.
-                  </li>
-                  <li>
-                    The AI stays out of the conversation. With your API key it can give you a second
-                    opinion on the code, and an assessment afterwards.
-                  </li>
-                  <li>You can change the problem during the interview.</li>
-                </ul>
-              </div>
-            )}
-            {!host && (
-              <div className="rounded-md border border-border">
-                <div className="flex items-center gap-3 px-3 py-2.5">
-                  {interviewerOn ? (
-                    <BotIcon className="size-4 text-accent-text" aria-hidden />
-                  ) : (
-                    <BotOffIcon className="size-4 text-fg-subtle" aria-hidden />
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <label htmlFor="interviewer-enabled" className="block text-sm font-medium">
-                      AI interviewer
-                    </label>
-                    {!interviewerOn && (
-                      <p className="text-xs text-fg-muted">
-                        Off. You can still code, run tests and chat.
-                      </p>
-                    )}
-                  </div>
-                  <Switch
-                    id="interviewer-enabled"
-                    checked={interviewerOn}
-                    onCheckedChange={(enabled) => updateInterviewer({ enabled })}
-                  />
-                </div>
-                {needsKey && (
-                  <AiKeyPrompt
-                    className="mx-3 mb-3"
-                    size="sm"
-                    state={keyState === 'rejected' ? 'rejected' : 'missing'}
-                    title={
-                      keyState === 'rejected'
-                        ? rejectedTitle(aiKey.data?.provider)
-                        : 'Runs on your own AI API key'
-                    }
-                  >
-                    {keyState === 'rejected'
-                      ? 'Save a working key to interview with the AI.'
-                      : 'Add one to be interviewed by the AI. You can also add it later from the pad.'}
-                  </AiKeyPrompt>
-                )}
-                {interviewerOn && (
-                  <InterviewerOptions
-                    className="border-t border-border px-3 pt-3 pb-3.5"
-                    value={prefs.interviewer}
-                    onChange={updateInterviewer}
-                    voiceOk={voiceOk}
-                  />
-                )}
-              </div>
-            )}
+            <div className="rounded-md border border-border bg-surface-2 px-3 py-2.5">
+              <p className="flex items-center gap-2 text-sm font-medium">
+                <UsersIcon className="size-4 text-accent-text" aria-hidden /> You are the
+                interviewer
+              </p>
+              <ul className="mt-1.5 list-disc space-y-1 pl-5 text-xs text-fg-muted">
+                <li>A shared editor, chat and whiteboard with whoever you invite.</li>
+                <li>
+                  Only you see the interviewer notes, the reference solution and your own notes.
+                </li>
+                <li>
+                  The AI stays out of the conversation. With your API key it can give you a second
+                  opinion on the code, and an assessment afterwards.
+                </li>
+                <li>You can change the problem during the interview.</li>
+              </ul>
+            </div>
           </div>
           {/* A child of the panel itself, so it stays pinned however short the panel is. On
               phones it sticks to the bottom of the window while the panel is in view, so Start is
@@ -423,43 +332,21 @@ export function NewInterview() {
               variant="primary"
               size="lg"
               className="w-full"
-              onClick={() => (needsKey ? setKeyDialog(true) : start.mutate({}))}
+              onClick={() => start.mutate()}
               disabled={start.isPending || !ready}
               aria-describedby={ready ? undefined : 'start-hint'}
             >
-              {start.isPending ? <Spinner /> : host ? <UsersIcon /> : <CheckIcon />}
-              {host ? 'Create room' : 'Start interview'}
+              {start.isPending ? <Spinner /> : <UsersIcon />}
+              Create room
             </Button>
             {!ready && (
               <p id="start-hint" className="text-center text-xs text-fg-muted">
-                {host
-                  ? 'Choose a problem or a blank editor to start.'
-                  : 'Choose a problem to start.'}
+                Choose a problem or a blank editor to start.
               </p>
             )}
           </div>
         </section>
       </div>
-
-      <AiKeyDialog
-        open={keyDialog}
-        onOpenChange={setKeyDialog}
-        title="Add your API key to start"
-        description="The AI interviewer runs on your own API key (Anthropic, OpenAI, Google Gemini or OpenRouter). Add it now, or start without the interviewer and add a key later."
-        submitLabel="Save key and start"
-        onSaved={() => start.mutate({})}
-        secondary={
-          <Button
-            variant="ghost"
-            onClick={() => {
-              setKeyDialog(false);
-              start.mutate({ withInterviewer: false });
-            }}
-          >
-            Start without the interviewer
-          </Button>
-        }
-      />
 
       {/* Phones: the setup panel sits below a long list, so keep the next step in reach. */}
       <div
