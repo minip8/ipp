@@ -257,7 +257,7 @@ function LimitsEditor({
     <form onSubmit={submit} noValidate className="space-y-4" aria-labelledby={`${id}-heading`}>
       <div>
         <h3 id={`${id}-heading`} className="text-sm font-semibold">
-          Your limits
+          Set your own
         </h3>
         <p className="mt-1 text-sm text-fg-muted">
           Set any of these; the first one reached stops the AI for the rest of the day. Leave a
