@@ -23,6 +23,7 @@ test.describe('presets', () => {
     await page.goto('/software/interviews');
     await expect(presets(page).getByRole('radio')).toHaveText([
       /^Coding round/,
+      /^Fundamentals round/,
       /^Technical screen/,
       /^Onsite loop/,
       /^Custom/,
@@ -35,6 +36,15 @@ test.describe('presets', () => {
     await expect(stages(page)).toHaveCount(1);
     await expect(stages(page).first()).toContainText('Random medium problem · C++ · 45 min');
     await expect(total(page)).toHaveText('1 stage · 45 min');
+
+    // Fundamentals alone: one round of questions on the language and on systems, no problem.
+    await presets(page)
+      .getByRole('radio', { name: /^Fundamentals round/ })
+      .click();
+    await expect(page.getByTestId('stage-summary')).toHaveText([
+      'C++, Operating systems and 3 more · 4 questions · 30 min',
+    ]);
+    await expect(total(page)).toHaveText('1 stage · 30 min');
 
     await presets(page)
       .getByRole('radio', { name: /^Onsite loop/ })
