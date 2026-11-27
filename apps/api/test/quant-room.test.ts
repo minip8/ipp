@@ -324,6 +324,7 @@ describe('creating a quant room', () => {
     expect(detail.round).toEqual({
       mode: 'hosted',
       path: null,
+      subject: 'quant',
       total: null,
       phase: 'pending',
       questions: [],
@@ -1005,7 +1006,12 @@ describe('AI for the host of a quant room', () => {
     const empty = await quantRoom({}, true);
     await empty.host.post(`/api/pads/${empty.id}/end`);
     const report = Report.parse((await empty.host.get(`/api/pads/${empty.id}/report`)).json);
-    expect(report.quant).toEqual({ mode: 'hosted', path: null, questions: [] });
+    expect(report.quant).toEqual({
+      mode: 'hosted',
+      path: null,
+      subject: 'quant',
+      questions: [],
+    });
     const refused = await empty.host.post(`/api/pads/${empty.id}/report/assessment`);
     expect(refused.status).toBe(409);
     expect(refused.json.error.code).toBe('nothing_to_assess');

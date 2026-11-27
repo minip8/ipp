@@ -355,6 +355,7 @@ describe('creating a quant round', () => {
     expect(detail.json.round).toEqual({
       mode: 'ai',
       path: 'trader',
+      subject: 'quant',
       total: 4,
       phase: 'pending',
       questions: [],
@@ -616,6 +617,7 @@ describe('a round, step by step', () => {
         expect(e.round).toEqual({
           mode: 'ai',
           path: 'trader',
+          subject: 'quant',
           total: 3,
           phase: 'pending',
           questions: [],
