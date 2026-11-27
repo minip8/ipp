@@ -62,14 +62,15 @@ export const QuantVerdictSchema = z.object({ score: z.number(), summary: z.strin
 /**
  * A string field with the JSON that closed it written inside it: the model sometimes escapes the
  * quote that should end the string and then closes it properly, so the decoded text ends in `"}`
- * or a stray `"` (seen in live runs on the last field, `note`), and once a trailing `<br>`. Only an
- * unbalanced trailing quote is debris: a message that ends by closing a quotation keeps it.
+ * or a stray `"` (seen in live runs on the last field, `note`), once `","` (the start of a field
+ * that never came), and once a trailing `<br>`. Only unbalanced trailing quotes are debris: a
+ * message that ends by closing a quotation keeps it.
  */
 export function stripJsonDebris(text: string): string {
   const s = text.replace(/(?:\s*<br\s*\/?>)+\s*$/i, '');
   const quotes = (s.match(/"/g) ?? []).length;
   if (quotes % 2 === 0) return s;
-  return s.replace(/\s*"\s*}?\s*$/, '');
+  return s.replace(/\s*"[\s",}]*$/, '');
 }
 
 /** The turn in the model's text, or null when it is not valid JSON of the right shape. */

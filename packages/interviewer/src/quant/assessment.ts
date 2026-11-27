@@ -10,6 +10,7 @@ import type Anthropic from '@anthropic-ai/sdk';
 import {
   type Message,
   QUANT_REPORT_DIMENSIONS,
+  type QuantSubject,
   type QuantVerdict,
   ReportAssessment,
 } from '@ipp/contracts';
@@ -25,7 +26,14 @@ import {
   isGameEntry,
 } from './entry';
 import { repairLatexEscapes } from './latex';
-import { QUANT_CORE, QUANT_LIMITS, questionBlock, scratchBlock, topicName } from './prompts';
+import {
+  QUANT_LIMITS,
+  quantCore,
+  questionBlock,
+  scratchBlock,
+  subjectOf,
+  topicName,
+} from './prompts';
 
 type MessageParam = Anthropic.Beta.BetaMessageParam;
 type TextBlock = Anthropic.Beta.BetaTextBlockParam;
@@ -230,7 +238,7 @@ export function verdictRequest(
   ].join('\n\n');
   return {
     system: [
-      { type: 'text', text: QUANT_CORE, cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: quantCore(subjectOf(ctx)), cache_control: { type: 'ephemeral' } },
       {
         type: 'text',
         text: questionBlock(entry, ctx.round.total, 'The question to judge', { startedAt }),
@@ -242,18 +250,58 @@ export function verdictRequest(
 
 // ---------------------------------------------------------------- the assessment
 
-export function quantAssessmentTask(games = false): string {
-  return `TASK (assessment): the round is over. Write the assessment for the candidate's report, as a fair, experienced quant interviewer would after this round. Ground every statement in the transcript, the scratchpad, the table of questions and your private notes, and back each score with evidence: quote what they said, or cite times like [12:30] and questions like Q2. Don't invent things that did not happen; if the round was short or the candidate barely engaged, say so and score accordingly. The round is over, so you may now discuss the solutions.
-
-Scores (1-4) per dimension:
-- structuring: setting each problem up before computing: defining the random variables or the state, choosing a method (symmetry, conditioning, linearity of expectation, a recursion, a bound), stating assumptions, breaking the problem into steps.
+/**
+ * The five dimensions (`QUANT_REPORT_DIMENSIONS`), as each subject reads them: a quant round's
+ * are exactly what they have always been; on a technical question correctness is technical
+ * accuracy and completeness, structuring how an explanation is built.
+ */
+const DIMENSIONS: Record<QuantSubject, string> = {
+  quant: `- structuring: setting each problem up before computing: defining the random variables or the state, choosing a method (symmetry, conditioning, linearity of expectation, a recursion, a bound), stating assumptions, breaking the problem into steps.
 - correctness: whether the final answers were right and the reasoning sound; slips caught or not; sanity checks on magnitudes and limiting cases.
 - communication: thinking aloud so the interviewer could follow, explaining steps clearly, answering the interviewer's questions directly, committing to an answer when asked.
 - speed: progress against each question's time budget (see the table): reaching answers in good time, not stalling, prioritising under the clock. Judge against the budgets, not an absolute standard.
-- independence: how much help it took: hints used against hints available (see the table), how quickly they recovered from a hint, whether they needed prompting to finish.
+- independence: how much help it took: hints used against hints available (see the table), how quickly they recovered from a hint, whether they needed prompting to finish.`,
+  technical: `- structuring: how each explanation was built: starting from the core idea or a definition, walking through the mechanism step by step, separating the cases, stating assumptions (which platform, standard or workload), and going on to consequences and trade-offs rather than a list of loosely related facts.
+- correctness: technical accuracy and completeness: whether what they said was right, which key points of each question they covered and which they missed (see the questions' key points), wrong claims made and whether they corrected them, and precision on the details that matter (guarantees, costs, what the standard or the system actually does).
+- communication: explaining clearly and at the right level, using concrete examples, answering the interviewer's questions directly, and saying when they were unsure rather than bluffing.
+- speed: progress against each question's time budget (see the table): getting to the substance in good time, not stalling, prioritising under the clock. Judge against the budgets, not an absolute standard.
+- independence: how much help it took: hints given (see the table; most technical questions have no authored ladder, so most hints were the interviewer's own), how quickly they recovered from a hint or a probe, whether they needed prompting to finish.`,
+  mixed: `- structuring: setting each problem up before computing (defining the random variables or the state, choosing a method, stating assumptions, breaking it into steps) or, on a technical question, building the explanation from the core idea through the mechanism to its consequences and trade-offs.
+- correctness: on a quant question, whether the final answers were right and the reasoning sound, slips caught or not, sanity checks on magnitudes and limiting cases; on a technical question, technical accuracy and completeness: the key points covered and missed, wrong claims made and whether they corrected them.
+- communication: thinking aloud so the interviewer could follow, explaining clearly and with concrete examples, answering the interviewer's questions directly, committing to an answer when asked, saying when unsure rather than bluffing.
+- speed: progress against each question's time budget (see the table): reaching answers in good time, not stalling, prioritising under the clock. Judge against the budgets, not an absolute standard.
+- independence: how much help it took: hints used against hints available (see the table; a question without a ladder had hints of the interviewer's own), how quickly they recovered from a hint, whether they needed prompting to finish.`,
+};
+
+const ASSESSOR: Record<QuantSubject, string> = {
+  quant: 'a fair, experienced quant interviewer',
+  technical: 'a fair, experienced software engineering interviewer',
+  mixed: 'a fair, experienced interviewer who asks both quant and technical questions',
+};
+
+const ROLE: Record<QuantSubject, string> = {
+  quant: 'for a quant role at this level of question',
+  technical: 'for a software engineering role at this level of question',
+  mixed: 'for a role that needs both (a quant developer, say) at this level of question',
+};
+
+const NOTATION: Record<QuantSubject, string> = {
+  quant:
+    'Mathematics as LaTeX between dollar signs, with every backslash doubled inside the JSON strings.',
+  technical:
+    'Identifiers in backticks, e.g. `std::move`; mathematics, if any, as LaTeX between dollar signs, with every backslash doubled inside the JSON strings.',
+  mixed:
+    'Mathematics as LaTeX between dollar signs and identifiers in backticks, e.g. `std::move`, with every backslash doubled inside the JSON strings.',
+};
+
+export function quantAssessmentTask(games = false, subject: QuantSubject = 'quant'): string {
+  return `TASK (assessment): the round is over. Write the assessment for the candidate's report, as ${ASSESSOR[subject]} would after this round. Ground every statement in the transcript, the scratchpad, the table of questions and your private notes, and back each score with evidence: quote what they said, or cite times like [12:30] and questions like Q2. Don't invent things that did not happen; if the round was short or the candidate barely engaged, say so and score accordingly. The round is over, so you may now discuss the solutions.
+
+Scores (1-4) per dimension:
+${DIMENSIONS[subject]}
 Scale: 1 = significant concerns, 2 = below the bar, 3 = meets the bar, 4 = clearly strong. If a dimension could not be judged (e.g. no question was answered), score it 2 and say so.
-Recommendation: strong_hire / hire / lean_hire / lean_no_hire / no_hire for a quant role at this level of question.
-Summary: three to five sentences, written to the candidate ("you"). Strengths and improvements: two to four specific items each, written to the candidate, each concrete and actionable (a technique to practise, a habit to build). Mathematics as LaTeX between dollar signs, with every backslash doubled inside the JSON strings.${
+Recommendation: strong_hire / hire / lean_hire / lean_no_hire / no_hire ${ROLE[subject]}.
+Summary: three to five sentences, written to the candidate ("you"). Strengths and improvements: two to four specific items each, written to the candidate, each concrete and actionable (a technique to practise, a habit to build). ${NOTATION[subject]}${
     games
       ? `
 
@@ -290,12 +338,12 @@ export function quantAssessmentRequest(
     ctx.privateNotes.length
       ? `Your private notes:\n${ctx.privateNotes.map((n) => `- ${truncate(n, 600)}`).join('\n')}`
       : 'No private notes.',
-    quantAssessmentTask(posed.some(isGameEntry)),
+    quantAssessmentTask(posed.some(isGameEntry), subjectOf(ctx)),
   ].join('\n\n');
   const blocks = posed.map((e) => questionBlock(e, ctx.round.total, 'Posed', { startedAt }));
   return {
     system: [
-      { type: 'text', text: QUANT_CORE, cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: quantCore(subjectOf(ctx)), cache_control: { type: 'ephemeral' } },
       {
         type: 'text',
         text: blocks.length

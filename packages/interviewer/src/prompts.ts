@@ -27,7 +27,7 @@ import {
   type Ty,
 } from '@ipp/contracts';
 import type { Moment } from './policy';
-import type { InterviewContext } from './types';
+import type { InterviewContext, StagePosition } from './types';
 
 type MessageParam = Anthropic.Beta.BetaMessageParam;
 type TextBlock = Anthropic.Beta.BetaTextBlockParam;
@@ -139,6 +139,67 @@ export function describeSignature(sig: ProblemSignature): string {
 }
 
 const at = (iso: string, startedAt: number) => clock(Date.parse(iso) - startedAt);
+
+// ---------------------------------------------------------------- a stage of a longer interview
+
+/*
+ * A pad may be one stage of a staged interview (`InterviewContext.stage`, `QuantContext.stage`).
+ * The interviewer then opens and closes it as one part of a longer loop. All of this goes in the
+ * per-call operator text (the state and the task of the final system message), after the last
+ * cache breakpoint: the cached prefix of a stage's pad is exactly a standalone pad's. To the
+ * candidate it is a "part" of the interview, never a "stage": a market-making game's playbook
+ * has stages of its own.
+ */
+
+const ORDINALS = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth'];
+const CARDINALS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight'];
+
+/** What the next part is, in plain words. */
+export const STAGE_KIND_WORDS: Record<NonNullable<StagePosition['next']>, string> = {
+  coding: 'a coding problem',
+  questions: 'a round of questions',
+  game: 'a market-making game',
+};
+
+/** A stage worth mentioning: one of an interview of more than one stage. */
+export const inStages = (stage: StagePosition | null | undefined): stage is StagePosition =>
+  !!stage && stage.total > 1 && stage.index >= 0 && stage.index < stage.total;
+
+/** A stage with another one after it: its end is not the end of the interview. */
+export const stageWithNext = (
+  stage: StagePosition | null | undefined,
+): stage is StagePosition & { next: NonNullable<StagePosition['next']> } =>
+  inStages(stage) && stage.next !== null;
+
+/** "the second of three parts" */
+export function stagePart(stage: StagePosition): string {
+  const ord = ORDINALS[stage.index] ?? `number ${stage.index + 1}`;
+  const of = CARDINALS[stage.total] ?? String(stage.total);
+  return stage.index === stage.total - 1 ? `the last of ${of} parts` : `the ${ord} of ${of} parts`;
+}
+
+/** The state line of a stage's every call; null for a pad on its own. */
+export function stageLine(stage: StagePosition | null | undefined): string | null {
+  if (!inStages(stage)) return null;
+  const part = stagePart(stage);
+  if (stageWithNext(stage))
+    return `Interview: this session is ${part} of a longer interview, and ${STAGE_KIND_WORDS[stage.next]} comes after it. You are one interviewer in that loop. ${stageWrapRule(stage)}`;
+  return `Interview: this session is ${part} of a longer interview; the candidate has done the earlier parts. When it ends, your wrap-up closes the whole interview.`;
+}
+
+/** How a stage that is not the last one ends; '' for a pad on its own or the last stage. */
+export function stageWrapRule(stage: StagePosition | null | undefined): string {
+  if (!stageWithNext(stage)) return '';
+  return `When this part ends (your wrap-up, or its time running out), the interview is not over: don't say it is, and don't say goodbye. Say that this part is done and that the next part, ${STAGE_KIND_WORDS[stage.next]}, comes next, with at most one sentence of feedback; detailed feedback comes in the written report.`;
+}
+
+/** How a stage opens; '' for a pad on its own. */
+export function stageOpening(stage: StagePosition | null | undefined): string {
+  if (!inStages(stage)) return '';
+  if (stage.index === 0)
+    return `This is ${stagePart(stage)} of the interview: welcome them briefly and say in natural words that the interview has ${CARDINALS[stage.total] ?? stage.total} parts and this is the first (e.g. "We'll do this in three parts, starting with…"), without listing the parts. Keep the opening brief.`;
+  return `This is ${stagePart(stage)} of the interview, and the candidate has already been welcomed and done the earlier part${stage.index > 1 ? 's' : ''}: no fresh welcome or introductions. Say in a few natural words which part this is (e.g. "This is the second of three parts: …"; don't recite numbers mechanically), and keep the opening brief.`;
+}
 
 // ---------------------------------------------------------------- problem block
 
@@ -466,6 +527,8 @@ export function stateText(ctx: InterviewContext, f: StateFacts): string {
     `Language: ${LANGUAGE_LABELS[ctx.language]}. Interviewer style: ${s.style}. Proactivity: ${s.proactivity}. Voice: ${s.voice ? 'on (your messages are spoken aloud)' : 'off'}.`,
     `Candidate activity: last edit ${f.lastCodeChangeAt === null ? 'none yet' : `${duration(f.now - f.lastCodeChangeAt)} ago`}; last chat message ${f.lastCandidateMsgAt === null ? 'none yet' : `${duration(f.now - f.lastCandidateMsgAt)} ago`}. Runs so far: ${f.runs}. Accepted submission: ${f.accepted ? 'yes' : 'no'}.`,
   ];
+  const stage = stageLine(ctx.stage);
+  if (stage) lines.push(stage);
   if (f.unanswered > 0)
     lines.push(`Your last ${f.unanswered} unprompted message(s) have had no reply yet.`);
   const notes = ctx.privateNotes.slice(-LIMITS.privateNotes);
@@ -505,10 +568,13 @@ const MOMENT_GUIDANCE: Record<Moment['kind'], string> = {
     'They have started writing code and you have not really heard their approach. Unless the chat already covers it, ask them briefly to walk you through the approach and the complexity they expect. Keep it light; they are mid-flow.',
 };
 
-export function decisionTask(m: Moment): string {
+export function decisionTask(m: Moment, stage?: StagePosition | null): string {
+  const more = m.kind === 'time_up' ? stageWrapRule(stage) : '';
   return [
     `TASK: decide whether to say something now, unprompted. Moment: ${m.kind}. ${m.detail}`,
-    MOMENT_GUIDANCE[m.kind],
+    more
+      ? `Time is up on this part of the interview. You must speak now: wrap it up (thank them, at most one sentence of feedback). ${more} Use intent "wrap_up".`
+      : MOMENT_GUIDANCE[m.kind],
     m.mustSpeak
       ? 'You must speak at this moment (speak = true).'
       : 'Staying silent is the usual right answer. Speak only if a good human interviewer would say something at exactly this moment, and only say what they would actually say.',
@@ -516,15 +582,22 @@ export function decisionTask(m: Moment): string {
   ].join('\n');
 }
 
-export function replyTask(opts: { voice: boolean; firstMessage: boolean }): string {
+export function replyTask(opts: {
+  voice: boolean;
+  firstMessage: boolean;
+  stage?: StagePosition | null;
+}): string {
   const lines = [
     'TASK: the candidate has just spoken to you (their latest message is in the last user turn). Reply now as the interviewer, in plain text.',
     'Answer what they actually said. If they ask whether their code is right, read and trace the code before answering (see Conduct). If they ask for a hint, give the next rung only. If they propose an approach, react to it: confirm it, or ask a question that exposes the gap; ask about complexity if they have not covered it.',
   ];
-  if (opts.firstMessage)
+  if (opts.firstMessage) {
     lines.push(
       'You have not opened the session yet: greet them briefly and frame the problem as part of this reply.',
     );
+    const stage = stageOpening(opts.stage);
+    if (stage) lines.push(stage);
+  }
   lines.push(
     opts.voice
       ? 'They are speaking by voice and will hear your reply: one or two short spoken sentences, no markdown, no symbols.'
@@ -533,10 +606,12 @@ export function replyTask(opts: { voice: boolean; firstMessage: boolean }): stri
   return lines.join('\n');
 }
 
-export function greetingTask(voice: boolean): string {
-  return voice
+export function greetingTask(voice: boolean, stage?: StagePosition | null): string {
+  const task = voice
     ? 'TASK: the session has just started. Open the interview now (see Conduct: Opening). The candidate is on voice and will hear this: two or three short spoken sentences, no markdown.'
     : 'TASK: the session has just started. Open the interview now (see Conduct: Opening). Two to four sentences, plain text.';
+  const part = stageOpening(stage);
+  return part ? `${task}\n${part}` : task;
 }
 
 export function assessmentTask(): string {

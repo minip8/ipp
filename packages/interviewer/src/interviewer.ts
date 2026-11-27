@@ -836,7 +836,11 @@ export function createInterviewer(
       if (!ctx) return;
       const firstMessage = !ctx.transcript.some((m) => m.role === 'interviewer');
       await streamMessage(rt, ctx, key, {
-        task: replyTask({ voice: voice || ctx.pad.interviewer.voice, firstMessage }),
+        task: replyTask({
+          voice: voice || ctx.pad.interviewer.voice,
+          firstMessage,
+          stage: ctx.stage,
+        }),
         kind: 'chat',
         intent: 'answer',
         extra: queued,
@@ -887,7 +891,7 @@ export function createInterviewer(
       deps.emit(rt.padId, { type: 'interviewer.thinking', active: true });
       try {
         await streamMessage(rt, ctx, key, {
-          task: greetingTask(ctx.pad.interviewer.voice),
+          task: greetingTask(ctx.pad.interviewer.voice, ctx.stage),
           kind: 'proactive',
           intent: 'greeting',
         });
@@ -915,7 +919,7 @@ export function createInterviewer(
           system: systemBlocks(ctx.problem),
           messages: buildMessages(ctx, rt.events, {
             state: stateText(ctx, facts(rt)),
-            task: decisionTask(refined),
+            task: decisionTask(refined, ctx.stage),
             includeRunOutput: refined.kind.startsWith('run_') || refined.kind === 'samples_passed',
           }),
           ...CALLS.decision,
