@@ -32,9 +32,12 @@ function NewInterviewModel() {
 }
 
 const USES = [
-  { icon: BotIcon, text: 'The AI interviewer in your pads (collaborators you invite use it too)' },
+  {
+    icon: BotIcon,
+    text: 'The AI interviewer in your pads and interviews, open questions included (collaborators you invite use it too)',
+  },
   { icon: ClipboardCheckIcon, text: 'The written assessment at the end of an interview' },
-  { icon: ListChecksIcon, text: 'Quiz discussions, and grading open answers in quizzes' },
+  { icon: ListChecksIcon, text: 'Grading your answers to open questions in the question bank' },
 ];
 
 export function AiKeySettings() {

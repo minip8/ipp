@@ -36,7 +36,7 @@ const FEATURES = [
   {
     icon: MessagesSquareIcon,
     title: 'Talk it through',
-    body: 'Open questions are a conversation: explain your reasoning, and the interviewer follows up before it grades you. Or sit a live quant round: timed questions asked one at a time, by voice if you like, with a market-making game in which it trades against your quotes.',
+    body: 'In an interview, open questions are a conversation: the interviewer asks them one at a time, by voice if you like, follows up on your reasoning and grades you after. A quant round can hold a market-making game in which it trades against your quotes.',
   },
   {
     icon: ListChecksIcon,
@@ -62,8 +62,8 @@ export default function LandingPage() {
             <p className="mt-4 max-w-2xl text-md text-fg-muted">
               Solve coding problems in C++, Python or Java while an AI interviewer watches, asks
               follow-ups and speaks up when you go quiet. Work through probability, markets and
-              statistics with your answers checked, talk the open questions through with the same
-              interviewer, or sit a timed quant round with it.
+              statistics with your answers checked, or sit a timed interview in which the same
+              interviewer asks open questions and talks them through with you.
             </p>
             <LandingActions />
           </div>

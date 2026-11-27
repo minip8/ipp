@@ -44,6 +44,9 @@ test.describe('signed out', () => {
     await expect(quant).toContainText('Numeric answer');
     await expect(quant).toContainText('Correct');
     await expect(quant).toContainText('A stick is broken at two uniformly random points');
+    // The open question is talked through in an interview: quizzes hold no discussion.
+    await expect(quant).toContainText('Interview');
+    await expect(quant).not.toContainText('Discussion');
 
     // Side by side at 1440, both starting within the first 900px.
     const a = await pad.boundingBox();

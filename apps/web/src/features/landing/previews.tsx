@@ -1,9 +1,10 @@
 /**
  * The landing page's two static pictures of the product: a coding pad with the interviewer, and a
- * quant question with its checked numeric answer beside an open question being discussed. Server
- * components with no state: the math is typeset on the server (`tex`). Both are drawn after the
- * real screens (the pad, and the quiz attempt and discussion in features/quiz), so keep them true
- * to what those do.
+ * quant question with its checked numeric answer (a practice quiz) beside an open question being
+ * talked through in an interview. Server components with no state: the math is typeset on the
+ * server (`tex`). Both are drawn after the real screens (the pad, the quiz attempt in
+ * features/quiz, and the interviewer's chat in a questions stage), so keep them true to what those
+ * do.
  *
  * Wide screens (xl) put the two side by side, each stacked inside; in between, each takes the full
  * width with its two halves side by side; phones stack everything.
@@ -238,7 +239,7 @@ export function QuantPreview() {
         <div className={cn(SIDE, 'landing-math')}>
           <p className="flex items-center gap-1.5 px-1 text-2xs font-medium text-fg-subtle">
             <span className="rounded-[4px] bg-accent-soft px-1.5 py-px text-accent-text">
-              Discussion
+              Interview
             </span>
             Open question
           </p>
