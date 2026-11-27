@@ -151,7 +151,11 @@ browser ── /api/* (Next rewrite, same origin, cookie session) ──▶ apps
   topics has no `path` and carries a `QuantSubject` (`quant`, `technical`, `mixed`) that chooses
   the interviewer's frame; never assume an AI round has a path. An interview is listed on the
   track it was built in (`interviews.track`), and its pads are never listed on their own. All
-  routes take `requireAccount` and are the owner's alone.
+  routes take `requireAccount` and are the owner's alone. A plan can be saved under a name
+  (`interview_templates`, `/api/interview-templates`): only a named plan, unique per user and
+  track, checked against the content when an interview is started from it and not when saved.
+  In the builder the selection and the custom draft are separate state: nothing but the user's
+  own edit, confirmed when it would lose work, replaces a draft.
 - **The mental math drill** (ARCHITECTURE §8.1) is generated and marked in the browser; the API
   only stores finished runs (`drill_runs`, `POST`/`GET /api/drill/runs`) after the contract's
   consistency checks, computing totals, score and `finishedAt` itself. Bests count full-mix runs only.

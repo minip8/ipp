@@ -59,12 +59,19 @@ the pure `apps/web/src/lib/track.ts`.
 - **Interviews** (`features/interviews`): what is under way, then "New interview" and "History"
   (`?view=history`). "New interview" opens with "Practise with the AI | Interview someone"
   (`?mode=host`). Practising is the **interview builder** (`features/interview-builder`, §4.2),
-  the same component in both tracks: the track's presets, the plan as an ordered list of stages
-  edited in place (any kind of stage and any topic in either track; an edited plan reads
-  "Custom"), the interviewer's options, and Start, which creates the interview and opens stage
-  0's pad. `?preset=` chooses a preset, `?problem=` makes a plan of one coding stage on that
-  problem, the old `?path=` maps to the Trader and Researcher presets; the last plan per track
-  is remembered in the browser. Interviewing someone is unchanged: a coding room (§4.1) in
+  the same component in both tracks: cards to start from, the plan shown as an ordered list of
+  stages edited in place (any kind of stage and any topic in either track), the interviewer's
+  options, and Start, which creates the interview from the plan shown and opens stage 0's pad.
+  The cards are the track's presets, the user's saved plans of the track ("Your interviews",
+  §4.2: save, update, rename, delete) and "Custom". What is selected and the custom **draft**
+  are separate: choosing a preset or a saved plan shows it and leaves the draft alone, and
+  Custom shows the draft again as it was left. Editing a preset or a saved plan starts a draft
+  from it, asking first when the draft there holds work found in no preset or saved plan. Both
+  are remembered per track in the browser (`ipp:interview-plan:<track>`, validated on load).
+  `?preset=` chooses a preset (the old `?path=` maps to Trader and Researcher); `?problem=` and
+  `?topics=a,b` show a plan of one coding stage on that problem, or one questions stage on those
+  topics, as a preview that is never the draft and is not stored. Interviewing someone is
+  unchanged: a coding room (§4.1) in
   Software, a quant room (§8.4) in Quant, whose bank browser filters by site track
   (`topicInTrack`, starting on Quant) and still offers every question; the host's desk in the
   room, which searches on the server by a topic's home (`HostBankQuery.track`), has no track
