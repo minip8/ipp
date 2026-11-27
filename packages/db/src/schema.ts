@@ -33,6 +33,7 @@ import type {
 } from '@ipp/contracts';
 import { sql } from 'drizzle-orm';
 import {
+  bigint,
   boolean,
   customType,
   date,
@@ -597,8 +598,26 @@ export const aiUsage = pgTable(
     messages: integer('messages').notNull().default(0),
     inputTokens: integer('input_tokens').notNull().default(0),
     outputTokens: integer('output_tokens').notNull().default(0),
+    /** Estimated cost in micro-dollars, from list prices or the provider's reported cost. */
+    costMicros: bigint('cost_micros', { mode: 'number' }).notNull().default(0),
+    /** Tokens of calls whose model had no known price (left out of `costMicros`). */
+    unpricedTokens: bigint('unpriced_tokens', { mode: 'number' }).notNull().default(0),
   },
   (t) => [primaryKey({ columns: [t.userId, t.day] })],
 );
+
+/**
+ * A user's own daily caps (`AiDailyLimits`), replacing the server defaults for them; no row means
+ * the defaults apply. At least one cap is set (the API refuses a row with none).
+ */
+export const aiLimits = pgTable('ai_limits', {
+  userId: text('user_id')
+    .primaryKey()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  dailyCostMicros: integer('daily_cost_micros'),
+  dailyTokens: integer('daily_tokens'),
+  dailyMessages: integer('daily_messages'),
+  updatedAt: tsz('updated_at').notNull().defaultNow(),
+});
 
 export const authSchema = { user, session, account, verification };
