@@ -514,6 +514,8 @@ describe('creating an interview', () => {
     expect((await other.post(`/api/interviews/${id}/end`)).status).toBe(404);
     expect((await other.del(`/api/interviews/${id}`)).status).toBe(404);
     expect((await other.get('/api/interviews/not-an-id')).status).toBe(404);
+    // The right length and alphabet, and still not an id: never a 500 from the database.
+    expect((await other.get(`/api/interviews/${'-'.repeat(36)}`)).status).toBe(404);
     expect((await other.get('/api/interviews')).json).toEqual([]);
     // Nothing changed.
     expect((await getInterview(owner, id)).status).toBe('active');

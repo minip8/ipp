@@ -24,10 +24,7 @@ import type { Ctx } from '../context';
 import { conflict, notFound, rateLimited } from '../http/errors';
 import { isUniqueViolation } from '../pg';
 import { templateView } from '../views';
-
-/** A canonical uuid; anything else is 404 before Postgres sees it (it would refuse it: a 500). */
-const isId = (id: string) =>
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+import { isId } from './service';
 
 const nameTaken = () =>
   conflict('template_name_taken', 'You already have a plan of that name in this track');
