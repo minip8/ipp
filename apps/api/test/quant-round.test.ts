@@ -40,7 +40,7 @@ import { WebSocket } from 'ws';
 import * as Y from 'yjs';
 import { DEFAULT_LIMITS, loadConfig } from '../src/config';
 import { interviewerMessageCap, QUANT_SCRATCH_CHARS, quantTrigger } from '../src/interviewer/host';
-import { eligibleQuestions } from '../src/quant/assemble';
+import { eligiblePathQuestions } from '../src/quant/assemble';
 import { finishRound } from '../src/quant/round';
 import { startQuantSweeper, sweepQuantRounds } from '../src/quant/sweeper';
 import {
@@ -422,7 +422,9 @@ describe('creating a quant round', () => {
     try {
       const ids = new Set(shared.map((q) => q.id));
       for (const path of QUANT_PATHS)
-        expect((await eligibleQuestions(h.api.ctx, path)).filter((q) => ids.has(q.id))).toEqual([]);
+        expect((await eligiblePathQuestions(h.api.ctx, path)).filter((q) => ids.has(q.id))).toEqual(
+          [],
+        );
       const c = await account('Shared');
       for (let i = 0; i < 3; i++) {
         for (const path of QUANT_PATHS) {
