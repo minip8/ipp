@@ -15,17 +15,20 @@ import {
   QuantGame,
   type QuantGameEntry,
   type QuantGameState,
+  type QuantPath,
   type QuantPick,
   type QuantRoundState,
   type QuantRoundStep,
   type QuantStep,
   type QuantStepResult,
+  type QuantSubject,
   QuizQuestion,
   quantClock,
   quantGamePick,
   quantPhase,
   quantRoundEndsAt,
   quantTimeSec,
+  roundSubject,
   type ServerEvent,
 } from '@ipp/contracts';
 import {
@@ -43,6 +46,7 @@ import type {
   QuantContext,
   QuantQuestion,
   ResolvedKey,
+  StagePosition,
   Trigger,
 } from '../src/types';
 import { FakeModel, type Reply, TEST_KEY } from './harness';
@@ -110,6 +114,46 @@ export const BANK: QuantQuestion[] = [
     hints: ['HINT-THREE-1 compute the variance first'],
     followUps: [],
     explanation: 'EXPLAIN-THREE variance 35/12.',
+  }),
+] as QuantQuestion[];
+
+/**
+ * Three fundamentals questions (a technical round), tokens as in `BANK`. Like the content's
+ * fundamentals questions, they have no hint ladder and no follow-ups.
+ */
+export const TECH_BANK: QuantQuestion[] = [
+  QuizQuestion.parse({
+    id: 't-zero',
+    topic: 'operating-systems',
+    subtopic: 'Memory',
+    type: 'short',
+    difficulty: 'medium',
+    prompt: 'PROMPT-ZERO: what happens when a process first writes to memory it got from `malloc`?',
+    reference: 'REFERENCE-ZERO a page fault maps a zeroed page.',
+    keyPoints: ['KEYPOINT-ZERO-A brk only extends the VMA', 'KEYPOINT-ZERO-B first touch faults'],
+    explanation: 'EXPLAIN-ZERO demand paging.',
+  }),
+  QuizQuestion.parse({
+    id: 't-one',
+    topic: 'concurrency',
+    subtopic: 'Races',
+    type: 'short',
+    difficulty: 'medium',
+    prompt: 'PROMPT-ONE: what is the difference between a race condition and a data race?',
+    reference: 'REFERENCE-ONE a data race is unsynchronised conflicting access.',
+    keyPoints: ['KEYPOINT-ONE-A data race is UB', 'KEYPOINT-ONE-B check-then-act on atomics'],
+    explanation: 'EXPLAIN-ONE the two notions differ.',
+  }),
+  QuizQuestion.parse({
+    id: 't-two',
+    topic: 'cpp',
+    subtopic: 'Move semantics',
+    type: 'short',
+    difficulty: 'medium',
+    prompt: 'PROMPT-TWO: explain the difference between `std::move` and `std::forward`.',
+    reference: 'REFERENCE-TWO move is unconditional, forward conditional.',
+    keyPoints: ['KEYPOINT-TWO-A casts only', 'KEYPOINT-TWO-B named parameters are lvalues'],
+    explanation: 'EXPLAIN-TWO value categories.',
   }),
 ] as QuantQuestion[];
 
@@ -243,6 +287,13 @@ export interface QuantHarnessOptions {
   voiceSettleMs?: number;
   /** Put a market-making game in slot `game.slot` (default `GAME` in slot 1, dice 6, 2, 5). */
   game?: { slot?: number; game?: QuantGame; values?: number[] };
+  /** The round's questions (default `BANK`), cut to `questions`. */
+  bank?: QuantQuestion[];
+  /** The round's subject (default: none stored, i.e. quant) and path (default `trader`). */
+  subject?: QuantSubject;
+  path?: QuantPath | null;
+  /** The pad's place in a staged interview (`QuantContext.stage`). */
+  stage?: StagePosition | null;
 }
 
 export interface RecordedCall {
@@ -258,7 +309,7 @@ export function quantHarness(opts: QuantHarnessOptions = {}) {
   const padId = randomUUID();
   const durationMin = opts.durationMin ?? 30;
   const count = opts.questions ?? 4;
-  const bank = BANK.slice(0, count);
+  const bank = (opts.bank ?? BANK).slice(0, count);
   const pad: Pad = {
     id: padId,
     ownerId: 'u1',
@@ -304,7 +355,12 @@ export function quantHarness(opts: QuantHarnessOptions = {}) {
     });
   }
   const platform = {
-    round: createQuantRound('trader', durationMin, picks) as QuantRoundState,
+    round: createQuantRound(
+      opts.path === undefined ? 'trader' : opts.path,
+      durationMin,
+      picks,
+      opts.subject,
+    ) as QuantRoundState,
     version: 0,
   };
   /** Every game entry the round recorded (the API's `game` timeline events), in order. */
@@ -378,7 +434,9 @@ export function quantHarness(opts: QuantHarnessOptions = {}) {
     } else shown = transcript.slice(-200);
     return {
       pad: { ...pad, interviewer: { ...pad.interviewer } },
+      ...(opts.stage !== undefined ? { stage: opts.stage } : {}),
       round: {
+        ...(r.subject ? { subject: roundSubject(r) } : {}),
         version: platform.version,
         total: r.questions.length,
         phase,
