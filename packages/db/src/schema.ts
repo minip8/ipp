@@ -596,8 +596,8 @@ export const aiUsage = pgTable(
       .references(() => user.id, { onDelete: 'cascade' }),
     day: date('day', { mode: 'string' }).notNull(),
     messages: integer('messages').notNull().default(0),
-    inputTokens: integer('input_tokens').notNull().default(0),
-    outputTokens: integer('output_tokens').notNull().default(0),
+    inputTokens: bigint('input_tokens', { mode: 'number' }).notNull().default(0),
+    outputTokens: bigint('output_tokens', { mode: 'number' }).notNull().default(0),
     /** Estimated cost in micro-dollars, from list prices or the provider's reported cost. */
     costMicros: bigint('cost_micros', { mode: 'number' }).notNull().default(0),
     /** Tokens of calls whose model had no known price (left out of `costMicros`). */
