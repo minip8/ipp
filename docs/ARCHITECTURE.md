@@ -56,19 +56,33 @@ page remembers its track (`PUT /api/me/track`, `user.track`, §3); a page of no 
 report, a quiz, a question bank, settings) shows the remembered one. URLs are built and read by
 the pure `apps/web/src/lib/track.ts`.
 
-- **Interviews** (`features/interviews`): the track's pads under way, then "New interview" and
-  "History" (`?view=history`). A pad is in a track by its format (`padTrack`: coding pads and
-  coding rooms Software, quant rounds and quant rooms Quant), and so are the figures (Software:
-  finished and solved; Quant: rounds finished) and the history's columns. The setup opens with
-  "Practise with the AI | Interview someone" (`?mode=host`). Software: the problem library and a
-  coding pad, or a coding room (§4.1); `?problem=` preselects a problem. Quant: a live round on a
-  path (`?path=`, §8.2), or a quant room (§8.4), offered only there. Its bank browser filters by
-  site track (`topicInTrack`, starting on Quant) and still offers every question; the host's desk
-  in the room, which searches on the server by a topic's home (`HostBankQuery.track`), has no
-  track filter.
+- **Interviews** (`features/interviews`): what is under way, then "New interview" and "History"
+  (`?view=history`). "New interview" opens with "Practise with the AI | Interview someone"
+  (`?mode=host`). Practising is the **interview builder** (`features/interview-builder`, §4.2),
+  the same component in both tracks: the track's presets, the plan as an ordered list of stages
+  edited in place (any kind of stage and any topic in either track; an edited plan reads
+  "Custom"), the interviewer's options, and Start, which creates the interview and opens stage
+  0's pad. `?preset=` chooses a preset, `?problem=` makes a plan of one coding stage on that
+  problem, the old `?path=` maps to the Trader and Researcher presets; the last plan per track
+  is remembered in the browser. Interviewing someone is unchanged: a coding room (§4.1) in
+  Software, a quant room (§8.4) in Quant, whose bank browser filters by site track
+  (`topicInTrack`, starting on Quant) and still offers every question; the host's desk in the
+  room, which searches on the server by a topic's home (`HostBankQuery.track`), has no track
+  filter. The lists hold staged interviews of the track they were built in (`interviews.track`)
+  and pads started on their own, which are in a track by their format (`padTrack`: coding pads
+  and coding rooms Software, quant rounds and quant rooms Quant). A stage's pad is never a row
+  of its own; an interview of one stage is shown as its pad.
+- **A stage's pad and the interview page.** A pad that is a stage of several
+  (`PadDetail.interview`) shows which ("Stage 2 of 3"); its End is "End stage", after which, or
+  once its round has run out of questions, it offers the next stage (`next`) or ending the
+  interview there. `/interviews/[id]` (`features/interview`, a page of no track, like a pad) is
+  the hub between stages and the combined report: the stage to continue or start, each stage
+  with its status and, once done, its report in brief with a link to the full one, and after the
+  end the overall recommendation, labelled as arithmetic.
 - **Practice** (`features/quiz/hub.tsx`): the track's quiz topics and the quiz setup (Quant adds
-  the drill), Software's problem library (`?view=problems`: a problem's card leads to its
-  Interviews setup with the problem chosen), and the history of attempts with a topic of the track.
+  the drill), Software's problem library (`?view=problems`: a problem's card starts it on your
+  own, a pad with no interviewer and no clock that needs no AI key, or leads to the builder with
+  the problem chosen), and the history of attempts with a topic of the track.
 - **Roadmap** (`features/roadmap`): the study path (Quant's two, `?path=`) and the topic maps
   (`?view=maps&roadmap=<topic>&node=<id>`, §8).
 
