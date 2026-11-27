@@ -449,6 +449,7 @@ export class MockQuantRounds {
       accepted: false,
       role: d.role,
       quantPath: this.rounds.get(id)?.state.path ?? null,
+      interviewId: d.pad.interviewId,
     };
   }
 
