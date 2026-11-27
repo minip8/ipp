@@ -10,6 +10,7 @@ import { normalizeIp } from '../config';
 import type { Ctx } from '../context';
 import { aiKeyRoutes } from '../routes/ai-key';
 import { drillRoutes } from '../routes/drill';
+import { interviewRoutes } from '../routes/interviews';
 import { miscRoutes } from '../routes/misc';
 import { padRoutes } from '../routes/pads';
 import { quizRoutes } from '../routes/quiz';
@@ -241,6 +242,7 @@ export function createHttpApp(ctx: Ctx): Hono<Env> {
   app.route('/api', runRoutes(ctx));
   app.route('/api', quizRoutes(ctx));
   app.route('/api', drillRoutes(ctx));
+  app.route('/api', interviewRoutes(ctx));
 
   app.notFound((c) => c.json(new HttpError(404, 'not_found', 'Not found').toBody(), 404));
   app.onError((err, c) => {

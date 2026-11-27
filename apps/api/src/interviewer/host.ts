@@ -20,12 +20,23 @@ import {
   quantPhase,
   quantRoundEndsAt,
   quantTimeSec,
+  roundSubject,
   type ServerEvent,
 } from '@ipp/contracts';
-import { aiUsage, interviewerNotes, messages, pads, problems, runs, timelineEvents } from '@ipp/db';
+import {
+  aiUsage,
+  interviewerNotes,
+  interviews,
+  messages,
+  pads,
+  problems,
+  runs,
+  timelineEvents,
+} from '@ipp/db';
 import { and, asc, count, desc, eq, gte, inArray, sql } from '@ipp/db/orm';
 import type { Limits } from '../config';
 import type { Ctx } from '../context';
+import { stagePosition } from '../interviews/logic';
 import { bankEntries } from '../quant/room';
 import { applyStep, bankQuestions, gameContent, loadRound } from '../quant/round';
 import { toInterviewerRun } from '../runs/redact';
@@ -45,6 +56,7 @@ import type {
   ResolvedKey,
   RoomContext,
   ShortAnswerGrade,
+  StagePosition,
   Trigger,
 } from './types';
 import { defaultModel } from './wiring';
@@ -307,6 +319,21 @@ export class InterviewerHost {
     };
   }
 
+  /**
+   * Where a pad sits in its staged interview, for the interviewer's frame; null for a pad of no
+   * interview (no query at all) or of a one-stage interview. One lookup by primary key.
+   */
+  private async stageOf(
+    pad: Pick<typeof pads.$inferSelect, 'interviewId' | 'stageIndex'>,
+  ): Promise<StagePosition | null> {
+    if (pad.interviewId === null || pad.stageIndex === null) return null;
+    const [row] = await this.ctx.db
+      .select({ stages: interviews.stages })
+      .from(interviews)
+      .where(eq(interviews.id, pad.interviewId));
+    return row ? stagePosition(row.stages, pad.stageIndex) : null;
+  }
+
   async loadContext(padId: string): Promise<InterviewContext> {
     const { db } = this.ctx;
     const [pad] = await db.select().from(pads).where(eq(pads.id, padId));
@@ -334,6 +361,7 @@ export class InterviewerHost {
     const language: Language = pad.language;
     return {
       pad: padView(pad, null),
+      stage: await this.stageOf(pad),
       problem: problemContent(problem),
       language,
       code: texts.code[language],
@@ -490,7 +518,7 @@ export class InterviewerHost {
             .from(messages)
             .where(and(eq(messages.padId, padId), eq(messages.id, last)))
         : [];
-    const [texts, transcript, notes] = await Promise.all([
+    const [texts, transcript, notes, stage] = await Promise.all([
       this.ctx.collab.readTexts(padId),
       db
         .select()
@@ -504,11 +532,14 @@ export class InterviewerHost {
         .where(eq(interviewerNotes.padId, padId))
         .orderBy(desc(interviewerNotes.at))
         .limit(PRIVATE_NOTES_LIMIT),
+      this.stageOf(pad),
     ]);
     const roundEndsAt = quantRoundEndsAt(pad.startedAt, state.durationMin);
     return {
       pad: padView(pad, null),
+      stage,
       round: {
+        subject: roundSubject(state),
         version: row.version,
         total: state.questions.length,
         phase,

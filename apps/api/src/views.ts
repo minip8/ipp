@@ -1,16 +1,30 @@
 /** Row -> contract mappers. Nothing here may expose server-only problem fields. */
 import {
+  type Interview,
+  type InterviewStageView,
   type Message,
   type MessageIntent,
   type Pad,
   type ProblemDetail,
   type ProblemSummary,
   problemScaffolds,
+  Recommendation,
+  type Report,
+  stageStatuses,
   type TimelineEvent,
 } from '@ipp/contracts';
-import type { messages, pads, problems, problemTests, runs, timelineEvents } from '@ipp/db';
+import type {
+  interviews,
+  messages,
+  pads,
+  problems,
+  problemTests,
+  runs,
+  timelineEvents,
+} from '@ipp/db';
 import type { StoredRun } from './runs/redact';
 
+type InterviewRow = typeof interviews.$inferSelect;
 type PadRow = typeof pads.$inferSelect;
 type ProblemRow = typeof problems.$inferSelect;
 type TestRow = typeof problemTests.$inferSelect;
@@ -97,5 +111,71 @@ export function storedRun(row: RunRow): StoredRun {
     testCount: row.testCount,
     createdAt: row.createdAt,
     finishedAt: row.finishedAt,
+  };
+}
+
+/** What an interview's view needs of one stage's pad (`interviews/service.ts` loads it). */
+export interface StagePadRow {
+  id: string;
+  stageIndex: number;
+  title: string;
+  format: Pad['format'];
+  status: Pad['status'];
+  startedAt: Date;
+  endedAt: Date | null;
+  /** The pad's problem's title (a coding stage's). */
+  problemTitle: string | null;
+  /** The pad's report, when it has one; `recommendation` as stored in its assessment. */
+  report: { status: Report['status']; recommendation: unknown } | null;
+}
+
+/**
+ * An interview with its stages' statuses, pads and report headlines. Nothing of a stage's draw
+ * beyond its pad's title and its problem's title: a round's questions and a game's values stay
+ * in the round's state.
+ */
+export function interviewView(row: InterviewRow, stagePads: readonly StagePadRow[]): Interview {
+  const byIndex = new Map(stagePads.map((p) => [p.stageIndex, p]));
+  const statuses = stageStatuses({
+    count: row.stages.length,
+    current: row.current,
+    ended: row.status === 'ended',
+    pad: (i) => byIndex.get(i)?.status,
+  });
+  return {
+    id: row.id,
+    title: row.title,
+    track: row.track,
+    preset: row.preset,
+    status: row.status,
+    current: row.current,
+    stages: row.stages.map((stage, index): InterviewStageView => {
+      const pad = byIndex.get(index);
+      const recommendation = Recommendation.safeParse(pad?.report?.recommendation);
+      return {
+        index,
+        stage,
+        status: statuses[index] ?? 'upcoming',
+        pad: pad
+          ? {
+              id: pad.id,
+              title: pad.title,
+              problemTitle: pad.format === 'coding' ? pad.problemTitle : null,
+              startedAt: pad.startedAt.toISOString(),
+              endedAt: pad.endedAt?.toISOString() ?? null,
+            }
+          : null,
+        result:
+          pad?.status === 'ended' && pad.report
+            ? {
+                report: pad.report.status,
+                recommendation: recommendation.success ? recommendation.data : null,
+              }
+            : null,
+      };
+    }),
+    interviewer: row.interviewer,
+    startedAt: row.startedAt.toISOString(),
+    endedAt: row.endedAt?.toISOString() ?? null,
   };
 }

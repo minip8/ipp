@@ -55,6 +55,7 @@ import type { SessionUser } from '../auth';
 import type { Ctx } from '../context';
 import { type C, type Env, parseBody, requireAccount, requireUser } from '../http/app';
 import { badRequest, conflict, forbidden, HttpError, notFound, rateLimited } from '../http/errors';
+import { padInterviewOf } from '../interviews/service';
 import { insertPad, insertQuantPad, padCreateLimit } from '../pads/create';
 import type { PadRow } from '../pads/service';
 import {
@@ -501,7 +502,7 @@ export function padRoutes(ctx: Ctx) {
     if (pad.problemSlug && !row) throw notFound('Problem');
     // A room's candidates learn nothing about the host's key: the AI there is the host's alone.
     const hideKey = pad.kind === 'room' && role !== 'owner';
-    const [problem, members, msgs, runRows, key, round] = await Promise.all([
+    const [problem, members, msgs, runRows, key, round, interview] = await Promise.all([
       publicProblem(ctx, row ?? null),
       padMembersOf(ctx, pad.id),
       db.select().from(messages).where(eq(messages.padId, pad.id)).orderBy(asc(messages.createdAt)),
@@ -511,6 +512,8 @@ export function padRoutes(ctx: Ctx) {
         : ctx.ai.padModel(pad.ownerId, pad.interviewer),
       // The view only (`publicRound`): the state holds question ids and verdicts.
       pad.format === 'quant' ? roundView(ctx, pad.id) : null,
+      // The owner's alone: a collaborator gets null.
+      padInterviewOf(ctx, pad, user.id),
     ]);
     const detail: PadDetail = {
       pad: padView(pad, user.id),
@@ -523,7 +526,7 @@ export function padRoutes(ctx: Ctx) {
       interviewerKey: key.key,
       interviewerModel: key.model,
       round,
-      interview: null,
+      interview,
     };
     return c.json(detail);
   });
@@ -786,9 +789,15 @@ export function padRoutes(ctx: Ctx) {
 
   // Owner: deletes the pad for everyone. Collaborator: removes it from their own history only.
   // Active pads may be deleted too (that ends the session). A repeat after success is a 404.
+  // A staged interview's stage goes only with its interview (`DELETE /api/interviews/:id`).
   r.delete('/pads/:id', async (c) => {
     const user = requireUser(c);
     const { pad, role } = await padForMember(ctx, c.req.param('id'), user.id);
+    if (role === 'owner' && pad.interviewId !== null)
+      throw conflict(
+        'in_interview',
+        'This pad is a stage of an interview: delete the interview instead',
+      );
     if (role === 'owner') await deletePad(ctx, pad.id);
     else await leavePad(ctx, pad.id, user.id);
     const res: DeletePadResponse = {
