@@ -79,17 +79,22 @@ export function practiceHref(
   return withQuery(tabHref(track, 'practice'), q);
 }
 
+/** The builder's search param naming quiz topics to be asked about: slugs joined by commas. */
+export const TOPICS_PARAM = 'topics';
+
 /**
- * A track's Interviews tab: on hosting (`?mode=host`), its history, or (Software) with a problem
- * chosen in the setup.
+ * A track's Interviews tab: on hosting (`?mode=host`), its history, with a problem chosen in the
+ * builder, or with a round of questions on some topics.
  */
 export function interviewsHref(
   track: Track,
-  opts: { problem?: string; host?: boolean; view?: 'history' } = {},
+  opts: { problem?: string; topics?: readonly string[]; host?: boolean; view?: 'history' } = {},
 ): string {
   const q = new URLSearchParams();
   if (opts.host) q.set('mode', 'host');
   if (opts.problem) q.set('problem', opts.problem);
+  // The builder opens on a plan of one questions stage on these topics (`TOPICS_PARAM`).
+  if (opts.topics?.length) q.set(TOPICS_PARAM, opts.topics.join(','));
   if (opts.view) q.set('view', opts.view);
   return withQuery(tabHref(track, 'interviews'), q);
 }

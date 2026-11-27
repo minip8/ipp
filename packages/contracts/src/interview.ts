@@ -14,6 +14,21 @@
  *                                   the stages not started are skipped
  *   DELETE /api/interviews/:id      the interview and every stage's pad    -> { interviewId }
  *
+ * A plan a user wants to take again is saved as a template (`InterviewTemplate`):
+ *
+ *   GET    /api/interview-templates       mine, in every track, by name    -> InterviewTemplate[]
+ *   POST   /api/interview-templates       save a plan under a name         -> InterviewTemplate
+ *   PUT    /api/interview-templates/:id   rename it and/or replace its plan -> InterviewTemplate
+ *   DELETE /api/interview-templates/:id                                    -> { templateId }
+ *
+ * A template is only a named plan: starting an interview from one sends its stages to
+ * `POST /api/interviews` like any other plan, and changing or deleting the template afterwards
+ * does nothing to interviews started from it. It holds no interviewer settings (those are chosen
+ * at the start). A name is unique per user and track, whatever its case (409
+ * `template_name_taken`), and a user keeps at most `INTERVIEW_TEMPLATES_MAX` (409
+ * `template_limit`). A plan is checked for its shape when saved, and against the content
+ * (problems, topics) only when an interview is started from it.
+ *
  * Accounts only, and only the owner. Every stage runs on the owner's AI key, so creating one
  * without a usable key is 409 `ai_key_missing`.
  *
@@ -118,6 +133,45 @@ export const Interview = z.object({
   endedAt: IsoDate.nullable(),
 });
 export type Interview = z.infer<typeof Interview>;
+
+// ---------------------------------------------------------------- saved plans
+
+/** Templates one user may keep, over both tracks. */
+export const INTERVIEW_TEMPLATES_MAX = 30;
+export const INTERVIEW_TEMPLATE_NAME_MAX = 60;
+
+const TemplateName = z.string().trim().min(1).max(INTERVIEW_TEMPLATE_NAME_MAX);
+const Plan = z.array(InterviewStage).min(1).max(INTERVIEW_STAGES_MAX);
+
+/** A plan saved under a name, to start interviews from. */
+export const InterviewTemplate = z.object({
+  id: Id,
+  name: z.string(),
+  /** The track's builder it was saved in, and is offered in. */
+  track: Track,
+  stages: Plan,
+  createdAt: IsoDate,
+  updatedAt: IsoDate,
+});
+export type InterviewTemplate = z.infer<typeof InterviewTemplate>;
+
+export const SaveInterviewTemplateRequest = z.object({
+  name: TemplateName,
+  track: Track,
+  stages: Plan,
+});
+export type SaveInterviewTemplateRequest = z.infer<typeof SaveInterviewTemplateRequest>;
+
+/** `PUT /api/interview-templates/:id`: a new name, a new plan, or both. Its track never changes. */
+export const UpdateInterviewTemplateRequest = z
+  .object({ name: TemplateName.optional(), stages: Plan.optional() })
+  .refine((r) => r.name !== undefined || r.stages !== undefined, {
+    message: 'Nothing to change',
+  });
+export type UpdateInterviewTemplateRequest = z.infer<typeof UpdateInterviewTemplateRequest>;
+
+export const DeleteInterviewTemplateResponse = z.object({ templateId: Id });
+export type DeleteInterviewTemplateResponse = z.infer<typeof DeleteInterviewTemplateResponse>;
 
 /** `POST /api/interviews/:id/next`: move on from stage `from`. */
 export const AdvanceInterviewRequest = z.object({
