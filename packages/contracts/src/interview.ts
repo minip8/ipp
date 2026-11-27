@@ -291,6 +291,13 @@ export const INTERVIEW_PRESETS: readonly InterviewPreset[] = [
     stages: [{ kind: 'coding', difficulty: 'medium', durationMin: 45 }],
   },
   {
+    id: 'fundamentals-round',
+    track: 'software',
+    label: 'Fundamentals round',
+    description: 'Questions on your language and on systems, asked live. No coding problem.',
+    stages: [{ kind: 'questions', topics: SYSTEMS, languageTopic: true, durationMin: 30 }],
+  },
+  {
     id: 'technical-screen',
     track: 'software',
     label: 'Technical screen',

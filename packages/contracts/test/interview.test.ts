@@ -161,6 +161,27 @@ describe('presets', () => {
     expect(java?.kind === 'questions' && java.topics).not.toContain('java');
   });
 
+  it('Software has a round of fundamentals questions alone', () => {
+    const preset = presetById('fundamentals-round');
+    if (!preset) throw new Error('missing preset');
+    expect(preset.track).toBe('software');
+    expect(presetStages(preset, 'python')).toEqual([
+      {
+        kind: 'questions',
+        topics: [
+          'python',
+          'operating-systems',
+          'concurrency',
+          'networking',
+          'computer-architecture',
+        ],
+        durationMin: 30,
+      },
+    ]);
+    // The track still opens on the coding round.
+    expect(presetsOf('software')[0]?.id).toBe('coding-round');
+  });
+
   it('does not share topic arrays with the preset', () => {
     const preset = presetById('trader');
     if (!preset) throw new Error('missing preset');

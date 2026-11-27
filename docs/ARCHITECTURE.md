@@ -311,8 +311,8 @@ which becomes an ordinary practice pad when it starts. The interview is only the
 | `game` | a pad of format `quant` whose round is one market-making game (§8.3) | 10, 15 |
 
 - **Presets and custom plans.** `INTERVIEW_PRESETS` are starting points per site track (Software:
-  a coding round, a technical screen, an onsite loop; Quant: trader, researcher, quant developer,
-  a single round); `presetStages` gives a preset's coding stages the user's language and adds the
+  a coding round, a fundamentals round of questions alone, a technical screen, an onsite loop;
+  Quant: trader, researcher, quant developer, a single round); `presetStages` gives a preset's coding stages the user's language and adds the
   language's own topic to the question stages that ask for it. The builder may change anything,
   and a custom plan may mix stages of both tracks. `interviews.track` records where it was built:
   that track's Interviews tab lists it, whatever its stages are.
