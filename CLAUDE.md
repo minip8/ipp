@@ -122,7 +122,9 @@ browser ── /api/* (Next rewrite, same origin, cookie session) ──▶ apps
   (`apps/api/src/ai/keys.ts`); they are never returned, logged or put in an error message, and
   provider base URLs are fixed server-side. A pad runs on its owner's key and optionally a model
   chosen per interview (`InterviewerSettings.model`); a refused model falls back to the provider
-  default without discarding the key.
+  default without discarding the key. A user may replace the server's daily AI limits with their
+  own by estimated cost, tokens or messages (`ai_limits`, `apps/api/src/ai/limits.ts`; prices in
+  `packages/interviewer/src/pricing.ts`, an estimate from list prices, never the bill).
 - **Interview rooms** (ARCHITECTURE §4.1): a pad of kind `room` is hosted by its owner, who
   interviews whoever joins by the invite link; a candidate needs only a name (a guest user,
   created only by `POST /api/pads/join-guest`). Guests may use the pads they are members of and
