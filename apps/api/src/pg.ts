@@ -37,3 +37,6 @@ function sqlState(err: unknown): string | null {
  * assessment that finished after the delete): the write is moot, not an error.
  */
 export const isForeignKeyViolation = (err: unknown) => sqlState(err) === '23503';
+
+/** A write lost a race to another that took the same unique key (a stage started twice at once). */
+export const isUniqueViolation = (err: unknown) => sqlState(err) === '23505';

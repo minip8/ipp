@@ -7,6 +7,7 @@ import {
   type Report,
 } from '@ipp/contracts';
 import {
+  interviews,
   messages,
   padMembers,
   pads,
@@ -152,6 +153,25 @@ export async function computeStats(ctx: Ctx, pad: PadRow): Promise<Report['stats
   };
 }
 
+/**
+ * A staged interview ends with its last stage's pad, however that pad ended (its own End, the
+ * interview's `next` from the last stage). An earlier stage's pad ending leaves the interview
+ * where it is: `next` moves it on.
+ */
+async function endInterviewAfterLastStage(ctx: Ctx, pad: PadRow): Promise<void> {
+  if (pad.interviewId === null || pad.stageIndex === null) return;
+  await ctx.db
+    .update(interviews)
+    .set({ status: 'ended', endedAt: new Date() })
+    .where(
+      and(
+        eq(interviews.id, pad.interviewId),
+        eq(interviews.status, 'active'),
+        sql`jsonb_array_length(${interviews.stages}) = ${pad.stageIndex + 1}`,
+      ),
+    );
+}
+
 /** Ends an active pad. Returns the row, or null if it was already ended. */
 export async function endPad(ctx: Ctx, padId: string): Promise<PadRow | null> {
   const [row] = await ctx.db
@@ -161,6 +181,10 @@ export async function endPad(ctx: Ctx, padId: string): Promise<PadRow | null> {
     .returning();
   if (!row) return null;
   ctx.ai.invalidate(padId);
+  if (row.interviewId !== null)
+    await endInterviewAfterLastStage(ctx, row).catch((err) =>
+      ctx.log.error({ err, padId }, 'ending the interview after its last stage failed'),
+    );
   await ctx.db.insert(timelineEvents).values({ padId, event: { type: 'ended' } });
   ctx.rooms.broadcast(padId, { type: 'pad.updated', pad: padView(row, null) });
   await ctx.collab.endPad(padId).catch((err) => ctx.log.error({ err, padId }, 'collab end failed'));
