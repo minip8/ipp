@@ -413,7 +413,10 @@ its length instead when that allows more, `quantInterviewerMessagesPerMinute` 8 
 and hard caps on context size. The cap is checked (`checkBudget`) before every model call for a
 pad; once it is reached the interviewer says so once and stops calling the model, and a quant
 round's clock still nudges and closes with its canned lines. All model calls run on the user's own key (§7.1), so
-these limits protect the user's spend and keep the server from being used as a relay.
+these limits protect the user's spend and keep the server from being used as a relay. The daily
+message limit defaults to 1500: it must cover a day of staged interviews (several pads in one sitting,
+each with a spoken interviewer that answers often), so on any one pad the per-pad cap,
+and over the day the daily token limits, are what bind first; the message limit is the backstop.
 
 At the end of a pad the interviewer produces a `ReportAssessment` on the owner's key; the report
 page also offers playback of the editor history with run and chat markers.

@@ -37,7 +37,7 @@ const Env = z.object({
   AI_KEY_ENCRYPTION_SECRET: opt(z.string().min(32)),
   /** A saved key is deleted after this many hours without use; each use restarts the clock. */
   AI_KEY_TTL_HOURS: withDefault(z.coerce.number().int().min(1).max(720), 24),
-  AI_DAILY_MESSAGE_LIMIT: withDefault(z.coerce.number().int().min(0), 300),
+  AI_DAILY_MESSAGE_LIMIT: withDefault(z.coerce.number().int().min(0), 1500),
   /**
    * Model tokens per user per day (input incl. cache reads/writes, and output). Silent
    * speak/stay-silent decisions and report assessments cost tokens but are not messages, so the
