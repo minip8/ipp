@@ -1,4 +1,5 @@
 import type { Db } from '@ipp/db';
+import type { PriceBook } from '@ipp/interviewer';
 import type { Redis } from 'ioredis';
 import type { Logger } from 'pino';
 import type postgres from 'postgres';
@@ -31,6 +32,8 @@ export interface Ctx {
   aiKeys: AiKeyStore;
   verifyAiKey: KeyVerifier;
   listAiModels: ModelLister;
+  /** List prices for the cost estimate of the spend guard (`ai/limits.ts`). */
+  prices: PriceBook;
   runs: RunService;
   /**
    * The database's clock (`readDbClock` in pg.ts), read with the given connection or

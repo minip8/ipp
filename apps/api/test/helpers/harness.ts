@@ -6,6 +6,7 @@ import type {
   ReportAssessment,
   ServerEvent,
 } from '@ipp/contracts';
+import { createPriceBook, type PriceBook } from '@ipp/interviewer';
 import { Redis } from 'ioredis';
 import { WebSocket } from 'ws';
 import { type Api, createApi } from '../../src/app';
@@ -15,6 +16,7 @@ import type {
   DiscussionStep,
   Interviewer,
   InterviewerDeps,
+  ModelUsage,
   QuantContext,
   QuantReviewResult,
   QuantRoomContext,
@@ -232,9 +234,13 @@ export class FakeInterviewer implements Interviewer {
       outputTokens: 10,
       cacheReadInputTokens: 0,
       cacheCreationInputTokens: 0,
+      ...this.usage,
     });
     return true;
   }
+
+  /** Merged into the usage every "model call" records (model, provider, token counts). */
+  usage: Partial<ModelUsage> = {};
 
   private async reply(padId: string, text: string) {
     if (!(await this.model({ padId }))) return;
@@ -395,6 +401,15 @@ export class FakeInterviewer implements Interviewer {
   };
 }
 
+/**
+ * OpenRouter's public catalogue as the price book fetches it, so no test reaches the network:
+ * one priced model (`vendor/priced`, $1 in and $2 out per million tokens).
+ */
+export const fakeOpenRouterCatalogue = (async () =>
+  Response.json({
+    data: [{ id: 'vendor/priced', pricing: { prompt: '0.000001', completion: '0.000002' } }],
+  })) as unknown as typeof fetch;
+
 /** Stand-in for the provider's list-models endpoint; `fail` makes it throw like an outage. */
 export class FakeLister {
   calls: { apiKey: string; provider: AiProvider }[] = [];
@@ -429,6 +444,8 @@ export async function startApi(
     /** Another interviewer than the fake (e.g. the real one, helpers/real-interviewer.ts). */
     interviewerFactory?: InterviewerFactory;
     captureLogs?: boolean;
+    /** Model prices (default: the static table, and a fake OpenRouter catalogue). */
+    prices?: PriceBook;
   } = {},
 ): Promise<Harness> {
   const config = testConfig(opts.captureLogs ? { logLevel: 'trace', ...opts.config } : opts.config);
@@ -445,6 +462,7 @@ export async function startApi(
     interviewerFactory: opts.interviewerFactory ?? fake.factory,
     verifyAiKey: verifier.verify,
     listAiModels: lister.list,
+    prices: opts.prices ?? createPriceBook({ fetch: fakeOpenRouterCatalogue }),
   });
   const port = await api.listen(0);
   return {
