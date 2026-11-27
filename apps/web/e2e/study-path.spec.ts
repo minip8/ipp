@@ -1,20 +1,20 @@
 /**
  * The Roadmap tab's study path (the default view of /{track}/roadmap): a track's topics as an
  * ordered sequence with their progress, a "next up" marker by the roadmap's idea of complete, and
- * ways into practice, the bank and the topic maps; plus a discussion of the path's open questions,
- * which needs the user's AI key. Quant has two curated paths kept in `?path=`, Software one of all
- * its topics.
+ * ways into practice, the bank and the topic maps; plus a way into an interview on the path's
+ * open questions (the Interviews tab's builder, on the user's AI key). Quant has two curated paths
+ * kept in `?path=`, Software one of all its topics.
  */
 import { expect, type Page, test } from '@playwright/test';
 import { aiKeyStatus, QUIZ_TOPICS, QUIZ_TOPICS_FUNDAMENTALS } from './fixtures';
 import { setup } from './helpers';
 
-const KEY = 'sk-ant-api03-e2eQUANTkey-0123456789abcdefghijklmnop-Zk7Q';
-
 const steps = (page: Page) => page.getByTestId('path-step');
 /** Each step's heading reads "Step n: Title". */
 const headings = (page: Page) => steps(page).getByRole('heading');
 const picker = (page: Page) => page.getByRole('radiogroup', { name: 'Path' });
+const talk = (page: Page) =>
+  page.getByRole('region', { name: 'Talk it through with the interviewer' });
 
 const TRADER = [
   'Step 1: Probability',
@@ -99,9 +99,9 @@ test('Software: one path of all its topics in study order, no picker', async ({ 
   // C++ is under way, so next up; no drill in this track.
   await expect(steps(page).nth(0).getByText('Next up', { exact: true })).toBeVisible();
   await expect(page.getByTestId('drill-card')).toHaveCount(0);
-  await expect(
-    page.getByText(/^5 open questions from C\+\+, Python, Computer architecture/),
-  ).toBeVisible();
+  await expect(talk(page)).toContainText(
+    'An interview of open questions from C++, Python, Computer architecture, Operating systems, Networking and Concurrency',
+  );
 });
 
 test('Python, shared into Quant, is on neither curated path', async ({ page }) => {
@@ -150,7 +150,13 @@ test('a topic the server does not have is skipped', async ({ page }) => {
   ]);
   // The next topic that is not complete moves up.
   await expect(steps(page).nth(1).getByText('Next up', { exact: true })).toBeVisible();
-  await expect(page.getByText(/open questions from Probability, Betting/)).toBeVisible();
+  await expect(talk(page)).toContainText(
+    'open questions from Probability, Betting & market making and Options & finance',
+  );
+  await expect(talk(page).getByRole('link')).toHaveAttribute(
+    'href',
+    '/quant/interviews?topics=probability%2Cbetting-market-making%2Coptions',
+  );
 });
 
 test('with none of a path’s topics, it says so', async ({ page }) => {
@@ -160,7 +166,7 @@ test('with none of a path’s topics, it says so', async ({ page }) => {
   await page.goto('/quant/roadmap');
   await expect(page.getByText('No topics on this path yet')).toBeVisible();
   await expect(steps(page)).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Start discussion' })).toHaveCount(0);
+  await expect(talk(page)).toHaveCount(0);
   await picker(page).getByRole('radio', { name: 'Researcher' }).click();
   await expect(page.getByText('No topics on this path yet')).toBeVisible();
 });
@@ -213,57 +219,67 @@ test.describe('actions', () => {
     );
   });
 
-  test('a discussion draws on the path’s open questions', async ({ page }) => {
+  test('the path’s open questions lead to an interview on its topics', async ({ page }) => {
     const backend = await setup(page);
     await page.goto('/quant/roadmap?path=researcher');
-    await expect(
-      page.getByText(
-        '5 open questions from Probability, Statistics, Linear algebra & calculus and Options & finance.',
-      ),
-    ).toBeVisible();
-    await expect(page.getByTestId('path-key-prompt')).toHaveCount(0);
-    await page.getByRole('button', { name: 'Start discussion' }).click();
-    await expect(page).toHaveURL(/\/quiz\/[0-9a-f-]{36}$/);
-    expect(attemptRequests(backend)).toEqual([
-      {
-        topics: ['probability', 'statistics', 'algebra-calculus', 'options'],
-        mode: 'discussion',
-        count: 5,
-        focusWeak: true,
-      },
-    ]);
-    await expect(page.getByPlaceholder('Answer as you would out loud')).toBeVisible();
+    await expect(talk(page)).toContainText(
+      'An interview of open questions from Probability, Statistics, Linear algebra & calculus and Options & finance',
+    );
+    await expect(talk(page)).toContainText('It runs on your AI key.');
+    await expect(page.getByRole('button', { name: 'Start discussion' })).toHaveCount(0);
+    const link = talk(page).getByRole('link', { name: 'Interview on these topics' });
+    await expect(link).toHaveAttribute(
+      'href',
+      '/quant/interviews?topics=probability%2Cstatistics%2Calgebra-calculus%2Coptions',
+    );
+    // The other path, its own topics.
+    await picker(page).getByRole('radio', { name: 'Trader' }).click();
+    await expect(link).toHaveAttribute(
+      'href',
+      '/quant/interviews?topics=probability%2Cbrainteasers%2Cbetting-market-making%2Coptions',
+    );
+    await link.click();
+    await expect(page).toHaveURL(
+      /\/quant\/interviews\?topics=probability%2Cbrainteasers%2Cbetting-market-making%2Coptions$/,
+    );
+    expect(attemptRequests(backend)).toEqual([]);
+
+    // Software's, in its own track.
+    await page.goto('/software/roadmap');
+    await expect(talk(page).getByRole('link')).toHaveAttribute(
+      'href',
+      '/software/interviews?topics=cpp%2Cpython%2Ccomputer-architecture%2Coperating-systems%2Cnetworking%2Cconcurrency',
+    );
   });
 
-  test('without a working AI key, the discussion asks for one first', async ({ page }) => {
-    const backend = await setup(page, (b) => {
+  test('no key needed on the path, and the link says the interview needs one', async ({ page }) => {
+    await setup(page, (b) => {
       b.aiKey = aiKeyStatus('missing');
     });
     await page.goto('/quant/roadmap');
-    const prompt = page.getByTestId('path-key-prompt');
-    await expect(prompt).toContainText('A discussion runs on your own AI API key');
-    await expect(page.getByRole('button', { name: 'Start discussion' })).toBeDisabled();
-    // Practice needs no key.
+    // The key is asked for where the interview starts, not here.
+    await expect(page.getByRole('button', { name: 'Add API key' })).toHaveCount(0);
+    await expect(talk(page)).toContainText('It runs on your AI key.');
+    await expect(talk(page).getByRole('link', { name: 'Interview on these topics' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Practise Probability' })).toBeEnabled();
-
-    // Adding the key from the prompt lets it start.
-    await prompt.getByRole('button', { name: 'Add API key' }).click();
-    const dialog = page.getByRole('dialog');
-    await dialog.getByRole('textbox', { name: /API key/ }).fill(KEY);
-    await dialog.getByRole('button', { name: 'Save key' }).click();
-    await expect(dialog).toBeHidden();
-    await expect(prompt).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Start discussion' })).toBeEnabled();
-    expect(attemptRequests(backend)).toEqual([]);
   });
 
-  test('a rejected key is named as such', async ({ page }) => {
+  test('a path with open questions on one topic only says this topic', async ({ page }) => {
     await setup(page, (b) => {
-      b.aiKey = aiKeyStatus('rejected');
+      b.quizTopics = QUIZ_TOPICS.map((t) =>
+        t.slug === 'probability' ? t : { ...t, shortCount: 0 },
+      );
     });
+    await page.goto('/quant/roadmap');
+    await expect(talk(page)).toContainText('An interview of open questions from Probability:');
+    await expect(talk(page).getByRole('link', { name: 'Interview on this topic' })).toHaveAttribute(
+      'href',
+      '/quant/interviews?topics=probability',
+    );
+    // None at all: nothing to link to.
     await page.goto('/software/roadmap');
-    await expect(page.getByTestId('path-key-prompt')).toContainText('Your API key was rejected');
-    await expect(page.getByRole('button', { name: 'Start discussion' })).toBeDisabled();
+    await expect(talk(page)).toContainText('None of these topics has open questions yet.');
+    await expect(talk(page).getByRole('link')).toHaveCount(0);
   });
 });
 

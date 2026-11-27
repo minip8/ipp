@@ -2,9 +2,9 @@
 /**
  * The Roadmap tab's study path: a track's topics as numbered steps to work through in order,
  * with the progress Practice shows and one-click ways into practice, the topic's bank and its
- * map; beside them a discussion of the path's open questions and, in Quant, the mental math
- * drill. Quant has two curated paths (trader, researcher, in `?path=`); Software walks all its
- * topics in study order.
+ * map; beside them a way into an interview on the path's open questions (the Interviews tab's
+ * builder) and, in Quant, the mental math drill. Quant has two curated paths (trader,
+ * researcher, in `?path=`); Software walks all its topics in study order.
  */
 import type { QuizTopicStats, Track } from '@ipp/contracts';
 import {
@@ -27,20 +27,20 @@ import { Spinner } from '@/components/ui/spinner';
 import { DrillCard } from '@/features/drill/drill-card';
 import { PATH_PARAM, PATHS } from '@/features/quant/logic';
 import { QuantPathPicker } from '@/features/quant/path-picker';
-import { DISCUSSION_ROUND, PRACTICE_ROUND } from '@/features/quiz/logic';
+import { interviewLabel, PRACTICE_ROUND, quizQuestionCount } from '@/features/quiz/logic';
 import { COMPLETE_ACCURACY } from '@/features/quiz/roadmap-logic';
-import { DiscussionKeyPrompt, useDiscussionKey, useStartAttempt } from '@/features/quiz/start';
+import { useStartAttempt } from '@/features/quiz/start';
 import { TopicProgress } from '@/features/quiz/topic-progress';
-import { formatPercent, plural } from '@/lib/format';
+import { formatPercent } from '@/lib/format';
+import { interviewsHref } from '@/lib/track';
 import { cn } from '@/lib/utils';
 import {
-  discussionPool,
+  interviewPool,
   listTitles,
   type PathStep,
   pathSteps,
   pathTopicSlugs,
   pickPath,
-  practiceCount,
   type StudyPath,
   topicBankHref,
   topicRoadmapHref,
@@ -50,10 +50,6 @@ type Start = ReturnType<typeof useStartAttempt>;
 
 /** A step's action buttons: finger-sized and sharing the row on phones. */
 const ACTION = 'max-sm:h-9 max-sm:w-full max-sm:px-2';
-
-/** The error of the last request of this mode, if it failed. */
-const failed = (start: Start, mode: 'practice' | 'discussion') =>
-  start.isError && start.variables.mode === mode ? start.error : null;
 
 function StepMarker({ step }: { step: PathStep }) {
   const complete = step.state === 'complete';
@@ -89,9 +85,8 @@ function TopicStep({
   blocked: boolean;
 }) {
   const t = step.topic;
-  const auto = practiceCount(t);
-  const busy =
-    start.isPending && start.variables.mode === 'practice' && start.variables.topics[0] === t.slug;
+  const auto = quizQuestionCount(t);
+  const busy = start.isPending && start.variables.topics[0] === t.slug;
   const titleId = `path-step-${t.slug}`;
   return (
     <li className="relative flex gap-3 sm:gap-4" aria-labelledby={titleId}>
@@ -167,51 +162,29 @@ function TopicStep({
   );
 }
 
-function DiscussionCard({
-  steps,
-  start,
-  blocked,
-}: {
-  steps: PathStep[];
-  start: Start;
-  blocked: boolean;
-}) {
-  const { missing } = useDiscussionKey();
-  const pool = discussionPool(steps);
-  const titles = steps.filter((s) => pool.topics.includes(s.topic.slug)).map((s) => s.topic.title);
-  const busy = start.isPending && start.variables.mode === 'discussion';
+/** The path's open questions, asked live: a link to the builder on an interview of them. */
+function InterviewCard({ track, steps }: { track: Track; steps: PathStep[] }) {
+  const pool = interviewPool(steps);
   return (
-    <Card aria-labelledby="path-discuss-heading" className="space-y-3 p-4">
+    <Card aria-labelledby="path-interview-heading" className="space-y-3 p-4">
       <div className="space-y-1">
-        <h2 id="path-discuss-heading" className="text-sm font-semibold">
+        <h2 id="path-interview-heading" className="text-sm font-semibold">
           Talk it through with the interviewer
         </h2>
         <p className="text-sm text-fg-muted">
-          {pool.questions === 0
+          {pool.topics.length === 0
             ? 'None of these topics has open questions yet.'
-            : `${plural(Math.min(DISCUSSION_ROUND, pool.questions), 'open question')} from ${listTitles(titles)}. Explain your reasoning; the interviewer asks follow-ups, then grades what you said.`}
+            : `An interview of open questions from ${listTitles(pool.titles)}: the interviewer follows up on your reasoning, then grades it. It runs on your AI key.`}
         </p>
       </div>
-      {missing && pool.questions > 0 && (
-        <DiscussionKeyPrompt state={missing} testId="path-key-prompt" />
+      {pool.topics.length > 0 && (
+        <Button asChild variant="secondary" className="w-full max-sm:h-10">
+          <Link href={interviewsHref(track, { topics: pool.topics })}>
+            <MessagesSquareIcon />
+            {interviewLabel(pool.topics.length)}
+          </Link>
+        </Button>
       )}
-      <Button
-        variant="secondary"
-        className="w-full max-sm:h-10"
-        disabled={pool.questions === 0 || missing !== null || blocked}
-        onClick={() =>
-          start.mutate({
-            topics: pool.topics,
-            mode: 'discussion',
-            count: DISCUSSION_ROUND,
-            focusWeak: true,
-          })
-        }
-      >
-        {busy ? <Spinner /> : <MessagesSquareIcon />}
-        Start discussion
-      </Button>
-      <InlineError error={failed(start, 'discussion')} />
     </Card>
   );
 }
@@ -259,7 +232,7 @@ function PathView({
           {path.label} path
         </h2>
         {intro}
-        <InlineError error={failed(start, 'practice')} className="mb-3" />
+        <InlineError error={start.error} className="mb-3" />
         <ol className="list-none" data-testid="path-steps">
           {steps.map((s, i) => (
             <TopicStep
@@ -274,7 +247,7 @@ function PathView({
         </ol>
       </section>
       <div className="min-w-0 space-y-4 lg:sticky lg:top-20">
-        <DiscussionCard steps={steps} start={start} blocked={blocked} />
+        <InterviewCard track={track} steps={steps} />
         {track === 'quant' && <DrillCard />}
       </div>
     </div>

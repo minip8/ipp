@@ -9,6 +9,7 @@ import {
   type QuizMode,
   type QuizResponse,
   type QuizTrack,
+  STAGE_TOPICS_MAX,
   type Track,
   topicInTrack,
 } from '@ipp/contracts';
@@ -354,49 +355,50 @@ export function resumeIndex(
 
 // ---------------------------------------------------------------- quiz setup (the hub's choices)
 
+/**
+ * Every mode's label, for the history and results. `discussion` is only ever an old attempt's:
+ * the web no longer starts one (open questions are talked through in an interview instead).
+ */
 export const MODE_LABEL: Record<QuizMode, string> = {
   practice: 'Practice',
   exam: 'Exam',
   discussion: 'Discussion',
 };
 
-const MODE_HINT: Record<QuizMode, string> = {
+/** The modes the quiz setup offers. */
+export const SETUP_MODES = ['practice', 'exam'] as const satisfies readonly QuizMode[];
+export type SetupMode = (typeof SETUP_MODES)[number];
+
+const MODE_HINT: Record<SetupMode, string> = {
   practice:
     'Multiple choice, numeric answers and "what does this print". You see the answer after each question.',
   exam: 'The same kind of questions, with the answers held back until you finish.',
-  discussion:
-    'Open questions, talked through with an AI interviewer who asks follow-ups and then grades you.',
 };
 
-/** What else the track offers beside a mode (Quant's drill and live rounds); nothing in Software. */
-const MODE_ASIDE: Partial<Record<Track, Partial<Record<QuizMode, string>>>> = {
+/** What else the track offers beside a mode (Quant's drill); nothing in Software. */
+const MODE_ASIDE: Partial<Record<Track, Partial<Record<SetupMode, string>>>> = {
   quant: {
     practice: 'For speed at arithmetic, try the mental math drill.',
-    discussion: 'For a timed round of questions, start a live round from Interviews.',
   },
 };
 
-/** The line under the mode choice: what the mode is, and in Quant where its timed cousins are. */
-export function modeHint(mode: QuizMode, track: Track): string {
+/** The line under the mode choice: what the mode is, and in Quant where the drill is. */
+export function modeHint(mode: SetupMode, track: Track): string {
   const aside = MODE_ASIDE[track]?.[mode];
   return aside ? `${MODE_HINT[mode]} ${aside}` : MODE_HINT[mode];
 }
 
 export const QUIZ_COUNTS = ['5', '10', '20', '30'] as const;
-/** A discussion question takes a few minutes, so fewer of them. */
-export const DISCUSSION_COUNTS = ['3', '5', '10'] as const;
 
 /** Rounds started in one click (a roadmap area, a step of a study path): how many questions. */
 export const PRACTICE_ROUND = 10;
-export const DISCUSSION_ROUND = 5;
 
 /** What the hub remembers between visits (kept in this browser). */
 export interface QuizSetup {
   topics: string[];
-  mode: QuizMode;
+  mode: SetupMode;
   difficulty: 'any' | 'easy' | 'medium' | 'hard';
   count: (typeof QUIZ_COUNTS)[number];
-  discussionCount: (typeof DISCUSSION_COUNTS)[number];
   focusWeak: boolean;
 }
 
@@ -405,7 +407,6 @@ export const DEFAULT_SETUP: QuizSetup = {
   mode: 'practice',
   difficulty: 'any',
   count: '10',
-  discussionCount: '5',
   focusWeak: true,
 };
 
@@ -414,7 +415,10 @@ export const setupStorageKey = (track: Track) => `ipp.quiz.setup.${track}`;
 /** Before tracks: one setup for every topic, still read when a track has none of its own yet. */
 export const LEGACY_SETUP_STORAGE_KEY = 'ipp.quiz.setup';
 
-/** A stored setup, field by field: anything missing or no longer valid falls back to the default. */
+/**
+ * A stored setup, field by field: anything missing or no longer valid falls back to the default
+ * (a setup remembered on `discussion`, from before the mode left the setup, is practice again).
+ */
 export function parseSetup(raw: unknown): QuizSetup {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   const pick = <T extends string>(v: unknown, allowed: readonly T[], fallback: T): T =>
@@ -423,21 +427,39 @@ export function parseSetup(raw: unknown): QuizSetup {
     topics: Array.isArray(r.topics)
       ? [...new Set(r.topics.filter((t): t is string => typeof t === 'string'))]
       : [],
-    mode: pick(r.mode, ['practice', 'exam', 'discussion'], DEFAULT_SETUP.mode),
+    mode: pick(r.mode, SETUP_MODES, DEFAULT_SETUP.mode),
     difficulty: pick(r.difficulty, ['any', 'easy', 'medium', 'hard'], DEFAULT_SETUP.difficulty),
     count: pick(r.count, QUIZ_COUNTS, DEFAULT_SETUP.count),
-    discussionCount: pick(r.discussionCount, DISCUSSION_COUNTS, DEFAULT_SETUP.discussionCount),
     focusWeak: typeof r.focusWeak === 'boolean' ? r.focusWeak : DEFAULT_SETUP.focusWeak,
   };
 }
 
-/** How many questions a topic has for a mode: open ones for a discussion, the rest otherwise. */
-export function questionsFor(
-  t: { questionCount: number; shortCount: number },
-  mode: QuizMode,
-): number {
-  return mode === 'discussion' ? t.shortCount : t.questionCount - t.shortCount;
+/**
+ * How many questions a quiz on the topic can draw on: the automatically graded ones. Its open
+ * questions are answered in the question bank or asked in an interview.
+ */
+export const quizQuestionCount = (t: { questionCount: number; shortCount: number }) =>
+  t.questionCount - t.shortCount;
+
+// ---------------------------------------------------------------- interviews on open questions
+
+/**
+ * The topics for an interview of open questions (a Questions stage, `interviewsHref`'s `topics`)
+ * on these: each once, in order, those known to have no open questions left out, and at most as
+ * many as one stage takes.
+ */
+export function interviewTopics(
+  topics: readonly (string | { slug: string; shortCount: number })[],
+) {
+  const slugs = topics
+    .filter((t) => typeof t === 'string' || t.shortCount > 0)
+    .map((t) => (typeof t === 'string' ? t : t.slug));
+  return [...new Set(slugs)].slice(0, STAGE_TOPICS_MAX);
 }
+
+/** What a link to such an interview says. */
+export const interviewLabel = (topics: number) =>
+  topics === 1 ? 'Interview on this topic' : 'Interview on these topics';
 
 // ---------------------------------------------------------------- tracks
 

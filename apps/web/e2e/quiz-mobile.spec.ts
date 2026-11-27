@@ -1,5 +1,5 @@
 /**
- * Quizzes on a phone (390 x 844, touch): taking a quiz to its results, a discussion and the
+ * Quizzes on a phone (390 x 844, touch): taking a quiz to its results, an old discussion and the
  * question bank lay out without sideways scrolling, keep the primary action in reach and use
  * 16px text fields (iOS zooms the page into smaller ones).
  */
@@ -107,7 +107,7 @@ test('exam: the finish dialog fits the screen', async ({ page }) => {
   await expectNoHorizontalOverflow(page);
 });
 
-test('a discussion keeps the reply box in reach', async ({ page }) => {
+test('an old discussion keeps the reply box in reach', async ({ page }) => {
   await setup(page, (b) => {
     b.attempts.set(
       QUIZ_ATTEMPT_ID,
@@ -149,6 +149,8 @@ test('a discussion keeps the reply box in reach', async ({ page }) => {
   await next.tap();
   await expect(page.getByTestId('quiz-score')).toBeVisible();
   await expectNoHorizontalOverflow(page);
+  // Going again is an interview on its topic, not a new discussion.
+  await expectThumbable(page.getByRole('link', { name: 'Interview on this topic' }));
 });
 
 test('browses the question bank and answers a question', async ({ page }) => {

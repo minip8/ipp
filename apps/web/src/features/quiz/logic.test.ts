@@ -1,4 +1,4 @@
-import type { AnswerFeedback, PublicQuizQuestion } from '@ipp/contracts';
+import { type AnswerFeedback, type PublicQuizQuestion, STAGE_TOPICS_MAX } from '@ipp/contracts';
 import { describe, expect, it } from 'vitest';
 import {
   attemptsInTrack,
@@ -9,6 +9,8 @@ import {
   emptyDraft,
   formatCorrect,
   formatResponse,
+  interviewLabel,
+  interviewTopics,
   isUnsendable,
   modeHint,
   NUMERIC_HINT,
@@ -17,7 +19,7 @@ import {
   outputKindsFor,
   parseSetup,
   promptSummary,
-  questionsFor,
+  quizQuestionCount,
   resumeIndex,
   setupStorageKey,
   summarySegments,
@@ -187,18 +189,16 @@ describe('quiz setup', () => {
     expect(
       parseSetup({
         topics: ['cpp', 'cpp', 7, 'python'],
-        mode: 'discussion',
+        mode: 'exam',
         difficulty: 'hard',
         count: '30',
-        discussionCount: '3',
         focusWeak: false,
       }),
     ).toEqual({
       topics: ['cpp', 'python'],
-      mode: 'discussion',
+      mode: 'exam',
       difficulty: 'hard',
       count: '30',
-      discussionCount: '3',
       focusWeak: false,
     });
     expect(parseSetup({ mode: 'speedrun', count: 10, difficulty: 'easy' })).toEqual({
@@ -207,11 +207,42 @@ describe('quiz setup', () => {
     });
   });
 
-  it('counts open questions for a discussion and the rest otherwise', () => {
-    const t = { questionCount: 84, shortCount: 20 };
-    expect(questionsFor(t, 'discussion')).toBe(20);
-    expect(questionsFor(t, 'practice')).toBe(64);
-    expect(questionsFor(t, 'exam')).toBe(64);
+  it('falls back to practice for a setup remembered on a discussion', () => {
+    // Discussions left the setup; one stored before then (with its own count) is a quiz again.
+    expect(
+      parseSetup({ topics: ['networking'], mode: 'discussion', discussionCount: '3', count: '5' }),
+    ).toEqual({ ...DEFAULT_SETUP, topics: ['networking'], mode: 'practice', count: '5' });
+  });
+
+  it('counts the questions a quiz draws on: not the open ones', () => {
+    expect(quizQuestionCount({ questionCount: 84, shortCount: 20 })).toBe(64);
+    expect(quizQuestionCount({ questionCount: 6, shortCount: 6 })).toBe(0);
+  });
+});
+
+describe('interviews on open questions', () => {
+  it('takes each topic once, in order, without those that have no open questions', () => {
+    expect(
+      interviewTopics([
+        { slug: 'probability', shortCount: 4 },
+        { slug: 'brainteasers', shortCount: 0 },
+        { slug: 'options', shortCount: 7 },
+        { slug: 'probability', shortCount: 4 },
+      ]),
+    ).toEqual(['probability', 'options']);
+    // Bare slugs (an attempt's topics) are taken as they are.
+    expect(interviewTopics(['cpp', 'networking', 'cpp'])).toEqual(['cpp', 'networking']);
+    expect(interviewTopics([])).toEqual([]);
+  });
+
+  it('takes no more topics than one questions stage', () => {
+    const many = Array.from({ length: STAGE_TOPICS_MAX + 3 }, (_, i) => `t${i}`);
+    expect(interviewTopics(many)).toEqual(many.slice(0, STAGE_TOPICS_MAX));
+  });
+
+  it('says this topic or these topics', () => {
+    expect(interviewLabel(1)).toBe('Interview on this topic');
+    expect(interviewLabel(3)).toBe('Interview on these topics');
   });
 });
 
@@ -335,11 +366,9 @@ describe('tracks', () => {
     expect(attemptsInTrack(attempts, topics, 'quant').map((a) => a.id)).toEqual(['b', 'c', 'd']);
   });
 
-  it('names the drill and live rounds only in Quant', () => {
+  it('names the drill only in Quant', () => {
     expect(modeHint('practice', 'software')).not.toMatch(/drill/);
     expect(modeHint('practice', 'quant')).toMatch(/mental math drill/);
-    expect(modeHint('discussion', 'software')).not.toMatch(/live round/);
-    expect(modeHint('discussion', 'quant')).toMatch(/live round from Interviews/);
     expect(modeHint('exam', 'quant')).toBe(modeHint('exam', 'software'));
   });
 
