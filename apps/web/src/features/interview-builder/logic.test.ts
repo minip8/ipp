@@ -9,7 +9,6 @@ import { describe, expect, it } from 'vitest';
 import { ApiRequestError } from '@/lib/api';
 import {
   addStage,
-  CUSTOM,
   createRequest,
   defaultPlan,
   defaultTopics,
@@ -19,9 +18,6 @@ import {
   matchingPreset,
   moveStage,
   newStage,
-  parseStoredPlan,
-  planFromLink,
-  planSelection,
   questionsShape,
   removeStage,
   replaceStage,
@@ -67,11 +63,11 @@ describe('presets and custom plans', () => {
     expect(matchingPreset(presetStages(onsite, 'python'), 'software')?.id).toBe('onsite-loop');
     expect(matchingPreset(presetStages(onsite, 'java'), 'software')?.id).toBe('onsite-loop');
     const plan = { preset: 'onsite-loop', stages: presetStages(onsite, 'cpp') };
-    expect(planSelection(plan, 'software')).toBe('onsite-loop');
+    expect(matchingPreset(plan.stages, 'software')?.id).toBe('onsite-loop');
     // A preset of the other track is not this track's.
-    expect(planSelection(plan, 'quant')).toBe(CUSTOM);
+    expect(matchingPreset(plan.stages, 'quant')).toBeNull();
     const longer = replaceStage(plan.stages, 0, { ...coding, language: 'cpp', durationMin: 60 });
-    expect(planSelection({ ...plan, stages: longer }, 'software')).toBe(CUSTOM);
+    expect(matchingPreset(longer, 'software')).toBeNull();
     // Two coding stages in different languages are no preset.
     const mixed = replaceStage(plan.stages, 2, {
       kind: 'coding',
@@ -166,67 +162,6 @@ describe('topics', () => {
   });
 });
 
-describe('links into the builder', () => {
-  const link = (q: string, track: 'software' | 'quant' = 'software') =>
-    planFromLink(new URLSearchParams(q), track, 'python');
-
-  it('opens a problem as one coding stage on it', () => {
-    expect(link('problem=two-sum')).toEqual({
-      preset: null,
-      stages: [{ kind: 'coding', problemSlug: 'two-sum', language: 'python', durationMin: 45 }],
-    });
-  });
-
-  it('selects a preset of the track, and maps the old paths to theirs', () => {
-    expect(link('preset=onsite-loop')?.preset).toBe('onsite-loop');
-    expect(link('preset=trader')).toBeNull();
-    expect(link('path=researcher', 'quant')?.preset).toBe('researcher');
-    expect(link('path=trader', 'quant')?.stages[1]).toEqual({ kind: 'game', durationMin: 15 });
-  });
-
-  it('turns a random pick into one random coding stage, with what it names', () => {
-    expect(link('random=1&difficulty=hard&category=dsa')?.stages).toEqual([
-      { kind: 'coding', difficulty: 'hard', category: 'dsa', language: 'python', durationMin: 45 },
-    ]);
-    expect(link('random=1&difficulty=impossible')?.stages).toEqual([
-      { kind: 'coding', language: 'python', durationMin: 45 },
-    ]);
-    expect(link('difficulty=hard')).toBeNull();
-    expect(link('')).toBeNull();
-  });
-});
-
-describe('the plan remembered in this browser', () => {
-  it('comes back as it was stored', () => {
-    const stored = { v: 1, preset: 'onsite-loop', stages: [coding, game], language: 'java' };
-    expect(parseStoredPlan(stored, 'software', 'cpp')).toEqual({
-      plan: { preset: 'onsite-loop', stages: [coding, game] },
-      language: 'java',
-    });
-  });
-
-  it('falls back to the default preset when it is missing, stale or invalid', () => {
-    const fallback = { plan: defaultPlan('quant', 'cpp'), language: 'cpp' };
-    expect(parseStoredPlan(null, 'quant', 'cpp')).toEqual(fallback);
-    expect(parseStoredPlan({ v: 0, stages: [game] }, 'quant', 'cpp')).toEqual(fallback);
-    expect(
-      parseStoredPlan(
-        { v: 1, preset: null, stages: [{ kind: 'game', durationMin: 99 }], language: 'cpp' },
-        'quant',
-        'cpp',
-      ),
-    ).toEqual(fallback);
-    expect(
-      parseStoredPlan({ v: 1, preset: null, stages: [], language: 'cpp' }, 'quant', 'cpp'),
-    ).toEqual(fallback);
-  });
-
-  it('forgets a preset that is not this track’s', () => {
-    const stored = { v: 1, preset: 'trader', stages: [game], language: 'cpp' };
-    expect(parseStoredPlan(stored, 'software', 'cpp').plan.preset).toBeNull();
-  });
-});
-
 describe('starting it', () => {
   it('names the interview by the preset it still is, a lone problem, or as custom', () => {
     expect(interviewTitle(defaultPlan('software', 'cpp'), 'software', names)).toBe('Coding round');
@@ -247,10 +182,14 @@ describe('starting it', () => {
     ).toBe('Custom interview');
   });
 
-  it('sends the track, the preset it came from, the stages and the interviewer', () => {
+  it('sends the track, the preset it came from, the title, the stages and the interviewer', () => {
     const interviewer = { style: 'tough', proactivity: 'high', voice: false } as const;
     expect(
-      createRequest('quant', { preset: 'trader', stages: [game] }, interviewer, names),
+      createRequest(
+        'quant',
+        { plan: { preset: 'trader', stages: [game] }, title: 'Custom interview' },
+        interviewer,
+      ),
     ).toEqual({
       track: 'quant',
       preset: 'trader',
