@@ -23,6 +23,7 @@ import { incomingMessages } from '@/features/pad/layout';
 import { EndedBanner, ResizeHandle } from '@/features/pad/pad-chrome';
 import { usePad } from '@/features/pad/session';
 import { useShortcuts } from '@/features/pad/shortcuts';
+import { useStage } from '@/features/pad/stage';
 import { TopBar } from '@/features/pad/top-bar';
 import { PortalSlot, useIsDesktop, useKeyboardBox, usePortalNode } from '@/features/pad/use-layout';
 import { HostDesk } from '@/features/quant-room/host-desk';
@@ -224,12 +225,15 @@ export function QuantWorkspace() {
     };
   }, [readOnly, isHost, telemetry]);
 
+  const stage = useStage();
   const toReport = () => router.push(`/pads/${state.pad.id}/report`);
+  // The last stage of an interview ends the interview: on to its results.
   const endNow = async () => {
     setEnding(true);
     const ok = await endPad();
     setEnding(false);
-    if (ok) toReport();
+    if (ok)
+      router.push(stage ? `/interviews/${stage.interview.id}` : `/pads/${state.pad.id}/report`);
   };
 
   const questionContent = isHost ? (

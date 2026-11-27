@@ -57,6 +57,11 @@ export type PadSession = {
   isRoom: boolean;
   /** The room's host: the only one who sees the host panel, the report and the end button. */
   isHost: boolean;
+  /**
+   * Where the pad sits in its staged interview, as it was when the pad was loaded (the owner's
+   * alone; null for a pad started on its own, and for anyone else).
+   */
+  interview: PadDetail['interview'];
   /** Room host: move on to another problem, or to a blank editor (null). */
   changeProblem: (problemSlug: string | null) => Promise<boolean>;
   updateInterviewer: (patch: Partial<InterviewerSettings>) => Promise<void>;
@@ -432,6 +437,7 @@ export function PadSessionProvider({
       setLanguage,
       isRoom,
       isHost,
+      interview: detail.interview,
       changeProblem,
       updateInterviewer,
       setInterviewerKey,
@@ -458,6 +464,7 @@ export function PadSessionProvider({
       setLanguage,
       isRoom,
       isHost,
+      detail.interview,
       changeProblem,
       updateInterviewer,
       setInterviewerKey,

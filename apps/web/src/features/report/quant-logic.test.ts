@@ -75,10 +75,14 @@ describe('a quant report', () => {
       hintsAvailable: 7,
     });
     expect(f.meanScore).toBeCloseTo(0.6);
-    expect(roundFigures({ mode: 'ai', path: 'trader', subject: 'quant', questions: [] }).meanScore).toBeNull();
+    expect(
+      roundFigures({ mode: 'ai', path: 'trader', subject: 'quant', questions: [] }).meanScore,
+    ).toBeNull();
     expect(answeredDetail(f)).toBe('3 asked · 1 timed out · 1 not reached');
     expect(
-      answeredDetail(roundFigures({ mode: 'ai', path: 'trader', subject: 'quant', questions: [review({})] })),
+      answeredDetail(
+        roundFigures({ mode: 'ai', path: 'trader', subject: 'quant', questions: [review({})] }),
+      ),
     ).toBe('1 asked');
   });
 
@@ -126,9 +130,11 @@ describe('a quant room’s report', () => {
       ],
     });
     expect(hostedAskedDetail(f)).toBe('1 closed · 1 open at the end');
-    expect(hostedAskedDetail(roundFigures({ mode: 'hosted', path: null, subject: 'quant', questions: [] }))).toBe(
-      'no question was asked',
-    );
+    expect(
+      hostedAskedDetail(
+        roundFigures({ mode: 'hosted', path: null, subject: 'quant', questions: [] }),
+      ),
+    ).toBe('no question was asked');
   });
 });
 
