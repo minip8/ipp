@@ -10,6 +10,7 @@ import {
 } from '@ipp/contracts';
 import {
   interviews,
+  messages,
   pads,
   quantGames,
   quantRoundAnswers,
@@ -18,7 +19,7 @@ import {
   quizTopics,
   reports,
 } from '@ipp/db';
-import { eq, inArray } from '@ipp/db/orm';
+import { and, desc, eq, inArray } from '@ipp/db/orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { DEFAULT_LIMITS } from '../src/config';
 import { interviewerMessageCap } from '../src/interviewer/host';
@@ -830,6 +831,40 @@ describe('short rounds', () => {
     const state = await roundState(id);
     expect(state.questions[0]?.closedBy).toBe('round_time');
     expect(state.current).toBe(1);
+  });
+
+  /** What the interviewer last said in the pad (a game's close opens with the settlement). */
+  const lastSaid = async (padId: string) => {
+    const [m] = await db()
+      .select({ text: messages.text })
+      .from(messages)
+      .where(and(eq(messages.padId, padId), eq(messages.role, 'interviewer')))
+      .orderBy(desc(messages.createdAt))
+      .limit(1);
+    return m?.text ?? '';
+  };
+
+  it('closes an unattended stage for its place in the interview', async () => {
+    const c = await account('UnattendedStage');
+    // A game with a coding problem after it: the close says what comes next, not goodbye.
+    const first = await create(c, [game(10), coding()], { track: 'quant' });
+    const mid = mustPad(first.padId);
+    await startRound(mid);
+    await backdate(mid, 11);
+    expect(await sweepQuantRounds(h.api.ctx, onlyThis(mid))).toBe(1);
+    const said = await lastSaid(mid);
+    expect(said).toContain('Next up is');
+    expect(said).not.toContain('Thanks for trading with me');
+
+    // A game on its own closes as a game, and as the end.
+    const alone = await create(c, [game(10)], { track: 'quant' });
+    const only = mustPad(alone.padId);
+    await startRound(only);
+    await backdate(only, 11);
+    expect(await sweepQuantRounds(h.api.ctx, onlyThis(only))).toBe(1);
+    const closing = await lastSaid(only);
+    expect(closing).toContain("let's stop the game there");
+    expect(closing).not.toContain('Next up is');
   });
 
   it('shares a 15-minute round between its two questions', async () => {

@@ -367,6 +367,7 @@ describe('a hosted round', () => {
     expect(publicRound(r.state, 0)).toEqual({
       mode: 'hosted',
       path: null,
+      subject: 'quant',
       total: null,
       phase: 'pending',
       questions: [],
@@ -586,6 +587,7 @@ describe('contracts for quant rooms', () => {
     expect(QuantReport.parse({ path: 'researcher', questions: [] })).toEqual({
       mode: 'ai',
       path: 'researcher',
+      subject: 'quant',
       questions: [],
     });
     expect(
