@@ -15,6 +15,7 @@ export const qk = {
   pad: (id: string) => ['pad', id] as const,
   interviews: ['interviews'] as const,
   interview: (id: string) => ['interview', id] as const,
+  interviewTemplates: ['interview-templates'] as const,
   hostView: (id: string) => ['pad', id, 'host'] as const,
   hostBank: (id: string, q: object) => ['pad', id, 'host', 'bank', q] as const,
   invite: (token: string) => ['invite', token] as const,

@@ -18,6 +18,7 @@ import {
   type CreateRunRequest,
   DeleteAttemptResponse,
   DeleteInterviewResponse,
+  DeleteInterviewTemplateResponse,
   DeletePadResponse,
   type DiscussionReplyRequest,
   DiscussionReplyResponse,
@@ -29,6 +30,7 @@ import {
   HostView,
   Interview,
   InterviewStart,
+  InterviewTemplate,
   InviteInfo,
   Pad,
   PadDetail,
@@ -53,12 +55,14 @@ import {
   RecordDrillRunResponse,
   Report,
   Run,
+  type SaveInterviewTemplateRequest,
   type SetAiLimitsRequest,
   type SetTrackRequest,
   SetTrackResponse,
   SolutionReview,
   type Track,
   UpdateHostNotesRequest,
+  type UpdateInterviewTemplateRequest,
   type UpdatePadRequest,
   WsTicketResponse,
 } from '@ipp/contracts';
@@ -292,6 +296,20 @@ export const api = {
   /** The interview and every stage's pad. */
   deleteInterview: (id: string) =>
     request(`/interviews/${id}`, DeleteInterviewResponse, { method: 'DELETE' }),
+  /** Plans saved under a name to start interviews from: the user's own, every track, by name. */
+  interviewTemplates: () => request('/interview-templates', z.array(InterviewTemplate)),
+  saveInterviewTemplate: (body: SaveInterviewTemplateRequest) =>
+    request('/interview-templates', InterviewTemplate, { method: 'POST', body }),
+  /** A new name, a new plan, or both. */
+  updateInterviewTemplate: (id: string, body: UpdateInterviewTemplateRequest) =>
+    request(`/interview-templates/${encodeURIComponent(id)}`, InterviewTemplate, {
+      method: 'PUT',
+      body,
+    }),
+  deleteInterviewTemplate: (id: string) =>
+    request(`/interview-templates/${encodeURIComponent(id)}`, DeleteInterviewTemplateResponse, {
+      method: 'DELETE',
+    }),
   report: (id: string) => request(`/pads/${id}/report`, Report),
   requestAssessment: (id: string) =>
     request(`/pads/${id}/report/assessment`, Report, { method: 'POST' }),
