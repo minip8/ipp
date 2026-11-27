@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { ErrorState } from '@/components/states';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { DailyLimitSection } from '@/features/ai-usage/daily-limit';
 import { loadStartPrefs, saveStartPrefs } from '@/lib/prefs';
 import { useAiKey } from '@/lib/queries';
 import { KeyFacts } from './ai-key-dialog';
@@ -82,6 +83,8 @@ export function AiKeySettings() {
           </p>
         </div>
       </Card>
+
+      <DailyLimitSection />
 
       <div className="mt-6 grid gap-6 sm:grid-cols-2">
         <section aria-labelledby="uses-heading">

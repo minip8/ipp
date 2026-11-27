@@ -87,6 +87,7 @@ import { DRILL_RUNS, drillBests } from './fixtures-drill';
 import { publicOf, ROOM_BANK } from './fixtures-quant-room';
 import { QUANT_FOLLOW_UP, QUANT_QUESTIONS, QUANT_TOPIC } from './fixtures-quiz-quant';
 import { QUIZ_ROADMAP } from './fixtures-quiz-roadmap';
+import { MockAiUsage } from './mock-ai-usage';
 import { MockQuantRooms } from './mock-quant-room';
 import { MockQuantRounds } from './mock-quant-round';
 import { MockQuizBank } from './mock-quiz-bank';
@@ -116,6 +117,8 @@ export class MockBackend {
   /** GET /api/ai-key/models: the provider could not list them (a built-in list comes back). */
   modelsFail = false;
   modelListCalls = 0;
+  /** GET /api/ai-usage and PUT/DELETE /api/ai-limits (mock-ai-usage.ts). */
+  aiUsage = new MockAiUsage();
   pads = new Map<string, PadDetail>();
   attempts = new Map<string, QuizAttempt>();
   runs = new Map<string, Run>();
@@ -518,6 +521,8 @@ export class MockBackend {
         return this.aiKey;
       }
     }
+    const usage = this.aiUsage.handle(method, path, body, this.aiKey, !!this.me.guest);
+    if (usage !== undefined) return usage;
     if (path === '/api/ai-key/models' && method === 'GET') {
       this.modelListCalls++;
       if (this.aiKey.state !== 'active')
