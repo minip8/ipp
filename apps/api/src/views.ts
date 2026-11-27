@@ -2,6 +2,7 @@
 import {
   type Interview,
   type InterviewStageView,
+  type InterviewTemplate,
   type Message,
   type MessageIntent,
   type Pad,
@@ -15,6 +16,7 @@ import {
 } from '@ipp/contracts';
 import type {
   interviews,
+  interviewTemplates,
   messages,
   pads,
   problems,
@@ -25,6 +27,7 @@ import type {
 import type { StoredRun } from './runs/redact';
 
 type InterviewRow = typeof interviews.$inferSelect;
+type TemplateRow = typeof interviewTemplates.$inferSelect;
 type PadRow = typeof pads.$inferSelect;
 type ProblemRow = typeof problems.$inferSelect;
 type TestRow = typeof problemTests.$inferSelect;
@@ -179,3 +182,12 @@ export function interviewView(row: InterviewRow, stagePads: readonly StagePadRow
     endedAt: row.endedAt?.toISOString() ?? null,
   };
 }
+
+export const templateView = (row: TemplateRow): InterviewTemplate => ({
+  id: row.id,
+  name: row.name,
+  track: row.track,
+  stages: row.stages,
+  createdAt: row.createdAt.toISOString(),
+  updatedAt: row.updatedAt.toISOString(),
+});
