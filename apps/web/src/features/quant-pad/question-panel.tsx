@@ -22,6 +22,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { usePad } from '@/features/pad/session';
+import { EndInterviewHere, NextStageButton, useStage } from '@/features/pad/stage';
 import { useNow } from '@/features/pad/top-bar';
 import {
   GamePanel,
@@ -184,7 +185,30 @@ function HostedWaiting({ round }: { round: QuantRoundView }) {
 
 function Finished({ onEnd, ending }: { onEnd: () => void; ending: boolean }) {
   const { state, readOnly } = usePad();
+  const stage = useStage();
   const owner = state.role === 'owner';
+  // A stage with another after it: the way on ends this one and opens the next (once the pad
+  // has ended, the banner over the pad offers it).
+  if (stage?.hasNext && owner && !readOnly)
+    return (
+      <div
+        className="mx-5 my-5 rounded-lg border border-border bg-surface-2 px-4 py-4 max-lg:mx-4"
+        data-testid="round-finished"
+      >
+        <p className="flex items-center gap-2 font-medium">
+          <FlagIcon className="size-4 text-accent-text" aria-hidden /> Stage{' '}
+          {stage.interview.index + 1} finished
+        </p>
+        <p className="mt-1 text-sm text-fg-muted">
+          That was the last question of this stage. Its report scores each answer, with the
+          solutions.
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <NextStageButton />
+          <EndInterviewHere />
+        </div>
+      </div>
+    );
   return (
     <div
       className="mx-5 my-5 rounded-lg border border-border bg-surface-2 px-4 py-4 max-lg:mx-4"
@@ -215,7 +239,8 @@ function Finished({ onEnd, ending }: { onEnd: () => void; ending: boolean }) {
             onClick={onEnd}
             disabled={ending}
           >
-            {ending ? <Spinner /> : <FlagIcon />} End and see the report
+            {ending ? <Spinner /> : <FlagIcon />}{' '}
+            {stage ? 'End and see the results' : 'End and see the report'}
           </Button>
         )
       )}

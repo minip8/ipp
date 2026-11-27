@@ -1,11 +1,11 @@
 /**
- * The live quant round: starting one from the Quant track's Interviews tab, the quant pad (question, chat and
+ * The live quant round: a questions stage started from the builder, the quant pad (question, chat and
  * voice, scratchpad), the round played through to its report, and what keeps the two pad formats
  * apart (Monaco never loads in a quant pad, KaTeX never in a coding pad). The round is played by
  * the mock (mock-quant-round.ts) through the contract's own `advanceRound`.
  */
 import { expect, type Page, test } from '@playwright/test';
-import { ACTIVE_PAD_ID, aiKeyStatus, ENDED_PAD_ID, uuid } from './fixtures';
+import { ACTIVE_PAD_ID, ENDED_PAD_ID, uuid } from './fixtures';
 import { LINES, QUANT_ENDED_PAD_ID, QUANT_PAD_ID, ROUND_BANK } from './fixtures-quant-round';
 import { setup } from './helpers';
 import type { MockBackend } from './mock-api';
@@ -28,6 +28,8 @@ async function openQuantPad(page: Page, configure?: (b: MockBackend) => void, id
 
 const quantStarts = (b: MockBackend) =>
   b.requests.filter((r) => r.method === 'POST' && r.path === '/api/pads/quant');
+const interviewStarts = (b: MockBackend) =>
+  b.requests.filter((r) => r.method === 'POST' && r.path === '/api/interviews');
 
 /** What a page loaded: KaTeX's stylesheet (by its font rule), its script, its fonts. */
 const katexLoaded = (page: Page) =>
@@ -50,78 +52,16 @@ const katexLoaded = (page: Page) =>
 const PROMPT_1 = ROUND_BANK['prob-dice-eight']?.prompt ?? '';
 
 test.describe('starting a round', () => {
-  for (const path of ['trader', 'researcher'] as const) {
-    test(`from the ${path} path, with its refusals`, async ({ page }) => {
-      const b = await setup(page);
-      await page.goto(
-        path === 'trader' ? '/quant/interviews' : '/quant/interviews?path=researcher',
-      );
-      const card = page.getByTestId('round-setup');
-      await expect(card.getByRole('heading', { name: 'Live interview round' })).toBeVisible();
-      // On the path the URL names, chosen above it.
-      await expect(
-        page.getByRole('radiogroup', { name: 'Path' }).getByRole('radio', { checked: true }),
-      ).toHaveText(path === 'trader' ? 'Trader' : 'Researcher');
-      await expect(card).toContainText(`questions from the ${path} path`);
-
-      // Each length, with the questions it asks.
-      await expect(card.getByRole('radio', { name: / min$/ })).toHaveText([
-        '20 min',
-        '30 min',
-        '45 min',
-      ]);
-      await expect(card.getByTestId('round-shape')).toContainText('4 questions, about 8 minutes');
-      await card.getByRole('radio', { name: '45 min' }).click();
-      await expect(card.getByTestId('round-shape')).toContainText('6 questions, about 8 minutes');
-      await card.getByRole('radio', { name: '20 min' }).click();
-      await expect(card.getByTestId('round-shape')).toContainText('3 questions, about 7 minutes');
-      // The interviewer's options are the coding setup's.
-      await card.getByRole('radio', { name: 'Tough' }).click();
-      await card.getByRole('radio', { name: 'Often' }).click();
-      const start = card.getByRole('button', { name: 'Start the round' });
-
-      // The path is short of questions.
-      b.quant.unavailable = path;
-      await start.click();
-      await expect(card.getByTestId('round-error')).toHaveText(
-        'This path does not have enough questions for a 3-question round yet. Try a shorter round.',
-      );
-      b.quant.unavailable = false;
-      // The key went missing since the page loaded.
-      b.fail(/POST \/api\/pads\/quant/, 409, {
-        error: { code: 'ai_key_missing', message: 'Add a key' },
-      });
-      await start.click();
-      await expect(card.getByTestId('round-error')).toContainText(
-        'The interviewer runs the round on your own AI API key',
-      );
-      // Too many starts: a plain message, and Start waits.
-      b.fail(/POST \/api\/pads\/quant/, 429, {
-        error: { code: 'rate_limited', message: 'Too many pads', retryAfter: 90 },
-      });
-      await start.click();
-      await expect(card.getByTestId('round-error')).toHaveText(
-        'You have started a lot of interviews in a short time. You can start another in 2 min.',
-      );
-      await expect(start).toBeDisabled();
-      expect(quantStarts(b)).toHaveLength(3);
-      expect(quantStarts(b)[0]?.body).toEqual({
-        path,
-        durationMin: 20,
-        interviewer: { style: 'tough', proactivity: 'high', voice: false },
-        // As the path decides: a trader round has a game, a researcher round none.
-        includeGame: path === 'trader',
-      });
-    });
-  }
-
-  test('starts and opens the pad, where the interviewer greets and asks', async ({ page }) => {
+  // The builder itself (presets, the key, refusals) is interview-builder.spec.ts.
+  test('a questions stage opens its pad, where the interviewer greets and asks', async ({
+    page,
+  }) => {
     // The spec starts the round itself, so the state before the greeting can be looked at.
     const b = await setup(page, (x) => {
       x.quant.autoStart = false;
     });
-    await page.goto('/quant/interviews?path=researcher');
-    await page.getByRole('button', { name: 'Start the round' }).click();
+    await page.goto('/quant/interviews?preset=researcher');
+    await page.getByRole('button', { name: 'Start the interview' }).click();
     await expect(page).toHaveURL(/\/pads\/[0-9a-f-]{36}$/);
     await expect(page.getByTestId('round-pending')).toContainText(
       'The interviewer is about to start',
@@ -131,35 +71,16 @@ test.describe('starting a round', () => {
     await expect(heading(page)).toHaveText('Question 1 of 4');
     await expect(page.getByTestId('question-message')).toContainText(PROMPT_1.slice(0, 20));
     await expect(page.getByTestId('question-topic')).toHaveText('Probability');
-    // The setup is kept for next time.
+    // A round assembled from the stage's topics: no path, marked by its subject.
+    await expect(page.getByTestId('quant-badge')).toHaveText('Quant');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Probability, Statistics');
+    // The plan is kept for next time.
     await page.goto('/quant/interviews');
-    await expect(page.getByRole('radio', { name: '30 min' })).toHaveAttribute(
-      'aria-checked',
-      'true',
-    );
-    expect(quantStarts(b)).toHaveLength(1);
-  });
-
-  test('without a key: the prompt, and Start asks for one first', async ({ page }) => {
-    const b = await setup(page, (x) => {
-      x.aiKey = aiKeyStatus('missing');
-    });
-    await page.goto('/quant/interviews');
-    const card = page.getByTestId('round-setup');
-    await expect(card.getByTestId('round-key-prompt')).toContainText(
-      'The round runs on your own AI API key',
-    );
-    await card.getByRole('button', { name: 'Start the round' }).click();
-    const dialog = page.getByRole('dialog', { name: 'Add your API key to start' });
-    await expect(dialog).toBeVisible();
+    await expect(
+      page.getByRole('radiogroup', { name: 'Presets' }).getByRole('radio', { name: /^Researcher/ }),
+    ).toBeChecked();
+    expect(interviewStarts(b)).toHaveLength(1);
     expect(quantStarts(b)).toHaveLength(0);
-    await dialog
-      .getByLabel(/API key/)
-      .first()
-      .fill('sk-ant-api03-e2eQUANTROUND-0123456789abcdefghij');
-    await dialog.getByRole('button', { name: 'Save key and start' }).click();
-    await expect(page).toHaveURL(/\/pads\/[0-9a-f-]{36}$/);
-    expect(quantStarts(b)).toHaveLength(1);
   });
 });
 
@@ -244,10 +165,10 @@ test.describe('the quant pad', () => {
     page,
   }) => {
     const b = await setup(page);
-    await page.goto('/quant/interviews');
-    // Bank questions only (quant-game.spec.ts plays the game).
-    await page.getByRole('switch', { name: 'Include a market-making game' }).click();
-    await page.getByRole('button', { name: 'Start the round' }).click();
+    // One round of bank questions, an interview of one stage: an ordinary quant pad
+    // (quant-game.spec.ts plays the game).
+    await page.goto('/quant/interviews?preset=quant-round');
+    await page.getByRole('button', { name: 'Start the interview' }).click();
     await expect(heading(page)).toHaveText('Question 1 of 4', { timeout: 20_000 });
     const id = new URL(page.url()).pathname.split('/')[2] ?? '';
     await expect(page.getByTestId('proactive-message').first()).toContainText('thanks for joining');

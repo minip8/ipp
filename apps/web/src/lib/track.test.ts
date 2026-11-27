@@ -39,6 +39,7 @@ describe('where a path is', () => {
     expect(tabFromPath('/quiz/abc')).toBe('practice');
     expect(tabFromPath('/quiz/topics/python')).toBe('practice');
     expect(tabFromPath('/pads/abc/report')).toBe('interviews');
+    expect(tabFromPath('/interviews/abc')).toBe('interviews');
     expect(tabFromPath('/dashboard')).toBe('interviews');
     expect(tabFromPath('/settings/ai-key')).toBeNull();
     expect(tabFromPath('/')).toBeNull();

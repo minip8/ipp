@@ -117,17 +117,23 @@ test('a trader round with a market-making game, played through the real stack', 
   await page.getByRole('button', { name: 'Create account' }).click();
   await expect(page).toHaveURL(/\/dashboard/);
 
-  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Quant' }).click();
-  await expect(page.getByRole('heading', { level: 1, name: 'Quant' })).toBeVisible();
-  const card = page.getByTestId('round-setup');
-  await card.getByRole('radio', { name: '20 min' }).click();
-  const option = card.getByRole('switch', { name: 'Include a market-making game' });
-  await expect(option).toHaveAttribute('aria-checked', 'true');
+  // A trader round of 20 minutes with its game in the second slot: the builder's stages hold a
+  // game alone, so this round is started through the API, once the key is saved from a setup.
+  await page.goto('/quant/interviews');
   await shot(page, 'setup');
-  await card.getByRole('button', { name: 'Start the round' }).click();
+  await page.getByRole('button', { name: 'Start the interview' }).click();
   await expect(page.getByRole('dialog', { name: 'Add your API key to start' })).toBeVisible();
   await pasteKey(page, 'Save key and start');
   await expect(page).toHaveURL(/\/pads\/[0-9a-f-]{36}$/, { timeout: 30_000 });
+  const roundId = await page.evaluate(async () => {
+    const r = await fetch('/api/pads/quant', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ path: 'trader', durationMin: 20, includeGame: true }),
+    });
+    return ((await r.json()) as { id: string }).id;
+  });
+  await page.goto(`/pads/${roundId}`);
   const padUrl = page.url();
   const padId = padUrl.split('/').at(-1) as string;
   await expect(page.getByTestId('quant-workspace')).toBeVisible({ timeout: 30_000 });

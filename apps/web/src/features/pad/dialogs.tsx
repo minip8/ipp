@@ -8,6 +8,7 @@ import {
   MoonIcon,
   SunIcon,
 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { useTheme } from 'next-themes';
 import { useEffect, useMemo, useState } from 'react';
 import { LANG_LABEL, RunVerdictBadge } from '@/components/domain';
@@ -39,6 +40,7 @@ import {
 import { touchEditorSettings } from './layout';
 import { usePad } from './session';
 import { SHORTCUTS } from './shortcuts';
+import { useStage } from './stage';
 
 function SettingRow({
   label,
@@ -400,6 +402,11 @@ export function ResetDialog({
   );
 }
 
+/**
+ * Confirms ending the pad. A pad started on its own then goes to its report (`onEnded`). A stage
+ * of an interview says what comes next: before the last stage the pad stays open, read-only,
+ * with the way on to the next stage; the last stage ends the interview and opens its page.
+ */
 export function EndDialog({
   open,
   onOpenChange,
@@ -410,6 +417,8 @@ export function EndDialog({
   onEnded: () => void;
 }) {
   const { state, endPad, isRoom } = usePad();
+  const router = useRouter();
+  const stage = useStage();
   const [busy, setBusy] = useState(false);
   const elapsed = (Date.now() - Date.parse(state.pad.startedAt)) / 1000;
   const submissions = state.runs.filter((r) => r.mode === 'submit' && r.status === 'finished');
@@ -436,11 +445,21 @@ export function EndDialog({
     <Dialog open={open} onOpenChange={(o) => !busy && onOpenChange(o)}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>End the interview?</DialogTitle>
+          <DialogTitle>
+            {stage?.hasNext
+              ? 'End this stage?'
+              : stage
+                ? 'End the last stage?'
+                : 'End the interview?'}
+          </DialogTitle>
           <DialogDescription>
-            {isRoom
-              ? 'The room becomes read-only for everyone. The report, with the playback and your notes, is for you alone.'
-              : 'The pad becomes read-only for everyone and your report is generated.'}
+            {stage?.hasNext
+              ? `Stage ${stage.interview.index + 1} of ${stage.interview.total} becomes read-only and its report is written. Next up: ${stage.nextSummary}, which you start when you are ready.`
+              : stage
+                ? 'This is the last stage of the interview: ending it ends the interview. Its page has the report of every stage and the overall result.'
+                : isRoom
+                  ? 'The room becomes read-only for everyone. The report, with the playback and your notes, is for you alone.'
+                  : 'The pad becomes read-only for everyone and your report is generated.'}
           </DialogDescription>
         </DialogHeader>
         <DialogBody>
@@ -496,12 +515,19 @@ export function EndDialog({
               setBusy(false);
               if (ok) {
                 onOpenChange(false);
-                onEnded();
+                // Before the last stage the pad stays, with the way on to the next one.
+                if (stage?.hasNext) return;
+                if (stage) router.push(`/interviews/${stage.interview.id}`);
+                else onEnded();
               }
             }}
           >
             {busy && <Spinner />}
-            End and see report
+            {stage?.hasNext
+              ? 'End stage'
+              : stage
+                ? 'End and see the results'
+                : 'End and see report'}
           </Button>
         </DialogFooter>
       </DialogContent>

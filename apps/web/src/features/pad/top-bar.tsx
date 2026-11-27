@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { DifficultyBadge, QuantPathBadge } from '@/components/domain';
+import { DifficultyBadge, RoundBadge } from '@/components/domain';
 import { LogoMark } from '@/components/logo';
 import { Button } from '@/components/ui/button';
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from '@/components/ui/menu';
@@ -22,10 +22,12 @@ import { hostOf } from '@/features/room/logic';
 import { formatTimeOfDay } from '@/lib/format';
 import { storage } from '@/lib/storage';
 import { interviewsHref } from '@/lib/track';
+import { useTrack } from '@/lib/track-hooks';
 import { cn } from '@/lib/utils';
 import { SharePopover } from './dialogs';
 import type { PresenceUser } from './editor/binding';
 import { usePad } from './session';
+import { StageChip, useStage } from './stage';
 import { timerView } from './timer';
 import { presenceUser } from './yjs-guards';
 
@@ -197,20 +199,30 @@ type TopBarProps = {
   compact?: boolean;
 };
 
-/** The way back: the Interviews tab of the pad's own track (a quant pad's is Quant's). */
+/**
+ * The way back: the Interviews tab of the pad's own track (a quant pad's is Quant's). A stage's
+ * pad goes back to its interview's page; the pad of a one-stage interview to the Interviews tab
+ * the user is in (the pad does not say which track its interview was built in).
+ */
 function Home({ className }: { className?: string }) {
-  const { me, state } = usePad();
+  const { me, state, interview } = usePad();
+  const remembered = useTrack();
+  const staged = interview && interview.total > 1;
+  const href = staged
+    ? `/interviews/${interview.id}`
+    : interviewsHref(state.pad.interviewId ? remembered : padTrack(state.pad));
+  const label = staged ? 'Back to the interview' : 'Back to interviews';
   return me.guest ? (
     // A guest has no Interviews tab to go back to.
     <span className={cn('p-1', className)}>
       <LogoMark />
     </span>
   ) : (
-    <Tooltip label="Back to interviews">
+    <Tooltip label={label}>
       <Link
-        href={interviewsHref(padTrack(state.pad))}
+        href={href}
         className={cn('rounded-md p-1 hover:bg-surface-3', className)}
-        aria-label="Back to interviews"
+        aria-label={label}
       >
         <LogoMark />
       </Link>
@@ -224,6 +236,7 @@ function Home({ className }: { className?: string }) {
  */
 function CompactTopBar({ onSettings, onShortcuts, onEnd, onShare }: TopBarProps) {
   const { state, readOnly, isRoom, isHost } = usePad();
+  const stage = useStage();
   const canShare = !readOnly && Boolean(state.pad.shareToken) && Boolean(onShare);
   const canEnd = !readOnly && state.role === 'owner';
   const canReport = readOnly && (!isRoom || isHost);
@@ -233,6 +246,7 @@ function CompactTopBar({ onSettings, onShortcuts, onEnd, onShare }: TopBarProps)
       <h1 className="min-w-0 flex-1 truncate text-sm font-semibold">
         {state.problem?.title ?? state.pad.title}
       </h1>
+      <StageChip compact />
       <div className="flex shrink-0 items-center gap-0.5">
         <Connection />
         <Presence max={2} more />
@@ -262,7 +276,7 @@ function CompactTopBar({ onSettings, onShortcuts, onEnd, onShare }: TopBarProps)
             {(canEnd || canReport) && (canShare || onSettings || onShortcuts) && <MenuSeparator />}
             {canEnd && (
               <MenuItem onSelect={onEnd}>
-                <FlagIcon /> End interview
+                <FlagIcon /> {stage?.hasNext ? 'End stage' : 'End interview'}
               </MenuItem>
             )}
             {canReport && (
@@ -282,6 +296,7 @@ function CompactTopBar({ onSettings, onShortcuts, onEnd, onShare }: TopBarProps)
 export function TopBar(props: TopBarProps) {
   const { onSettings, onShortcuts, onEnd, compact } = props;
   const { state, readOnly, isRoom, isHost } = usePad();
+  const stage = useStage();
   const host = hostOf(state.members);
   if (compact) return <CompactTopBar {...props} />;
   return (
@@ -292,8 +307,9 @@ export function TopBar(props: TopBarProps) {
         <h1 className="truncate text-sm font-semibold">
           {state.problem?.title ?? state.pad.title}
         </h1>
+        <StageChip />
         {state.problem && <DifficultyBadge difficulty={state.problem.difficulty} />}
-        {state.round?.path && <QuantPathBadge path={state.round.path} />}
+        {state.round && <RoundBadge round={state.round} />}
         {isRoom ? (
           <span className="truncate text-xs text-fg-subtle" data-testid="room-role">
             {isHost ? '· you are hosting' : host ? `· interview with ${host.name}` : '· interview'}
@@ -342,13 +358,19 @@ export function TopBar(props: TopBarProps) {
         )}
         {readOnly
           ? (!isRoom || isHost) && (
-              <Button asChild size="sm" variant="primary" className="ml-1">
+              // A stage with one after it: the way on is the banner's, the primary action.
+              <Button
+                asChild
+                size="sm"
+                variant={stage?.hasNext ? 'secondary' : 'primary'}
+                className="ml-1"
+              >
                 <Link href={`/pads/${state.pad.id}/report`}>View report</Link>
               </Button>
             )
           : state.role === 'owner' && (
               <Button size="sm" variant="secondary" className="ml-1" onClick={onEnd}>
-                End interview
+                {stage?.hasNext ? 'End stage' : 'End interview'}
               </Button>
             )}
       </div>

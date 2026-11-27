@@ -37,6 +37,23 @@ describe('deleteCopy', () => {
   });
 });
 
+describe('deleteCopy of a staged interview', () => {
+  it('says every stage it started goes with it', () => {
+    const c = deleteCopy(t({ problemTitle: 'Onsite loop', interview: { stages: 3, started: 2 } }));
+    expect(c.title).toBe('Delete “Onsite loop”?');
+    expect(c.description).toContain('the 2 stages you started in it');
+    expect(c.lost.join(' ')).toMatch(/Every stage’s report/);
+    expect(c.lost.join(' ')).toMatch(/overall result/);
+    expect(
+      deleteCopy(t({ status: 'active', interview: { stages: 3, started: 1 } })).lost[0],
+    ).toMatch(/stage in progress ends/);
+  });
+
+  it('a one-stage interview reads as the pad it is', () => {
+    expect(deleteCopy(t({ interview: { stages: 1, started: 1 } }))).toEqual(deleteCopy(t()));
+  });
+});
+
 describe('alreadyGone', () => {
   it('treats only a 404 as already deleted', () => {
     expect(alreadyGone(new ApiRequestError(404, 'not_found', 'Pad not found'))).toBe(true);

@@ -37,6 +37,7 @@ const question = (index: number, over: Partial<QuantQuestionView> = {}): QuantQu
 const round = (over: Partial<QuantRoundView> = {}): QuantRoundView => ({
   mode: 'ai',
   path: 'trader',
+  subject: 'quant',
   total: 4,
   phase: 'asking',
   questions: [question(0, { closedAt: at(300), hintsGiven: 2 }), question(1, { hintsGiven: 1 })],

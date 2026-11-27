@@ -96,7 +96,7 @@ test('the home page is reachable when signed in and leads into the app', async (
   ).toHaveAttribute('href', '/quant/practice');
   await page.getByRole('link', { name: 'Start a coding interview' }).click();
   await expect(page).toHaveURL('/software/interviews');
-  await expect(page.getByRole('heading', { name: 'Problem library' })).toBeAttached();
+  await expect(page.getByRole('radiogroup', { name: 'Presets' })).toBeVisible();
 });
 
 test('the account pages send a signed-in visitor on instead of asking again', async ({ page }) => {

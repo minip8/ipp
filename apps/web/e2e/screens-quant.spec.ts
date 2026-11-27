@@ -43,15 +43,15 @@ for (const width of WIDTHS) {
       test.skip(!want('quant-setup'));
       await setup(page);
       await page.goto('/quant/interviews');
-      await page.getByTestId('round-setup').waitFor();
+      await page.getByTestId('builder').waitFor();
       await page.waitForTimeout(300);
       await shoot(page, 'quant-setup', { fullPage: true });
       const noKey = await page.context().newPage();
       await setup(noKey, (b) => {
         b.aiKey = aiKeyStatus('missing');
       });
-      await noKey.goto('/quant/interviews?path=researcher');
-      await noKey.getByTestId('round-key-prompt').waitFor();
+      await noKey.goto('/quant/interviews?preset=researcher');
+      await noKey.getByTestId('interview-key-prompt').waitFor();
       await noKey.waitForTimeout(300);
       await shoot(noKey, 'quant-setup-nokey');
       await noKey.close();

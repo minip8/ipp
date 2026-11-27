@@ -1,5 +1,11 @@
 'use client';
-import { padTrack, QUANT_REPORT_DIMENSIONS, type Track } from '@ipp/contracts';
+import {
+  type PadDetail,
+  padTrack,
+  QUANT_REPORT_DIMENSIONS,
+  QUANT_SUBJECT_LABEL,
+  type Track,
+} from '@ipp/contracts';
 import { useQuery } from '@tanstack/react-query';
 import {
   ArrowLeftIcon,
@@ -13,7 +19,7 @@ import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { DifficultyBadge, LanguageTag, QuantPathBadge } from '@/components/domain';
+import { DifficultyBadge, LanguageTag, RoundBadge } from '@/components/domain';
 import { LazyMathMarkdown } from '@/components/lazy-math-markdown';
 import { EmptyState, ErrorState } from '@/components/states';
 import { Button } from '@/components/ui/button';
@@ -44,16 +50,39 @@ function formatDate(iso: string) {
   });
 }
 
-/** Back to the Interviews tab of the pad's track. */
-function BackLink({ track }: { track: Track }) {
+/** Back to the Interviews tab of the pad's track, or to the interview a stage's pad is part of. */
+function BackLink({ track, interview }: { track: Track; interview?: PadDetail['interview'] }) {
+  const staged = interview && interview.total > 1;
   return (
     <Link
-      href={interviewsHref(track)}
-      className="inline-flex items-center gap-1 text-sm text-fg-muted hover:text-fg"
+      href={staged ? `/interviews/${interview.id}` : interviewsHref(track)}
+      className="inline-flex max-w-full items-center gap-1 text-sm text-fg-muted hover:text-fg"
     >
-      <ArrowLeftIcon className="size-3.5" aria-hidden /> Interviews
+      <ArrowLeftIcon className="size-3.5 shrink-0" aria-hidden />{' '}
+      <span className="truncate">{staged ? interview.title : 'Interviews'}</span>
     </Link>
   );
+}
+
+/**
+ * What deleting from a report deletes: the pad, or for the pad of a one-stage interview the
+ * interview (a stage's pad cannot be deleted alone). A stage of a longer interview: nothing here,
+ * the interview's page deletes it whole.
+ */
+function reportDeleteTarget(d: PadDetail): DeleteTarget | null {
+  const title = d.problem?.title ?? d.pad.title;
+  if (d.pad.interviewId && d.role === 'owner') {
+    const i = d.interview;
+    if (!i || i.total > 1) return null;
+    return {
+      id: i.id,
+      problemTitle: title,
+      status: d.pad.status,
+      role: 'owner',
+      interview: { stages: 1, started: 1 },
+    };
+  }
+  return { id: d.pad.id, problemTitle: title, status: d.pad.status, role: d.role };
 }
 
 function ReportSkeleton() {
@@ -87,8 +116,9 @@ export function ReportPage({ id }: { id: string }) {
   const [deleted, setDeleted] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const pad = useQuery({ queryKey: qk.pad(id), queryFn: () => api.pad(id), enabled: !deleted });
-  // The way back is the pad's own track's Interviews; without the pad, the current track's.
-  const track = pad.data ? padTrack(pad.data.pad) : remembered;
+  // The way back is the pad's own track's Interviews; without the pad, the current track's. A
+  // stage's pad does not say which track its interview was built in: the current one.
+  const track = pad.data && !pad.data.pad.interviewId ? padTrack(pad.data.pad) : remembered;
   // A room's report belongs to its host: a candidate who took part does not get to read it.
   const hostOnly = pad.data?.pad.kind === 'room' && pad.data.role !== 'owner';
   const isRoomHost = pad.data?.pad.kind === 'room' && pad.data.role === 'owner';
@@ -96,14 +126,8 @@ export function ReportPage({ id }: { id: string }) {
   // A quant room: its host posed questions of the bank and gave the verdicts.
   const quantRoom = quant && pad.data?.pad.kind === 'room';
   const ended = pad.data?.pad.status === 'ended' && !deleted && !hostOnly;
-  const target: DeleteTarget | null = pad.data
-    ? {
-        id,
-        problemTitle: pad.data.problem?.title ?? pad.data.pad.title,
-        status: pad.data.pad.status,
-        role: pad.data.role,
-      }
-    : null;
+  const target = pad.data ? reportDeleteTarget(pad.data) : null;
+  const subject = pad.data?.round?.subject ?? 'quant';
   const report = useQuery({
     queryKey: qk.report(id),
     queryFn: () => api.report(id),
@@ -149,7 +173,7 @@ export function ReportPage({ id }: { id: string }) {
         </>
       ) : (
         <>
-          <BackLink track={track} />
+          <BackLink track={track} interview={pad.data.interview} />
           <header className="mt-2 flex flex-wrap items-end justify-between gap-4">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2.5">
@@ -157,16 +181,26 @@ export function ReportPage({ id }: { id: string }) {
                   {pad.data.problem?.title ?? pad.data.pad.title}
                 </h1>
                 {pad.data.problem && <DifficultyBadge difficulty={pad.data.problem.difficulty} />}
-                {pad.data.round?.path && <QuantPathBadge path={pad.data.round.path} />}
+                {pad.data.round && <RoundBadge round={pad.data.round} />}
               </div>
               <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-fg-muted">
                 <span>
                   {quantRoom
                     ? 'Quant interview report'
                     : quant
-                      ? 'Quant round report'
+                      ? `${QUANT_SUBJECT_LABEL[subject]} report`
                       : 'Interview report'}
                 </span>
+                {pad.data.interview && pad.data.interview.total > 1 && (
+                  <>
+                    <span aria-hidden className="text-fg-subtle">
+                      ·
+                    </span>
+                    <span data-testid="report-stage">
+                      Stage {pad.data.interview.index + 1} of {pad.data.interview.total}
+                    </span>
+                  </>
+                )}
                 {!quant && (
                   <>
                     <span aria-hidden className="text-fg-subtle">

@@ -434,41 +434,20 @@ test('voice reads the interviewer’s trade once and never the candidate’s quo
   ]);
 });
 
-test.describe('the setup option', () => {
-  const starts = (b: MockBackend) =>
-    b.requests.filter((r) => r.method === 'POST' && r.path === '/api/pads/quant');
-
-  test('on for the trader path, off for the researcher path, kept per path', async ({ page }) => {
+test.describe('a game stage', () => {
+  test('a staged interview’s game stage is a round of the game alone', async ({ page }) => {
     const b = await setup(page);
-    await page.goto('/quant/interviews');
-    const card = page.getByTestId('round-setup');
-    const option = card.getByRole('switch', { name: 'Include a market-making game' });
-    await expect(option).toHaveAttribute('aria-checked', 'true');
-    await expect(card.getByTestId('round-game')).toContainText('live market on hidden dice');
-    await option.click();
-    await expect(option).toHaveAttribute('aria-checked', 'false');
-    await card.getByRole('button', { name: 'Start the round' }).click();
-    await expect(page).toHaveURL(/\/pads\/[0-9a-f-]{36}$/);
-    expect(starts(b).at(-1)?.body).toMatchObject({ path: 'trader', includeGame: false });
-
-    // The choice is kept for the trader path; the researcher path starts without one.
-    await page.goto('/quant/interviews');
-    await expect(
-      page.getByRole('switch', { name: 'Include a market-making game' }),
-    ).toHaveAttribute('aria-checked', 'false');
-    await page.goto('/quant/interviews?path=researcher');
-    const researcher = page.getByRole('switch', { name: 'Include a market-making game' });
-    await expect(researcher).toHaveAttribute('aria-checked', 'false');
-    await researcher.click();
-    await page.getByRole('button', { name: 'Start the round' }).click();
-    await expect(page).toHaveURL(/\/pads\/[0-9a-f-]{36}$/);
-    expect(starts(b).at(-1)?.body).toMatchObject({ path: 'researcher', includeGame: true });
-    // Asked for, the game is the second question.
-    await expect(heading(page)).toHaveText('Question 1 of 4', { timeout: 20_000 });
-    await page.getByLabel('Message', { exact: true }).fill('answer: 5/36');
-    await page.getByLabel('Message', { exact: true }).press('Enter');
-    await expect(heading(page)).toHaveText('Question 2 of 4');
+    await page.goto('/quant/interviews?preset=trader');
+    await page.getByRole('button', { name: 'Start the interview' }).click();
+    await expect(page.getByTestId('stage-chip')).toHaveText('Stage 1 of 3', { timeout: 20_000 });
+    await page.getByRole('banner').getByRole('button', { name: 'End stage' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'End stage' }).click();
+    await page.getByTestId('next-stage').click();
+    await expect(page.getByTestId('stage-chip')).toHaveText('Stage 2 of 3', { timeout: 20_000 });
+    await expect(heading(page)).toHaveText('Question 1 of 1');
     await expect(panel(page)).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Market-making game');
+    expect(b.requests.some((r) => r.method === 'POST' && r.path === '/api/pads/quant')).toBe(false);
   });
 });
 

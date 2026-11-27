@@ -49,13 +49,15 @@ export function trackFromPath(pathname: string): Track | null {
 
 /**
  * The header tab a page belongs to, for its highlight: a track page's own; a quiz or question
- * bank is Practice; a pad and its report (and the old home) Interviews. Null for anything else.
+ * bank is Practice; a pad, its report and a staged interview's page (and the old home)
+ * Interviews. Null for anything else.
  */
 export function tabFromPath(pathname: string): Tab | null {
   const [, first, second] = pathname.split('/');
   if (isTrack(first)) return TABS.find((t) => t === second) ?? null;
   if (first === 'quiz') return 'practice';
-  if (first === 'pads' || first === 'dashboard' || first === 'new') return 'interviews';
+  if (first === 'pads' || first === 'interviews' || first === 'dashboard' || first === 'new')
+    return 'interviews';
   return null;
 }
 

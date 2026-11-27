@@ -1,13 +1,29 @@
-/** Wording and cache rules for deleting an interview (owner) or leaving one (collaborator). */
-import type { PadRole, PadSummary } from '@ipp/contracts';
+/**
+ * Wording and cache rules for deleting an interview (owner) or leaving one (collaborator). A pad
+ * started on its own is deleted by itself; a staged interview (`interview` set, `id` the
+ * interview's) is deleted as a whole, every stage's pad with it.
+ */
+import type { Interview, PadRole, PadSummary } from '@ipp/contracts';
 import { ApiRequestError } from '@/lib/api';
+import { plural } from '@/lib/format';
 
 export type DeleteTarget = {
   id: string;
   problemTitle: string;
   status: 'active' | 'ended';
   role: PadRole;
+  /** A staged interview: how many of its stages have a pad (started). */
+  interview?: { stages: number; started: number };
 };
+
+/** A staged interview as something to delete. */
+export const interviewTarget = (i: Interview): DeleteTarget => ({
+  id: i.id,
+  problemTitle: i.title,
+  status: i.status,
+  role: 'owner',
+  interview: { stages: i.stages.length, started: i.stages.filter((s) => s.pad).length },
+});
 
 export type DeleteCopy = {
   /** Button / menu label and accessible name prefix. */
@@ -38,6 +54,23 @@ export function deleteCopy(t: DeleteTarget): DeleteCopy {
       done: 'Removed from your history',
     };
   }
+  if (t.interview && t.interview.stages > 1) {
+    const started = t.interview.started;
+    return {
+      action: 'Delete interview',
+      title: `Delete “${t.problemTitle}”?`,
+      description: `This permanently deletes the interview and the ${plural(started, 'stage')} you started in it. It cannot be undone.`,
+      lost: [
+        ...(active ? ['The stage in progress ends.'] : []),
+        'Every stage’s report and the interviewer’s assessments.',
+        'The overall result.',
+        'The playbacks, runs and transcripts of every stage.',
+      ],
+      confirm: 'Delete interview',
+      pending: 'Deleting…',
+      done: 'Interview deleted',
+    };
+  }
   return {
     action: 'Delete interview',
     title: `Delete “${t.problemTitle}”?`,
@@ -59,3 +92,6 @@ export const alreadyGone = (err: unknown) => err instanceof ApiRequestError && e
 
 export const withoutPad = (pads: PadSummary[] | undefined, id: string) =>
   pads?.filter((p) => p.id !== id);
+
+export const withoutInterview = (interviews: Interview[] | undefined, id: string) =>
+  interviews?.filter((i) => i.id !== id);

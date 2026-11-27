@@ -30,6 +30,7 @@ const detail: PadDetail = {
     shareToken: null,
     startedAt: '2026-01-01T00:00:00.000Z',
     endedAt: null,
+    interviewId: null,
   },
   role: 'owner',
   members: [],
@@ -53,6 +54,7 @@ const detail: PadDetail = {
   interviewerKey: 'active',
   interviewerModel: null,
   round: null,
+  interview: null,
 };
 const msg = (over: Partial<Message>): Message => ({
   id: '00000000-0000-4000-8000-0000000000aa',
@@ -439,6 +441,7 @@ describe('quant rounds', () => {
   const view = (version: number, questions = 0): QuantRoundView => ({
     mode: 'ai',
     path: 'trader',
+    subject: 'quant',
     total: 3,
     phase: questions === 0 ? 'pending' : 'asking',
     version,

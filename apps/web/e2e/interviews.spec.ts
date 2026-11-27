@@ -55,7 +55,7 @@ test.describe('each track lists its own pads', () => {
     await setup(page, withQuantPads);
     await page.goto('/quant/interviews');
     await expect(page.getByRole('heading', { level: 1, name: 'Interviews' })).toBeVisible();
-    await expect(page.getByText('A live round of quant questions')).toBeVisible();
+    await expect(page.getByText('questions, games and code')).toBeVisible();
     // The round under way, not the coding pad.
     await expect(active(page)).toHaveCount(1);
     await expect(active(page)).toContainText('Trader quant round');
@@ -64,7 +64,7 @@ test.describe('each track lists its own pads', () => {
       'href',
       `/pads/${QUANT_PAD_ID}`,
     );
-    await expect(stat(page, 'Rounds')).toHaveText('2');
+    await expect(stat(page, 'Interviews')).toHaveText('2');
     await expect(stat(page, 'Solved')).toHaveCount(0);
 
     await page.getByRole('tab', { name: /^History/ }).click();
@@ -97,10 +97,12 @@ test.describe('each track lists its own pads', () => {
   test('Quant with nothing yet: an empty history and no figures to speak of', async ({ page }) => {
     await setup(page);
     await page.goto('/quant/interviews?view=history');
-    await expect(stat(page, 'Rounds')).toHaveText('0');
+    await expect(stat(page, 'Interviews')).toHaveText('0');
     await expect(active(page)).toHaveCount(0);
     await expect(page.getByText('No finished interviews yet')).toBeVisible();
-    await expect(page.getByText('Rounds and quant rooms you finish show up here')).toBeVisible();
+    await expect(
+      page.getByText('Interviews and quant rooms you finish show up here'),
+    ).toBeVisible();
   });
 
   test('on a phone, the history cards are the track’s too', async ({ page }) => {
@@ -116,7 +118,7 @@ test.describe('each track lists its own pads', () => {
 });
 
 test.describe('the setup', () => {
-  test('Quant: the same switch, kept in ?mode=host, over the round or the room', async ({
+  test('Quant: the same switch, kept in ?mode=host, over the builder or the room', async ({
     page,
   }) => {
     await setup(page, (b) => b.useRoomBank());
@@ -124,20 +126,16 @@ test.describe('the setup', () => {
     await expect(kind(page).getByRole('radio', { checked: true })).toHaveText(
       'Practise with the AI',
     );
-    await expect(page.getByRole('radiogroup', { name: 'Path' })).toBeVisible();
-    await page.getByRole('radio', { name: 'Researcher' }).click();
-    await expect(page).toHaveURL(/\/quant\/interviews\?path=researcher$/);
-    await expect(page.getByTestId('round-setup')).toContainText(
-      'questions from the researcher path',
-    );
-    await expect(page.getByTestId('round-topics').getByRole('listitem').first()).toContainText(
-      'Probability',
+    const presets = page.getByRole('radiogroup', { name: 'Presets' });
+    await presets.getByRole('radio', { name: /^Researcher/ }).click();
+    await expect(page.getByTestId('stage-summary').first()).toHaveText(
+      'Probability, Statistics · 4 questions · 30 min',
     );
 
     await kind(page).getByRole('radio', { name: 'Interview someone' }).click();
-    await expect(page).toHaveURL(/\/quant\/interviews\?path=researcher&mode=host$/);
+    await expect(page).toHaveURL(/\/quant\/interviews\?mode=host$/);
     await expect(page.getByTestId('quant-room-setup')).toBeVisible();
-    await expect(page.getByRole('radiogroup', { name: 'Path' })).toHaveCount(0);
+    await expect(presets).toHaveCount(0);
     // Kept across a look at History and a reload.
     await page.getByRole('tab', { name: /^History/ }).click();
     await page.getByRole('tab', { name: /^New interview/ }).click();
