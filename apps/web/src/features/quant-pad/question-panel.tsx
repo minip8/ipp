@@ -187,8 +187,9 @@ function Finished({ onEnd, ending }: { onEnd: () => void; ending: boolean }) {
   const { state, readOnly } = usePad();
   const stage = useStage();
   const owner = state.role === 'owner';
-  // A stage with another after it: the way on ends this one and opens the next.
-  if (stage?.hasNext && owner)
+  // A stage with another after it: the way on ends this one and opens the next (once the pad
+  // has ended, the banner over the pad offers it).
+  if (stage?.hasNext && owner && !readOnly)
     return (
       <div
         className="mx-5 my-5 rounded-lg border border-border bg-surface-2 px-4 py-4 max-lg:mx-4"
@@ -199,9 +200,8 @@ function Finished({ onEnd, ending }: { onEnd: () => void; ending: boolean }) {
           {stage.interview.index + 1} finished
         </p>
         <p className="mt-1 text-sm text-fg-muted">
-          {readOnly
-            ? 'Its report scores each answer, with the solutions.'
-            : 'That was the last question of this stage. Its report scores each answer, with the solutions.'}
+          That was the last question of this stage. Its report scores each answer, with the
+          solutions.
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <NextStageButton />

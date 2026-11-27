@@ -87,7 +87,7 @@ export function RecommendationBadge({
         className,
       )}
     >
-      {prefix && <span className="font-normal opacity-80">{prefix}</span>}
+      {prefix && <span className="font-normal opacity-80">{prefix} </span>}
       {r?.label}
     </span>
   );

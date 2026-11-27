@@ -46,7 +46,12 @@ export function useStage(): {
   nextSummary: string | null;
 } | null {
   const { interview } = usePad();
-  const names = useStageNames();
+  // Only what naming the next stage takes: a chosen problem's title, or its topics' titles.
+  const next = interview && interview.total > 1 ? interview.next : null;
+  const names = useStageNames({
+    problems: next?.kind === 'coding' && Boolean(next.problemSlug),
+    topics: next?.kind === 'questions',
+  });
   if (!interview || interview.total <= 1) return null;
   const last = interview.index === interview.total - 1;
   const hasNext = interview.active && !last && interview.next !== null;

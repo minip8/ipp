@@ -375,7 +375,10 @@ export function StageCard({
           onClick={() => onExpandedChange(!expanded)}
         >
           <span className="block text-sm font-medium">{kind}</span>
-          <span className="block truncate text-xs text-fg-muted" data-testid="stage-summary">
+          <span
+            className="block text-xs text-fg-muted sm:truncate max-sm:line-clamp-2"
+            data-testid="stage-summary"
+          >
             {summary}
           </span>
         </button>
@@ -424,7 +427,8 @@ export function StageCard({
               aria-expanded={expanded}
               aria-controls={editorId}
               aria-label={`Edit stage ${number}`}
-              className="max-sm:size-9"
+              // Phones: the stage's text opens it, which leaves room for its summary.
+              className="max-sm:hidden"
             >
               <ChevronDownIcon className={cn('transition-transform', expanded && 'rotate-180')} />
             </Button>
