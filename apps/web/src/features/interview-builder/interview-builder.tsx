@@ -1,20 +1,23 @@
 'use client';
 /**
  * The interview builder: the Interviews tab's "Practise with the AI" in both tracks. A staged
- * mock interview is assembled on the left (the track's presets as a row of cards, then the plan:
- * its stages in order, each editable in place, movable and removable, and buttons to add any
- * kind of stage); the setup panel on the right (on a phone, after the plan) has the page's
- * `header` (the kind-of-interview switch), the plan's total, the interviewer's options, the key
- * every stage runs on, and Start, which creates the interview and opens its first stage's pad.
+ * mock interview is assembled on the left (cards to start from: the track's presets, the user's
+ * saved plans and their own custom draft; then the plan shown: its stages in order, each editable
+ * in place, movable and removable, and buttons to add any kind of stage); the setup panel on the
+ * right (on a phone, after the plan) has the page's `header` (the kind-of-interview switch), the
+ * plan's total, the interviewer's options, the key every stage runs on, and Start, which creates
+ * the interview from the plan shown and opens its first stage's pad.
  *
- * The plan and the preset it came from are remembered per track in this browser; a link may
- * name a plan instead (`planFromLink`: `?problem=`, `?preset=`, `?path=`, `?random=1`).
+ * What is selected and the custom draft are separate (`selection.ts`): choosing a preset or a
+ * saved plan leaves the draft as it was, and editing either starts a draft from it, asking first
+ * when that would replace one holding work. Both are remembered per track in this browser. A link
+ * may select a preset or preview a plan of one stage (`linkFromParams`); once the user chooses
+ * something else, the link's params leave the URL so a reload shows what was chosen.
  */
 import {
   INTERVIEW_STAGES_MAX,
-  type InterviewPreset,
   type InterviewSettings,
-  type InterviewStage,
+  type InterviewTemplate,
   type Language,
   presetsOf,
   STAGE_KIND_INFO,
@@ -23,15 +26,17 @@ import {
   type Track,
 } from '@ipp/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangleIcon, PlayIcon, PlusIcon } from 'lucide-react';
+import { AlertTriangleIcon, PlayIcon, PlusIcon, SaveIcon, Trash2Icon } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import { useRetryCountdown } from '@/components/states';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { AiKeyDialog } from '@/features/ai-key/ai-key-dialog';
 import { AiKeyPrompt } from '@/features/ai-key/ai-key-prompt';
 import { rejectedTitle } from '@/features/ai-key/logic';
+import { ConfirmDeleteDialog } from '@/features/delete-history/confirm-delete-dialog';
 import { planTotal } from '@/features/interview/logic';
 import { STAGE_ICON } from '@/features/interview/stage-icon';
 import { useStageNames } from '@/features/interview/use-names';
@@ -39,8 +44,9 @@ import { InterviewerOptions, useSpeechSupported } from '@/features/new/interview
 import { ApiRequestError, api } from '@/lib/api';
 import { useFitBelow, useOnScreen } from '@/lib/layout-hooks';
 import { loadStartPrefs, saveStartPrefs } from '@/lib/prefs';
-import { qk, useAiKey } from '@/lib/queries';
+import { qk, useAiKey, useMe } from '@/lib/queries';
 import { cn } from '@/lib/utils';
+import { ConfirmDialog } from './confirm-dialog';
 import {
   addStage,
   canAddStage,
@@ -49,27 +55,48 @@ import {
   defaultTopics,
   fitLanguages,
   fitTopics,
-  loadPlan,
   moveStage,
-  type Plan,
-  planFromLink,
-  planSelection,
-  presetPlan,
   removeStage,
   replaceStage,
-  savePlan,
   startError,
 } from './logic';
 import { PresetPicker } from './preset-picker';
+import { focusChosenCard } from './return-focus';
+import { RenameDialog, SaveDialog } from './save-dialog';
+import {
+  afterDelete,
+  afterRename,
+  afterSave,
+  applyLink,
+  type Builder,
+  type Ctx,
+  choose,
+  discard,
+  dropEmptyPreview,
+  edit,
+  fitBuilder,
+  fitProblems,
+  linkFromParams,
+  linkKey,
+  loadBuilder,
+  previewLabel,
+  reconcile,
+  type SavedPlan,
+  type Selection,
+  saveBuilder,
+  saveOffer,
+  selectionLabel,
+  shownPlan,
+  startPlan,
+  suggestedName,
+  withoutLink,
+} from './selection';
 import { StageCard } from './stage-card';
 
-type Builder = { plan: Plan; language: Language };
-
 function initialBuilder(track: Track, params: URLSearchParams): Builder {
-  const usual = loadStartPrefs().language;
-  const stored = loadPlan(track, usual);
-  const linked = planFromLink(params, track, stored.language);
-  return linked ? { plan: linked, language: stored.language } : stored;
+  const stored = loadBuilder(track, loadStartPrefs().language);
+  const link = linkFromParams(params, track, stored.language);
+  return link ? applyLink(stored, link) : stored;
 }
 
 function initialInterviewer(): InterviewSettings {
@@ -77,10 +104,25 @@ function initialInterviewer(): InterviewSettings {
   return { style, proactivity, voice, ...(model ? { model } : {}) };
 }
 
+/** The link's params leave the URL (replaced, not pushed), so a reload shows what is chosen. */
+function dropLink() {
+  const search = withoutLink(window.location.search);
+  if (search === null) return;
+  const { pathname, hash } = window.location;
+  window.history.replaceState(null, '', `${pathname}${search ? `?${search}` : ''}${hash}`);
+}
+
+/** Saved plans by name, as the server lists them. */
+const byName = (list: InterviewTemplate[]) =>
+  [...list].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+
+type Pending = { next: Builder; language: Language; expanded: number | null };
+
 export function InterviewBuilder({ track, header }: { track: Track; header?: ReactNode }) {
   const router = useRouter();
   const params = useSearchParams();
   const qc = useQueryClient();
+  const me = useMe();
   const aiKey = useAiKey();
   const voiceOk = useSpeechSupported();
   const names = useStageNames();
@@ -88,45 +130,89 @@ export function InterviewBuilder({ track, header }: { track: Track; header?: Rea
   const panel = useRef<HTMLElement>(null);
   useFitBelow(panel);
   const panelOnScreen = useOnScreen(panel);
-  const [{ plan, language }, setBuilder] = useState<Builder>(() =>
+  const [b, setB] = useState<Builder>(() =>
     initialBuilder(track, new URLSearchParams(params.toString())),
   );
   const [interviewer, setInterviewer] = useState<InterviewSettings>(initialInterviewer);
   // One stage open for editing at a time, followed when it moves.
   const [expanded, setExpanded] = useState<number | null>(null);
   const [keyDialog, setKeyDialog] = useState(false);
+  // An edit that would replace a draft holding work, waiting for the user's answer.
+  const [pending, setPending] = useState<Pending | null>(null);
+  const [discarding, setDiscarding] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [renaming, setRenaming] = useState<SavedPlan | null>(null);
+  const [deleting, setDeleting] = useState<SavedPlan | null>(null);
 
-  const setStages = (stages: InterviewStage[]) =>
-    setBuilder((b) => ({ ...b, plan: { ...b.plan, stages } }));
-  const selection = planSelection(plan, track);
-  const total = planTotal(plan.stages);
-
-  // What the stored plan or a link names is fitted to what the server has once it is known: a
-  // problem's own languages, and only topics that exist.
+  // What the stored plan, a link or a saved plan names is fitted to what the server has once it
+  // is known: a problem's own languages, only topics that exist, and (a saved plan) a problem
+  // that still exists.
   const problems = useQuery({ queryKey: qk.problems({}), queryFn: () => api.problems() });
   const topics = useQuery({ queryKey: qk.quizTopics, queryFn: api.quizTopics });
+  const account = me.data ? !me.data.guest : false;
+  const templates = useQuery({
+    queryKey: qk.interviewTemplates,
+    queryFn: api.interviewTemplates,
+    enabled: account,
+  });
+
+  const fallbackTopics = useMemo(
+    () => defaultTopics(topics.data ?? [], track, b.language),
+    [topics.data, track, b.language],
+  );
+  const saved = useMemo<SavedPlan[]>(
+    () =>
+      (templates.data ?? [])
+        .filter((t) => t.track === track)
+        .map((t) => {
+          let stages = t.stages;
+          if (problems.data)
+            stages = fitLanguages(fitProblems(stages, problems.data), problems.data);
+          if (topics.data) stages = fitTopics(stages, topics.data, fallbackTopics);
+          return { id: t.id, name: t.name, stages };
+        }),
+    [templates.data, track, problems.data, topics.data, fallbackTopics],
+  );
+  const ctx: Ctx = useMemo(() => ({ track, saved }), [track, saved]);
+
   useEffect(() => {
     if (!problems.data) return;
     const list = problems.data;
-    setBuilder((b) => {
-      const stages = fitLanguages(b.plan.stages, list);
-      return stages.every((s, i) => s === b.plan.stages[i])
-        ? b
-        : { ...b, plan: { ...b.plan, stages } };
-    });
+    setB((x) => fitBuilder(x, (stages) => fitLanguages(stages, list)));
   }, [problems.data]);
   useEffect(() => {
     if (!topics.data) return;
     const list = topics.data;
-    setBuilder((b) => {
-      const stages = fitTopics(b.plan.stages, list, defaultTopics(list, track, b.language));
-      return stages.every((s, i) => s === b.plan.stages[i])
-        ? b
-        : { ...b, plan: { ...b.plan, stages } };
-    });
+    setB((x) =>
+      fitBuilder(dropEmptyPreview(x, list, track), (stages) =>
+        fitTopics(stages, list, defaultTopics(list, track, x.language)),
+      ),
+    );
   }, [topics.data, track]);
+  // A selected saved plan takes the server's name and plan, or goes once deleted elsewhere.
+  useEffect(() => {
+    if (!templates.data) return;
+    const list = templates.data.filter((t) => t.track === track);
+    setB((x) => reconcile(x, list, track));
+  }, [templates.data, track]);
 
-  useEffect(() => savePlan(track, plan, language), [track, plan, language]);
+  useEffect(() => saveBuilder(track, b), [track, b]);
+
+  // A link followed while the builder is open (the URL changed under it).
+  const link = linkKey(params);
+  const appliedLink = useRef(link);
+  useEffect(() => {
+    if (link === appliedLink.current) return;
+    appliedLink.current = link;
+    if (!link) return;
+    const next = linkFromParams(new URLSearchParams(link), track, b.language);
+    if (next) setB((x) => applyLink(x, next));
+    setExpanded(null);
+  }, [link, track, b.language]);
+
+  const plan = shownPlan(b, ctx);
+  const total = planTotal(plan.stages);
+  const offer = account ? saveOffer(b, ctx) : null;
 
   // Unknown (loading or failed) counts as usable: the server says so if it is not.
   const keyState = aiKey.data?.state ?? 'active';
@@ -135,8 +221,12 @@ export function InterviewBuilder({ track, header }: { track: Track; header?: Rea
   const start = useMutation({
     mutationFn: () => {
       const prefs = loadStartPrefs();
-      saveStartPrefs({ ...prefs, language, interviewer: { ...interviewer, enabled: true } });
-      return api.createInterview(createRequest(track, plan, interviewer, names));
+      saveStartPrefs({
+        ...prefs,
+        language: b.language,
+        interviewer: { ...interviewer, enabled: true },
+      });
+      return api.createInterview(createRequest(track, startPlan(b, ctx, names), interviewer));
     },
     onSuccess: ({ interview, padId }) => {
       qc.setQueryData(qk.interview(interview.id), interview);
@@ -153,37 +243,85 @@ export function InterviewBuilder({ track, header }: { track: Track; header?: Rea
   const wait = useRetryCountdown(start.error);
   // An error was about the plan it was started with.
   const { reset } = start;
+  const planKey = JSON.stringify(plan.stages);
   // biome-ignore lint/correctness/useExhaustiveDependencies: reset when the plan changes
-  useEffect(() => reset(), [plan, reset]);
+  useEffect(() => reset(), [planKey, reset]);
 
-  const choosePreset = (p: InterviewPreset) => {
-    setBuilder((b) => ({ ...b, plan: presetPlan(p, b.language) }));
+  const select = (s: Selection) => {
+    setB(choose(b, s, ctx));
     setExpanded(null);
+    if (s.kind !== 'preview') dropLink();
+  };
+
+  /**
+   * The plan shown edited. Off the draft this starts a new draft, which may first ask; `open`
+   * is the stage to have open after it.
+   */
+  const change = (stages: typeof plan.stages, open: number | null = expanded) => {
+    const { next, ask } = edit(b, stages, ctx);
+    if (next === b) return;
+    if (ask) {
+      setPending({ next, language: b.language, expanded: open });
+      return;
+    }
+    setB(next);
+    setExpanded(open);
+    if (next.selection.kind !== b.selection.kind) dropLink();
   };
   const add = (kind: StageKind) => {
     if (!canAddStage(plan.stages)) return;
-    setStages(
-      addStage(plan.stages, kind, {
-        language,
-        topics: defaultTopics(topics.data ?? [], track, language),
-      }),
-    );
-    setExpanded(plan.stages.length);
+    const stages = addStage(plan.stages, kind, {
+      language: b.language,
+      topics: defaultTopics(topics.data ?? [], track, b.language),
+    });
+    change(stages, plan.stages.length);
   };
   const move = (index: number, by: -1 | 1) => {
-    setStages(moveStage(plan.stages, index, by));
-    if (expanded === index) setExpanded(index + by);
-    else if (expanded === index + by) setExpanded(index);
+    let open = expanded;
+    if (expanded === index) open = index + by;
+    else if (expanded === index + by) open = index;
+    change(moveStage(plan.stages, index, by), open);
   };
   const remove = (index: number) => {
     if (!canRemoveStage(plan.stages)) return;
-    setStages(removeStage(plan.stages, index));
-    if (expanded === index) setExpanded(null);
-    else if (expanded !== null && expanded > index) setExpanded(expanded - 1);
+    let open = expanded;
+    if (expanded === index) open = null;
+    else if (expanded !== null && expanded > index) open = expanded - 1;
+    change(removeStage(plan.stages, index), open);
+  };
+
+  const replaceDraft = () => {
+    if (!pending) return;
+    // The language chosen with the edit, if it chose one, stays.
+    setB((x) => ({ ...pending.next, language: x.language }));
+    setExpanded(pending.expanded);
+    setPending(null);
+    dropLink();
+  };
+  const keepDraft = () => {
+    if (!pending) return;
+    setB((x) => ({ ...x, language: pending.language }));
+    setPending(null);
+  };
+
+  const setTemplates = (f: (list: InterviewTemplate[]) => InterviewTemplate[]) =>
+    qc.setQueryData<InterviewTemplate[]>(qk.interviewTemplates, (list) =>
+      list ? byName(f(list)) : list,
+    );
+  const onSaved = (t: InterviewTemplate, how: 'update' | 'new') => {
+    setTemplates((list) => [...list.filter((x) => x.id !== t.id), t]);
+    void qc.invalidateQueries({ queryKey: qk.interviewTemplates });
+    setB((x) => afterSave(x, t));
+    setSaving(false);
+    setExpanded(null);
+    dropLink();
+    toast.success(how === 'update' ? `Updated “${t.name}”` : `Saved as “${t.name}”`);
   };
 
   const full = !canAddStage(plan.stages);
   const begin = () => (needsKey ? setKeyDialog(true) : start.mutate());
+  const custom = b.selection.kind === 'custom';
+  const shownName = selectionLabel(b, ctx, names);
 
   return (
     <div
@@ -197,20 +335,48 @@ export function InterviewBuilder({ track, header }: { track: Track; header?: Rea
           </h3>
           <PresetPicker
             presets={presets}
-            value={selection}
-            customTotal={total}
-            onChoose={choosePreset}
+            saved={saved}
+            preview={
+              b.preview ? { label: previewLabel(b.preview, names), stages: b.preview.stages } : null
+            }
+            draft={b.draft?.stages ?? null}
+            value={b.selection}
+            onChoose={select}
+            onRename={setRenaming}
+            onDelete={setDeleting}
           />
         </div>
 
         <div className="rounded-lg border border-border bg-surface">
-          <div className="flex h-11 items-center justify-between gap-3 border-b border-border px-4">
-            <h2 id="plan-heading" className="text-sm font-semibold">
+          <div className="flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 border-b border-border py-1.5 pr-2 pl-4">
+            <h2 id="plan-heading" className="mr-auto text-sm font-semibold">
               Your interview
             </h2>
-            <span className="text-xs text-fg-muted tabular" data-testid="plan-total-inline">
+            <span
+              className="text-xs text-fg-muted tabular max-sm:hidden"
+              data-testid="plan-total-inline"
+            >
               {total}
             </span>
+            {(offer || custom) && (
+              <div className="flex items-center gap-1">
+                {offer && (
+                  <Button size="sm" onClick={() => setSaving(true)} data-testid="save-plan">
+                    <SaveIcon /> Save
+                  </Button>
+                )}
+                {custom && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setDiscarding(true)}
+                    aria-label="Discard custom plan"
+                  >
+                    <Trash2Icon /> Discard
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
           <ol className="space-y-2 p-3 sm:p-4" aria-label="Stages" data-testid="plan">
             {plan.stages.map((stage, i) => (
@@ -226,8 +392,8 @@ export function InterviewBuilder({ track, header }: { track: Track; header?: Rea
                 names={names}
                 expanded={expanded === i}
                 onExpandedChange={(open) => setExpanded(open ? i : null)}
-                onChange={(s) => setStages(replaceStage(plan.stages, i, s))}
-                onLanguage={(l) => setBuilder((b) => ({ ...b, language: l }))}
+                onChange={(s) => change(replaceStage(plan.stages, i, s))}
+                onLanguage={(l) => setB((x) => ({ ...x, language: l }))}
                 onMove={(by) => move(i, by)}
                 onRemove={() => remove(i)}
                 canRemove={canRemoveStage(plan.stages)}
@@ -355,6 +521,100 @@ export function InterviewBuilder({ track, header }: { track: Track; header?: Rea
         description="The interviewer runs every stage on your own API key (Anthropic, OpenAI, Google Gemini or OpenRouter)."
         submitLabel="Save key and start"
         onSaved={() => start.mutate()}
+      />
+
+      <ConfirmDialog
+        open={pending !== null}
+        title="Replace your custom plan?"
+        confirm="Replace it"
+        cancel="Keep my custom plan"
+        onConfirm={replaceDraft}
+        onCancel={keepDraft}
+        testId="replace-draft"
+      >
+        Your custom plan ({b.draft ? planTotal(b.draft.stages) : ''}) is not saved. Changing{' '}
+        {shownName} starts a new custom plan in its place.
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={discarding}
+        title="Discard your custom plan?"
+        confirm="Discard"
+        onConfirm={() => {
+          setB(discard(b, track));
+          setExpanded(null);
+          setDiscarding(false);
+          dropLink();
+        }}
+        onCancel={() => setDiscarding(false)}
+        testId="discard-draft"
+      >
+        Its {b.draft ? planTotal(b.draft.stages) : 'stages'} are gone for good, and the plan goes
+        back to {presets[0]?.label ?? 'the first preset'}.
+      </ConfirmDialog>
+
+      {offer && (
+        <SaveDialog
+          open={saving}
+          onOpenChange={setSaving}
+          track={track}
+          stages={plan.stages}
+          suggested={suggestedName(b, ctx, names)}
+          update={offer.update}
+          onSaved={onSaved}
+        />
+      )}
+      <RenameDialog
+        plan={renaming}
+        onClose={() => setRenaming(null)}
+        onRenamed={(t) => {
+          setTemplates((list) => list.map((x) => (x.id === t.id ? t : x)));
+          void qc.invalidateQueries({ queryKey: qk.interviewTemplates });
+          setB((x) => afterRename(x, t));
+          setRenaming(null);
+        }}
+      />
+      <ConfirmDeleteDialog
+        copy={
+          deleting
+            ? {
+                action: 'Delete',
+                title: `Delete “${deleting.name}”?`,
+                description: 'The saved plan goes from Your interviews.',
+                lostHeading: 'What happens',
+                lost: [
+                  `Its plan (${planTotal(deleting.stages)}) is deleted.`,
+                  'Interviews you started from it are kept, with their reports.',
+                ],
+                confirm: 'Delete',
+                pending: 'Deleting',
+                done: `Deleted “${deleting.name}”`,
+                failed: 'It could not be deleted.',
+              }
+            : null
+        }
+        confirmKey={deleting?.id ?? null}
+        onConfirm={async () => {
+          if (!deleting) return;
+          const id = deleting.id;
+          try {
+            await api.deleteInterviewTemplate(id);
+          } catch (e) {
+            // Gone already (another tab): as good as deleted.
+            if (!(e instanceof ApiRequestError && e.isNotFound)) throw e;
+          }
+          setTemplates((list) => list.filter((x) => x.id !== id));
+          void qc.invalidateQueries({ queryKey: qk.interviewTemplates });
+          setB((x) => afterDelete(x, id, track));
+        }}
+        onClose={() => {
+          setDeleting(null);
+          // A deleted plan's menu button is gone: focus the card now chosen instead.
+          setTimeout(() => {
+            if (!document.activeElement || document.activeElement === document.body)
+              focusChosenCard();
+          }, 50);
+        }}
       />
 
       {/* Phones: the setup panel sits below the plan, so keep the next step in reach. */}

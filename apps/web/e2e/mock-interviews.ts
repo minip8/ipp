@@ -18,15 +18,29 @@
  * Statuses come from the contract's `stageStatuses`. mock-api.ts adds the rest: `PadDetail.interview`,
  * `in_interview` on deleting a stage's pad, ending the last stage's pad ending the interview, and
  * a stage's report pending or ready as a spec sets it here (`setReport`).
+ *
+ * And saved plans (interview templates), with the API's semantics:
+ *
+ *   GET    /api/interview-templates       the user's, every track, by name
+ *   POST   /api/interview-templates       201; 409 `template_limit` past INTERVIEW_TEMPLATES_MAX,
+ *                                         409 `template_name_taken` for a name of the same track
+ *                                         in any case
+ *   PUT    /api/interview-templates/:id   name and/or stages; 409 `template_name_taken`
+ *   DELETE /api/interview-templates/:id   { templateId }
+ *
+ * 404 for an unknown id, 400 for a body the contract refuses, 403 for a guest. A spec preloads
+ * them with `addTemplate`.
  */
 import {
   AdvanceInterviewRequest,
   type AiKeyStatus,
   CreateInterviewRequest,
+  INTERVIEW_TEMPLATES_MAX,
   type Interview,
   type InterviewSettings,
   type InterviewStage,
   type InterviewStageView,
+  type InterviewTemplate,
   type PadDetail,
   type PadInterview,
   type PadSummary,
@@ -35,8 +49,10 @@ import {
   quantSubject,
   type Recommendation,
   type Report,
+  SaveInterviewTemplateRequest,
   stageStatuses,
   type Track,
+  UpdateInterviewTemplateRequest,
 } from '@ipp/contracts';
 import { makePadDetail, PROBLEMS, QUIZ_TOPICS, uuid } from './fixtures';
 import { type BankQuestion, gamePick, ROUND_BANK } from './fixtures-quant-round';
@@ -104,6 +120,8 @@ export class MockInterviews {
   recommendations = new Map<string, Recommendation>();
   /** Stage indexes whose start is refused with `quant_unavailable`, whatever their topics. */
   unavailable = new Set<number>();
+  /** Saved plans, in the order they were made (the list is sorted when served). */
+  templates: InterviewTemplate[] = [];
 
   constructor(private host: InterviewHost) {}
 
@@ -389,9 +407,81 @@ export class MockInterviews {
     return this.view(s);
   }
 
+  // ---------------------------------------------------------------- saved plans
+
+  /** A spec: a saved plan the user already has. */
+  addTemplate(o: { name: string; track: Track; stages: InterviewStage[]; at?: string }) {
+    const at = o.at ?? new Date(Date.now() - 86_400_000).toISOString();
+    const t: InterviewTemplate = {
+      id: uuid(),
+      name: o.name,
+      track: o.track,
+      stages: o.stages,
+      createdAt: at,
+      updatedAt: at,
+    };
+    this.templates.push(t);
+    return t;
+  }
+
+  private nameTaken(name: string, track: Track, except?: string) {
+    const key = name.trim().toLowerCase();
+    return this.templates.some(
+      (t) => t.id !== except && t.track === track && t.name.trim().toLowerCase() === key,
+    );
+  }
+
+  private handleTemplates(
+    method: string,
+    path: string,
+    body: unknown,
+  ): Response | object | undefined {
+    if (this.host.me.guest)
+      return response(403, 'account_required', 'Sign in with an account to do this');
+    const taken = () =>
+      response(409, 'template_name_taken', 'You already have a saved interview of that name');
+    if (path === '/api/interview-templates' && method === 'GET')
+      return [...this.templates].sort((a, b) =>
+        a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
+      );
+    if (path === '/api/interview-templates' && method === 'POST') {
+      const parsed = SaveInterviewTemplateRequest.safeParse(body);
+      if (!parsed.success)
+        return response(400, 'validation_error', parsed.error.issues[0]?.message ?? 'Invalid');
+      const req = parsed.data;
+      if (this.templates.length >= INTERVIEW_TEMPLATES_MAX)
+        return response(409, 'template_limit', 'You have saved as many interviews as you can');
+      if (this.nameTaken(req.name, req.track)) return taken();
+      const t = this.addTemplate({ ...req, at: new Date().toISOString() });
+      return new Response(JSON.stringify(t), { status: 201 });
+    }
+    const m = path.match(/^\/api\/interview-templates\/([^/]+)$/);
+    if (!m) return undefined;
+    const t = this.templates.find((x) => x.id === m[1]);
+    if (!t) return response(404, 'not_found', 'Saved interview not found');
+    if (method === 'PUT') {
+      const parsed = UpdateInterviewTemplateRequest.safeParse(body);
+      if (!parsed.success)
+        return response(400, 'validation_error', parsed.error.issues[0]?.message ?? 'Invalid');
+      const { name, stages } = parsed.data;
+      if (name !== undefined && this.nameTaken(name, t.track, t.id)) return taken();
+      if (name !== undefined) t.name = name;
+      if (stages !== undefined) t.stages = stages;
+      t.updatedAt = new Date().toISOString();
+      return t;
+    }
+    if (method === 'DELETE') {
+      this.templates = this.templates.filter((x) => x !== t);
+      return { templateId: t.id };
+    }
+    return undefined;
+  }
+
   // ---------------------------------------------------------------- routes
 
   handle(method: string, path: string, body: unknown): Response | object | undefined {
+    if (path === '/api/interview-templates' || path.startsWith('/api/interview-templates/'))
+      return this.handleTemplates(method, path, body);
     if (!path.startsWith('/api/interviews')) return undefined;
     if (this.host.me.guest)
       return response(403, 'account_required', 'Sign in with an account to do this');

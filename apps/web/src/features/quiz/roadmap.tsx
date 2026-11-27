@@ -1,8 +1,8 @@
 'use client';
 /**
  * The Roadmap tab's topic maps: one graph of study areas per topic of the track, with what to
- * learn before what, the user's progress on each, and a way to practise any area. Nothing is
- * locked; the arrows are advice.
+ * learn before what, the user's progress on each, and a way to practise any area (and to an
+ * interview on its topic's open questions). Nothing is locked; the arrows are advice.
  *
  * URL: /{track}/roadmap?view=maps&roadmap=<topic>&node=<id> (both kept with replaceState, so a
  * reload or a link lands on the same graph and area). A topic of the other track only (a link,
@@ -32,10 +32,10 @@ import { api } from '@/lib/api';
 import { formatPercent, plural } from '@/lib/format';
 import { qk } from '@/lib/queries';
 import { storage } from '@/lib/storage';
-import { misplacedTopic, tabHref, topicsOf } from '@/lib/track';
+import { interviewsHref, misplacedTopic, tabHref, topicsOf } from '@/lib/track';
 import { cn } from '@/lib/utils';
 import { bankHref, DEFAULT_FILTERS } from './bank-logic';
-import { DISCUSSION_ROUND, PRACTICE_ROUND } from './logic';
+import { interviewLabel, PRACTICE_ROUND, quizQuestionCount } from './logic';
 import { NodeBar, RoadmapGraph, StateIcon } from './roadmap-graph';
 import {
   browseSubtopic,
@@ -52,7 +52,7 @@ import {
   STATE_LABEL,
   summarise,
 } from './roadmap-logic';
-import { DiscussionKeyPrompt, useDiscussionKey, useStartAttempt } from './start';
+import { useStartAttempt } from './start';
 
 /** A faint dot grid behind the graph. */
 const CANVAS = {
@@ -289,6 +289,7 @@ function completionHint(n: QuizRoadmapNodeProgress, s: NodeStatus): string {
 }
 
 function NodeDetails({
+  track,
   topics,
   topic,
   node,
@@ -297,6 +298,8 @@ function NodeDetails({
   onSelectIn,
   headingAs = 'h2',
 }: {
+  /** the page's track, for the link to an interview on the topic */
+  track: Track;
   /** every topic, of both tracks: related areas are in the other ones */
   topics: QuizRoadmapTopic[];
   topic: QuizRoadmapTopic;
@@ -308,24 +311,21 @@ function NodeDetails({
   /** in the phone sheet the title is the dialog's own */
   headingAs?: 'h2' | 'dialog';
 }) {
-  const { missing } = useDiscussionKey();
-  const [askKey, setAskKey] = useState(false);
   const status = statuses.get(node.id) ?? { state: 'not_started', next: false };
   const { requires, leadsTo } = useMemo(() => relations(topic.nodes), [topic.nodes]);
   const byId = new Map(topic.nodes.map((n) => [n.id, n]));
-  const auto = node.questionCount - node.shortCount;
+  const auto = quizQuestionCount(node);
 
   const start = useStartAttempt();
-  const begin = (mode: 'practice' | 'discussion') =>
+  const begin = () =>
     start.mutate({
       topics: [topic.slug],
       nodes: [node.id],
-      mode,
-      count: mode === 'discussion' ? DISCUSSION_ROUND : PRACTICE_ROUND,
+      mode: 'practice',
+      count: PRACTICE_ROUND,
       focusWeak: true,
     });
   const wait = useRetryCountdown(start.error);
-  const busy = start.isPending ? start.variables.mode : null;
   const browse = browseSubtopic(node.subtopics);
   const Title = headingAs === 'dialog' ? DialogTitle : 'h2';
   const Description = headingAs === 'dialog' ? DialogDescription : 'p';
@@ -408,53 +408,52 @@ function NodeDetails({
           size="lg"
           className="w-full"
           disabled={auto === 0 || start.isPending || wait > 0}
-          onClick={() => begin('practice')}
+          onClick={begin}
         >
-          {busy === 'practice' ? <Spinner /> : <PlayIcon />}
+          {start.isPending ? <Spinner /> : <PlayIcon />}
           {wait > 0 ? `Try again in ${wait}s` : 'Practise'}
         </Button>
         <p className="text-center text-xs text-fg-muted">
           {auto === 0
-            ? 'Only open questions here: discuss them instead.'
+            ? 'Only open questions here: answer them in the question bank.'
             : `${plural(Math.min(PRACTICE_ROUND, auto), 'question')}, the ones you have not got right first.`}
         </p>
-        <div className="grid grid-cols-2 gap-2">
-          {node.shortCount > 0 ? (
-            <Button
-              className="w-full max-sm:h-10"
-              disabled={start.isPending || wait > 0}
-              onClick={() => {
-                if (missing) setAskKey(true);
-                else begin('discussion');
-              }}
+        {browse && (
+          <Button asChild className="w-full max-sm:h-10">
+            <Link
+              href={bankHref(topic.slug, DEFAULT_FILTERS, null, browse)}
+              aria-label={`Browse questions in ${node.title}`}
             >
-              {busy === 'discussion' ? <Spinner /> : <MessagesSquareIcon />}
-              Discuss
-            </Button>
-          ) : (
-            <span />
-          )}
-          {browse && (
-            <Button asChild className="w-full max-sm:h-10">
-              <Link
-                href={bankHref(topic.slug, DEFAULT_FILTERS, null, browse)}
-                aria-label={`Browse questions in ${node.title}`}
-              >
-                <LibraryIcon />
-                Browse
-              </Link>
-            </Button>
-          )}
-        </div>
-        {askKey && missing && (
-          <DiscussionKeyPrompt
-            state={missing}
-            testId="roadmap-key-prompt"
-            onSaved={() => setAskKey(false)}
-          />
+              <LibraryIcon />
+              Browse questions
+            </Link>
+          </Button>
         )}
         <InlineError error={start.error} />
       </div>
+
+      {/* An interview's questions stage is chosen by topic, so this is the whole topic's. */}
+      {topic.shortCount > 0 && (
+        <section
+          aria-labelledby="roadmap-interview"
+          className="space-y-1 border-t border-border pt-4"
+        >
+          <h3 id="roadmap-interview" className="text-xs font-medium text-fg-muted">
+            Talk it through
+          </h3>
+          <Link
+            href={interviewsHref(track, { topics: [topic.slug] })}
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-accent-text hover:underline max-sm:min-h-10"
+          >
+            <MessagesSquareIcon className="size-3.5 shrink-0" />
+            {interviewLabel(1)}
+          </Link>
+          <p className="text-xs text-fg-muted">
+            The interviewer asks open questions from all of {topic.title}, not only this area, and
+            follows up on your reasoning. It runs on your AI key.
+          </p>
+        </section>
+      )}
 
       <section aria-labelledby="roadmap-before" className="space-y-1">
         <h3 id="roadmap-before" className="text-xs font-medium text-fg-muted">
@@ -661,6 +660,7 @@ export function QuizRoadmap({ track }: { track: Track }) {
   const details = selected ? (
     <NodeDetails
       key={selected.id}
+      track={track}
       topics={all}
       topic={topic}
       node={selected}

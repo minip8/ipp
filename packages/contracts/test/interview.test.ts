@@ -4,6 +4,7 @@ import {
   createQuantRound,
   INTERVIEW_PRESETS,
   INTERVIEW_STAGES_MAX,
+  INTERVIEW_TEMPLATE_NAME_MAX,
   InterviewStage,
   type InterviewStageView,
   interviewMinutes,
@@ -18,9 +19,11 @@ import {
   quantSubject,
   type Recommendation,
   roundSubject,
+  SaveInterviewTemplateRequest,
   stageQuestionCount,
   stageStatuses,
   TRACKS,
+  UpdateInterviewTemplateRequest,
 } from '../src';
 
 const coding = { kind: 'coding', language: 'python', durationMin: 45 } as const;
@@ -199,5 +202,33 @@ describe('a pad of an interview', () => {
   it('defaults to no interview', () => {
     expect(Pad.shape.interviewId.parse(undefined)).toBeNull();
     expect(PadDetail.shape.interview.parse(undefined)).toBeNull();
+  });
+});
+
+describe('interview templates', () => {
+  it('saves a named plan, the name trimmed and bounded', () => {
+    const saved = SaveInterviewTemplateRequest.parse({
+      name: '  Quant dev loop  ',
+      track: 'quant',
+      stages: [coding, questions],
+    });
+    expect(saved.name).toBe('Quant dev loop');
+    const base = { track: 'quant', stages: [game] };
+    expect(SaveInterviewTemplateRequest.safeParse({ ...base, name: '   ' }).success).toBe(false);
+    expect(
+      SaveInterviewTemplateRequest.safeParse({
+        ...base,
+        name: 'x'.repeat(INTERVIEW_TEMPLATE_NAME_MAX + 1),
+      }).success,
+    ).toBe(false);
+    expect(
+      SaveInterviewTemplateRequest.safeParse({ name: 'Empty', track: 'quant', stages: [] }).success,
+    ).toBe(false);
+  });
+
+  it('an update changes the name, the plan or both, never nothing', () => {
+    expect(UpdateInterviewTemplateRequest.safeParse({}).success).toBe(false);
+    expect(UpdateInterviewTemplateRequest.safeParse({ name: 'New name' }).success).toBe(true);
+    expect(UpdateInterviewTemplateRequest.safeParse({ stages: [coding] }).success).toBe(true);
   });
 });

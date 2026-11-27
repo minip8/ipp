@@ -107,6 +107,8 @@ export interface Limits {
   historyDeletes: { userBurst: RateLimit };
   /** Remembering the site track the header switch chose (`PUT /api/me/track`). */
   trackChanges: { userBurst: RateLimit };
+  /** Saving, changing or deleting a saved interview plan (each writes a row). */
+  templateWrites: { userBurst: RateLimit; userDaily: RateLimit };
   /** Hard cap on interviewer messages per pad (spend guard). */
   interviewerMessagesPerPad: number;
   /**
@@ -157,6 +159,10 @@ export const DEFAULT_LIMITS: Limits = {
   problemChange: { userBurst: { limit: 10, windowSec: 60 } },
   historyDeletes: { userBurst: { limit: 30, windowSec: 60 } },
   trackChanges: { userBurst: { limit: 30, windowSec: 60 } },
+  templateWrites: {
+    userBurst: { limit: 30, windowSec: 60 },
+    userDaily: { limit: 300, windowSec: 86_400 },
+  },
   drillRuns: {
     userBurst: { limit: 6, windowSec: 60 },
     userDaily: { limit: 200, windowSec: 86_400 },

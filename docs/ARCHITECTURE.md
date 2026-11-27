@@ -59,12 +59,19 @@ the pure `apps/web/src/lib/track.ts`.
 - **Interviews** (`features/interviews`): what is under way, then "New interview" and "History"
   (`?view=history`). "New interview" opens with "Practise with the AI | Interview someone"
   (`?mode=host`). Practising is the **interview builder** (`features/interview-builder`, §4.2),
-  the same component in both tracks: the track's presets, the plan as an ordered list of stages
-  edited in place (any kind of stage and any topic in either track; an edited plan reads
-  "Custom"), the interviewer's options, and Start, which creates the interview and opens stage
-  0's pad. `?preset=` chooses a preset, `?problem=` makes a plan of one coding stage on that
-  problem, the old `?path=` maps to the Trader and Researcher presets; the last plan per track
-  is remembered in the browser. Interviewing someone is unchanged: a coding room (§4.1) in
+  the same component in both tracks: cards to start from, the plan shown as an ordered list of
+  stages edited in place (any kind of stage and any topic in either track), the interviewer's
+  options, and Start, which creates the interview from the plan shown and opens stage 0's pad.
+  The cards are the track's presets, the user's saved plans of the track ("Your interviews",
+  §4.2: save, update, rename, delete) and "Custom". What is selected and the custom **draft**
+  are separate: choosing a preset or a saved plan shows it and leaves the draft alone, and
+  Custom shows the draft again as it was left. Editing a preset or a saved plan starts a draft
+  from it, asking first when the draft there holds work found in no preset or saved plan. Both
+  are remembered per track in the browser (`ipp:interview-plan:<track>`, validated on load).
+  `?preset=` chooses a preset (the old `?path=` maps to Trader and Researcher); `?problem=` and
+  `?topics=a,b` show a plan of one coding stage on that problem, or one questions stage on those
+  topics, as a preview that is never the draft and is not stored. Interviewing someone is
+  unchanged: a coding room (§4.1) in
   Software, a quant room (§8.4) in Quant, whose bank browser filters by site track
   (`topicInTrack`, starting on Quant) and still offers every question; the host's desk in the
   room, which searches on the server by a topic's home (`HostBankQuery.track`), has no track
@@ -82,9 +89,15 @@ the pure `apps/web/src/lib/track.ts`.
 - **Practice** (`features/quiz/hub.tsx`): the track's quiz topics and the quiz setup (Quant adds
   the drill), Software's problem library (`?view=problems`: a problem's card starts it on your
   own, a pad with no interviewer and no clock that needs no AI key, or leads to the builder with
-  the problem chosen), and the history of attempts with a topic of the track.
+  the problem chosen), and the history of attempts with a topic of the track. The setup offers
+  practice and exam only, which need no AI key; talking open questions through with the AI is an
+  interview's, so a line under Start leads to the builder on a plan of one questions stage on
+  the selected topics (`interviewsHref(track, { topics })`, `?topics=`). The web starts no
+  discussion attempt (§8).
 - **Roadmap** (`features/roadmap`): the study path (Quant's two, `?path=`) and the topic maps
-  (`?view=maps&roadmap=<topic>&node=<id>`, §8).
+  (`?view=maps&roadmap=<topic>&node=<id>`, §8). Where they offered a discussion they link to the
+  builder the same way: the study path on its topics with open questions, a study area's panel on
+  its whole topic (a questions stage is chosen by topic, never by area).
 
 A topic is in a track by `topicInTrack` (its home's track and `also`, §8); every list of a track's
 topics (`topicsOf`) has the track's own topics first, then those shared into it, each in study
@@ -117,6 +130,7 @@ Better Auth owns `user`, `session`, `account`, `verification` (text ids). App ta
 | `problem_tests` | problem_slug, idx, hidden, data jsonb (`TestCase`) |
 | `pads` | id uuid, owner_id, title, kind (`practice` / `room`), format (`coding` / `quant`, §8.2), problem_slug (null: a blank room, and every quant pad), language (stored as `python` and unused for a quant pad), status, duration_min (null: no time limit), interviewer jsonb, share_token, host_notes (rooms, host-only), started_at, ended_at, interview_id and stage_index (the staged interview it is a stage of, §4.2; both null otherwise; unique together) |
 | `interviews` | id uuid, owner_id, title, track (the site track it was built in), preset (null: built from nothing), stages jsonb (`InterviewStage[]`, the plan), interviewer jsonb (`InterviewSettings`), status, current (the latest stage started), started_at, ended_at — a staged interview (§4.2) |
+| `interview_templates` | id uuid, owner_id (cascade), track (the builder it was saved in), name (unique per owner and track, whatever its case: an index on `lower(name)`), stages jsonb (`InterviewStage[]`), created_at, updated_at — a saved plan (§4.2) |
 | `quant_rounds` | pad_id pk (a quant pad, cascade), state jsonb (`QuantRoundState`, server-only: question ids, verdicts, hint rungs; a quant room's also `mode: 'hosted'` and the host's queue, §8.4), version (compare-and-swap guard), updated_at |
 | `pad_members` | pad_id, user_id, role (`owner`; `collaborator` = a room's candidate) |
 | `pad_docs` | pad_id pk, state bytea (merged Yjs state), updated_at |
@@ -181,6 +195,10 @@ Every body is validated with the contracts schema named below.
 | `POST /api/interviews/:id/next` | `AdvanceInterviewRequest` (`{ from }`) | `InterviewStart`: stage `from`'s pad ended and the next started, or after the last the interview ended (`padId` null); unchanged when it is no longer at `from` |
 | `POST /api/interviews/:id/end` | | `Interview` (the stage under way ends; stages never started read `skipped`) |
 | `DELETE /api/interviews/:id` | | `DeleteInterviewResponse` (the interview and every stage's pad) |
+| `GET /api/interview-templates` | | `InterviewTemplate[]` (mine, in every track, by name whatever its case, then id) |
+| `POST /api/interview-templates` | `SaveInterviewTemplateRequest` (`name` 1 to 60, `track`, `stages` 1 to 6) | `InterviewTemplate`; 409 `template_name_taken` (one of that name in that track, any case), 409 `template_limit` (30 already); 429 (`limits.templateWrites`, shared by the three writes: 30 a minute, 300 a day) |
+| `PUT /api/interview-templates/:id` | `UpdateInterviewTemplateRequest` (`name?`, `stages?`, at least one) | `InterviewTemplate` (`updatedAt` set); 409 `template_name_taken`; 429 |
+| `DELETE /api/interview-templates/:id` | | `DeleteInterviewTemplateResponse` (`{ templateId }`); 429 |
 | `GET /api/pads/invite/:token` | no session needed | `InviteInfo` (`kind`, `title`, `hostName`, `status`) |
 | `POST /api/pads/join` | `{ shareToken }` | `{ padId }` (the session's user becomes a member; a guest may only join rooms) |
 | `POST /api/pads/join-guest` | `JoinGuestRequest` (`shareToken`, `name`), no session needed | `{ padId }`, and a guest session cookie when there was no session (rooms only) |
@@ -326,6 +344,15 @@ which becomes an ordinary practice pad when it starts. The interview is only the
   stage's headline (its report's status and recommendation), and the overall recommendation is
   arithmetic (`overallRecommendation`: the stages' recommendations averaged by planned length),
   not a model's judgement.
+- **Saved plans** (`interview_templates`, `apps/api/src/interviews/templates.ts`). A plan can be
+  kept under a name, per user and track, to start interviews from. A template is only a named
+  plan: it is checked for its shape when saved, and against the content only when an interview
+  is started from it, by sending its stages to `POST /api/interviews` like any plan; changing or
+  deleting it does nothing to interviews already started. It holds no interviewer settings. The
+  unique index on (owner_id, track, `lower(name)`) decides a name clash (409
+  `template_name_taken`, also under a race); a save counts the owner's templates and inserts in
+  one transaction holding the owner's `user` row, so two saves at once cannot pass the limit of
+  30 (409 `template_limit`). Accounts only, owner only (404 for anyone else's or an unknown id).
 - **Who.** Accounts only, and only the owner (404 for anyone else). `PadDetail.interview` says
   where a stage's pad sits to its owner alone; a collaborator who joined by the pad's link sees an
   ordinary pad.
@@ -335,9 +362,11 @@ recommendation, every preset a valid plan); `packages/content/test/interview-pre
 (every preset can be filled from the bank); `apps/api/test/interviews.test.ts` (each stage kind,
 plans refused before anything is created, the lazy start, `next` once under a race and retryable
 after a failure, the last pad ending the interview, `end`, `delete`, the owner-only views, short
-rounds and the sweeper's wording); `packages/interviewer/test/quant-subject.test.ts` (the quant
-core unchanged byte for byte, the technical and mixed cores, the stage wording, the cached prefix
-unchanged by a stage).
+rounds and the sweeper's wording); `apps/api/test/interview-templates.test.ts` (names unique per
+track in any case and under a race, the limit under a race, update and delete, owner only, the
+rate limit, an interview started from a saved plan and kept when the plan goes);
+`packages/interviewer/test/quant-subject.test.ts` (the quant core unchanged byte for byte, the
+technical and mixed cores, the stage wording, the cached prefix unchanged by a stage).
 
 ## 5. Realtime
 
@@ -887,6 +916,17 @@ closes the question; closing records an ordinary AI-graded short answer whose te
 the candidate said, so results, stats and the question bank treat it like any other answer. The
 turns are kept on the attempt (`transcript`), and nothing is stored when the model call fails.
 Selection favours questions the user has missed or not seen. Stats per topic.
+
+The web no longer starts a discussion: quizzes on the Practice tab are practice and exam, and
+open questions are asked and talked through live in a staged interview's questions stage (§4.2),
+the fuller form of the same thing. Every place that started one (the quiz setup, the study path,
+a study area's panel, "again" on a discussion's results) now links to the Interviews tab's
+builder on a plan of one questions stage on those topics (`interviewsHref(track, { topics })`,
+§1.1); a study area's link is its whole topic's. The API is unchanged and still accepts and
+serves the mode, so a discussion that exists keeps working: an unfinished one opens and can be
+finished (`features/quiz/discussion.tsx`), a finished one shows its answers and grades on its
+results page, and both keep their row and label in the history. A setup remembered on
+`discussion` in the browser falls back to practice.
 The question bank (`/quiz/topics/:slug`) holds a topic's whole bank, searchable and filterable by
 difficulty, type and status, and answers any question in place with no attempt. It opens on an
 overview of the subtopics (a card each, with progress); a subtopic (`?subtopic=`) lists its

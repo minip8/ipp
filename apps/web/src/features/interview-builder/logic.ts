@@ -1,20 +1,19 @@
 /**
  * Pure rules of the interview builder (the Interviews tab's "Practise with the AI"): the plan
  * (an ordered list of stages, `interview-stage.ts`) and how it is edited, which preset it still
- * is or whether it has become custom, what each stage is called, the links into the builder, the
- * plan remembered in this browser, the request that starts it and why that could fail.
+ * is, what each stage is called, the request that starts it and why that could fail. What is
+ * selected, the custom draft, saved plans, links in and what is remembered are `selection.ts`.
  */
 import {
   type CreateInterviewRequest,
   INTERVIEW_STAGES_MAX,
   type InterviewPreset,
   type InterviewSettings,
-  InterviewStage,
+  type InterviewStage,
   LANGUAGE_TOPIC,
   LANGUAGES,
-  Language,
+  type Language,
   type ProblemSummary,
-  presetById,
   presetStages,
   presetsOf,
   type QuizTrack,
@@ -23,12 +22,10 @@ import {
   type StageKind,
   type Track,
 } from '@ipp/contracts';
-import { z } from 'zod';
 import { type Names, problemLabel } from '@/features/interview/logic';
 import { effectiveLanguage } from '@/features/new/logic';
 import { ApiRequestError, errorMessage, formatRetry } from '@/lib/api';
 import { plural } from '@/lib/format';
-import { storage } from '@/lib/storage';
 import { topicsOf } from '@/lib/track';
 
 export type Plan = {
@@ -36,9 +33,6 @@ export type Plan = {
   preset: string | null;
   stages: InterviewStage[];
 };
-
-/** What the preset row shows as chosen: a preset the plan still is, or `custom`. */
-export const CUSTOM = 'custom';
 
 // ---------------------------------------------------------------- presets
 
@@ -78,10 +72,6 @@ export function matchingPreset(
     null
   );
 }
-
-/** The preset row's selection: the preset the plan still is, else `custom`. */
-export const planSelection = (plan: Plan, track: Track): string =>
-  matchingPreset(plan.stages, track)?.id ?? CUSTOM;
 
 // ---------------------------------------------------------------- editing the plan
 
@@ -222,102 +212,14 @@ export function interviewTitle(plan: Plan, track: Track, names: Names): string {
   return 'Custom interview';
 }
 
+/** The request that starts `plan` under `title` (`startPlan` in selection.ts gives both). */
 export function createRequest(
   track: Track,
-  plan: Plan,
+  { plan, title }: { plan: Plan; title: string },
   interviewer: InterviewSettings,
-  names: Names,
 ): CreateInterviewRequest {
-  return {
-    track,
-    preset: plan.preset,
-    title: interviewTitle(plan, track, names),
-    stages: plan.stages,
-    interviewer,
-  };
+  return { track, preset: plan.preset, title, stages: plan.stages, interviewer };
 }
-
-// ---------------------------------------------------------------- links in
-
-/**
- * A plan named by the page's URL, or null: `?preset=<id>` (the track's own presets only), the
- * old `?path=trader|researcher` (those presets, on Quant), `?problem=<slug>` (one coding stage
- * on it: the Practice tab's Problems view links so) and `?random=1` with an optional
- * `difficulty` and `category` (one random coding stage).
- */
-export function planFromLink(
-  params: URLSearchParams,
-  track: Track,
-  language: Language,
-): Plan | null {
-  const named = presetById(params.get('preset') ?? params.get('path'));
-  if (named && named.track === track) return presetPlan(named, language);
-  const problem = params.get('problem');
-  if (problem && /^[a-z0-9-]+$/.test(problem))
-    return {
-      preset: null,
-      stages: [{ kind: 'coding', problemSlug: problem, language, durationMin: 45 }],
-    };
-  if (params.has('random')) {
-    const stage = InterviewStage.safeParse({
-      kind: 'coding',
-      difficulty: params.get('difficulty') ?? undefined,
-      category: params.get('category') ?? undefined,
-      language,
-      durationMin: 45,
-    });
-    return {
-      preset: null,
-      stages: [stage.success ? stage.data : { kind: 'coding', language, durationMin: 45 }],
-    };
-  }
-  return null;
-}
-
-// ---------------------------------------------------------------- remembered in this browser
-
-/** The last plan built on a track, with the language new coding stages and presets take. */
-export const StoredPlan = z.object({
-  v: z.literal(1),
-  preset: z.string().nullable(),
-  stages: z.array(InterviewStage).min(1).max(INTERVIEW_STAGES_MAX),
-  language: Language,
-});
-export type StoredPlan = z.infer<typeof StoredPlan>;
-
-const planKey = (track: Track) => `ipp:interview-plan:${track}`;
-
-/**
- * What the builder starts from: the plan stored for the track when it is still valid, else the
- * track's default preset (in `language`, the user's usual one).
- */
-export function parseStoredPlan(
-  raw: unknown,
-  track: Track,
-  language: Language,
-): { plan: Plan; language: Language } {
-  const parsed = StoredPlan.safeParse(raw);
-  if (!parsed.success) return { plan: defaultPlan(track, language), language };
-  const preset = presetById(parsed.data.preset);
-  return {
-    plan: {
-      preset: preset?.track === track ? preset.id : null,
-      stages: parsed.data.stages,
-    },
-    language: parsed.data.language,
-  };
-}
-
-export const loadPlan = (track: Track, language: Language) =>
-  parseStoredPlan(storage.get<unknown>(planKey(track), null), track, language);
-
-export const savePlan = (track: Track, plan: Plan, language: Language) =>
-  storage.set(planKey(track), {
-    v: 1,
-    preset: plan.preset,
-    stages: plan.stages,
-    language,
-  } satisfies StoredPlan);
 
 // ---------------------------------------------------------------- starting it
 

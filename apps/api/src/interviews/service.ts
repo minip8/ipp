@@ -42,7 +42,9 @@ export type InterviewRow = typeof interviews.$inferSelect;
 /** How many interviews the list returns, newest first. */
 export const INTERVIEWS_LIST_LIMIT = 100;
 
-const isId = (id: string) => /^[0-9a-f-]{36}$/i.test(id);
+/** A canonical uuid; anything else is 404 before Postgres sees it (it would refuse it: a 500). */
+export const isId = (id: string) =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 
 /** The interview if `userId` owns it; 404 otherwise, so ids cannot be probed. */
 export async function ownInterview(ctx: Ctx, userId: string, id: string): Promise<InterviewRow> {

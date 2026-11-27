@@ -5,6 +5,7 @@ import {
   ArrowLeftIcon,
   ChevronDownIcon,
   CircleMinusIcon,
+  MessagesSquareIcon,
   PlusIcon,
   RotateCcwIcon,
 } from 'lucide-react';
@@ -22,13 +23,15 @@ import { DeleteAttemptButton } from '@/features/delete-history/delete-attempt-bu
 import { api } from '@/lib/api';
 import { formatDuration, formatPercent, humanize, plural } from '@/lib/format';
 import { qk } from '@/lib/queries';
-import { practiceHref } from '@/lib/track';
+import { interviewsHref, practiceHref } from '@/lib/track';
 import { useTrack } from '@/lib/track-hooks';
 import { cn } from '@/lib/utils';
 import {
   formatCorrect,
   formatResponse,
   GRADED_BY_LABEL,
+  interviewLabel,
+  interviewTopics,
   MODE_LABEL,
   OUTCOME_LABEL,
   type Outcome,
@@ -211,7 +214,8 @@ function ReviewItem({
 
 export function QuizResults({ attempt }: { attempt: QuizAttempt }) {
   const router = useRouter();
-  const back = practiceHref(useTrack());
+  const track = useTrack();
+  const back = practiceHref(track);
   const qc = useQueryClient();
   const titleOf = useTitles();
   const fbOf = useMemo(
@@ -248,12 +252,14 @@ export function QuizResults({ attempt }: { attempt: QuizAttempt }) {
     return [...m.entries()];
   }, [rows]);
 
+  // An old discussion's "again" is an interview on its topics: the web starts no new discussion.
+  const discussion = attempt.mode === 'discussion';
+  const interview = interviewTopics(attempt.topics);
   const retry = useMutation({
     mutationFn: () =>
       api.createAttempt({
         topics: [...new Set(missed.map((r) => r.q.topic))],
-        // Missed open questions go back to a discussion; the rest to practice.
-        mode: attempt.mode === 'discussion' ? 'discussion' : 'practice',
+        mode: 'practice',
         count: Math.max(missed.length, 3),
         focusWeak: true,
       }),
@@ -344,22 +350,28 @@ export function QuizResults({ attempt }: { attempt: QuizAttempt }) {
           </div>
         </div>
         <div className="mt-6 flex flex-wrap gap-2">
-          {missed.length > 0 && (
-            <Button
-              variant="primary"
-              className="max-sm:h-10 max-sm:flex-auto"
-              onClick={() => retry.mutate()}
-              disabled={retry.isPending}
-            >
-              {retry.isPending ? <Spinner /> : <RotateCcwIcon />}
-              {attempt.mode === 'discussion'
-                ? 'Discuss missed questions'
-                : 'Practice missed questions'}
+          {discussion ? (
+            <Button asChild variant="primary" className="max-sm:h-10 max-sm:flex-auto">
+              <Link href={interviewsHref(track, { topics: interview })}>
+                <MessagesSquareIcon /> {interviewLabel(interview.length)}
+              </Link>
             </Button>
+          ) : (
+            missed.length > 0 && (
+              <Button
+                variant="primary"
+                className="max-sm:h-10 max-sm:flex-auto"
+                onClick={() => retry.mutate()}
+                disabled={retry.isPending}
+              >
+                {retry.isPending ? <Spinner /> : <RotateCcwIcon />}
+                Practice missed questions
+              </Button>
+            )
           )}
           <Button
             asChild
-            variant={missed.length > 0 ? 'secondary' : 'primary'}
+            variant={discussion || missed.length > 0 ? 'secondary' : 'primary'}
             className="max-sm:h-10 max-sm:flex-auto"
           >
             <Link href={back}>
@@ -367,6 +379,11 @@ export function QuizResults({ attempt }: { attempt: QuizAttempt }) {
             </Link>
           </Button>
         </div>
+        {discussion && (
+          <p className="mt-3 text-xs text-fg-muted" data-testid="results-interview-note">
+            Open questions are now talked through in an interview, which runs on your AI key.
+          </p>
+        )}
         <InlineError error={retry.error} className="mt-3" />
       </section>
 

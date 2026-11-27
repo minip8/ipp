@@ -210,6 +210,26 @@ export const interviews = pgTable(
   (t) => [index('interviews_owner_idx').on(t.ownerId, t.startedAt)],
 );
 
+/** A plan saved under a name, to start staged interviews from (`InterviewTemplate`). */
+export const interviewTemplates = pgTable(
+  'interview_templates',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ownerId: text('owner_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    track: text('track').$type<Track>().notNull(),
+    name: text('name').notNull(),
+    stages: jsonb('stages').$type<InterviewStage[]>().notNull(),
+    createdAt: tsz('created_at').notNull().defaultNow(),
+    updatedAt: tsz('updated_at').notNull().defaultNow(),
+  },
+  (t) => [
+    // A name is unique per user and track, whatever its case.
+    uniqueIndex('interview_templates_name_idx').on(t.ownerId, t.track, sql`lower(${t.name})`),
+  ],
+);
+
 export const pads = pgTable(
   'pads',
   {
