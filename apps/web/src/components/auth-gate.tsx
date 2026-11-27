@@ -1,6 +1,7 @@
 'use client';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { type ReactNode, useEffect } from 'react';
+import { useHydrated } from '@/lib/hydration';
 import { useMe } from '@/lib/queries';
 import { ErrorState } from './states';
 
@@ -19,6 +20,7 @@ export function AuthGate({
   allowGuest?: boolean;
 }) {
   const me = useMe();
+  const hydrated = useHydrated();
   const router = useRouter();
   const pathname = usePathname();
   const search = useSearchParams();
@@ -32,6 +34,7 @@ export function AuthGate({
   }, [refused, me.isFetching, pathname, search, router]);
   if (me.isError)
     return <ErrorState error={me.error} onRetry={() => me.refetch()} className="min-h-[60vh]" />;
-  if (!me.data || refused) return <>{fallback}</>;
+  // The server sent the fallback: the session it did not have must not change the first render.
+  if (!hydrated || !me.data || refused) return <>{fallback}</>;
   return <>{children}</>;
 }

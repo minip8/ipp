@@ -272,6 +272,11 @@ test.describe('quiz setup', () => {
     await expect(link).toHaveAttribute('href', '/quant/interviews?topics=probability');
     await link.click();
     await expect(page).toHaveURL(/\/quant\/interviews\?topics=probability$/);
+    // The builder opens on one round of questions on it, ready to start.
+    await expect(page.getByTestId('stage-summary')).toHaveText([
+      'Probability · 3 questions · 20 min',
+    ]);
+    await expect(page.getByRole('button', { name: 'Start the interview' })).toBeEnabled();
   });
 });
 

@@ -11,6 +11,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { usePathname } from 'next/navigation';
 import { useCallback, useEffect } from 'react';
 import { api } from './api';
+import { useHydrated } from './hydration';
 import { qk, useMe } from './queries';
 import type { Me } from './schemas';
 import { currentTrack, trackFromPath } from './track';
@@ -18,7 +19,9 @@ import { currentTrack, trackFromPath } from './track';
 export function useTrack(): Track {
   const pathname = usePathname();
   const me = useMe();
-  return currentTrack(pathname, me.data?.track);
+  // As the server rendered it (no session, so no remembered track) until hydration is over.
+  const hydrated = useHydrated();
+  return currentTrack(pathname, hydrated ? me.data?.track : undefined);
 }
 
 /**
@@ -30,9 +33,11 @@ export function useTrack(): Track {
 export function useChosenTrack(): Track | null {
   const pathname = usePathname();
   const me = useMe();
+  const hydrated = useHydrated();
   const here = trackFromPath(pathname);
   if (here) return here;
-  if (!me.data) return null;
+  // The server rendered no track here; neither does the first render over its HTML.
+  if (!hydrated || !me.data) return null;
   return me.data.guest ? 'software' : me.data.track;
 }
 
@@ -40,8 +45,13 @@ export function useChosenTrack(): Track | null {
 export function useUndecided(): boolean {
   const pathname = usePathname();
   const me = useMe();
+  const hydrated = useHydrated();
   return Boolean(
-    me.data && !me.data.guest && me.data.track === null && trackFromPath(pathname) === null,
+    hydrated &&
+      me.data &&
+      !me.data.guest &&
+      me.data.track === null &&
+      trackFromPath(pathname) === null,
   );
 }
 
